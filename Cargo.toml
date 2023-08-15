@@ -1,0 +1,9 @@
+[package]
+name = "folding-schemes"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ark-ec = "0.4.2"
+ark-ff = "0.4.2"
+ark-std = "0.4.0"

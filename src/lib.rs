@@ -1,11 +1,20 @@
 use ark_ec::CurveGroup;
+use ark_ff::PrimeField;
 use ark_std::{fmt::Debug, rand::RngCore};
+
+pub mod transcript;
 
 #[derive(Debug)]
 pub enum Error {}
 
-pub trait Transcript<C: CurveGroup>: Debug {
-    // todos
+pub trait Transcript<F: PrimeField> {
+    type TranscriptConfig: Debug;
+
+    fn new(config: &Self::TranscriptConfig) -> Self;
+    fn absorb(&mut self, v: &F);
+    fn absorb_vec(&mut self, v: &[F]);
+    fn get_challenge(&mut self) -> F;
+    fn get_challenges(&mut self, n: usize) -> Vec<F>;
 }
 
 pub trait FoldingScheme<C: CurveGroup>: Clone + Debug {
@@ -31,7 +40,7 @@ pub trait FoldingScheme<C: CurveGroup>: Clone + Debug {
         pp: &Self::ProverParam,
         running_instance: &mut Self::CommittedInstanceWithWitness,
         incomming_instances: &[Self::FreshInstance],
-        transcript: &mut impl Transcript<C>,
+        transcript: &mut impl Transcript<C::ScalarField>,
         rng: impl RngCore,
     ) -> Result<(), Error>;
 
@@ -39,7 +48,7 @@ pub trait FoldingScheme<C: CurveGroup>: Clone + Debug {
         vp: &Self::VerifierParam,
         running_instance: &mut Self::CommittedInstance,
         incomming_instances: &[Self::PublicInput],
-        transcript: &mut impl Transcript<C>,
+        transcript: &mut impl Transcript<C::ScalarField>,
         rng: impl RngCore,
     ) -> Result<(), Error>;
 }
@@ -56,14 +65,14 @@ pub trait Decider<C: CurveGroup>: Clone + Debug {
     fn prove(
         pp: &Self::ProverParam,
         running_instance: &Self::CommittedInstanceWithWitness,
-        transcript: &mut impl Transcript<C>,
+        transcript: &mut impl Transcript<C::ScalarField>,
         rng: impl RngCore,
     ) -> Result<(), Error>;
 
     fn verify(
         vp: &Self::VerifierParam,
         running_instance: &Self::CommittedInstance,
-        transcript: &mut impl Transcript<C>,
+        transcript: &mut impl Transcript<C::ScalarField>,
         rng: impl RngCore,
     ) -> Result<(), Error>;
 }

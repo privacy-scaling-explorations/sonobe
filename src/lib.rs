@@ -29,7 +29,11 @@ pub trait Transcript<F: PrimeField> {
 /// - C1 is the main curve, which ScalarField we use as our F for al the field operations
 /// - C2 is the auxiliary curve, which we use for the commitments, whose BaseField (for point
 /// coordinates) are in the C1::ScalarField
-pub trait FoldingScheme<C1: CurveGroup, C2: CurveGroup>: Clone + Debug {
+pub trait FoldingScheme<C1: CurveGroup, C2: CurveGroup>: Clone + Debug
+where
+    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2::BaseField: PrimeField,
+{
     // type PCS: PolynomialCommitmentScheme<C>; // maybe not needed, just PedersenCommitment
     type PreprocessorParam: Debug;
     type ProverParam: Debug;

@@ -7,21 +7,12 @@ use ark_std::{fmt::Debug, rand::RngCore};
 use thiserror::Error;
 
 pub mod transcript;
+use transcript::Transcript;
 
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("Relation not satisfied")]
     NotSatisfied,
-}
-
-pub trait Transcript<F: PrimeField> {
-    type TranscriptConfig: Debug;
-
-    fn new(config: &Self::TranscriptConfig) -> Self;
-    fn absorb(&mut self, v: &F);
-    fn absorb_vec(&mut self, v: &[F]);
-    fn get_challenge(&mut self) -> F;
-    fn get_challenges(&mut self, n: usize) -> Vec<F>;
 }
 
 /// FoldingScheme defines trait that is implemented by the diverse folding schemes. It is defined

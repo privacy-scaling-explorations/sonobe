@@ -7,12 +7,13 @@ use ark_ff::PrimeField;
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 
-use crate::Transcript;
+use crate::transcript::Transcript;
 
 /// PoseidonTranscript implements the Transcript trait using the Poseidon hash
 pub struct PoseidonTranscript<F: PrimeField + Absorb> {
     sponge: PoseidonSponge<F>,
 }
+
 impl<F: PrimeField + Absorb> Transcript<F> for PoseidonTranscript<F> {
     type TranscriptConfig = PoseidonConfig<F>;
 

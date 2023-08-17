@@ -1,0 +1,17 @@
+[package]
+name = "folding-schemes"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ark-ec = "0.4.2"
+ark-ff = "0.4.2"
+ark-std = "0.4.0"
+ark-poly = "0.4.0"
+ark-crypto-primitives = { version = "^0.4.0", default-features = false, features = [ "r1cs", "sponge" ] }
+ark-relations = { version = "^0.4.0", default-features = false }
+ark-r1cs-std = { version = "^0.4.0", default-features = false }
+thiserror = "1.0" 
+
+[dev-dependencies]
+ark-bls12-381 = "0.4.0"

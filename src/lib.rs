@@ -8,6 +8,7 @@ use thiserror::Error;
 
 pub mod transcript;
 use transcript::Transcript;
+pub mod ccs;
 pub mod pedersen;
 pub mod utils;
 

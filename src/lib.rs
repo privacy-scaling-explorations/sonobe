@@ -8,6 +8,8 @@ use thiserror::Error;
 
 pub mod transcript;
 use transcript::Transcript;
+pub mod pedersen;
+pub mod utils;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -19,23 +21,21 @@ pub enum Error {
 /// over a cycle of curves (C1, C2), where:
 /// - C1 is the main curve, which ScalarField we use as our F for al the field operations
 /// - C2 is the auxiliary curve, which we use for the commitments, whose BaseField (for point
-/// coordinates) are in the C1::ScalarField
+/// coordinates) are in the C1::ScalarField.
+/// In other words, C1.Fq == C2.Fr, and C1.Fr == C2.Fq.
 pub trait FoldingScheme<C1: CurveGroup, C2: CurveGroup>: Clone + Debug
 where
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     C2::BaseField: PrimeField,
 {
-    // type PCS: PolynomialCommitmentScheme<C>; // maybe not needed, just PedersenCommitment
     type PreprocessorParam: Debug;
     type ProverParam: Debug;
     type VerifierParam: Debug;
-    type FreshInstance: Debug;
-    type PublicInput: Debug;
+    type Witness: Debug;
     type CommittedInstanceWithWitness: Debug;
     type CommittedInstance: Clone + Debug;
 
     fn preprocess(
-        // pcs_param: &<Self::CS as PolynomialCommitmentScheme<C>>::Param,
         prep_param: &Self::PreprocessorParam,
     ) -> Result<(Self::ProverParam, Self::VerifierParam), Error>;
 
@@ -46,17 +46,15 @@ where
     fn prove(
         pp: &Self::ProverParam,
         running_instance: &mut Self::CommittedInstanceWithWitness,
-        incomming_instances: &[Self::FreshInstance],
-        transcript: &mut impl Transcript<C1::ScalarField>,
-        rng: impl RngCore,
+        incomming_instances: &[Self::Witness],
+        transcript: &mut impl Transcript<C1>,
     ) -> Result<(), Error>;
 
     fn verify(
         vp: &Self::VerifierParam,
         running_instance: &mut Self::CommittedInstance,
-        incomming_instances: &[Self::PublicInput],
-        transcript: &mut impl Transcript<C1::ScalarField>,
-        rng: impl RngCore,
+        incomming_instances: &[Self::CommittedInstance],
+        transcript: &mut impl Transcript<C1>,
     ) -> Result<(), Error>;
 }
 
@@ -72,14 +70,14 @@ pub trait Decider<C: CurveGroup>: Clone + Debug {
     fn prove(
         pp: &Self::ProverParam,
         running_instance: &Self::CommittedInstanceWithWitness,
-        transcript: &mut impl Transcript<C::ScalarField>,
+        transcript: &mut impl Transcript<C>,
         rng: impl RngCore,
     ) -> Result<(), Error>;
 
     fn verify(
         vp: &Self::VerifierParam,
         running_instance: &Self::CommittedInstance,
-        transcript: &mut impl Transcript<C::ScalarField>,
+        transcript: &mut impl Transcript<C>,
         rng: impl RngCore,
     ) -> Result<(), Error>;
 }

@@ -3,40 +3,73 @@ use ark_crypto_primitives::sponge::{
     poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig, PoseidonSponge},
     Absorb, CryptographicSponge,
 };
-use ark_ff::PrimeField;
+use ark_ec::{AffineRepr, CurveGroup, Group};
+use ark_ff::{BigInteger, Field, PrimeField};
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 
 use crate::transcript::Transcript;
 
 /// PoseidonTranscript implements the Transcript trait using the Poseidon hash
-pub struct PoseidonTranscript<F: PrimeField + Absorb> {
-    sponge: PoseidonSponge<F>,
+pub struct PoseidonTranscript<C: CurveGroup>
+where
+    <C as Group>::ScalarField: Absorb,
+{
+    sponge: PoseidonSponge<C::ScalarField>,
 }
 
-impl<F: PrimeField + Absorb> Transcript<F> for PoseidonTranscript<F> {
-    type TranscriptConfig = PoseidonConfig<F>;
+impl<C: CurveGroup> Transcript<C> for PoseidonTranscript<C>
+where
+    <C as Group>::ScalarField: Absorb,
+{
+    type TranscriptConfig = PoseidonConfig<C::ScalarField>;
 
     fn new(poseidon_config: &Self::TranscriptConfig) -> Self {
-        let sponge = PoseidonSponge::<F>::new(poseidon_config);
+        let sponge = PoseidonSponge::<C::ScalarField>::new(poseidon_config);
         Self { sponge }
     }
-    fn absorb(&mut self, v: &F) {
+    fn absorb(&mut self, v: &C::ScalarField) {
         self.sponge.absorb(&v);
     }
-    fn absorb_vec(&mut self, v: &[F]) {
+    fn absorb_vec(&mut self, v: &[C::ScalarField]) {
         self.sponge.absorb(&v);
     }
-    fn get_challenge(&mut self) -> F {
+    fn absorb_point(&mut self, p: &C) {
+        self.sponge.absorb(&prepare_point(p));
+    }
+    fn get_challenge(&mut self) -> C::ScalarField {
         let c = self.sponge.squeeze_field_elements(1);
         self.sponge.absorb(&c[0]);
         c[0]
     }
-    fn get_challenges(&mut self, n: usize) -> Vec<F> {
+    fn get_challenges(&mut self, n: usize) -> Vec<C::ScalarField> {
         let c = self.sponge.squeeze_field_elements(n);
         self.sponge.absorb(&c);
         c
     }
+}
+
+// Returns the point coordinates in Fr, so it can be absrobed by the transcript. It does not work
+// over bytes in order to have a logic that can be reproduced in-circuit.
+fn prepare_point<C: CurveGroup>(p: &C) -> Vec<C::ScalarField> {
+    let binding = p.into_affine();
+    let p_coords = &binding.xy().unwrap();
+    let x_bi = p_coords
+        .0
+        .to_base_prime_field_elements()
+        .next()
+        .expect("a")
+        .into_bigint();
+    let y_bi = p_coords
+        .1
+        .to_base_prime_field_elements()
+        .next()
+        .expect("a")
+        .into_bigint();
+    vec![
+        C::ScalarField::from_le_bytes_mod_order(x_bi.to_bytes_le().as_ref()),
+        C::ScalarField::from_le_bytes_mod_order(y_bi.to_bytes_le().as_ref()),
+    ]
 }
 
 /// PoseidonTranscriptVar implements the gadget compatible with PoseidonTranscript
@@ -67,9 +100,9 @@ impl<F: PrimeField> PoseidonTranscriptVar<F> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
-    use ark_bls12_381::Fr;
+    use ark_bls12_377::{Fr, G1Projective};
     use ark_crypto_primitives::sponge::poseidon::find_poseidon_ark_and_mds;
     use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, R1CSVar};
     use ark_relations::r1cs::ConstraintSystem;
@@ -105,7 +138,7 @@ mod tests {
     fn test_transcript_and_transcriptvar() {
         // use 'native' transcript
         let config = poseidon_test_config::<Fr>();
-        let mut tr = PoseidonTranscript::<Fr>::new(&config);
+        let mut tr = PoseidonTranscript::<G1Projective>::new(&config);
         tr.absorb(&Fr::from(42_u32));
         let c = tr.get_challenge();
 

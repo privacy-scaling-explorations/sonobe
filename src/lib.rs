@@ -9,6 +9,7 @@ use thiserror::Error;
 pub mod transcript;
 use transcript::Transcript;
 pub mod ccs;
+pub mod folding;
 pub mod pedersen;
 pub mod utils;
 

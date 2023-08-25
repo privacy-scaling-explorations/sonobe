@@ -1,5 +1,6 @@
 use ark_ff::PrimeField;
 use ark_std::cfg_iter;
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SparseMatrix<F: PrimeField> {

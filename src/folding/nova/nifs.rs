@@ -9,6 +9,8 @@ use crate::pedersen::{Params as PedersenParams, Pedersen, Proof as PedersenProof
 use crate::transcript::Transcript;
 use crate::utils::vec::*;
 
+/// Implements the Non-Interactive Folding Scheme described in section 4 of
+/// https://eprint.iacr.org/2021/370.pdf
 pub struct NIFS<C: CurveGroup> {
     _phantom: PhantomData<C>,
 }

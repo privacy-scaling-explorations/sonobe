@@ -7,15 +7,14 @@ use std::sync::Arc;
 
 use ark_std::{rand::Rng, UniformRand};
 
+use super::utils::compute_sum_Mz;
 use crate::ccs::CCS;
-use crate::folding::hypernova::utils::compute_sum_Mz;
-use crate::Error;
-
 use crate::pedersen::{Params as PedersenParams, Pedersen};
 use crate::utils::hypercube::BooleanHypercube;
 use crate::utils::mle::matrix_to_mle;
 use crate::utils::mle::vec_to_mle;
 use crate::utils::virtual_polynomial::VirtualPolynomial;
+use crate::Error;
 
 /// Witness for the LCCCS & CCCS, containing the w vector, and the r_w used as randomness in the Pedersen commitment.
 #[derive(Debug, Clone)]
@@ -27,9 +26,6 @@ pub struct Witness<F: PrimeField> {
 /// Committed CCS instance
 #[derive(Debug, Clone)]
 pub struct CCCS<C: CurveGroup> {
-    // Underlying CCS structure
-    pub ccs: CCS<C>,
-
     // Commitment to witness
     pub C: C,
     // Public input/output
@@ -49,29 +45,26 @@ impl<C: CurveGroup> CCS<C> {
 
         (
             CCCS::<C> {
-                ccs: self.clone(),
                 C,
                 x: z[1..(1 + self.l)].to_vec(),
             },
             Witness::<C::ScalarField> { w, r_w },
         )
     }
-}
 
-impl<C: CurveGroup> CCCS<C> {
     /// Computes q(x) = \sum^q c_i * \prod_{j \in S_i} ( \sum_{y \in {0,1}^s'} M_j(x, y) * z(y) )
     /// polynomial over x
     pub fn compute_q(&self, z: &Vec<C::ScalarField>) -> VirtualPolynomial<C::ScalarField> {
-        let z_mle = vec_to_mle(self.ccs.s_prime, z);
-        let mut q = VirtualPolynomial::<C::ScalarField>::new(self.ccs.s);
+        let z_mle = vec_to_mle(self.s_prime, z);
+        let mut q = VirtualPolynomial::<C::ScalarField>::new(self.s);
 
-        for i in 0..self.ccs.q {
+        for i in 0..self.q {
             let mut prod: VirtualPolynomial<C::ScalarField> =
-                VirtualPolynomial::<C::ScalarField>::new(self.ccs.s);
-            for j in self.ccs.S[i].clone() {
-                let M_j = matrix_to_mle(self.ccs.M[j].clone());
+                VirtualPolynomial::<C::ScalarField>::new(self.s);
+            for j in self.S[i].clone() {
+                let M_j = matrix_to_mle(self.M[j].clone());
 
-                let sum_Mz = compute_sum_Mz(M_j, &z_mle, self.ccs.s_prime);
+                let sum_Mz = compute_sum_Mz(M_j, &z_mle, self.s_prime);
 
                 // Fold this sum into the running product
                 if prod.products.is_empty() {
@@ -86,7 +79,7 @@ impl<C: CurveGroup> CCCS<C> {
                 }
             }
             // Multiply by the product by the coefficient c_i
-            prod.scalar_mul(&self.ccs.c[i]);
+            prod.scalar_mul(&self.c[i]);
             // Add it to the running sum
             q = q.add(&prod);
         }
@@ -104,11 +97,14 @@ impl<C: CurveGroup> CCCS<C> {
         let q = self.compute_q(z);
         q.build_f_hat(beta).unwrap()
     }
+}
 
+impl<C: CurveGroup> CCCS<C> {
     /// Perform the check of the CCCS instance described at section 4.1
     pub fn check_relation(
         &self,
         pedersen_params: &PedersenParams<C>,
+        ccs: &CCS<C>,
         w: &Witness<C::ScalarField>,
     ) -> Result<(), Error> {
         // check that C is the commitment of w. Notice that this is not verifying a Pedersen
@@ -120,8 +116,8 @@ impl<C: CurveGroup> CCCS<C> {
             [vec![C::ScalarField::one()], self.x.clone(), w.w.to_vec()].concat();
 
         // A CCCS relation is satisfied if the q(x) multivariate polynomial evaluates to zero in the hypercube
-        let q_x = self.compute_q(&z);
-        for x in BooleanHypercube::new(self.ccs.s) {
+        let q_x = ccs.compute_q(&z);
+        for x in BooleanHypercube::new(ccs.s) {
             if !q_x.evaluate(&x).unwrap().is_zero() {
                 return Err(Error::NotSatisfied);
             }
@@ -132,7 +128,7 @@ impl<C: CurveGroup> CCCS<C> {
 }
 
 #[cfg(test)]
-pub mod test {
+pub mod tests {
     use super::*;
     use crate::ccs::tests::{get_test_ccs, get_test_z};
     use ark_std::test_rng;
@@ -149,9 +145,7 @@ pub mod test {
         let ccs = get_test_ccs::<Projective>();
         let z = get_test_z(3);
 
-        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, ccs.n - ccs.l - 1);
-        let (cccs, _) = ccs.to_cccs(&mut rng, &pedersen_params, &z);
-        let q = cccs.compute_q(&z);
+        let q = ccs.compute_q(&z);
 
         // Evaluate inside the hypercube
         for x in BooleanHypercube::new(ccs.s) {
@@ -168,17 +162,14 @@ pub mod test {
     fn test_compute_Q() {
         let mut rng = test_rng();
 
-        let ccs = get_test_ccs();
+        let ccs: CCS<Projective> = get_test_ccs();
         let z = get_test_z(3);
         ccs.check_relation(&z).unwrap();
-
-        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, ccs.n - ccs.l - 1);
-        let (cccs, _) = ccs.to_cccs(&mut rng, &pedersen_params, &z);
 
         let beta: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
 
         // Compute Q(x) = eq(beta, x) * q(x).
-        let Q = cccs.compute_Q(&z, &beta);
+        let Q = ccs.compute_Q(&z, &beta);
 
         // Let's consider the multilinear polynomial G(x) = \sum_{y \in {0, 1}^s} eq(x, y) q(y)
         // which interpolates the multivariate polynomial q(x) inside the hypercube.
@@ -205,18 +196,15 @@ pub mod test {
     fn test_Q_against_q() {
         let mut rng = test_rng();
 
-        let ccs = get_test_ccs();
+        let ccs: CCS<Projective> = get_test_ccs();
         let z = get_test_z(3);
         ccs.check_relation(&z).unwrap();
 
-        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, ccs.n - ccs.l - 1);
-        let (cccs, _) = ccs.to_cccs(&mut rng, &pedersen_params, &z);
-
         // Now test that if we create Q(x) with eq(d,y) where d is inside the hypercube, \sum Q(x) should be G(d) which
         // should be equal to q(d), since G(x) interpolates q(x) inside the hypercube
-        let q = cccs.compute_q(&z);
+        let q = ccs.compute_q(&z);
         for d in BooleanHypercube::new(ccs.s) {
-            let Q_at_d = cccs.compute_Q(&z, &d);
+            let Q_at_d = ccs.compute_Q(&z, &d);
 
             // Get G(d) by summing over Q_d(x) over the hypercube
             let G_at_d = BooleanHypercube::new(ccs.s)
@@ -227,7 +215,7 @@ pub mod test {
 
         // Now test that they should disagree outside of the hypercube
         let r: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
-        let Q_at_r = cccs.compute_Q(&z, &r);
+        let Q_at_r = ccs.compute_Q(&z, &r);
 
         // Get G(d) by summing over Q_d(x) over the hypercube
         let G_at_r = BooleanHypercube::new(ccs.s)

@@ -8,6 +8,7 @@ use espresso_transcript::IOPTranscript;
 use super::cccs::{Witness, CCCS};
 use super::lcccs::LCCCS;
 use super::utils::{compute_c_from_sigmas_and_thetas, compute_g, compute_sigmas_and_thetas};
+use crate::ccs::CCS;
 use crate::utils::hypercube::BooleanHypercube;
 use crate::utils::sum_check::structs::IOPProof as SumCheckProof;
 use crate::utils::sum_check::{verifier::interpolate_uni_poly, SumCheck};
@@ -27,7 +28,7 @@ pub struct SigmasThetas<F: PrimeField>(pub Vec<Vec<F>>, pub Vec<Vec<F>>);
 
 #[derive(Debug)]
 /// Implements the Non-Interactive Multi Folding Scheme described in section 5 of
-/// https://eprint.iacr.org/2023/573.pdf
+/// [HyperNova](https://eprint.iacr.org/2023/573.pdf)
 pub struct NIMFS<C: CurveGroup> {
     pub _c: PhantomData<C>,
 }
@@ -90,7 +91,6 @@ impl<C: CurveGroup> NIMFS<C> {
 
         LCCCS::<C> {
             C: C_folded,
-            ccs: lcccs[0].ccs.clone(),
             u: u_folded,
             x: x_folded,
             r_x: r_x_prime,
@@ -143,6 +143,7 @@ impl<C: CurveGroup> NIMFS<C> {
     /// sumcheck claim sigmas and thetas.
     pub fn prove(
         transcript: &mut IOPTranscript<C::ScalarField>,
+        ccs: &CCS<C>,
         running_instances: &[LCCCS<C>],
         new_instances: &[CCCS<C>],
         w_lcccs: &[Witness<C::ScalarField>],
@@ -180,18 +181,11 @@ impl<C: CurveGroup> NIMFS<C> {
         // Step 1: Get some challenges
         let gamma: C::ScalarField = transcript.get_and_append_challenge(b"gamma").unwrap();
         let beta: Vec<C::ScalarField> = transcript
-            .get_and_append_challenge_vectors(b"beta", running_instances[0].ccs.s)
+            .get_and_append_challenge_vectors(b"beta", ccs.s)
             .unwrap();
 
         // Compute g(x)
-        let g = compute_g(
-            running_instances,
-            new_instances,
-            &z_lcccs,
-            &z_cccs,
-            gamma,
-            &beta,
-        );
+        let g = compute_g(ccs, running_instances, &z_lcccs, &z_cccs, gamma, &beta);
 
         // Step 3: Run the sumcheck prover
         let sumcheck_proof =
@@ -204,7 +198,7 @@ impl<C: CurveGroup> NIMFS<C> {
         // its sum is equal to the extracted_sum from the SumCheck.
         //////////////////////////////////////////////////////////////////////
         let mut g_over_bhc = C::ScalarField::zero();
-        for x in BooleanHypercube::new(running_instances[0].ccs.s) {
+        for x in BooleanHypercube::new(ccs.s) {
             g_over_bhc += g.evaluate(&x).unwrap();
         }
 
@@ -217,7 +211,7 @@ impl<C: CurveGroup> NIMFS<C> {
         let mut sum_v_j_gamma = C::ScalarField::zero();
         for (i, running_instance) in running_instances.iter().enumerate() {
             for j in 0..running_instance.v.len() {
-                let gamma_j = gamma.pow([(i * running_instances[0].ccs.t + j) as u64]);
+                let gamma_j = gamma.pow([(i * ccs.t + j) as u64]);
                 sum_v_j_gamma += running_instance.v[j] * gamma_j;
             }
         }
@@ -229,8 +223,7 @@ impl<C: CurveGroup> NIMFS<C> {
         let r_x_prime = sumcheck_proof.point.clone();
 
         // Step 4: compute sigmas and thetas
-        let sigmas_thetas =
-            compute_sigmas_and_thetas(&running_instances[0].ccs, &z_lcccs, &z_cccs, &r_x_prime);
+        let sigmas_thetas = compute_sigmas_and_thetas(ccs, &z_lcccs, &z_cccs, &r_x_prime);
 
         // Step 6: Get the folding challenge
         let rho: C::ScalarField = transcript.get_and_append_challenge(b"rho").unwrap();
@@ -262,6 +255,7 @@ impl<C: CurveGroup> NIMFS<C> {
     /// Returns the folded LCCCS instance.
     pub fn verify(
         transcript: &mut IOPTranscript<C::ScalarField>,
+        ccs: &CCS<C>,
         running_instances: &[LCCCS<C>],
         new_instances: &[CCCS<C>],
         proof: Proof<C>,
@@ -274,12 +268,12 @@ impl<C: CurveGroup> NIMFS<C> {
         // Step 1: Get some challenges
         let gamma: C::ScalarField = transcript.get_and_append_challenge(b"gamma").unwrap();
         let beta: Vec<C::ScalarField> = transcript
-            .get_and_append_challenge_vectors(b"beta", running_instances[0].ccs.s)
+            .get_and_append_challenge_vectors(b"beta", ccs.s)
             .unwrap();
 
         let vp_aux_info = VPAuxInfo::<C::ScalarField> {
-            max_degree: running_instances[0].ccs.d + 1,
-            num_variables: running_instances[0].ccs.s,
+            max_degree: ccs.d + 1,
+            num_variables: ccs.s,
             phantom: PhantomData::<C::ScalarField>,
         };
 
@@ -288,7 +282,7 @@ impl<C: CurveGroup> NIMFS<C> {
         let mut sum_v_j_gamma = C::ScalarField::zero();
         for (i, running_instance) in running_instances.iter().enumerate() {
             for j in 0..running_instance.v.len() {
-                let gamma_j = gamma.pow([(i * running_instances[0].ccs.t + j) as u64]);
+                let gamma_j = gamma.pow([(i * ccs.t + j) as u64]);
                 sum_v_j_gamma += running_instance.v[j] * gamma_j;
             }
         }
@@ -307,7 +301,7 @@ impl<C: CurveGroup> NIMFS<C> {
 
         // Step 5: Finish verifying sumcheck (verify the claim c)
         let c = compute_c_from_sigmas_and_thetas(
-            &new_instances[0].ccs,
+            ccs,
             &proof.sigmas_thetas,
             gamma,
             &beta,
@@ -368,35 +362,28 @@ pub mod tests {
         let mut rng = test_rng();
         let r_x_prime: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
 
-        // Initialize a multifolding object
-        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, ccs.n - ccs.l - 1);
-        let (running_instance, _) = ccs.to_lcccs(&mut rng, &pedersen_params, &z1);
-
-        let sigmas_thetas = compute_sigmas_and_thetas(
-            &running_instance.ccs,
-            &[z1.clone()],
-            &[z2.clone()],
-            &r_x_prime,
-        );
+        let sigmas_thetas =
+            compute_sigmas_and_thetas(&ccs, &[z1.clone()], &[z2.clone()], &r_x_prime);
 
         let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, ccs.n - ccs.l - 1);
 
         let (lcccs, w1) = ccs.to_lcccs(&mut rng, &pedersen_params, &z1);
         let (cccs, w2) = ccs.to_cccs(&mut rng, &pedersen_params, &z2);
 
-        lcccs.check_relation(&pedersen_params, &w1).unwrap();
-        cccs.check_relation(&pedersen_params, &w2).unwrap();
+        lcccs.check_relation(&pedersen_params, &ccs, &w1).unwrap();
+        cccs.check_relation(&pedersen_params, &ccs, &w2).unwrap();
 
         let mut rng = test_rng();
         let rho = Fr::rand(&mut rng);
 
-        let folded =
-            NIMFS::<Projective>::fold(&vec![lcccs], &vec![cccs], &sigmas_thetas, r_x_prime, rho);
+        let folded = NIMFS::<Projective>::fold(&[lcccs], &[cccs], &sigmas_thetas, r_x_prime, rho);
 
         let w_folded = NIMFS::<Projective>::fold_witness(&[w1], &[w2], rho);
 
         // check lcccs relation
-        folded.check_relation(&pedersen_params, &w_folded).unwrap();
+        folded
+            .check_relation(&pedersen_params, &ccs, &w_folded)
+            .unwrap();
     }
 
     /// Perform multifolding of an LCCCS instance with a CCCS instance (as described in the paper)
@@ -425,8 +412,9 @@ pub mod tests {
         // Run the prover side of the multifolding
         let (proof, folded_lcccs, folded_witness) = NIMFS::<Projective>::prove(
             &mut transcript_p,
-            &vec![running_instance.clone()],
-            &vec![new_instance.clone()],
+            &ccs,
+            &[running_instance.clone()],
+            &[new_instance.clone()],
             &[w1],
             &[w2],
         );
@@ -438,15 +426,16 @@ pub mod tests {
         // Run the verifier side of the multifolding
         let folded_lcccs_v = NIMFS::<Projective>::verify(
             &mut transcript_v,
-            &vec![running_instance.clone()],
-            &vec![new_instance.clone()],
+            &ccs,
+            &[running_instance.clone()],
+            &[new_instance.clone()],
             proof,
         );
         assert_eq!(folded_lcccs, folded_lcccs_v);
 
         // Check that the folded LCCCS instance is a valid instance with respect to the folded witness
         folded_lcccs
-            .check_relation(&pedersen_params, &folded_witness)
+            .check_relation(&pedersen_params, &ccs, &folded_witness)
             .unwrap();
     }
 
@@ -481,8 +470,9 @@ pub mod tests {
             // run the prover side of the multifolding
             let (proof, folded_lcccs, folded_witness) = NIMFS::<Projective>::prove(
                 &mut transcript_p,
-                &vec![running_instance.clone()],
-                &vec![new_instance.clone()],
+                &ccs,
+                &[running_instance.clone()],
+                &[new_instance.clone()],
                 &[w1],
                 &[w2],
             );
@@ -490,8 +480,9 @@ pub mod tests {
             // run the verifier side of the multifolding
             let folded_lcccs_v = NIMFS::<Projective>::verify(
                 &mut transcript_v,
-                &vec![running_instance.clone()],
-                &vec![new_instance.clone()],
+                &ccs,
+                &[running_instance.clone()],
+                &[new_instance.clone()],
                 proof,
             );
 
@@ -500,7 +491,7 @@ pub mod tests {
             // check that the folded instance with the folded witness holds the LCCCS relation
             println!("check_relation {}", i);
             folded_lcccs
-                .check_relation(&pedersen_params, &folded_witness)
+                .check_relation(&pedersen_params, &ccs, &folded_witness)
                 .unwrap();
 
             running_instance = folded_lcccs;
@@ -556,6 +547,7 @@ pub mod tests {
         // Run the prover side of the multifolding
         let (proof, folded_lcccs, folded_witness) = NIMFS::<Projective>::prove(
             &mut transcript_p,
+            &ccs,
             &lcccs_instances,
             &cccs_instances,
             &w_lcccs,
@@ -569,6 +561,7 @@ pub mod tests {
         // Run the verifier side of the multifolding
         let folded_lcccs_v = NIMFS::<Projective>::verify(
             &mut transcript_v,
+            &ccs,
             &lcccs_instances,
             &cccs_instances,
             proof,
@@ -577,7 +570,7 @@ pub mod tests {
 
         // Check that the folded LCCCS instance is a valid instance with respect to the folded witness
         folded_lcccs
-            .check_relation(&pedersen_params, &folded_witness)
+            .check_relation(&pedersen_params, &ccs, &folded_witness)
             .unwrap();
     }
 
@@ -638,6 +631,7 @@ pub mod tests {
             // Run the prover side of the multifolding
             let (proof, folded_lcccs, folded_witness) = NIMFS::<Projective>::prove(
                 &mut transcript_p,
+                &ccs,
                 &lcccs_instances,
                 &cccs_instances,
                 &w_lcccs,
@@ -647,6 +641,7 @@ pub mod tests {
             // Run the verifier side of the multifolding
             let folded_lcccs_v = NIMFS::<Projective>::verify(
                 &mut transcript_v,
+                &ccs,
                 &lcccs_instances,
                 &cccs_instances,
                 proof,
@@ -655,7 +650,7 @@ pub mod tests {
 
             // Check that the folded LCCCS instance is a valid instance with respect to the folded witness
             folded_lcccs
-                .check_relation(&pedersen_params, &folded_witness)
+                .check_relation(&pedersen_params, &ccs, &folded_witness)
                 .unwrap();
         }
     }

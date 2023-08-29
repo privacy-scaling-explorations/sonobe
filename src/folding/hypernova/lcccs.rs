@@ -5,21 +5,17 @@ use std::sync::Arc;
 
 use ark_std::{rand::Rng, UniformRand};
 
+use super::cccs::Witness;
+use super::utils::{compute_all_sum_Mz_evals, compute_sum_Mz};
 use crate::ccs::CCS;
-use crate::folding::hypernova::cccs::Witness;
-use crate::folding::hypernova::utils::{compute_all_sum_Mz_evals, compute_sum_Mz};
-use crate::Error;
-
 use crate::pedersen::{Params as PedersenParams, Pedersen};
 use crate::utils::mle::{matrix_to_mle, vec_to_mle};
 use crate::utils::virtual_polynomial::VirtualPolynomial;
+use crate::Error;
 
 /// Linearized Committed CCS instance
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct LCCCS<C: CurveGroup> {
-    // Underlying CCS structure
-    pub ccs: CCS<C>, // TODO maybe move CCS structure outside of LCCCS
-
     // Commitment to witness
     pub C: C,
     // Relaxation factor of z for folded LCCCS
@@ -54,7 +50,6 @@ impl<C: CurveGroup> CCS<C> {
 
         (
             LCCCS::<C> {
-                ccs: self.clone(),
                 C,
                 u: C::ScalarField::one(),
                 x: z[1..(1 + self.l)].to_vec(),
@@ -68,15 +63,19 @@ impl<C: CurveGroup> CCS<C> {
 
 impl<C: CurveGroup> LCCCS<C> {
     /// Compute all L_j(x) polynomials
-    pub fn compute_Ls(&self, z: &Vec<C::ScalarField>) -> Vec<VirtualPolynomial<C::ScalarField>> {
-        let z_mle = vec_to_mle(self.ccs.s_prime, z);
+    pub fn compute_Ls(
+        &self,
+        ccs: &CCS<C>,
+        z: &Vec<C::ScalarField>,
+    ) -> Vec<VirtualPolynomial<C::ScalarField>> {
+        let z_mle = vec_to_mle(ccs.s_prime, z);
         // Convert all matrices to MLE
         let M_x_y_mle: Vec<DenseMultilinearExtension<C::ScalarField>> =
-            self.ccs.M.clone().into_iter().map(matrix_to_mle).collect();
+            ccs.M.clone().into_iter().map(matrix_to_mle).collect();
 
-        let mut vec_L_j_x = Vec::with_capacity(self.ccs.t);
+        let mut vec_L_j_x = Vec::with_capacity(ccs.t);
         for M_j in M_x_y_mle {
-            let sum_Mz = compute_sum_Mz(M_j, &z_mle, self.ccs.s_prime);
+            let sum_Mz = compute_sum_Mz(M_j, &z_mle, ccs.s_prime);
             let sum_Mz_virtual =
                 VirtualPolynomial::new_from_mle(&Arc::new(sum_Mz.clone()), C::ScalarField::one());
             let L_j_x = sum_Mz_virtual.build_f_hat(&self.r_x).unwrap();
@@ -90,6 +89,7 @@ impl<C: CurveGroup> LCCCS<C> {
     pub fn check_relation(
         &self,
         pedersen_params: &PedersenParams<C>,
+        ccs: &CCS<C>,
         w: &Witness<C::ScalarField>,
     ) -> Result<(), Error> {
         // check that C is the commitment of w. Notice that this is not verifying a Pedersen
@@ -98,14 +98,14 @@ impl<C: CurveGroup> LCCCS<C> {
 
         // check CCS relation
         let z: Vec<C::ScalarField> = [vec![self.u], self.x.clone(), w.w.to_vec()].concat();
-        let computed_v = compute_all_sum_Mz_evals(&self.ccs.M, &z, &self.r_x, self.ccs.s_prime);
+        let computed_v = compute_all_sum_Mz_evals(&ccs.M, &z, &self.r_x, ccs.s_prime);
         assert_eq!(computed_v, self.v);
         Ok(())
     }
 }
 
 #[cfg(test)]
-pub mod test {
+pub mod tests {
     use super::*;
     use ark_std::Zero;
 
@@ -129,7 +129,7 @@ pub mod test {
         // with our test vector comming from R1CS, v should have length 3
         assert_eq!(lcccs.v.len(), 3);
 
-        let vec_L_j_x = lcccs.compute_Ls(&z);
+        let vec_L_j_x = lcccs.compute_Ls(&ccs, &z);
         assert_eq!(vec_L_j_x.len(), lcccs.v.len());
 
         for (v_i, L_j_x) in lcccs.v.into_iter().zip(vec_L_j_x) {
@@ -161,7 +161,7 @@ pub mod test {
         assert_eq!(lcccs.v.len(), 3);
 
         // Bad compute L_j(x) with the bad z
-        let vec_L_j_x = lcccs.compute_Ls(&bad_z);
+        let vec_L_j_x = lcccs.compute_Ls(&ccs, &bad_z);
         assert_eq!(vec_L_j_x.len(), lcccs.v.len());
 
         // Make sure that the LCCCS is not satisfied given these L_j(x)

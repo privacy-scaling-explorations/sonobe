@@ -319,7 +319,7 @@ fn u64_factorial(a: usize) -> u64 {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::interpolate_uni_poly;
     use ark_pallas::Fr;
     use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};

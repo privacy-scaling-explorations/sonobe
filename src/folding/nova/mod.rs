@@ -1,3 +1,4 @@
+/// Implements the scheme described in [Nova](https://eprint.iacr.org/2021/370.pdf)
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{CurveGroup, Group};
 use ark_std::fmt::Debug;

@@ -8,7 +8,6 @@ use std::ops::Add;
 use crate::utils::multilinear_polynomial::fix_variables;
 use crate::utils::multilinear_polynomial::scalar_mul;
 
-use super::cccs::CCCS;
 use super::lcccs::LCCCS;
 use super::nimfs::SigmasThetas;
 use crate::ccs::CCS;
@@ -131,8 +130,8 @@ pub fn compute_c_from_sigmas_and_thetas<C: CurveGroup>(
 
 /// Compute g(x) polynomial for the given inputs.
 pub fn compute_g<C: CurveGroup>(
+    ccs: &CCS<C>,
     running_instances: &[LCCCS<C>],
-    cccs_instances: &[CCCS<C>],
     z_lcccs: &[Vec<C::ScalarField>],
     z_cccs: &[Vec<C::ScalarField>],
     gamma: C::ScalarField,
@@ -141,12 +140,13 @@ pub fn compute_g<C: CurveGroup>(
     let mu = running_instances.len();
     let mut vec_Ls: Vec<VirtualPolynomial<C::ScalarField>> = Vec::new();
     for (i, running_instance) in running_instances.iter().enumerate() {
-        let mut Ls = running_instance.compute_Ls(&z_lcccs[i]);
+        let mut Ls = running_instance.compute_Ls(ccs, &z_lcccs[i]);
         vec_Ls.append(&mut Ls);
     }
     let mut vec_Q: Vec<VirtualPolynomial<C::ScalarField>> = Vec::new();
-    for (i, cccs_instance) in cccs_instances.iter().enumerate() {
-        let Q = cccs_instance.compute_Q(&z_cccs[i], beta);
+    // for (i, _) in cccs_instances.iter().enumerate() {
+    for z_cccs_i in z_cccs.iter() {
+        let Q = ccs.compute_Q(z_cccs_i, beta);
         vec_Q.push(Q);
     }
     let mut g = vec_Ls[0].clone();
@@ -159,7 +159,7 @@ pub fn compute_g<C: CurveGroup>(
         g = g.add(L_j);
     }
     for (i, Q_i) in vec_Q.iter_mut().enumerate() {
-        let gamma_mut_i = gamma.pow([(mu * cccs_instances[0].ccs.t + i) as u64]);
+        let gamma_mut_i = gamma.pow([(mu * ccs.t + i) as u64]);
         Q_i.scalar_mul(&gamma_mut_i);
         g = g.add(Q_i);
     }
@@ -270,18 +270,13 @@ pub mod tests {
         // Initialize a multifolding object
         let pedersen_params = Pedersen::new_params(&mut rng, ccs.n - ccs.l - 1);
         let (lcccs_instance, _) = ccs.to_lcccs(&mut rng, &pedersen_params, &z1);
-        let (cccs_instance, _) = ccs.to_cccs(&mut rng, &pedersen_params, &z2);
 
-        let sigmas_thetas = compute_sigmas_and_thetas(
-            &lcccs_instance.ccs,
-            &[z1.clone()],
-            &[z2.clone()],
-            &r_x_prime,
-        );
+        let sigmas_thetas =
+            compute_sigmas_and_thetas(&ccs, &[z1.clone()], &[z2.clone()], &r_x_prime);
 
         let g = compute_g(
-            &vec![lcccs_instance.clone()],
-            &vec![cccs_instance.clone()],
+            &ccs,
+            &[lcccs_instance.clone()],
             &[z1.clone()],
             &[z2.clone()],
             gamma,
@@ -318,7 +313,6 @@ pub mod tests {
         // Initialize a multifolding object
         let pedersen_params = Pedersen::new_params(&mut rng, ccs.n - ccs.l - 1);
         let (lcccs_instance, _) = ccs.to_lcccs(&mut rng, &pedersen_params, &z1);
-        let (cccs_instance, _) = ccs.to_cccs(&mut rng, &pedersen_params, &z2);
 
         let mut sum_v_j_gamma = Fr::zero();
         for j in 0..lcccs_instance.v.len() {
@@ -328,8 +322,8 @@ pub mod tests {
 
         // Compute g(x) with that r_x
         let g = compute_g::<Projective>(
-            &vec![lcccs_instance.clone()],
-            &vec![cccs_instance.clone()],
+            &ccs,
+            &[lcccs_instance.clone()],
             &[z1.clone()],
             &[z2.clone()],
             gamma,
@@ -344,7 +338,7 @@ pub mod tests {
 
         // evaluate sum_{j \in [t]} (gamma^j * Lj(x)) over x \in {0,1}^s
         let mut sum_Lj_on_bhc = Fr::zero();
-        let vec_L = lcccs_instance.compute_Ls(&z1);
+        let vec_L = lcccs_instance.compute_Ls(&ccs, &z1);
         for x in BooleanHypercube::new(ccs.s) {
             for (j, Lj) in vec_L.iter().enumerate() {
                 let gamma_j = gamma.pow([j as u64]);

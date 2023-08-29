@@ -5,17 +5,30 @@ edition = "2021"
 
 [dependencies]
 ark-ec = "0.4.2"
-ark-ff = "0.4.2"
-ark-std = "0.4.0"
-ark-poly = "0.4.0"
+ark-ff = "^0.4.0"
+ark-poly = "^0.4.0"
+ark-std = "^0.4.0"
 ark-crypto-primitives = { version = "^0.4.0", default-features = false, features = ["r1cs", "sponge"] }
 ark-relations = { version = "^0.4.0", default-features = false }
 ark-r1cs-std = { version = "^0.4.0", default-features = false }
 thiserror = "1.0"
+rayon = "1.7.0"
+
+# tmp imports for espresso's sumcheck
+ark-serialize = "0.4.2"
+espresso_subroutines = {git="https://github.com/EspressoSystems/hyperplonk", package="subroutines"}
+espresso_transcript = {git="https://github.com/EspressoSystems/hyperplonk", package="transcript"}
+
 
 [dev-dependencies]
 ark-bls12-377 = "0.4.0"
 ark-bw6-761 = "0.4.0"
 
 [features]
-default = []
+default = ["parallel"]
+
+parallel = [ 
+    "ark-std/parallel", 
+    "ark-ff/parallel",  
+    "ark-poly/parallel", 
+    ]

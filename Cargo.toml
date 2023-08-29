@@ -21,8 +21,8 @@ espresso_transcript = {git="https://github.com/EspressoSystems/hyperplonk", pack
 
 
 [dev-dependencies]
-ark-bls12-377 = "0.4.0"
-ark-bw6-761 = "0.4.0"
+ark-bls12-377 = {version="0.4.0", features=["r1cs"]}
+ark-bw6-761 = {version="0.4.0"}
 
 [features]
 default = ["parallel"]

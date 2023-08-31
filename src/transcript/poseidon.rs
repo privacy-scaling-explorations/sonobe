@@ -5,7 +5,7 @@ use ark_crypto_primitives::sponge::{
 };
 use ark_ec::{AffineRepr, CurveGroup, Group};
 use ark_ff::{BigInteger, Field, PrimeField};
-use ark_r1cs_std::fields::fp::FpVar;
+use ark_r1cs_std::{boolean::Boolean, fields::fp::FpVar};
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 
 use crate::transcript::Transcript;
@@ -41,6 +41,9 @@ where
         let c = self.sponge.squeeze_field_elements(1);
         self.sponge.absorb(&c[0]);
         c[0]
+    }
+    fn get_challenge_nbits(&mut self, nbits: usize) -> Vec<bool> {
+        self.sponge.squeeze_bits(nbits)
     }
     fn get_challenges(&mut self, n: usize) -> Vec<C::ScalarField> {
         let c = self.sponge.squeeze_field_elements(n);
@@ -92,6 +95,12 @@ impl<F: PrimeField> PoseidonTranscriptVar<F> {
         self.sponge.absorb(&c[0])?;
         Ok(c[0].clone())
     }
+
+    /// returns the bit representation of the challenge, we use its output in-circuit for the
+    /// `GC.scalar_mul_le` method.
+    pub fn get_challenge_nbits(&mut self, nbits: usize) -> Result<Vec<Boolean<F>>, SynthesisError> {
+        self.sponge.squeeze_bits(nbits)
+    }
     pub fn get_challenges(&mut self, n: usize) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let c = self.sponge.squeeze_field_elements(n)?;
         self.sponge.absorb(&c)?;
@@ -102,10 +111,12 @@ impl<F: PrimeField> PoseidonTranscriptVar<F> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use ark_bls12_377::{Fr, G1Projective};
+    use ark_bls12_377::{constraints::G1Var, Fq, Fr, G1Projective};
+    use ark_bw6_761::G1Projective as E2G1Projective;
     use ark_crypto_primitives::sponge::poseidon::find_poseidon_ark_and_mds;
-    use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, R1CSVar};
+    use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, groups::CurveVar, R1CSVar};
     use ark_relations::r1cs::ConstraintSystem;
+    use std::ops::Mul;
 
     /// WARNING the method poseidon_test_config is for tests only
     #[cfg(test)]
@@ -135,7 +146,7 @@ pub mod tests {
     }
 
     #[test]
-    fn test_transcript_and_transcriptvar() {
+    fn test_transcript_and_transcriptvar_get_challenge() {
         // use 'native' transcript
         let config = poseidon_test_config::<Fr>();
         let mut tr = PoseidonTranscript::<G1Projective>::new(&config);
@@ -151,5 +162,53 @@ pub mod tests {
 
         // assert that native & gadget transcripts return the same challenge
         assert_eq!(c, c_var.value().unwrap());
+    }
+
+    #[test]
+    fn test_transcript_and_transcriptvar_nbits() {
+        let nbits = crate::constants::N_BITS_CHALLENGE;
+
+        // use 'native' transcript
+        let config = poseidon_test_config::<Fq>();
+        let mut tr = PoseidonTranscript::<E2G1Projective>::new(&config);
+        tr.absorb(&Fq::from(42_u32));
+
+        // get challenge from native transcript
+        let c_bits = tr.get_challenge_nbits(nbits);
+
+        // use 'gadget' transcript
+        let cs = ConstraintSystem::<Fq>::new_ref();
+        let mut tr_var = PoseidonTranscriptVar::<Fq>::new(cs.clone(), &config);
+        let v = FpVar::<Fq>::new_witness(cs.clone(), || Ok(Fq::from(42_u32))).unwrap();
+        tr_var.absorb(v).unwrap();
+
+        // get challenge from circuit transcript
+        let c_var = tr_var.get_challenge_nbits(nbits).unwrap();
+
+        let P = G1Projective::generator();
+        let PVar = G1Var::new_witness(cs.clone(), || Ok(P)).unwrap();
+
+        // multiply point P by the challenge in different formats, to ensure that we get the same
+        // result natively and in-circuit
+
+        // native c*P
+        let c_Fr = Fr::from_bigint(BigInteger::from_bits_le(&c_bits)).unwrap();
+        let cP_native = P.mul(c_Fr);
+
+        // native c*P using mul_bits_be (notice the .rev to convert the LE to BE)
+        let cP_native_bits = P.mul_bits_be(c_bits.into_iter().rev());
+
+        // in-circuit c*P using scalar_mul_le
+        let cPVar = PVar.scalar_mul_le(c_var.iter()).unwrap();
+
+        // check that they are equal
+        assert_eq!(
+            cP_native.into_affine(),
+            cPVar.value().unwrap().into_affine()
+        );
+        assert_eq!(
+            cP_native_bits.into_affine(),
+            cPVar.value().unwrap().into_affine()
+        );
     }
 }

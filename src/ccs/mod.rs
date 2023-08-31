@@ -13,9 +13,9 @@ use r1cs::R1CS;
 /// https://eprint.iacr.org/2023/552
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct CCS<C: CurveGroup> {
-    /// m: number of columns in M_i (such that M_i \in F^{m, n})
+    /// m: number of rows in M_i (such that M_i \in F^{m, n})
     pub m: usize,
-    /// n = |z|, number of rows in M_i
+    /// n = |z|, number of cols in M_i
     pub n: usize,
     /// l = |io|, size of public input/output
     pub l: usize,
@@ -73,13 +73,13 @@ impl<C: CurveGroup> CCS<C> {
 }
 
 impl<C: CurveGroup> CCS<C> {
-    pub fn from_r1cs(r1cs: R1CS<C::ScalarField>, io_len: usize) -> Self {
-        let m = r1cs.A.n_cols;
-        let n = r1cs.A.n_rows;
+    pub fn from_r1cs(r1cs: R1CS<C::ScalarField>) -> Self {
+        let m = r1cs.A.n_rows;
+        let n = r1cs.A.n_cols;
         CCS {
             m,
             n,
-            l: io_len,
+            l: r1cs.l,
             s: log2(m) as usize,
             s_prime: log2(n) as usize,
             t: 3,
@@ -109,7 +109,7 @@ mod tests {
 
     pub fn get_test_ccs<C: CurveGroup>() -> CCS<C> {
         let r1cs = get_test_r1cs::<C::ScalarField>();
-        CCS::<C>::from_r1cs(r1cs, 1)
+        CCS::<C>::from_r1cs(r1cs)
     }
 
     /// Test that a basic CCS relation can be satisfied

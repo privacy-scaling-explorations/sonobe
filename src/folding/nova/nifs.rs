@@ -56,7 +56,8 @@ where
             &vec_scalar_mul(&w2.E, &r2),
         );
         let rE = w1.rE + r * rT + r2 * w2.rE;
-        let W = vec_add(&w1.W, &vec_scalar_mul(&w2.W, &r));
+        let W: Vec<C::ScalarField> = w1.W.iter().zip(&w2.W).map(|(a, b)| *a + (r * b)).collect();
+
         let rW = w1.rW + r * w2.rW;
         Witness::<C> { E, rE, W, rW }
     }
@@ -68,11 +69,15 @@ where
         cmT: &C,
     ) -> CommittedInstance<C> {
         let r2 = r * r;
-
         let cmE = ci1.cmE + cmT.mul(r) + ci2.cmE.mul(r2);
         let u = ci1.u + r * ci2.u;
         let cmW = ci1.cmW + ci2.cmW.mul(r);
-        let x = vec_add(&ci1.x, &vec_scalar_mul(&ci2.x, &r));
+        let x = ci1
+            .x
+            .iter()
+            .zip(&ci2.x)
+            .map(|(a, b)| *a + (r * b))
+            .collect::<Vec<C::ScalarField>>();
 
         CommittedInstance::<C> { cmE, u, cmW, x }
     }
@@ -81,6 +86,7 @@ where
     #[allow(clippy::type_complexity)]
     pub fn prove(
         pedersen_params: &PedersenParams<C>,
+        // r comes from the transcript, and is a n-bit (N_BITS_CHALLENGE) element
         r: C::ScalarField,
         r1cs: &R1CS<C::ScalarField>,
         w1: &Witness<C>,
@@ -107,6 +113,7 @@ where
 
     // NIFS.V
     pub fn verify(
+        // r comes from the transcript, and is a n-bit (N_BITS_CHALLENGE) element
         r: C::ScalarField,
         ci1: &CommittedInstance<C>,
         ci2: &CommittedInstance<C>,
@@ -199,8 +206,8 @@ mod tests {
         let (w1, x1) = r1cs.split_z(&z1);
         let (w2, x2) = r1cs.split_z(&z2);
 
-        let w1 = Witness::<G1Projective>::new(w1.clone(), r1cs.A.n_cols);
-        let w2 = Witness::<G1Projective>::new(w2.clone(), r1cs.A.n_cols);
+        let w1 = Witness::<G1Projective>::new(w1.clone(), r1cs.A.n_rows);
+        let w2 = Witness::<G1Projective>::new(w2.clone(), r1cs.A.n_rows);
 
         let mut rng = ark_std::test_rng();
         let pedersen_params = Pedersen::<G1Projective>::new_params(&mut rng, r1cs.A.n_cols);
@@ -210,6 +217,7 @@ mod tests {
         // compute committed instances
         let ci1 = w1.commit(&pedersen_params, x1.clone());
         let ci2 = w2.commit(&pedersen_params, x2.clone());
+
         // NIFS.P
         let (w3, _, T, cmT) =
             NIFS::<G1Projective>::prove(&pedersen_params, r, &r1cs, &w1, &ci1, &w2, &ci2);
@@ -275,7 +283,7 @@ mod tests {
         let pedersen_params = Pedersen::<G1Projective>::new_params(&mut rng, r1cs.A.n_cols);
 
         // prepare the running instance
-        let mut running_instance_w = Witness::<G1Projective>::new(w.clone(), r1cs.A.n_cols);
+        let mut running_instance_w = Witness::<G1Projective>::new(w.clone(), r1cs.A.n_rows);
         let mut running_committed_instance = running_instance_w.commit(&pedersen_params, x);
         check_relaxed_r1cs(
             &r1cs,
@@ -289,7 +297,7 @@ mod tests {
             // prepare the incomming instance
             let incomming_instance_z = get_test_z(i + 4);
             let (w, x) = r1cs.split_z(&incomming_instance_z);
-            let incomming_instance_w = Witness::<G1Projective>::new(w.clone(), r1cs.A.n_cols);
+            let incomming_instance_w = Witness::<G1Projective>::new(w.clone(), r1cs.A.n_rows);
             let incomming_committed_instance = incomming_instance_w.commit(&pedersen_params, x);
             check_relaxed_r1cs(
                 &r1cs,

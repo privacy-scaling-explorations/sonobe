@@ -19,24 +19,7 @@ impl<F: PrimeField> R1CS<F> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-
-    pub fn to_F_matrix<F: PrimeField>(M: Vec<Vec<usize>>) -> Vec<Vec<F>> {
-        let mut R: Vec<Vec<F>> = vec![Vec::new(); M.len()];
-        for i in 0..M.len() {
-            R[i] = vec![F::zero(); M[i].len()];
-            for j in 0..M[i].len() {
-                R[i][j] = F::from(M[i][j] as u64);
-            }
-        }
-        R
-    }
-    pub fn to_F_vec<F: PrimeField>(z: Vec<usize>) -> Vec<F> {
-        let mut r: Vec<F> = vec![F::zero(); z.len()];
-        for i in 0..z.len() {
-            r[i] = F::from(z[i] as u64);
-        }
-        r
-    }
+    use crate::utils::vec::tests::{to_F_matrix, to_F_vec};
 
     pub fn get_test_r1cs<F: PrimeField>() -> R1CS<F> {
         // R1CS for: x^3 + x + 5 = y (example from article
@@ -72,8 +55,6 @@ pub mod tests {
             input * input,                     // x^2
             input * input * input,             // x^2 * x
             input * input * input + input,     // x^3 + x
-            0,                                 // pad to pow of 2
-            0,
         ])
     }
 }

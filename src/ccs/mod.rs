@@ -105,7 +105,7 @@ impl<C: CurveGroup> CCS<C> {
 mod tests {
     use super::*;
     use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z};
-    use ark_bls12_377::G1Projective;
+    use ark_pallas::Projective;
 
     pub fn get_test_ccs<C: CurveGroup>() -> CCS<C> {
         let r1cs = get_test_r1cs::<C::ScalarField>();
@@ -115,7 +115,7 @@ mod tests {
     /// Test that a basic CCS relation can be satisfied
     #[test]
     fn test_ccs_relation() {
-        let ccs = get_test_ccs::<G1Projective>();
+        let ccs = get_test_ccs::<Projective>();
         let z = get_test_z(3);
 
         ccs.check_relation(&z).unwrap();

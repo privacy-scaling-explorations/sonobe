@@ -111,11 +111,11 @@ impl<F: PrimeField> PoseidonTranscriptVar<F> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use ark_bls12_377::{constraints::G1Var, Fq, Fr, G1Projective};
-    use ark_bw6_761::G1Projective as E2G1Projective;
     use ark_crypto_primitives::sponge::poseidon::find_poseidon_ark_and_mds;
+    use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
     use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, groups::CurveVar, R1CSVar};
     use ark_relations::r1cs::ConstraintSystem;
+    use ark_vesta::Projective as E2Projective;
     use std::ops::Mul;
 
     /// WARNING the method poseidon_test_config is for tests only
@@ -149,7 +149,7 @@ pub mod tests {
     fn test_transcript_and_transcriptvar_get_challenge() {
         // use 'native' transcript
         let config = poseidon_test_config::<Fr>();
-        let mut tr = PoseidonTranscript::<G1Projective>::new(&config);
+        let mut tr = PoseidonTranscript::<Projective>::new(&config);
         tr.absorb(&Fr::from(42_u32));
         let c = tr.get_challenge();
 
@@ -170,7 +170,7 @@ pub mod tests {
 
         // use 'native' transcript
         let config = poseidon_test_config::<Fq>();
-        let mut tr = PoseidonTranscript::<E2G1Projective>::new(&config);
+        let mut tr = PoseidonTranscript::<E2Projective>::new(&config);
         tr.absorb(&Fq::from(42_u32));
 
         // get challenge from native transcript
@@ -185,8 +185,8 @@ pub mod tests {
         // get challenge from circuit transcript
         let c_var = tr_var.get_challenge_nbits(nbits).unwrap();
 
-        let P = G1Projective::generator();
-        let PVar = G1Var::new_witness(cs.clone(), || Ok(P)).unwrap();
+        let P = Projective::generator();
+        let PVar = GVar::new_witness(cs.clone(), || Ok(P)).unwrap();
 
         // multiply point P by the challenge in different formats, to ensure that we get the same
         // result natively and in-circuit

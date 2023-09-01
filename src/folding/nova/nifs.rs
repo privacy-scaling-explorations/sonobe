@@ -186,8 +186,8 @@ mod tests {
     use super::*;
     use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z};
     use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
-    use ark_bls12_377::{Fr, G1Projective};
     use ark_ff::PrimeField;
+    use ark_pallas::{Fr, Projective};
     use ark_std::UniformRand;
 
     pub fn check_relaxed_r1cs<F: PrimeField>(r1cs: &R1CS<F>, z: Vec<F>, u: F, E: &[F]) {
@@ -206,11 +206,11 @@ mod tests {
         let (w1, x1) = r1cs.split_z(&z1);
         let (w2, x2) = r1cs.split_z(&z2);
 
-        let w1 = Witness::<G1Projective>::new(w1.clone(), r1cs.A.n_rows);
-        let w2 = Witness::<G1Projective>::new(w2.clone(), r1cs.A.n_rows);
+        let w1 = Witness::<Projective>::new(w1.clone(), r1cs.A.n_rows);
+        let w2 = Witness::<Projective>::new(w2.clone(), r1cs.A.n_rows);
 
         let mut rng = ark_std::test_rng();
-        let pedersen_params = Pedersen::<G1Projective>::new_params(&mut rng, r1cs.A.n_cols);
+        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, r1cs.A.n_cols);
 
         let r = Fr::rand(&mut rng); // folding challenge would come from the transcript
 
@@ -220,10 +220,10 @@ mod tests {
 
         // NIFS.P
         let (w3, _, T, cmT) =
-            NIFS::<G1Projective>::prove(&pedersen_params, r, &r1cs, &w1, &ci1, &w2, &ci2);
+            NIFS::<Projective>::prove(&pedersen_params, r, &r1cs, &w1, &ci1, &w2, &ci2);
 
         // NIFS.V
-        let ci3 = NIFS::<G1Projective>::verify(r, &ci1, &ci2, &cmT);
+        let ci3 = NIFS::<Projective>::verify(r, &ci1, &ci2, &cmT);
 
         // naive check that the folded witness satisfies the relaxed r1cs
         let z3: Vec<Fr> = [vec![ci3.u], ci3.x.to_vec(), w3.W.to_vec()].concat();
@@ -242,18 +242,18 @@ mod tests {
         assert_eq!(ci3_expected.cmW, ci3.cmW);
 
         // NIFS.Verify_Folded_Instance:
-        assert!(NIFS::<G1Projective>::verify_folded_instance(
+        assert!(NIFS::<Projective>::verify_folded_instance(
             r, &ci1, &ci2, &ci3, &cmT
         ));
 
         let poseidon_config = poseidon_test_config::<Fr>();
         // init Prover's transcript
-        let mut transcript_p = PoseidonTranscript::<G1Projective>::new(&poseidon_config);
+        let mut transcript_p = PoseidonTranscript::<Projective>::new(&poseidon_config);
         // init Verifier's transcript
-        let mut transcript_v = PoseidonTranscript::<G1Projective>::new(&poseidon_config);
+        let mut transcript_v = PoseidonTranscript::<Projective>::new(&poseidon_config);
 
         // check openings of ci3.cmE, ci3.cmW and cmT
-        let (cmE_proof, cmW_proof, cmT_proof) = NIFS::<G1Projective>::open_commitments(
+        let (cmE_proof, cmW_proof, cmT_proof) = NIFS::<Projective>::open_commitments(
             &mut transcript_p,
             &pedersen_params,
             &w3,
@@ -261,7 +261,7 @@ mod tests {
             T,
             &cmT,
         );
-        let v = NIFS::<G1Projective>::verify_commitments(
+        let v = NIFS::<Projective>::verify_commitments(
             &mut transcript_v,
             &pedersen_params,
             ci3,
@@ -280,10 +280,10 @@ mod tests {
         let (w, x) = r1cs.split_z(&z);
 
         let mut rng = ark_std::test_rng();
-        let pedersen_params = Pedersen::<G1Projective>::new_params(&mut rng, r1cs.A.n_cols);
+        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, r1cs.A.n_cols);
 
         // prepare the running instance
-        let mut running_instance_w = Witness::<G1Projective>::new(w.clone(), r1cs.A.n_rows);
+        let mut running_instance_w = Witness::<Projective>::new(w.clone(), r1cs.A.n_rows);
         let mut running_committed_instance = running_instance_w.commit(&pedersen_params, x);
         check_relaxed_r1cs(
             &r1cs,
@@ -297,7 +297,7 @@ mod tests {
             // prepare the incomming instance
             let incomming_instance_z = get_test_z(i + 4);
             let (w, x) = r1cs.split_z(&incomming_instance_z);
-            let incomming_instance_w = Witness::<G1Projective>::new(w.clone(), r1cs.A.n_rows);
+            let incomming_instance_w = Witness::<Projective>::new(w.clone(), r1cs.A.n_rows);
             let incomming_committed_instance = incomming_instance_w.commit(&pedersen_params, x);
             check_relaxed_r1cs(
                 &r1cs,
@@ -309,7 +309,7 @@ mod tests {
             let r = Fr::rand(&mut rng); // folding challenge would come from the transcript
 
             // NIFS.P
-            let (folded_w, _, _, cmT) = NIFS::<G1Projective>::prove(
+            let (folded_w, _, _, cmT) = NIFS::<Projective>::prove(
                 &pedersen_params,
                 r,
                 &r1cs,
@@ -320,7 +320,7 @@ mod tests {
             );
 
             // NIFS.V
-            let folded_committed_instance = NIFS::<G1Projective>::verify(
+            let folded_committed_instance = NIFS::<Projective>::verify(
                 r,
                 &running_committed_instance,
                 &incomming_committed_instance,

@@ -158,8 +158,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_bls12_377::{constraints::G1Var, Fq, Fr, G1Projective};
     use ark_ff::{BigInteger, PrimeField};
+    use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
     use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::UniformRand;
@@ -174,16 +174,16 @@ mod tests {
     fn test_committed_instance_var() {
         let mut rng = ark_std::test_rng();
 
-        let ci = CommittedInstance::<G1Projective> {
-            cmE: G1Projective::rand(&mut rng),
+        let ci = CommittedInstance::<Projective> {
+            cmE: Projective::rand(&mut rng),
             u: Fr::rand(&mut rng),
-            cmW: G1Projective::rand(&mut rng),
+            cmW: Projective::rand(&mut rng),
             x: vec![Fr::rand(&mut rng); 1],
         };
 
         let cs = ConstraintSystem::<Fr>::new_ref();
         let ciVar =
-            CommittedInstanceE1Var::<G1Projective>::new_witness(cs.clone(), || Ok(ci.clone()))
+            CommittedInstanceE1Var::<Projective>::new_witness(cs.clone(), || Ok(ci.clone()))
                 .unwrap();
         assert_eq!(ciVar.u.value().unwrap(), ci.u);
         assert_eq!(ciVar.x.value().unwrap(), ci.x);
@@ -191,10 +191,9 @@ mod tests {
 
         // check the instantiation of the CycleFold side:
         let cs = ConstraintSystem::<Fq>::new_ref();
-        let ciVar = CommittedInstanceE2Var::<G1Projective, G1Var>::new_witness(cs.clone(), || {
-            Ok(ci.clone())
-        })
-        .unwrap();
+        let ciVar =
+            CommittedInstanceE2Var::<Projective, GVar>::new_witness(cs.clone(), || Ok(ci.clone()))
+                .unwrap();
         assert_eq!(ciVar.cmE.value().unwrap(), ci.cmE);
         assert_eq!(ciVar.cmW.value().unwrap(), ci.cmW);
         dbg!(cs.num_constraints());
@@ -208,11 +207,11 @@ mod tests {
         let (w1, x1) = r1cs.split_z(&z1);
         let (w2, x2) = r1cs.split_z(&z2);
 
-        let w1 = Witness::<G1Projective>::new(w1.clone(), r1cs.A.n_rows);
-        let w2 = Witness::<G1Projective>::new(w2.clone(), r1cs.A.n_rows);
+        let w1 = Witness::<Projective>::new(w1.clone(), r1cs.A.n_rows);
+        let w2 = Witness::<Projective>::new(w2.clone(), r1cs.A.n_rows);
 
         let mut rng = ark_std::test_rng();
-        let pedersen_params = Pedersen::<G1Projective>::new_params(&mut rng, r1cs.A.n_cols);
+        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, r1cs.A.n_cols);
 
         // compute committed instances
         let ci1 = w1.commit(&pedersen_params, x1.clone());
@@ -220,27 +219,27 @@ mod tests {
 
         // get challenge from transcript
         let config = poseidon_test_config::<Fr>();
-        let mut tr = PoseidonTranscript::<G1Projective>::new(&config);
+        let mut tr = PoseidonTranscript::<Projective>::new(&config);
         let r_bits = tr.get_challenge_nbits(128);
         let r_Fr = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
 
         let (_w3, ci3, _T, cmT) =
-            NIFS::<G1Projective>::prove(&pedersen_params, r_Fr, &r1cs, &w1, &ci1, &w2, &ci2);
+            NIFS::<Projective>::prove(&pedersen_params, r_Fr, &r1cs, &w1, &ci1, &w2, &ci2);
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         let rVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(r_Fr)).unwrap();
         let ci1Var =
-            CommittedInstanceE1Var::<G1Projective>::new_witness(cs.clone(), || Ok(ci1.clone()))
+            CommittedInstanceE1Var::<Projective>::new_witness(cs.clone(), || Ok(ci1.clone()))
                 .unwrap();
         let ci2Var =
-            CommittedInstanceE1Var::<G1Projective>::new_witness(cs.clone(), || Ok(ci2.clone()))
+            CommittedInstanceE1Var::<Projective>::new_witness(cs.clone(), || Ok(ci2.clone()))
                 .unwrap();
         let ci3Var =
-            CommittedInstanceE1Var::<G1Projective>::new_witness(cs.clone(), || Ok(ci3.clone()))
+            CommittedInstanceE1Var::<Projective>::new_witness(cs.clone(), || Ok(ci3.clone()))
                 .unwrap();
 
-        NIFSGadget::<G1Projective>::verify(
+        NIFSGadget::<Projective>::verify(
             rVar.clone(),
             ci1Var.clone(),
             ci2Var.clone(),
@@ -256,27 +255,22 @@ mod tests {
 
         let r_bitsVar = Vec::<Boolean<Fq>>::new_witness(cs_CC.clone(), || Ok(r_bits)).unwrap();
 
-        let cmTVar = G1Var::new_witness(cs_CC.clone(), || Ok(cmT)).unwrap();
-        let ci1Var =
-            CommittedInstanceE2Var::<G1Projective, G1Var>::new_witness(cs_CC.clone(), || {
-                Ok(ci1.clone())
-            })
-            .unwrap();
-        let ci2Var =
-            CommittedInstanceE2Var::<G1Projective, G1Var>::new_witness(cs_CC.clone(), || {
-                Ok(ci2.clone())
-            })
-            .unwrap();
-        let ci3Var =
-            CommittedInstanceE2Var::<G1Projective, G1Var>::new_witness(cs_CC.clone(), || {
-                Ok(ci3.clone())
-            })
-            .unwrap();
-
-        NIFSCycleFoldGadget::<G1Projective, G1Var>::verify(
-            r_bitsVar, cmTVar, ci1Var, ci2Var, ci3Var,
-        )
+        let cmTVar = GVar::new_witness(cs_CC.clone(), || Ok(cmT)).unwrap();
+        let ci1Var = CommittedInstanceE2Var::<Projective, GVar>::new_witness(cs_CC.clone(), || {
+            Ok(ci1.clone())
+        })
         .unwrap();
+        let ci2Var = CommittedInstanceE2Var::<Projective, GVar>::new_witness(cs_CC.clone(), || {
+            Ok(ci2.clone())
+        })
+        .unwrap();
+        let ci3Var = CommittedInstanceE2Var::<Projective, GVar>::new_witness(cs_CC.clone(), || {
+            Ok(ci3.clone())
+        })
+        .unwrap();
+
+        NIFSCycleFoldGadget::<Projective, GVar>::verify(r_bitsVar, cmTVar, ci1Var, ci2Var, ci3Var)
+            .unwrap();
         assert!(cs_CC.is_satisfied().unwrap());
         // dbg!(cs_CC.num_constraints());
     }

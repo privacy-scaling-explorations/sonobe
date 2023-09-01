@@ -30,23 +30,22 @@ impl<C: CurveGroup, GC: CurveVar<C, CF<C>>> ECRLC<C, GC> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use ark_bls12_377::{constraints::G1Var, Fq, Fr, G1Projective};
     use ark_ff::{BigInteger, PrimeField};
+    use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
     use ark_r1cs_std::alloc::AllocVar;
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::UniformRand;
     use std::ops::Mul;
 
-    /// Let Curve1=bls12-377::G1 and Curve2=bw6-761::G1. Here we have our constraints system will
-    /// work over Curve2::Fr = bw6-761::Fr (=bls12-377::Fq), thus our points are P_i \in Curve1
-    /// (=bls12-377).
+    /// Let Curve1=pallas and Curve2=vesta. Here our constraints system will work over Curve2::Fr =
+    /// vesta::Fr (=pallas::Fq), thus our points are P_i \in Curve1 (=pasta).
     #[test]
     fn test_ecrlc_check() {
         let mut rng = ark_std::test_rng();
 
         let r = Fr::rand(&mut rng);
-        let p1 = G1Projective::rand(&mut rng);
-        let p2 = G1Projective::rand(&mut rng);
+        let p1 = Projective::rand(&mut rng);
+        let p2 = Projective::rand(&mut rng);
         let p3 = p1 + p2.mul(r);
 
         let cs = ConstraintSystem::<Fq>::new_ref(); // CS over Curve2::Fr = Curve1::Fq
@@ -55,12 +54,12 @@ mod test {
         let rbitsVar: Vec<Boolean<Fq>> =
             Vec::new_witness(cs.clone(), || Ok(r.into_bigint().to_bits_le())).unwrap();
 
-        let p1Var = G1Var::new_witness(cs.clone(), || Ok(p1)).unwrap();
-        let p2Var = G1Var::new_witness(cs.clone(), || Ok(p2)).unwrap();
-        let p3Var = G1Var::new_witness(cs.clone(), || Ok(p3)).unwrap();
+        let p1Var = GVar::new_witness(cs.clone(), || Ok(p1)).unwrap();
+        let p2Var = GVar::new_witness(cs.clone(), || Ok(p2)).unwrap();
+        let p3Var = GVar::new_witness(cs.clone(), || Ok(p3)).unwrap();
 
         // check ECRLC circuit
-        ECRLC::<G1Projective, G1Var>::check(rbitsVar, p1Var, p2Var, p3Var).unwrap();
+        ECRLC::<Projective, GVar>::check(rbitsVar, p1Var, p2Var, p3Var).unwrap();
         assert!(cs.is_satisfied().unwrap());
         // dbg!(cs.num_constraints());
     }

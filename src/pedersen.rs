@@ -101,7 +101,7 @@ mod tests {
     use super::*;
     use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
 
-    use ark_bls12_377::{Fr, G1Projective};
+    use ark_pallas::{Fr, Projective};
 
     #[test]
     fn test_pedersen_vector() {
@@ -109,19 +109,19 @@ mod tests {
 
         const n: usize = 10;
         // setup params
-        let params = Pedersen::<G1Projective>::new_params(&mut rng, n);
+        let params = Pedersen::<Projective>::new_params(&mut rng, n);
         let poseidon_config = poseidon_test_config::<Fr>();
 
         // init Prover's transcript
-        let mut transcript_p = PoseidonTranscript::<G1Projective>::new(&poseidon_config);
+        let mut transcript_p = PoseidonTranscript::<Projective>::new(&poseidon_config);
         // init Verifier's transcript
-        let mut transcript_v = PoseidonTranscript::<G1Projective>::new(&poseidon_config);
+        let mut transcript_v = PoseidonTranscript::<Projective>::new(&poseidon_config);
 
         let v: Vec<Fr> = vec![Fr::rand(&mut rng); n];
         let r: Fr = Fr::rand(&mut rng);
-        let cm = Pedersen::<G1Projective>::commit(&params, &v, &r);
-        let proof = Pedersen::<G1Projective>::prove(&params, &mut transcript_p, &cm, &v, &r);
-        let v = Pedersen::<G1Projective>::verify(&params, &mut transcript_v, cm, proof);
+        let cm = Pedersen::<Projective>::commit(&params, &v, &r);
+        let proof = Pedersen::<Projective>::prove(&params, &mut transcript_p, &cm, &v, &r);
+        let v = Pedersen::<Projective>::verify(&params, &mut transcript_v, cm, proof);
         assert!(v);
     }
 }

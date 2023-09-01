@@ -89,7 +89,7 @@ pub fn hadamard<F: PrimeField>(a: &[F], b: &[F]) -> Vec<F> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use ark_bls12_377::Fr;
+    use ark_pallas::Fr;
 
     pub fn to_F_matrix<F: PrimeField>(M: Vec<Vec<usize>>) -> Vec<Vec<F>> {
         let mut R: Vec<Vec<F>> = vec![Vec::new(); M.len()];

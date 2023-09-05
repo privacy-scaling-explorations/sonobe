@@ -1,4 +1,4 @@
-/// Implements the C_{EC} circuit described in CycleFold paper https://eprint.iacr.org/2023/1192.pdf
+/// Implements the C_{EC} circuit described in [CycleFold paper](https://eprint.iacr.org/2023/1192.pdf)
 use ark_ec::CurveGroup;
 use ark_r1cs_std::{boolean::Boolean, prelude::CurveVar};
 use ark_relations::r1cs::SynthesisError;
@@ -7,7 +7,7 @@ use core::marker::PhantomData;
 use super::CF;
 
 /// ECRLC implements gadget that checks the Elliptic Curve points RandomLinearCombination described
-/// in CycleFold (https://eprint.iacr.org/2023/1192.pdf).
+/// in [CycleFold](https://eprint.iacr.org/2023/1192.pdf).
 #[derive(Debug)]
 pub struct ECRLC<C: CurveGroup, GC: CurveVar<C, CF<C>>> {
     _c: PhantomData<C>,
@@ -61,6 +61,5 @@ mod test {
         // check ECRLC circuit
         ECRLC::<Projective, GVar>::check(rbitsVar, p1Var, p2Var, p3Var).unwrap();
         assert!(cs.is_satisfied().unwrap());
-        // dbg!(cs.num_constraints());
     }
 }

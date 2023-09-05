@@ -10,7 +10,7 @@ pub mod r1cs;
 use r1cs::R1CS;
 
 /// CCS represents the Customizable Constraint Systems structure defined in
-/// https://eprint.iacr.org/2023/552
+/// the [CCS paper](https://eprint.iacr.org/2023/552)
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct CCS<C: CurveGroup> {
     /// m: number of rows in M_i (such that M_i \in F^{m, n})

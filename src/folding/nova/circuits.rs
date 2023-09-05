@@ -91,7 +91,7 @@ where
 }
 
 /// Implements the circuit that does the checks of the Non-Interactive Folding Scheme Verifier
-/// described in section 4 of https://eprint.iacr.org/2021/370.pdf, where the cmE & cmW checks are
+/// described in section 4 of [Nova](https://eprint.iacr.org/2021/370.pdf), where the cmE & cmW checks are
 /// delegated to the NIFSCycleFoldGadget.
 pub struct NIFSGadget<C: CurveGroup> {
     _c: PhantomData<C>,
@@ -126,7 +126,7 @@ where
 }
 
 /// NIFSCycleFoldGadget performs the Nova NIFS.V elliptic curve points relation checks in the other
-/// curve following CycleFold (https://eprint.iacr.org/2023/1192.pdf).
+/// curve following [CycleFold](https://eprint.iacr.org/2023/1192.pdf).
 pub struct NIFSCycleFoldGadget<C: CurveGroup, GC: CurveVar<C, CF2<C>>> {
     _c: PhantomData<C>,
     _gc: PhantomData<GC>,
@@ -187,7 +187,6 @@ mod tests {
                 .unwrap();
         assert_eq!(ciVar.u.value().unwrap(), ci.u);
         assert_eq!(ciVar.x.value().unwrap(), ci.x);
-        dbg!(cs.num_constraints());
 
         // check the instantiation of the CycleFold side:
         let cs = ConstraintSystem::<Fq>::new_ref();
@@ -196,7 +195,6 @@ mod tests {
                 .unwrap();
         assert_eq!(ciVar.cmE.value().unwrap(), ci.cmE);
         assert_eq!(ciVar.cmW.value().unwrap(), ci.cmW);
-        dbg!(cs.num_constraints());
     }
 
     #[test]
@@ -247,7 +245,6 @@ mod tests {
         )
         .unwrap();
         assert!(cs.is_satisfied().unwrap());
-        // dbg!(cs.num_constraints());
 
         // cs_CC is the Constraint System on the Curve Cycle auxiliary curve constraints field
         // (E2::Fr)
@@ -272,6 +269,5 @@ mod tests {
         NIFSCycleFoldGadget::<Projective, GVar>::verify(r_bitsVar, cmTVar, ci1Var, ci2Var, ci3Var)
             .unwrap();
         assert!(cs_CC.is_satisfied().unwrap());
-        // dbg!(cs_CC.num_constraints());
     }
 }

@@ -5,6 +5,7 @@ use ark_std::{One, Zero};
 
 use crate::pedersen::{Params as PedersenParams, Pedersen};
 
+pub mod circuits;
 pub mod nifs;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -14,6 +15,7 @@ pub struct CommittedInstance<C: CurveGroup> {
     pub cmW: C,
     pub x: Vec<C::ScalarField>,
 }
+
 impl<C: CurveGroup> CommittedInstance<C> {
     pub fn empty() -> Self {
         CommittedInstance {

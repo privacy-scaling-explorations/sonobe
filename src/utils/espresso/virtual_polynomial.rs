@@ -412,8 +412,8 @@ pub fn bit_decompose(input: u64, num_var: usize) -> Vec<bool> {
 mod test {
     use super::*;
     use crate::utils::multilinear_polynomial::tests::random_mle_list;
-    use ark_bls12_377::Fr;
     use ark_ff::UniformRand;
+    use ark_pallas::Fr;
     use ark_std::{
         rand::{Rng, RngCore},
         test_rng,

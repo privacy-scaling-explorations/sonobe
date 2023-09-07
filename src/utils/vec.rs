@@ -1,4 +1,5 @@
 use ark_ff::PrimeField;
+pub use ark_relations::r1cs::Matrix as R1CSMatrix;
 use ark_std::cfg_iter;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
@@ -6,7 +7,21 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIter
 pub struct SparseMatrix<F: PrimeField> {
     pub n_rows: usize,
     pub n_cols: usize,
-    pub coeffs: Vec<(usize, usize, F)>,
+    /// coeffs = R1CSMatrix = Vec<Vec<(F, usize)>>, which contains each row and the F is the value
+    /// of the coefficient and the usize indicates the column position
+    pub coeffs: R1CSMatrix<F>,
+}
+
+impl<F: PrimeField> SparseMatrix<F> {
+    pub fn to_dense(&self) -> Vec<Vec<F>> {
+        let mut r: Vec<Vec<F>> = vec![vec![F::zero(); self.n_cols]; self.n_rows];
+        for (row_i, row) in self.coeffs.iter().enumerate() {
+            for &(value, col_i) in row.iter() {
+                r[row_i][col_i] = value;
+            }
+        }
+        r
+    }
 }
 
 pub fn dense_matrix_to_sparse<F: PrimeField>(m: Vec<Vec<F>>) -> SparseMatrix<F> {
@@ -15,12 +30,14 @@ pub fn dense_matrix_to_sparse<F: PrimeField>(m: Vec<Vec<F>>) -> SparseMatrix<F> 
         n_cols: m[0].len(),
         coeffs: Vec::new(),
     };
-    for (i, m_i) in m.iter().enumerate() {
-        for (j, m_ij) in m_i.iter().enumerate() {
-            if !m_ij.is_zero() {
-                r.coeffs.push((i, j, *m_ij));
+    for m_row in m.iter() {
+        let mut row: Vec<(F, usize)> = Vec::new();
+        for (col_i, value) in m_row.iter().enumerate() {
+            if !value.is_zero() {
+                row.push((*value, col_i));
             }
         }
+        r.coeffs.push(row);
     }
     r
 }
@@ -75,9 +92,12 @@ pub fn mat_vec_mul<F: PrimeField>(M: &Vec<Vec<F>>, z: &[F]) -> Vec<F> {
 
 pub fn mat_vec_mul_sparse<F: PrimeField>(matrix: &SparseMatrix<F>, vector: &[F]) -> Vec<F> {
     let mut res = vec![F::zero(); matrix.n_rows];
-    for &(row, col, value) in matrix.coeffs.iter() {
-        res[row] += value * vector[col];
+    for (row_i, row) in matrix.coeffs.iter().enumerate() {
+        for &(value, col_i) in row.iter() {
+            res[row_i] += value * vector[col_i];
+        }
     }
+
     res
 }
 
@@ -109,6 +129,19 @@ pub mod tests {
         r
     }
 
+    #[test]
+    fn test_dense_sparse_conversions() {
+        let A = to_F_matrix::<Fr>(vec![
+            vec![0, 1, 0, 0, 0, 0],
+            vec![0, 0, 0, 1, 0, 0],
+            vec![0, 1, 0, 0, 1, 0],
+            vec![5, 0, 0, 0, 0, 1],
+        ]);
+        let A_sparse = dense_matrix_to_sparse(A.clone());
+        assert_eq!(A_sparse.to_dense(), A);
+    }
+
+    // test mat_vec_mul & mat_vec_mul_sparse
     #[test]
     fn test_mat_vec_mul() {
         let A = to_F_matrix::<Fr>(vec![

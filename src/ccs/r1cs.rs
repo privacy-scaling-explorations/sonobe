@@ -75,24 +75,24 @@ pub mod tests {
     pub fn get_test_r1cs<F: PrimeField>() -> R1CS<F> {
         // R1CS for: x^3 + x + 5 = y (example from article
         // https://www.vitalik.ca/general/2016/12/10/qap.html )
-        let A = dense_matrix_to_sparse(to_F_matrix::<F>(vec![
+        let A = to_F_matrix::<F>(vec![
             vec![0, 1, 0, 0, 0, 0],
             vec![0, 0, 0, 1, 0, 0],
             vec![0, 1, 0, 0, 1, 0],
             vec![5, 0, 0, 0, 0, 1],
-        ]));
-        let B = dense_matrix_to_sparse(to_F_matrix::<F>(vec![
+        ]);
+        let B = to_F_matrix::<F>(vec![
             vec![0, 1, 0, 0, 0, 0],
             vec![0, 1, 0, 0, 0, 0],
             vec![1, 0, 0, 0, 0, 0],
             vec![1, 0, 0, 0, 0, 0],
-        ]));
-        let C = dense_matrix_to_sparse(to_F_matrix::<F>(vec![
+        ]);
+        let C = to_F_matrix::<F>(vec![
             vec![0, 0, 0, 1, 0, 0],
             vec![0, 0, 0, 0, 1, 0],
             vec![0, 0, 0, 0, 0, 1],
             vec![0, 0, 1, 0, 0, 0],
-        ]));
+        ]);
 
         R1CS::<F> { l: 1, A, B, C }
     }

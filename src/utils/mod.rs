@@ -1,3 +1,5 @@
+pub mod hypercube;
+pub mod mle;
 pub mod vec;
 
 // expose espresso local modules

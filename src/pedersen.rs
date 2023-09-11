@@ -1,11 +1,10 @@
-use ark_ec::{CurveGroup, Group};
+use ark_ec::CurveGroup;
 use ark_std::{rand::Rng, UniformRand};
 use std::marker::PhantomData;
 
 use crate::utils::vec::{vec_add, vec_scalar_mul};
 
 use crate::transcript::Transcript;
-use ark_crypto_primitives::sponge::Absorb;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Proof<C: CurveGroup> {
@@ -21,17 +20,11 @@ pub struct Params<C: CurveGroup> {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct Pedersen<C: CurveGroup>
-where
-    <C as Group>::ScalarField: Absorb,
-{
+pub struct Pedersen<C: CurveGroup> {
     _c: PhantomData<C>,
 }
 
-impl<C: CurveGroup> Pedersen<C>
-where
-    <C as Group>::ScalarField: Absorb,
-{
+impl<C: CurveGroup> Pedersen<C> {
     pub fn new_params<R: Rng>(rng: &mut R, max: usize) -> Params<C> {
         let generators: Vec<C::Affine> = std::iter::repeat_with(|| C::Affine::rand(rng))
             .take(max.next_power_of_two())

@@ -111,7 +111,10 @@ pub mod tests {
     use super::*;
     use ark_pallas::Fr;
 
-    pub fn to_F_matrix<F: PrimeField>(M: Vec<Vec<usize>>) -> Vec<Vec<F>> {
+    pub fn to_F_matrix<F: PrimeField>(M: Vec<Vec<usize>>) -> SparseMatrix<F> {
+        dense_matrix_to_sparse(to_F_dense_matrix(M))
+    }
+    pub fn to_F_dense_matrix<F: PrimeField>(M: Vec<Vec<usize>>) -> Vec<Vec<F>> {
         let mut R: Vec<Vec<F>> = vec![Vec::new(); M.len()];
         for i in 0..M.len() {
             R[i] = vec![F::zero(); M[i].len()];
@@ -131,7 +134,7 @@ pub mod tests {
 
     #[test]
     fn test_dense_sparse_conversions() {
-        let A = to_F_matrix::<Fr>(vec![
+        let A = to_F_dense_matrix::<Fr>(vec![
             vec![0, 1, 0, 0, 0, 0],
             vec![0, 0, 0, 1, 0, 0],
             vec![0, 1, 0, 0, 1, 0],
@@ -149,7 +152,8 @@ pub mod tests {
             vec![0, 0, 0, 1, 0, 0],
             vec![0, 1, 0, 0, 1, 0],
             vec![5, 0, 0, 0, 0, 1],
-        ]);
+        ])
+        .to_dense();
         let z = to_F_vec(vec![1, 3, 35, 9, 27, 30]);
         assert_eq!(mat_vec_mul(&A, &z), to_F_vec(vec![3, 9, 30, 35]));
         assert_eq!(
@@ -160,11 +164,11 @@ pub mod tests {
         let A = to_F_matrix::<Fr>(vec![vec![2, 3, 4, 5], vec![4, 8, 12, 14], vec![9, 8, 7, 6]]);
         let v = to_F_vec(vec![19, 55, 50, 3]);
 
-        assert_eq!(mat_vec_mul(&A, &v), to_F_vec(vec![418, 1158, 979]));
         assert_eq!(
-            mat_vec_mul_sparse(&dense_matrix_to_sparse(A), &v),
+            mat_vec_mul(&A.to_dense(), &v),
             to_F_vec(vec![418, 1158, 979])
         );
+        assert_eq!(mat_vec_mul_sparse(&A, &v), to_F_vec(vec![418, 1158, 979]));
     }
 
     #[test]

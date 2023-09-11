@@ -102,14 +102,18 @@ impl<C: CurveGroup> CCS<C> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
-    use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z};
+    use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z as r1cs_get_test_z};
+    use ark_ff::PrimeField;
     use ark_pallas::Projective;
 
     pub fn get_test_ccs<C: CurveGroup>() -> CCS<C> {
         let r1cs = get_test_r1cs::<C::ScalarField>();
         CCS::<C>::from_r1cs(r1cs)
+    }
+    pub fn get_test_z<F: PrimeField>(input: usize) -> Vec<F> {
+        r1cs_get_test_z(input)
     }
 
     /// Test that a basic CCS relation can be satisfied

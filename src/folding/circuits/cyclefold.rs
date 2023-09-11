@@ -28,7 +28,7 @@ impl<C: CurveGroup, GC: CurveVar<C, CF<C>>> ECRLC<C, GC> {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
     use ark_ff::{BigInteger, PrimeField};
     use ark_pallas::{constraints::GVar, Fq, Fr, Projective};

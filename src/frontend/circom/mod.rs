@@ -7,8 +7,7 @@ use num_bigint::BigInt;
 use color_eyre::Result;
 
 use ark_bn254::{Bn254, Fr};
-use ark_ff::PrimeField;
-use ark_ff::biginteger;
+use ark_ff::{PrimeField, biginteger};
 use ark_ec::pairing::Pairing;
 
 mod r1cs_reader;
@@ -131,32 +130,32 @@ mod tests {
         
         let r1cs_filepath = current_dir.join("src").join("frontend").join("circom").join("test_folder").join("toy.r1cs");
         let wasm_filepath = current_dir.join("src").join("frontend").join("circom").join("test_folder").join("toy.wasm");
-
-        assert!(r1cs_filepath.exists(), "R1CS filepath does not exist.");
-        assert!(wasm_filepath.exists(), "WASM filepath does not exist.");
-
-        let constraints = extract_constraints_from_r1cs(&r1cs_filepath).expect("Failed to extract constraints");
-        assert!(!constraints.is_empty(), "No constraints were extracted.");
-
+    
+        assert!(r1cs_filepath.exists());
+        assert!(wasm_filepath.exists());
+    
+        let constraints = extract_constraints_from_r1cs(&r1cs_filepath).expect("Error");
+        assert!(!constraints.is_empty());
+    
         let converted_constraints: Vec<Constraints<Bn254>> = constraints
             .iter()
             .map(|constraint| convert_constraints_bigint_to_scalar(constraint.clone()))
             .collect();
-        assert_eq!(constraints.len(), converted_constraints.len(), "Converted constraints count doesn't match the original.");
-
+        assert_eq!(constraints.len(), converted_constraints.len());
+    
         let inputs = vec![
             ("step_in".to_string(), vec![BigInt::from(10)]),
             ("adder".to_string(), vec![BigInt::from(2)]),
         ];
-
-        let witness = calculate_witness(&wasm_filepath, inputs).expect("Failed to calculate the witness");
-        assert!(!witness.is_empty(), "Witness calculation resulted in an empty vector.");
-
+    
+        let witness = calculate_witness(&wasm_filepath, inputs).expect("Error");
+        assert!(!witness.is_empty());
+    
         let (r1cs, z) = circom_to_folding_r1cs_and_z(converted_constraints, &witness)
-            .expect("Failed to convert circom R1CS to folding R1CS");
-        assert!(!z.is_empty(), "The z vector is empty.");
-
-        r1cs.check_relation(&z).expect("R1CS relation check failed");
-    }
+            .expect("Error");
+        assert!(!z.is_empty());
+    
+        r1cs.check_relation(&z).expect("Error");
+    }    
 
 }

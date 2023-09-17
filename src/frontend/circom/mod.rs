@@ -1,14 +1,14 @@
-use std::fs::File;
-use std::io::BufReader;
-use std::error::Error;
-use std::path::PathBuf;
+use std::{fs::File, io::BufReader, path::PathBuf, error::Error};
 
 use num_bigint::BigInt;
 use color_eyre::Result;
 
 use ark_bn254::{Bn254, Fr};
-use ark_ff::{PrimeField, biginteger};
+use ark_ff::PrimeField;
 use ark_ec::pairing::Pairing;
+
+use crate::ccs::r1cs::R1CS;
+use crate::utils::vec::SparseMatrix;
 
 mod r1cs_reader;
 mod witness;
@@ -16,15 +16,11 @@ mod witness;
 pub type Constraints<E> = (ConstraintVec<E>, ConstraintVec<E>, ConstraintVec<E>);
 pub type ConstraintVec<E> = Vec<(usize, <E as Pairing>::ScalarField)>;
 
-pub fn bigint_to_bn254_scalar(bigint: biginteger::BigInt<4>) -> Option<Fr> {
-    Fr::from_bigint(bigint)
-}
-
 pub fn convert_constraints_bigint_to_scalar(constraints: Constraints<Bn254>) -> Constraints<Bn254> {
     let convert_vec = |vec: ConstraintVec<Bn254>| -> ConstraintVec<Bn254> {
         vec.into_iter()
             .filter_map(|(index, bigint)| {
-                match bigint_to_bn254_scalar(bigint.into()) {
+                match Fr::from_bigint(bigint.into()) {
                     Some(scalar) => Some((index, scalar)),
                     None => None
                 }
@@ -35,8 +31,8 @@ pub fn convert_constraints_bigint_to_scalar(constraints: Constraints<Bn254>) -> 
     (convert_vec(constraints.0), convert_vec(constraints.1), convert_vec(constraints.2))
 }
 
-pub fn extract_constraints_from_r1cs(filename: &PathBuf) -> Result<Vec<Constraints<Bn254>>, Box<dyn Error>> {
-    let file = File::open(filename)?;
+pub fn extract_constraints_from_r1cs(r1cs_filepath: &PathBuf) -> Result<Vec<Constraints<Bn254>>, Box<dyn Error>> {
+    let file = File::open(r1cs_filepath)?;
     let reader = BufReader::new(file);
 
     let r1cs_file = r1cs_reader::R1CSFile::<Bn254>::new(reader)?;
@@ -44,7 +40,7 @@ pub fn extract_constraints_from_r1cs(filename: &PathBuf) -> Result<Vec<Constrain
     Ok(r1cs.constraints)
 }
 
-pub fn convert_to_folding_r1cs(constraints: Vec<Constraints<Bn254>>) -> crate::ccs::r1cs::R1CS<Fr> {
+pub fn convert_to_folding_schemes_r1cs(constraints: Vec<Constraints<Bn254>>) -> R1CS<Fr> {
     let mut a_matrix: Vec<Vec<(Fr, usize)>> = Vec::new();
     let mut b_matrix: Vec<Vec<(Fr, usize)>> = Vec::new();
     let mut c_matrix: Vec<Vec<(Fr, usize)>> = Vec::new();
@@ -60,23 +56,23 @@ pub fn convert_to_folding_r1cs(constraints: Vec<Constraints<Bn254>>) -> crate::c
     let l = a_matrix.first().map(|vec| vec.len()).unwrap_or(0);
     let n_cols = l;
 
-    let A = crate::utils::vec::SparseMatrix::<Fr> {
+    let A = SparseMatrix::<Fr> {
         n_rows,
         n_cols,
         coeffs: a_matrix,
     };
-    let B = crate::utils::vec::SparseMatrix::<Fr> {
+    let B = SparseMatrix::<Fr> {
         n_rows,
         n_cols,
         coeffs: b_matrix,
     };
-    let C = crate::utils::vec::SparseMatrix::<Fr> {
+    let C = SparseMatrix::<Fr> {
         n_rows,
         n_cols,
         coeffs: c_matrix,
     };
 
-    crate::ccs::r1cs::R1CS::<Fr> {
+    R1CS::<Fr> {
         l,
         A,
         B,
@@ -89,28 +85,28 @@ pub fn calculate_witness<I: IntoIterator<Item = (String, Vec<BigInt>)>>(wasm_fil
     calculator.calculate_witness(inputs, true)
 }
 
-fn bigint_to_ark_bigint(value: &num_bigint::BigInt) -> Result<ark_ff::BigInt<4>, Box<dyn Error>> {
+fn num_bigint_to_ark_bigint(value: &num_bigint::BigInt) -> Result<ark_ff::BigInt<4>, Box<dyn Error>> {
     let big_uint = value.to_biguint().ok_or_else(|| Box::new(std::io::Error::new(std::io::ErrorKind::Other, "BigInt is negative")))?;
     Ok(ark_ff::BigInt::<4>::try_from(big_uint).map_err(|_| Box::new(std::io::Error::new(std::io::ErrorKind::Other, "BigInt conversion failed")))?)
 }
 
-pub fn circom_to_folding_r1cs_and_z(
+pub fn circom_to_folding_schemes_r1cs_and_z(
     constraints: Vec<Constraints<Bn254>>,
     witness: &Vec<BigInt>,
-) -> Result<(crate::ccs::r1cs::R1CS<Fr>, Vec<Fr>), Box<dyn Error>> {
-    let folding_r1cs = convert_to_folding_r1cs(constraints);
+) -> Result<(R1CS<Fr>, Vec<Fr>), Box<dyn Error>> {
+    let folding_schemes_r1cs = convert_to_folding_schemes_r1cs(constraints);
 
     let z: Vec<Fr> = witness
         .iter()
         .filter_map(|big_int| {
-            match bigint_to_ark_bigint(big_int) {
-                Ok(ark_big_int) => bigint_to_bn254_scalar(ark_big_int.into()),
+            match num_bigint_to_ark_bigint(big_int) {
+                Ok(ark_big_int) => Fr::from_bigint(ark_big_int.into()),
                 Err(_) => None
             }
         })
         .collect();
 
-    Ok((folding_r1cs, z))
+    Ok((folding_schemes_r1cs, z))
 }
 
 #[cfg(test)]
@@ -120,7 +116,7 @@ mod tests {
 
     use super::Constraints;
     use super::calculate_witness;
-    use super::circom_to_folding_r1cs_and_z;
+    use super::circom_to_folding_schemes_r1cs_and_z;
     use super::convert_constraints_bigint_to_scalar;
     use super::extract_constraints_from_r1cs;
 
@@ -151,7 +147,7 @@ mod tests {
         let witness = calculate_witness(&wasm_filepath, inputs).expect("Error");
         assert!(!witness.is_empty());
     
-        let (r1cs, z) = circom_to_folding_r1cs_and_z(converted_constraints, &witness)
+        let (r1cs, z) = circom_to_folding_schemes_r1cs_and_z(converted_constraints, &witness)
             .expect("Error");
         assert!(!z.is_empty());
     

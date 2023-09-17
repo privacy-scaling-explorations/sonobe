@@ -17,6 +17,18 @@ byteorder = "=1.4.3"
 ark-bn254 = { version = "=0.4.0" }
 hex = "=0.4.3"
 
+# WASM operations
+wasmer = { version = "=2.3.0", default-features = false }
+fnv = { version = "=1.0.7", default-features = false }
+num = { version = "=0.4.0" }
+num-traits = { version = "=0.2.15", default-features = false }
+num-bigint = { version = "=0.4.3", default-features = false, features = ["rand"] }
+
+# error handling
+color-eyre = "=0.6.2"
+criterion = "=0.3.6"
+cfg-if = "=1.0.0"
+
 # tmp imports for espresso's sumcheck
 ark-serialize = "0.4.2"
 espresso_subroutines = {git="https://github.com/EspressoSystems/hyperplonk", package="subroutines"}
@@ -27,11 +39,14 @@ espresso_transcript = {git="https://github.com/EspressoSystems/hyperplonk", pack
 ark-pallas = {version="0.4.0", features=["r1cs"]}
 ark-vesta = {version="0.4.0"}
 ark-crypto-primitives = { version = "^0.4.0", default-features = false, features = ["crh"] }
+serde_json = "=1.0.94"
 
 [features]
-default = ["parallel", "nova", "hypernova"]
+default = ["parallel", "nova", "hypernova", "wasmer/default", "circom-2"]
 hypernova=[]
 nova=[]
+wasm = ["wasmer/js-default"]
+circom-2 = []
 
 parallel = [ 
     "ark-std/parallel", 

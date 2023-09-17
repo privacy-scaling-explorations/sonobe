@@ -4,14 +4,18 @@ use std::error::Error;
 use std::path::PathBuf;
 use ark_bn254::{Bn254, Fr};
 use ark_ff::PrimeField;
-use ark_ff::biginteger::BigInt;
+use ark_ff::biginteger;
 use ark_ec::pairing::Pairing;
+use num_bigint::BigInt;
+
 mod r1cs_reader;
+mod witness;
+
 
 pub type Constraints<E> = (ConstraintVec<E>, ConstraintVec<E>, ConstraintVec<E>);
 pub type ConstraintVec<E> = Vec<(usize, <E as Pairing>::ScalarField)>;
 
-pub fn bigint_to_bn254_scalar(bigint: BigInt<4>) -> Option<Fr> {
+pub fn bigint_to_bn254_scalar(bigint: biginteger::BigInt<4>) -> Option<Fr> {
     Fr::from_bigint(bigint)
 }
 
@@ -42,9 +46,6 @@ pub fn extract_constraints_from_r1cs(filename: &str) -> Result<Vec<Constraints<B
 }
 
 pub fn convert_to_folding_r1cs(constraints: Vec<Constraints<Bn254>>) -> crate::ccs::r1cs::R1CS<Fr> {
-    // let mut a_matrix = Vec::new();
-    // let mut b_matrix = Vec::new();
-    // let mut c_matrix = Vec::new();
     let mut a_matrix: Vec<Vec<(Fr, usize)>> = Vec::new();
     let mut b_matrix: Vec<Vec<(Fr, usize)>> = Vec::new();
     let mut c_matrix: Vec<Vec<(Fr, usize)>> = Vec::new();
@@ -84,6 +85,28 @@ pub fn convert_to_folding_r1cs(constraints: Vec<Constraints<Bn254>>) -> crate::c
     }
 }
 
+pub fn calculate_witness<I: IntoIterator<Item = (String, Vec<BigInt>)>>(inputs: I) -> Result<(), Box<dyn Error>> {
+    let current_dir = std::env::current_dir()?;
+    let wasm_path = current_dir.join("src").join("toy.wasm");
+
+    let mut calculator = witness::WitnessCalculator::new(wasm_path)?;
+
+    match calculator.calculate_witness(inputs, true) {
+        Ok(witness) => {
+            println!("Witness as BigInt:");
+            for w in &witness {
+                println!("{:?}", w);
+            }
+        },
+        Err(e) => {
+            eprintln!("Error while calculating witness: {:?}", e);
+            return Err(Box::<dyn Error>::from(format!("Witness calculation failed: {}", e)));
+        }
+    }
+
+    Ok(())
+}
+
 #[test]
 fn from_circom() {
     let filename = "src/toy.r1cs";
@@ -110,5 +133,14 @@ fn from_circom() {
         Err(e) => {
             eprintln!("Error while extracting constraints: {:?}", e);
         }
+    }
+
+    let inputs = vec![
+        ("step_in".to_string(), vec![BigInt::from(10)]),
+        ("adder".to_string(), vec![BigInt::from(2)])
+    ];
+
+    if let Err(e) = calculate_witness(inputs) {
+        eprintln!("Failed to calculate the witness: {:?}", e);
     }
 }

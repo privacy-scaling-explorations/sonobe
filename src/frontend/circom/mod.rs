@@ -16,6 +16,7 @@ mod witness;
 pub type Constraints<E> = (ConstraintVec<E>, ConstraintVec<E>, ConstraintVec<E>);
 pub type ConstraintVec<E> = Vec<(usize, <E as Pairing>::ScalarField)>;
 
+// Convert the BigInt constraints to Bn254's ScalarField constraints.
 pub fn convert_constraints_bigint_to_scalar(constraints: Constraints<Bn254>) -> Constraints<Bn254> {
     let convert_vec = |vec: ConstraintVec<Bn254>| -> ConstraintVec<Bn254> {
         vec.into_iter()
@@ -31,6 +32,7 @@ pub fn convert_constraints_bigint_to_scalar(constraints: Constraints<Bn254>) -> 
     (convert_vec(constraints.0), convert_vec(constraints.1), convert_vec(constraints.2))
 }
 
+// Extract R1CS constraints from the provided R1CS file path.
 pub fn extract_constraints_from_r1cs(r1cs_filepath: &PathBuf) -> Result<Vec<Constraints<Bn254>>, Box<dyn Error>> {
     let file = File::open(r1cs_filepath)?;
     let reader = BufReader::new(file);
@@ -40,6 +42,7 @@ pub fn extract_constraints_from_r1cs(r1cs_filepath: &PathBuf) -> Result<Vec<Cons
     Ok(r1cs.constraints)
 }
 
+// Convert R1CS constraints for Bn254 to the format suited for folding-schemes.
 pub fn convert_to_folding_schemes_r1cs(constraints: Vec<Constraints<Bn254>>) -> R1CS<Fr> {
     let mut a_matrix: Vec<Vec<(Fr, usize)>> = Vec::new();
     let mut b_matrix: Vec<Vec<(Fr, usize)>> = Vec::new();
@@ -80,16 +83,19 @@ pub fn convert_to_folding_schemes_r1cs(constraints: Vec<Constraints<Bn254>>) -> 
     }
 }
 
+// Calculate the witness given the WASM filepath and inputs.
 pub fn calculate_witness<I: IntoIterator<Item = (String, Vec<BigInt>)>>(wasm_filepath: &PathBuf, inputs: I) -> Result<Vec<BigInt>> {
     let mut calculator = witness::WitnessCalculator::new(wasm_filepath.clone())?;
     calculator.calculate_witness(inputs, true)
 }
 
+// Helper function to convert `num_bigint::BigInt` to `ark_ff::BigInt`.
 fn num_bigint_to_ark_bigint(value: &num_bigint::BigInt) -> Result<ark_ff::BigInt<4>, Box<dyn Error>> {
     let big_uint = value.to_biguint().ok_or_else(|| Box::new(std::io::Error::new(std::io::ErrorKind::Other, "BigInt is negative")))?;
     Ok(ark_ff::BigInt::<4>::try_from(big_uint).map_err(|_| Box::new(std::io::Error::new(std::io::ErrorKind::Other, "BigInt conversion failed")))?)
 }
 
+// Convert R1CS constraints and witness from Circom format to folding-schemes R1CS and z format.
 pub fn circom_to_folding_schemes_r1cs_and_z(
     constraints: Vec<Constraints<Bn254>>,
     witness: &Vec<BigInt>,
@@ -124,8 +130,8 @@ mod tests {
     fn test_circom_to_folding_conversion() {
         let current_dir = std::env::current_dir().unwrap();
         
-        let r1cs_filepath = current_dir.join("src").join("frontend").join("circom").join("test_folder").join("toy.r1cs");
-        let wasm_filepath = current_dir.join("src").join("frontend").join("circom").join("test_folder").join("toy.wasm");
+        let r1cs_filepath = current_dir.join("src").join("frontend").join("circom").join("test_folder").join("vitalik_35.r1cs");
+        let wasm_filepath = current_dir.join("src").join("frontend").join("circom").join("test_folder").join("vitalik_35.wasm");
     
         assert!(r1cs_filepath.exists());
         assert!(wasm_filepath.exists());
@@ -140,8 +146,8 @@ mod tests {
         assert_eq!(constraints.len(), converted_constraints.len());
     
         let inputs = vec![
-            ("step_in".to_string(), vec![BigInt::from(10)]),
-            ("adder".to_string(), vec![BigInt::from(2)]),
+            ("step_in".to_string(), vec![BigInt::from(3)]),
+        //     ("adder".to_string(), vec![BigInt::from(2)]),
         ];
     
         let witness = calculate_witness(&wasm_filepath, inputs).expect("Error");

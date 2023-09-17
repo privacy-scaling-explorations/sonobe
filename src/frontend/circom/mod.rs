@@ -2,15 +2,17 @@ use std::fs::File;
 use std::io::BufReader;
 use std::error::Error;
 use std::path::PathBuf;
+
+use num_bigint::BigInt;
+use color_eyre::Result;
+
 use ark_bn254::{Bn254, Fr};
 use ark_ff::PrimeField;
 use ark_ff::biginteger;
 use ark_ec::pairing::Pairing;
-use num_bigint::BigInt;
 
 mod r1cs_reader;
 mod witness;
-
 
 pub type Constraints<E> = (ConstraintVec<E>, ConstraintVec<E>, ConstraintVec<E>);
 pub type ConstraintVec<E> = Vec<(usize, <E as Pairing>::ScalarField)>;
@@ -34,10 +36,8 @@ pub fn convert_constraints_bigint_to_scalar(constraints: Constraints<Bn254>) -> 
     (convert_vec(constraints.0), convert_vec(constraints.1), convert_vec(constraints.2))
 }
 
-pub fn extract_constraints_from_r1cs(filename: &str) -> Result<Vec<Constraints<Bn254>>, Box<dyn Error>> {
-    let current_dir = std::env::current_dir()?;
-    let filepath: PathBuf = [current_dir.to_str().unwrap(), filename].iter().collect();
-    let file = File::open(filepath)?;
+pub fn extract_constraints_from_r1cs(filename: &PathBuf) -> Result<Vec<Constraints<Bn254>>, Box<dyn Error>> {
+    let file = File::open(filename)?;
     let reader = BufReader::new(file);
 
     let r1cs_file = r1cs_reader::R1CSFile::<Bn254>::new(reader)?;
@@ -85,62 +85,78 @@ pub fn convert_to_folding_r1cs(constraints: Vec<Constraints<Bn254>>) -> crate::c
     }
 }
 
-pub fn calculate_witness<I: IntoIterator<Item = (String, Vec<BigInt>)>>(inputs: I) -> Result<(), Box<dyn Error>> {
-    let current_dir = std::env::current_dir()?;
-    let wasm_path = current_dir.join("src").join("toy.wasm");
-
-    let mut calculator = witness::WitnessCalculator::new(wasm_path)?;
-
-    match calculator.calculate_witness(inputs, true) {
-        Ok(witness) => {
-            println!("Witness as BigInt:");
-            for w in &witness {
-                println!("{:?}", w);
-            }
-        },
-        Err(e) => {
-            eprintln!("Error while calculating witness: {:?}", e);
-            return Err(Box::<dyn Error>::from(format!("Witness calculation failed: {}", e)));
-        }
-    }
-
-    Ok(())
+pub fn calculate_witness<I: IntoIterator<Item = (String, Vec<BigInt>)>>(wasm_filepath: &PathBuf, inputs: I) -> Result<Vec<BigInt>> {
+    let mut calculator = witness::WitnessCalculator::new(wasm_filepath.clone())?;
+    calculator.calculate_witness(inputs, true)
 }
 
-#[test]
-fn from_circom() {
-    let filename = "src/toy.r1cs";
+fn bigint_to_ark_bigint(value: &num_bigint::BigInt) -> Result<ark_ff::BigInt<4>, Box<dyn Error>> {
+    let big_uint = value.to_biguint().ok_or_else(|| Box::new(std::io::Error::new(std::io::ErrorKind::Other, "BigInt is negative")))?;
+    Ok(ark_ff::BigInt::<4>::try_from(big_uint).map_err(|_| Box::new(std::io::Error::new(std::io::ErrorKind::Other, "BigInt conversion failed")))?)
+}
 
-    match extract_constraints_from_r1cs(filename) {
-        Ok(constraints) => {
-            println!("Original Constraints:");
-            for constraint in &constraints {
-                println!("{:?}", constraint);
+pub fn circom_to_folding_r1cs_and_z(
+    constraints: Vec<Constraints<Bn254>>,
+    witness: &Vec<BigInt>,
+) -> Result<(crate::ccs::r1cs::R1CS<Fr>, Vec<Fr>), Box<dyn Error>> {
+    let folding_r1cs = convert_to_folding_r1cs(constraints);
+
+    let z: Vec<Fr> = witness
+        .iter()
+        .filter_map(|big_int| {
+            match bigint_to_ark_bigint(big_int) {
+                Ok(ark_big_int) => bigint_to_bn254_scalar(ark_big_int.into()),
+                Err(_) => None
             }
+        })
+        .collect();
 
-            println!("Converted Constraints:");
-            let converted_constraints: Vec<Constraints<Bn254>> = constraints.iter().map(|constraint| {
-                convert_constraints_bigint_to_scalar(constraint.clone())
-            }).collect();
+    Ok((folding_r1cs, z))
+}
 
-            for constraint in &converted_constraints {
-                println!("{:?}", constraint);
-            }
+#[cfg(test)]
+mod tests {
+    use ark_bn254::Bn254;
+    use num_bigint::BigInt;
 
-            let folding_r1cs = convert_to_folding_r1cs(converted_constraints);
-            println!("Folding R1CS: {:?}", folding_r1cs);
-        },
-        Err(e) => {
-            eprintln!("Error while extracting constraints: {:?}", e);
-        }
+    use super::Constraints;
+    use super::calculate_witness;
+    use super::circom_to_folding_r1cs_and_z;
+    use super::convert_constraints_bigint_to_scalar;
+    use super::extract_constraints_from_r1cs;
+
+    #[test]
+    fn test_circom_to_folding_conversion() {
+        let current_dir = std::env::current_dir().unwrap();
+        
+        let r1cs_filepath = current_dir.join("src").join("frontend").join("circom").join("test_folder").join("toy.r1cs");
+        let wasm_filepath = current_dir.join("src").join("frontend").join("circom").join("test_folder").join("toy.wasm");
+
+        assert!(r1cs_filepath.exists(), "R1CS filepath does not exist.");
+        assert!(wasm_filepath.exists(), "WASM filepath does not exist.");
+
+        let constraints = extract_constraints_from_r1cs(&r1cs_filepath).expect("Failed to extract constraints");
+        assert!(!constraints.is_empty(), "No constraints were extracted.");
+
+        let converted_constraints: Vec<Constraints<Bn254>> = constraints
+            .iter()
+            .map(|constraint| convert_constraints_bigint_to_scalar(constraint.clone()))
+            .collect();
+        assert_eq!(constraints.len(), converted_constraints.len(), "Converted constraints count doesn't match the original.");
+
+        let inputs = vec![
+            ("step_in".to_string(), vec![BigInt::from(10)]),
+            ("adder".to_string(), vec![BigInt::from(2)]),
+        ];
+
+        let witness = calculate_witness(&wasm_filepath, inputs).expect("Failed to calculate the witness");
+        assert!(!witness.is_empty(), "Witness calculation resulted in an empty vector.");
+
+        let (r1cs, z) = circom_to_folding_r1cs_and_z(converted_constraints, &witness)
+            .expect("Failed to convert circom R1CS to folding R1CS");
+        assert!(!z.is_empty(), "The z vector is empty.");
+
+        r1cs.check_relation(&z).expect("R1CS relation check failed");
     }
 
-    let inputs = vec![
-        ("step_in".to_string(), vec![BigInt::from(10)]),
-        ("adder".to_string(), vec![BigInt::from(2)])
-    ];
-
-    if let Err(e) = calculate_witness(inputs) {
-        eprintln!("Failed to calculate the witness: {:?}", e);
-    }
 }

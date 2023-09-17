@@ -28,6 +28,8 @@ num-bigint = { version = "=0.4.3", default-features = false, features = ["rand"]
 color-eyre = "=0.6.2"
 criterion = "=0.3.6"
 cfg-if = "=1.0.0"
+anyhow = "1.0"
+
 
 # tmp imports for espresso's sumcheck
 ark-serialize = "0.4.2"

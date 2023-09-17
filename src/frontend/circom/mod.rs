@@ -130,8 +130,25 @@ mod tests {
     fn test_circom_to_folding_conversion() {
         let current_dir = std::env::current_dir().unwrap();
         
-        let r1cs_filepath = current_dir.join("src").join("frontend").join("circom").join("test_folder").join("vitalik_35.r1cs");
-        let wasm_filepath = current_dir.join("src").join("frontend").join("circom").join("test_folder").join("vitalik_35.wasm");
+        let base_path = current_dir.join("src/frontend/circom/test_folder");
+        let r1cs_filepath = base_path.join("test_circuit.r1cs");
+        let wasm_filepath = base_path.join("test_circuit.wasm");
+
+        /*
+        This is the test_circuit.cirom file.
+        When step_in equals 3, it will pass the test function.
+
+        template Example () {
+            signal input step_in;
+            signal output step_out;   
+            signal temp;
+            
+            temp <== step_in * step_in;
+            step_out <== temp * step_in + step_in + 5;
+            step_out === 35; 
+        }
+        component main = Example();
+        */
     
         assert!(r1cs_filepath.exists());
         assert!(wasm_filepath.exists());
@@ -146,8 +163,10 @@ mod tests {
         assert_eq!(constraints.len(), converted_constraints.len());
     
         let inputs = vec![
+            // success
             ("step_in".to_string(), vec![BigInt::from(3)]),
-        //     ("adder".to_string(), vec![BigInt::from(2)]),
+            // fail
+            // ("step_in".to_string(), vec![BigInt::from(6)]),
         ];
     
         let witness = calculate_witness(&wasm_filepath, inputs).expect("Error");

@@ -56,6 +56,8 @@ pub fn convert_to_folding_schemes_r1cs(constraints: Vec<Constraints<Bn254>>) -> 
         c_matrix.push(ci.into_iter().map(|(index, scalar)| (scalar, index)).collect());
     }
 
+    // To Do; this is a mistake
+    // l is the size of piblic input and output
     let l = a_matrix.first().map(|vec| vec.len()).unwrap_or(0);
     let n_cols = l;
 

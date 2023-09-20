@@ -3,15 +3,13 @@ use std::{fs::File, io::BufReader, path::PathBuf, error::Error};
 use num_bigint::BigInt;
 use color_eyre::Result;
 
-use ark_bn254::{Bn254, Fr};
 use ark_ff::PrimeField;
 use ark_ec::pairing::Pairing;
+use ark_circom::{circom::r1cs_reader, WitnessCalculator};
+use ark_bn254::{Bn254, Fr};
 
 use crate::ccs::r1cs::R1CS;
 use crate::utils::vec::SparseMatrix;
-
-mod r1cs_reader;
-mod witness;
 
 pub type Constraints<E> = (ConstraintVec<E>, ConstraintVec<E>, ConstraintVec<E>);
 pub type ConstraintVec<E> = Vec<(usize, <E as Pairing>::ScalarField)>;
@@ -56,8 +54,9 @@ pub fn convert_to_folding_schemes_r1cs(constraints: Vec<Constraints<Bn254>>) -> 
         c_matrix.push(ci.into_iter().map(|(index, scalar)| (scalar, index)).collect());
     }
 
-    // To Do; this is a mistake
-    // l is the size of piblic input and output
+    // TODO: Refine this logic.
+    // Ideally, `l` should represent only the size of the public input and output.
+    // However, currently, all elements in the R1CS or Z are treated as public.
     let l = a_matrix.first().map(|vec| vec.len()).unwrap_or(0);
     let n_cols = l;
 
@@ -87,7 +86,7 @@ pub fn convert_to_folding_schemes_r1cs(constraints: Vec<Constraints<Bn254>>) -> 
 
 // Calculate the witness given the WASM filepath and inputs.
 pub fn calculate_witness<I: IntoIterator<Item = (String, Vec<BigInt>)>>(wasm_filepath: &PathBuf, inputs: I) -> Result<Vec<BigInt>> {
-    let mut calculator = witness::WitnessCalculator::new(wasm_filepath.clone())?;
+    let mut calculator = WitnessCalculator::new(wasm_filepath.clone())?;
     calculator.calculate_witness(inputs, true)
 }
 

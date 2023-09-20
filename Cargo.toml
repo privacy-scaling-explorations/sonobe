@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ark-ec = "0.4.2"
+ark-ec = "^0.4.0"
 ark-ff = "^0.4.0"
 ark-poly = "^0.4.0"
 ark-std = "^0.4.0"
@@ -13,11 +13,12 @@ ark-relations = { version = "^0.4.0", default-features = false }
 ark-r1cs-std = { version = "^0.4.0", default-features = false }
 rayon = "1.7.0"
 byteorder = "=1.4.3"
-ark-bn254 = { version = "=0.4.0" }
+ark-bn254 = "0.4.0"
 hex = "=0.4.3"
+ark-circom = { git = "https://github.com/gakonst/ark-circom.git" }
 
 # tmp imports for espresso's sumcheck
-ark-serialize = "0.4.2"
+ark-serialize = "^0.4.0"
 espresso_subroutines = {git="https://github.com/EspressoSystems/hyperplonk", package="subroutines"}
 espresso_transcript = {git="https://github.com/EspressoSystems/hyperplonk", package="transcript"}
 

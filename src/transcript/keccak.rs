@@ -34,7 +34,6 @@ impl<C: CurveGroup> Transcript<C> for KeccakTranscript<C> {
     fn absorb_point(&mut self, p: &C) {
         self.sponge.update(&prepare_point(p))
     }
-
     fn get_challenge(&mut self) -> C::ScalarField {
         let mut output = [0u8; 32];
         self.sponge.clone().finalize(&mut output);
@@ -50,11 +49,11 @@ impl<C: CurveGroup> Transcript<C> for KeccakTranscript<C> {
         self.sponge.clone().finalize(&mut output);
         self.sponge.update(&[output[0]]);
 
-        let c = output
+        let c: Vec<C::ScalarField> = output
             .iter()
             .map(|c| C::ScalarField::from_le_bytes_mod_order(&[*c]))
             .collect();
-        c
+        c[..n].to_vec()
     }
 }
 
@@ -89,6 +88,7 @@ pub mod tests {
         // constraints::GVar,
         Fr, Projective
     };
+    use ark_std::UniformRand;
 
     /// WARNING the method poseidon_test_config is for tests only
     #[cfg(test)]
@@ -106,5 +106,19 @@ pub mod tests {
         
         // TODO
         // assert_eq!();
+    }
+
+    #[test]
+    fn test_transcript_get_challenge() {
+        let mut rng = ark_std::test_rng();
+
+        const n: usize = 10;
+        let config = keccak_test_config::<Fr>();
+
+        // init transcript
+        let mut transcript = KeccakTranscript::<Projective>::new(&config);
+        let v: Vec<Fr> = vec![Fr::rand(&mut rng); n];
+        let challenges = transcript.get_challenges(v.len());
+        assert_eq!(challenges.len(), n);
     }
 }

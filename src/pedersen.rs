@@ -117,4 +117,27 @@ mod tests {
         let v = Pedersen::<Projective>::verify(&params, &mut transcript_v, cm, proof);
         assert!(v);
     }
+
+    use crate::transcript::keccak::{tests::keccak_test_config, KeccakTranscript};
+    #[test]
+    fn test_pedersen_vector_keccak() {
+        let mut rng = ark_std::test_rng();
+
+        const n: usize = 10;
+        // setup params
+        let params = Pedersen::<Projective>::new_params(&mut rng, n);
+        let keccak_config = keccak_test_config::<Fr>();
+
+        // init Prover's transcript
+        let mut transcript_p = KeccakTranscript::<Projective>::new(&keccak_config);
+        // init Verifier's transcript
+        let mut transcript_v = KeccakTranscript::<Projective>::new(&keccak_config);
+
+        let v: Vec<Fr> = vec![Fr::rand(&mut rng); n];
+        let r: Fr = Fr::rand(&mut rng);
+        let cm = Pedersen::<Projective>::commit(&params, &v, &r);
+        let proof = Pedersen::<Projective>::prove(&params, &mut transcript_p, &cm, &v, &r);
+        let v = Pedersen::<Projective>::verify(&params, &mut transcript_v, cm, proof);
+        assert!(v);
+    }
 }

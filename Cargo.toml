@@ -11,6 +11,8 @@ ark-std = "^0.4.0"
 ark-crypto-primitives = { version = "^0.4.0", default-features = false, features = ["r1cs", "sponge"] }
 ark-relations = { version = "^0.4.0", default-features = false }
 ark-r1cs-std = { version = "^0.4.0", default-features = false }
+tiny-keccak = { version = "2.0", features = ["keccak"] }
+sha3 = "0.10.8"
 thiserror = "1.0"
 rayon = "1.7.0"
 

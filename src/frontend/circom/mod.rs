@@ -31,17 +31,18 @@ pub fn convert_constraints_bigint_to_scalar(constraints: Constraints<Bn254>) -> 
 }
 
 // Extract R1CS constraints from the provided R1CS file path.
-pub fn extract_constraints_from_r1cs(r1cs_filepath: &PathBuf) -> Result<Vec<Constraints<Bn254>>, Box<dyn Error>> {
+pub fn extract_constraints_from_r1cs(r1cs_filepath: &PathBuf) -> Result<(Vec<Constraints<Bn254>>, usize), Box<dyn Error>> {
     let file = File::open(r1cs_filepath)?;
     let reader = BufReader::new(file);
 
     let r1cs_file = r1cs_reader::R1CSFile::<Bn254>::new(reader)?;
+    let num_public_inputs = (r1cs_file.header.n_pub_in + r1cs_file.header.n_pub_out) as usize;
     let r1cs = r1cs_reader::R1CS::<Bn254>::from(r1cs_file);
-    Ok(r1cs.constraints)
+    Ok((r1cs.constraints, num_public_inputs)) 
 }
 
 // Convert R1CS constraints for Bn254 to the format suited for folding-schemes.
-pub fn convert_to_folding_schemes_r1cs(constraints: Vec<Constraints<Bn254>>) -> R1CS<Fr> {
+pub fn convert_to_folding_schemes_r1cs(constraints: Vec<Constraints<Bn254>>, public_inputs: usize) -> R1CS<Fr> {
     let mut a_matrix: Vec<Vec<(Fr, usize)>> = Vec::new();
     let mut b_matrix: Vec<Vec<(Fr, usize)>> = Vec::new();
     let mut c_matrix: Vec<Vec<(Fr, usize)>> = Vec::new();
@@ -53,12 +54,9 @@ pub fn convert_to_folding_schemes_r1cs(constraints: Vec<Constraints<Bn254>>) -> 
         b_matrix.push(bi.into_iter().map(|(index, scalar)| (scalar, index)).collect());
         c_matrix.push(ci.into_iter().map(|(index, scalar)| (scalar, index)).collect());
     }
-
-    // TODO: Refine this logic.
-    // Ideally, `l` should represent only the size of the public input and output.
-    // However, currently, all elements in the R1CS or Z are treated as public.
-    let l = a_matrix.first().map(|vec| vec.len()).unwrap_or(0);
-    let n_cols = l;
+ 
+    let l = public_inputs;
+    let n_cols =  a_matrix.first().map(|vec| vec.len()).unwrap_or(0);
 
     let A = SparseMatrix::<Fr> {
         n_rows,
@@ -100,8 +98,9 @@ fn num_bigint_to_ark_bigint(value: &num_bigint::BigInt) -> Result<ark_ff::BigInt
 pub fn circom_to_folding_schemes_r1cs_and_z(
     constraints: Vec<Constraints<Bn254>>,
     witness: &Vec<BigInt>,
+    public_inputs: usize,
 ) -> Result<(R1CS<Fr>, Vec<Fr>), Box<dyn Error>> {
-    let folding_schemes_r1cs = convert_to_folding_schemes_r1cs(constraints);
+    let folding_schemes_r1cs = convert_to_folding_schemes_r1cs(constraints, public_inputs);
 
     let z: Vec<Fr> = witness
         .iter()
@@ -154,7 +153,7 @@ mod tests {
         assert!(r1cs_filepath.exists());
         assert!(wasm_filepath.exists());
     
-        let constraints = extract_constraints_from_r1cs(&r1cs_filepath).expect("Error");
+        let (constraints, public_inputs) = extract_constraints_from_r1cs(&r1cs_filepath).expect("Error");
         assert!(!constraints.is_empty());
     
         let converted_constraints: Vec<Constraints<Bn254>> = constraints
@@ -173,7 +172,7 @@ mod tests {
         let witness = calculate_witness(&wasm_filepath, inputs).expect("Error");
         assert!(!witness.is_empty());
     
-        let (r1cs, z) = circom_to_folding_schemes_r1cs_and_z(converted_constraints, &witness)
+        let (r1cs, z) = circom_to_folding_schemes_r1cs_and_z(converted_constraints, &witness, public_inputs)
             .expect("Error");
         assert!(!z.is_empty());
     

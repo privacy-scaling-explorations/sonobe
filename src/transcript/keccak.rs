@@ -29,7 +29,9 @@ impl<C: CurveGroup> Transcript<C> for KeccakTranscript<C> {
         self.sponge.update(&(v.into_bigint().to_bytes_le()));
     }
     fn absorb_vec(&mut self, v: &[C::ScalarField]) {
-        // TODO
+        for _v in v {
+            self.sponge.update(&(_v.into_bigint().to_bytes_le()));
+        }
     }
     fn absorb_point(&mut self, p: &C) {
         self.sponge.update(&prepare_point(p))

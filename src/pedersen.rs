@@ -140,4 +140,27 @@ mod tests {
         let v = Pedersen::<Projective>::verify(&params, &mut transcript_v, cm, proof);
         assert!(v);
     }
+
+    use crate::transcript::sha3::{tests::sha3_test_config, SHA3Transcript};
+    #[test]
+    fn test_pedersen_vector_sha3() {
+        let mut rng = ark_std::test_rng();
+
+        const n: usize = 10;
+        // setup params
+        let params = Pedersen::<Projective>::new_params(&mut rng, n);
+        let sha3_config = sha3_test_config::<Fr>();
+
+        // init Prover's transcript
+        let mut transcript_p = SHA3Transcript::<Projective>::new(&sha3_config);
+        // init Verifier's transcript
+        let mut transcript_v = SHA3Transcript::<Projective>::new(&sha3_config);
+
+        let v: Vec<Fr> = vec![Fr::rand(&mut rng); n];
+        let r: Fr = Fr::rand(&mut rng);
+        let cm = Pedersen::<Projective>::commit(&params, &v, &r);
+        let proof = Pedersen::<Projective>::prove(&params, &mut transcript_p, &cm, &v, &r);
+        let v = Pedersen::<Projective>::verify(&params, &mut transcript_v, cm, proof);
+        assert!(v);
+    }
 }

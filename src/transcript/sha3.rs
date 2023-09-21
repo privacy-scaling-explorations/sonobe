@@ -90,22 +90,37 @@ pub mod tests {
         // constraints::GVar,
         Fr, Projective
     };
+    use ark_std::UniformRand;
 
     /// WARNING the method poseidon_test_config is for tests only
     #[cfg(test)]
-    pub fn keccak_test_config<F: PrimeField>() -> SHA3Config {
+    pub fn sha3_test_config<F: PrimeField>() -> SHA3Config {
         SHA3Config {}
     }
 
     #[test]
     fn test_transcript_and_transcriptvar_get_challenge() {
         // use 'native' transcript
-        let config = keccak_test_config::<Fr>();
+        let config = sha3_test_config::<Fr>();
         let mut tr = SHA3Transcript::<Projective>::new(&config);
         tr.absorb(&Fr::from(42_u32));
         let c = tr.get_challenge();
         
         // TODO
         // assert_eq!();
+    }
+
+    #[test]
+    fn test_transcript_get_challenge() {
+        let mut rng = ark_std::test_rng();
+
+        const n: usize = 10;
+        let config = sha3_test_config::<Fr>();
+
+        // init transcript
+        let mut transcript = SHA3Transcript::<Projective>::new(&config);
+        let v: Vec<Fr> = vec![Fr::rand(&mut rng); n];
+        let challenges = transcript.get_challenges(v.len());
+        assert_eq!(challenges.len(), n);
     }
 }

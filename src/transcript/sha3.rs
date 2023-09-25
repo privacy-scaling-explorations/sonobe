@@ -1,11 +1,11 @@
 use std::marker::PhantomData;
 use sha3::{Shake256, digest::*};
-use ark_ec::{AffineRepr, CurveGroup};
-use ark_ff::{BigInteger, Field, PrimeField};
+use ark_ec::CurveGroup;
+use ark_ff::{BigInteger, PrimeField};
 
 use crate::transcript::Transcript;
 
-/// KecccakTranscript implements the Transcript trait using the Keccak hash
+/// SHA3Transcript implements the Transcript trait using the Keccak hash
 pub struct SHA3Transcript<C: CurveGroup> {
     sponge: Shake256,
     phantom: PhantomData<C>,
@@ -34,9 +34,10 @@ impl<C: CurveGroup> Transcript<C> for SHA3Transcript<C> {
         }
     }
     fn absorb_point(&mut self, p: &C) {
-        self.sponge.update(&prepare_point(p))
+        let mut serialized = vec![];
+        p.serialize_compressed(&mut serialized).unwrap();
+        self.sponge.update(&(serialized))
     }
-
     fn get_challenge(&mut self) -> C::ScalarField {
         let output = self.sponge.clone().finalize_boxed(200);
         self.sponge.update(&[output[0]]);
@@ -57,30 +58,6 @@ impl<C: CurveGroup> Transcript<C> for SHA3Transcript<C> {
             .collect();
         c
     }
-}
-
-// Returns the point coordinates in Fr, so it can be absrobed by the transcript. It does not work
-// over bytes in order to have a logic that can be reproduced in-circuit.
-fn prepare_point<C: CurveGroup>(p: &C) -> Vec<u8> {
-    let binding = p.into_affine();
-    let p_coords = &binding.xy().unwrap();
-    let x_bi = p_coords
-        .0
-        .to_base_prime_field_elements()
-        .next()
-        .expect("a")
-        .into_bigint()
-        .to_bytes_le();
-    let mut y_bi = p_coords
-        .1
-        .to_base_prime_field_elements()
-        .next()
-        .expect("a")
-        .into_bigint()
-        .to_bytes_le();
-
-    y_bi.extend(x_bi);
-    y_bi
 }
 
 #[cfg(test)]

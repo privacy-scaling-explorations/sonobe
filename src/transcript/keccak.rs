@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 use tiny_keccak::{Keccak, Hasher};
-use ark_ec::{AffineRepr, CurveGroup};
-use ark_ff::{BigInteger, Field, PrimeField};
+use ark_ec::CurveGroup;
+use ark_ff::{BigInteger, PrimeField};
 
 use crate::transcript::Transcript;
 
@@ -34,7 +34,9 @@ impl<C: CurveGroup> Transcript<C> for KeccakTranscript<C> {
         }
     }
     fn absorb_point(&mut self, p: &C) {
-        self.sponge.update(&prepare_point(p))
+        let mut serialized = vec![];
+        p.serialize_compressed(&mut serialized).unwrap();
+        self.sponge.update(&(serialized))
     }
     fn get_challenge(&mut self) -> C::ScalarField {
         let mut output = [0u8; 32];
@@ -57,30 +59,6 @@ impl<C: CurveGroup> Transcript<C> for KeccakTranscript<C> {
             .collect();
         c[..n].to_vec()
     }
-}
-
-// Returns the point coordinates in Fr, so it can be absrobed by the transcript. It does not work
-// over bytes in order to have a logic that can be reproduced in-circuit.
-fn prepare_point<C: CurveGroup>(p: &C) -> Vec<u8> {
-    let binding = p.into_affine();
-    let p_coords = &binding.xy().unwrap();
-    let x_bi = p_coords
-        .0
-        .to_base_prime_field_elements()
-        .next()
-        .expect("a")
-        .into_bigint()
-        .to_bytes_le();
-    let mut y_bi = p_coords
-        .1
-        .to_base_prime_field_elements()
-        .next()
-        .expect("a")
-        .into_bigint()
-        .to_bytes_le();
-
-    y_bi.extend(x_bi);
-    y_bi
 }
 
 #[cfg(test)]

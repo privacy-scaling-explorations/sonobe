@@ -99,18 +99,6 @@ pub mod tests {
     }
 
     #[test]
-    fn test_transcript_and_transcriptvar_get_challenge() {
-        // use 'native' transcript
-        let config = keccak_test_config::<Fr>();
-        let mut tr = KeccakTranscript::<Projective>::new(&config);
-        tr.absorb(&Fr::from(42_u32));
-        let c = tr.get_challenge();
-        
-        // TODO
-        // assert_eq!();
-    }
-
-    #[test]
     fn test_transcript_get_challenge() {
         let mut rng = ark_std::test_rng();
 

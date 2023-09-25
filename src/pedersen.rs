@@ -93,74 +93,36 @@ impl<C: CurveGroup> Pedersen<C> {
 mod tests {
     use super::*;
     use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
+    use crate::transcript::keccak::{tests::keccak_test_config, KeccakTranscript};
+    use crate::transcript::sha3::{tests::sha3_test_config, SHA3Transcript};
+    use crate::transcript::Transcript;
 
     use ark_pallas::{Fr, Projective};
 
+    fn test_pedersen_vector_with<T: Transcript<Projective>>(config: T::TranscriptConfig) {
+        let mut transcript_p: T = Transcript::<Projective>::new(&config);
+        let mut transcript_v: T = Transcript::<Projective>::new(&config);
+        let mut rng = ark_std::test_rng();
+
+        const n: usize = 10;
+        // setup params
+        let params = Pedersen::<Projective>::new_params(&mut rng, n);
+
+        let v: Vec<Fr> = vec![Fr::rand(&mut rng); n];
+        let r: Fr = Fr::rand(&mut rng);
+        let cm = Pedersen::<Projective>::commit(&params, &v, &r);
+        let proof = Pedersen::<Projective>::prove(&params, &mut transcript_p, &cm, &v, &r);
+        let v = Pedersen::<Projective>::verify(&params, &mut transcript_v, cm, proof);
+        assert!(v);
+    }
+
     #[test]
     fn test_pedersen_vector() {
-        let mut rng = ark_std::test_rng();
-
-        const n: usize = 10;
-        // setup params
-        let params = Pedersen::<Projective>::new_params(&mut rng, n);
-        let poseidon_config = poseidon_test_config::<Fr>();
-
-        // init Prover's transcript
-        let mut transcript_p = PoseidonTranscript::<Projective>::new(&poseidon_config);
-        // init Verifier's transcript
-        let mut transcript_v = PoseidonTranscript::<Projective>::new(&poseidon_config);
-
-        let v: Vec<Fr> = vec![Fr::rand(&mut rng); n];
-        let r: Fr = Fr::rand(&mut rng);
-        let cm = Pedersen::<Projective>::commit(&params, &v, &r);
-        let proof = Pedersen::<Projective>::prove(&params, &mut transcript_p, &cm, &v, &r);
-        let v = Pedersen::<Projective>::verify(&params, &mut transcript_v, cm, proof);
-        assert!(v);
-    }
-
-    use crate::transcript::keccak::{tests::keccak_test_config, KeccakTranscript};
-    #[test]
-    fn test_pedersen_vector_keccak() {
-        let mut rng = ark_std::test_rng();
-
-        const n: usize = 10;
-        // setup params
-        let params = Pedersen::<Projective>::new_params(&mut rng, n);
-        let keccak_config = keccak_test_config::<Fr>();
-
-        // init Prover's transcript
-        let mut transcript_p = KeccakTranscript::<Projective>::new(&keccak_config);
-        // init Verifier's transcript
-        let mut transcript_v = KeccakTranscript::<Projective>::new(&keccak_config);
-
-        let v: Vec<Fr> = vec![Fr::rand(&mut rng); n];
-        let r: Fr = Fr::rand(&mut rng);
-        let cm = Pedersen::<Projective>::commit(&params, &v, &r);
-        let proof = Pedersen::<Projective>::prove(&params, &mut transcript_p, &cm, &v, &r);
-        let v = Pedersen::<Projective>::verify(&params, &mut transcript_v, cm, proof);
-        assert!(v);
-    }
-
-    use crate::transcript::sha3::{tests::sha3_test_config, SHA3Transcript};
-    #[test]
-    fn test_pedersen_vector_sha3() {
-        let mut rng = ark_std::test_rng();
-
-        const n: usize = 10;
-        // setup params
-        let params = Pedersen::<Projective>::new_params(&mut rng, n);
-        let sha3_config = sha3_test_config::<Fr>();
-
-        // init Prover's transcript
-        let mut transcript_p = SHA3Transcript::<Projective>::new(&sha3_config);
-        // init Verifier's transcript
-        let mut transcript_v = SHA3Transcript::<Projective>::new(&sha3_config);
-
-        let v: Vec<Fr> = vec![Fr::rand(&mut rng); n];
-        let r: Fr = Fr::rand(&mut rng);
-        let cm = Pedersen::<Projective>::commit(&params, &v, &r);
-        let proof = Pedersen::<Projective>::prove(&params, &mut transcript_p, &cm, &v, &r);
-        let v = Pedersen::<Projective>::verify(&params, &mut transcript_v, cm, proof);
-        assert!(v);
+        // Test for Poseidon
+        test_pedersen_vector_with::<PoseidonTranscript<Projective>>(poseidon_test_config::<Fr>());
+        // Test for Keccak
+        test_pedersen_vector_with::<KeccakTranscript<Projective>>(keccak_test_config::<Fr>());
+        // Test for SHA3
+        test_pedersen_vector_with::<SHA3Transcript<Projective>>(sha3_test_config::<Fr>());
     }
 }

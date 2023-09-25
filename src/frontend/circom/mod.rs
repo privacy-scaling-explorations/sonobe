@@ -36,13 +36,13 @@ pub fn extract_constraints_from_r1cs(r1cs_filepath: &PathBuf) -> Result<(Vec<Con
     let reader = BufReader::new(file);
 
     let r1cs_file = r1cs_reader::R1CSFile::<Bn254>::new(reader)?;
-    let num_public_inputs = (r1cs_file.header.n_pub_in + r1cs_file.header.n_pub_out) as usize;
+    let pub_io_len = (r1cs_file.header.n_pub_in + r1cs_file.header.n_pub_out) as usize;
     let r1cs = r1cs_reader::R1CS::<Bn254>::from(r1cs_file);
-    Ok((r1cs.constraints, num_public_inputs)) 
+    Ok((r1cs.constraints, pub_io_len)) 
 }
 
 // Convert R1CS constraints for Bn254 to the format suited for folding-schemes.
-pub fn convert_to_folding_schemes_r1cs(constraints: Vec<Constraints<Bn254>>, public_inputs: usize) -> R1CS<Fr> {
+pub fn convert_to_folding_schemes_r1cs(constraints: Vec<Constraints<Bn254>>, pub_io_len: usize) -> R1CS<Fr> {
     let mut a_matrix: Vec<Vec<(Fr, usize)>> = Vec::new();
     let mut b_matrix: Vec<Vec<(Fr, usize)>> = Vec::new();
     let mut c_matrix: Vec<Vec<(Fr, usize)>> = Vec::new();
@@ -55,7 +55,7 @@ pub fn convert_to_folding_schemes_r1cs(constraints: Vec<Constraints<Bn254>>, pub
         c_matrix.push(ci.into_iter().map(|(index, scalar)| (scalar, index)).collect());
     }
  
-    let l = public_inputs;
+    let l = pub_io_len;
     let n_cols =  a_matrix.first().map(|vec| vec.len()).unwrap_or(0);
 
     let A = SparseMatrix::<Fr> {
@@ -98,9 +98,9 @@ fn num_bigint_to_ark_bigint(value: &num_bigint::BigInt) -> Result<ark_ff::BigInt
 pub fn circom_to_folding_schemes_r1cs_and_z(
     constraints: Vec<Constraints<Bn254>>,
     witness: &Vec<BigInt>,
-    public_inputs: usize,
+    pub_io_len: usize,
 ) -> Result<(R1CS<Fr>, Vec<Fr>), Box<dyn Error>> {
-    let folding_schemes_r1cs = convert_to_folding_schemes_r1cs(constraints, public_inputs);
+    let folding_schemes_r1cs = convert_to_folding_schemes_r1cs(constraints, pub_io_len);
 
     let z: Vec<Fr> = witness
         .iter()
@@ -119,64 +119,81 @@ pub fn circom_to_folding_schemes_r1cs_and_z(
 mod tests {
     use ark_bn254::Bn254;
     use num_bigint::BigInt;
-
+    use std::env;
+    
     use super::Constraints;
     use super::calculate_witness;
     use super::circom_to_folding_schemes_r1cs_and_z;
     use super::convert_constraints_bigint_to_scalar;
     use super::extract_constraints_from_r1cs;
-
+    
+    /*
+    test_circuit represents 35 = x^3 + x + 5 in test_folder/test_circuit.circom.
+    In the test_circom_conversion_success function, x is assigned the value 3, which satisfies the R1CS correctly.
+    In the test_circom_conversion_failure function, x is assigned the value 6, which doesn't satisfy the R1CS.
+    */
+    
     #[test]
-    fn test_circom_to_folding_conversion() {
-        let current_dir = std::env::current_dir().unwrap();
-        
+    fn test_circom_conversion_success() {
+        let current_dir = env::current_dir().unwrap();
         let base_path = current_dir.join("src/frontend/circom/test_folder");
         let r1cs_filepath = base_path.join("test_circuit.r1cs");
         let wasm_filepath = base_path.join("test_circuit.wasm");
-
-        /*
-        This is the test_circuit.cirom file.
-        When step_in equals 3, it will pass the test function.
-
-        template Example () {
-            signal input step_in;
-            signal output step_out;   
-            signal temp;
-            
-            temp <== step_in * step_in;
-            step_out <== temp * step_in + step_in + 5;
-            step_out === 35; 
-        }
-        component main = Example();
-        */
-    
+        
         assert!(r1cs_filepath.exists());
         assert!(wasm_filepath.exists());
-    
+        
         let (constraints, public_inputs) = extract_constraints_from_r1cs(&r1cs_filepath).expect("Error");
         assert!(!constraints.is_empty());
-    
+        
         let converted_constraints: Vec<Constraints<Bn254>> = constraints
             .iter()
             .map(|constraint| convert_constraints_bigint_to_scalar(constraint.clone()))
             .collect();
         assert_eq!(constraints.len(), converted_constraints.len());
-    
-        let inputs = vec![
-            // success
-            ("step_in".to_string(), vec![BigInt::from(3)]),
-            // fail
-            // ("step_in".to_string(), vec![BigInt::from(6)]),
-        ];
-    
+        
+        let inputs = vec![("step_in".to_string(), vec![BigInt::from(3)])];
+        
         let witness = calculate_witness(&wasm_filepath, inputs).expect("Error");
         assert!(!witness.is_empty());
-    
+        
         let (r1cs, z) = circom_to_folding_schemes_r1cs_and_z(converted_constraints, &witness, public_inputs)
             .expect("Error");
         assert!(!z.is_empty());
-    
+        
         r1cs.check_relation(&z).expect("Error");
-    }    
-
+    }
+    
+    #[test]
+    #[should_panic(expected = "Error")]
+    fn test_circom_conversion_failure() {
+        let current_dir = env::current_dir().unwrap();
+        let base_path = current_dir.join("src/frontend/circom/test_folder");
+        let r1cs_filepath = base_path.join("test_circuit.r1cs");
+        let wasm_filepath = base_path.join("test_circuit.wasm");
+        
+        assert!(r1cs_filepath.exists());
+        assert!(wasm_filepath.exists());
+        
+        let (constraints, public_inputs) = extract_constraints_from_r1cs(&r1cs_filepath).expect("Error");
+        assert!(!constraints.is_empty());
+        
+        let converted_constraints: Vec<Constraints<Bn254>> = constraints
+            .iter()
+            .map(|constraint| convert_constraints_bigint_to_scalar(constraint.clone()))
+            .collect();
+        assert_eq!(constraints.len(), converted_constraints.len());
+        
+        let inputs = vec![("step_in".to_string(), vec![BigInt::from(6)])];
+        
+        let witness = calculate_witness(&wasm_filepath, inputs).expect("Error");
+        assert!(!witness.is_empty());
+        
+        let (r1cs, z) = circom_to_folding_schemes_r1cs_and_z(converted_constraints, &witness, public_inputs)
+            .expect("Error");
+        assert!(!z.is_empty());
+        
+        r1cs.check_relation(&z).expect("Error");
+    }
 }
+

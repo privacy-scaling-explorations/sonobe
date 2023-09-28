@@ -1,12 +1,15 @@
+use ark_crypto_primitives::sponge::poseidon::PoseidonConfig;
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{CurveGroup, Group};
+use ark_ff::{BigInteger, PrimeField};
 use ark_std::One;
 use std::marker::PhantomData;
 
 use crate::ccs::r1cs::R1CS;
+use crate::constants::NUM_CHALLENGE_BITS;
 use crate::folding::nova::{CommittedInstance, Witness};
 use crate::pedersen::{Params as PedersenParams, Pedersen, Proof as PedersenProof};
-use crate::transcript::Transcript;
+use crate::transcript::{poseidon::PoseidonTranscript, Transcript};
 use crate::utils::vec::*;
 
 /// Implements the Non-Interactive Folding Scheme described in section 4 of
@@ -88,8 +91,8 @@ where
     #[allow(clippy::type_complexity)]
     pub fn prove(
         pedersen_params: &PedersenParams<C>,
-        // r comes from the transcript, and is a n-bit (N_BITS_CHALLENGE) element
-        r: C::ScalarField,
+        poseidon_config: PoseidonConfig<C::ScalarField>,
+        pp_digest: C::ScalarField,
         r1cs: &R1CS<C::ScalarField>,
         w1: &Witness<C>,
         ci1: &CommittedInstance<C>,
@@ -99,10 +102,25 @@ where
         let z1: Vec<C::ScalarField> = [vec![ci1.u], ci1.x.to_vec(), w1.W.to_vec()].concat();
         let z2: Vec<C::ScalarField> = [vec![ci2.u], ci2.x.to_vec(), w2.W.to_vec()].concat();
 
+        // initialize a new poseidon transcript
+        let mut tr = PoseidonTranscript::<C>::new(&poseidon_config);
+
+        // append the digest of pp to the transcript
+        tr.absorb(&pp_digest);
+
+        // append the instance to the transcript
+        ci1.absorb_in_tr(&mut tr);
+        ci2.absorb_in_tr(&mut tr);
+
         // compute cross terms
         let T = Self::compute_T(r1cs, ci1.u, ci2.u, &z1, &z2);
         let rT = C::ScalarField::one(); // use 1 as rT since we don't need hiding property for cm(T)
         let cmT = Pedersen::commit(pedersen_params, &T, &rT);
+
+        // append T commitment to the transcript and compute a challenge
+        tr.absorb_point(&cmT);
+        let r_bits = tr.get_challenge_nbits(NUM_CHALLENGE_BITS);
+        let r = C::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
 
         // fold witness
         let w3 = NIFS::<C>::fold_witness(r, w1, w2, &T, rT);
@@ -115,12 +133,27 @@ where
 
     // NIFS.V
     pub fn verify(
-        // r comes from the transcript, and is a n-bit (N_BITS_CHALLENGE) element
-        r: C::ScalarField,
+        poseidon_config: PoseidonConfig<C::ScalarField>,
+        pp_digest: C::ScalarField,
         ci1: &CommittedInstance<C>,
         ci2: &CommittedInstance<C>,
         cmT: &C,
     ) -> CommittedInstance<C> {
+        // initialize a new poseidon transcript
+        let mut tr = PoseidonTranscript::<C>::new(&poseidon_config);
+
+        // append the digest of pp to the transcript
+        tr.absorb(&pp_digest);
+
+        // append the instance to the transcript
+        ci1.absorb_in_tr(&mut tr);
+        ci2.absorb_in_tr(&mut tr);
+
+        // append T commitment to the transcript and compute a challenge
+        tr.absorb_point(cmT);
+        let r_bits = tr.get_challenge_nbits(NUM_CHALLENGE_BITS);
+        let r = C::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
+
         NIFS::<C>::fold_committed_instance(r, ci1, ci2, cmT)
     }
 
@@ -188,15 +221,34 @@ mod tests {
     use super::*;
     use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z};
     use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
+    use ark_ff::Field;
     use ark_ff::PrimeField;
     use ark_pallas::{Fr, Projective};
-    use ark_std::UniformRand;
 
-    pub fn check_relaxed_r1cs<F: PrimeField>(r1cs: &R1CS<F>, z: Vec<F>, u: F, E: &[F]) {
+    fn check_relaxed_r1cs<F: PrimeField>(r1cs: &R1CS<F>, z: Vec<F>, u: F, E: &[F]) {
         let Az = mat_vec_mul_sparse(&r1cs.A, &z);
         let Bz = mat_vec_mul_sparse(&r1cs.B, &z);
         let Cz = mat_vec_mul_sparse(&r1cs.C, &z);
         assert_eq!(hadamard(&Az, &Bz), vec_add(&vec_scalar_mul(&Cz, &u), E));
+    }
+
+    fn compute_challenge<C: CurveGroup>(
+        poseidon_config: PoseidonConfig<C::ScalarField>,
+        pp_digest: C::ScalarField,
+        ci1: &CommittedInstance<C>,
+        ci2: &CommittedInstance<C>,
+        cmT: &C,
+    ) -> C::ScalarField
+    where
+        <C as Group>::ScalarField: Absorb,
+    {
+        let mut tr = PoseidonTranscript::<C>::new(&poseidon_config);
+        tr.absorb(&pp_digest);
+        ci1.absorb_in_tr(&mut tr);
+        ci2.absorb_in_tr(&mut tr);
+        tr.absorb_point(cmT);
+        let r_bits = tr.get_challenge_nbits(NUM_CHALLENGE_BITS);
+        C::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap()
     }
 
     // fold 2 instances into one
@@ -214,19 +266,41 @@ mod tests {
         let mut rng = ark_std::test_rng();
         let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, r1cs.A.n_cols);
 
-        let r = Fr::rand(&mut rng); // folding challenge would come from the transcript
+        let poseidon_config = poseidon_test_config::<Fr>();
 
         // compute committed instances
         let ci1 = w1.commit(&pedersen_params, x1.clone());
         let ci2 = w2.commit(&pedersen_params, x2.clone());
 
         // NIFS.P
-        let (w3, _, T, cmT) =
-            NIFS::<Projective>::prove(&pedersen_params, r, &r1cs, &w1, &ci1, &w2, &ci2);
+        let (w3, _, T, cmT) = NIFS::<Projective>::prove(
+            &pedersen_params,
+            poseidon_config.clone(),
+            <Projective as Group>::ScalarField::ZERO,
+            &r1cs,
+            &w1,
+            &ci1,
+            &w2,
+            &ci2,
+        );
 
         // NIFS.V
-        let ci3 = NIFS::<Projective>::verify(r, &ci1, &ci2, &cmT);
+        let ci3 = NIFS::<Projective>::verify(
+            poseidon_config.clone(),
+            <Projective as Group>::ScalarField::ZERO,
+            &ci1,
+            &ci2,
+            &cmT,
+        );
 
+        // compute a challenge
+        let r = compute_challenge::<Projective>(
+            poseidon_config,
+            <Projective as Group>::ScalarField::ZERO,
+            &ci1,
+            &ci2,
+            &cmT,
+        );
         // naive check that the folded witness satisfies the relaxed r1cs
         let z3: Vec<Fr> = [vec![ci3.u], ci3.x.to_vec(), w3.W.to_vec()].concat();
         // check that z3 is as expected
@@ -308,12 +382,14 @@ mod tests {
                 &incomming_instance_w.E,
             );
 
-            let r = Fr::rand(&mut rng); // folding challenge would come from the transcript
+            let poseidon_config = poseidon_test_config::<Fr>();
+            let pp_digest = <Projective as Group>::ScalarField::ZERO;
 
             // NIFS.P
             let (folded_w, _, _, cmT) = NIFS::<Projective>::prove(
                 &pedersen_params,
-                r,
+                poseidon_config.clone(),
+                pp_digest,
                 &r1cs,
                 &running_instance_w,
                 &running_committed_instance,
@@ -323,7 +399,8 @@ mod tests {
 
             // NIFS.V
             let folded_committed_instance = NIFS::<Projective>::verify(
-                r,
+                poseidon_config,
+                pp_digest,
                 &running_committed_instance,
                 &incomming_committed_instance,
                 &cmT,

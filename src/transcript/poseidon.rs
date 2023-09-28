@@ -28,23 +28,29 @@ where
         let sponge = PoseidonSponge::<C::ScalarField>::new(poseidon_config);
         Self { sponge }
     }
+
     fn absorb(&mut self, v: &C::ScalarField) {
         self.sponge.absorb(&v);
     }
+
     fn absorb_vec(&mut self, v: &[C::ScalarField]) {
         self.sponge.absorb(&v);
     }
+
     fn absorb_point(&mut self, p: &C) {
         self.sponge.absorb(&prepare_point(p));
     }
+
     fn get_challenge(&mut self) -> C::ScalarField {
         let c = self.sponge.squeeze_field_elements(1);
         self.sponge.absorb(&c[0]);
         c[0]
     }
+
     fn get_challenge_nbits(&mut self, nbits: usize) -> Vec<bool> {
         self.sponge.squeeze_bits(nbits)
     }
+
     fn get_challenges(&mut self, n: usize) -> Vec<C::ScalarField> {
         let c = self.sponge.squeeze_field_elements(n);
         self.sponge.absorb(&c);
@@ -84,12 +90,15 @@ impl<F: PrimeField> PoseidonTranscriptVar<F> {
         let sponge = PoseidonSpongeVar::<F>::new(cs, poseidon_config);
         Self { sponge }
     }
+
     pub fn absorb(&mut self, v: FpVar<F>) -> Result<(), SynthesisError> {
         self.sponge.absorb(&v)
     }
+
     pub fn absorb_vec(&mut self, v: &[FpVar<F>]) -> Result<(), SynthesisError> {
         self.sponge.absorb(&v)
     }
+
     pub fn get_challenge(&mut self) -> Result<FpVar<F>, SynthesisError> {
         let c = self.sponge.squeeze_field_elements(1)?;
         self.sponge.absorb(&c[0])?;
@@ -101,6 +110,7 @@ impl<F: PrimeField> PoseidonTranscriptVar<F> {
     pub fn get_challenge_nbits(&mut self, nbits: usize) -> Result<Vec<Boolean<F>>, SynthesisError> {
         self.sponge.squeeze_bits(nbits)
     }
+
     pub fn get_challenges(&mut self, n: usize) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let c = self.sponge.squeeze_field_elements(n)?;
         self.sponge.absorb(&c)?;
@@ -148,7 +158,8 @@ pub mod tests {
     #[test]
     fn test_transcript_and_transcriptvar_get_challenge() {
         // use 'native' transcript
-        let config = poseidon_test_config::<Fr>();
+        let config: PoseidonConfig<ark_ff::Fp<ark_ff::MontBackend<ark_pallas::FrConfig, 4>, 4>> =
+            poseidon_test_config::<Fr>();
         let mut tr = PoseidonTranscript::<Projective>::new(&config);
         tr.absorb(&Fr::from(42_u32));
         let c = tr.get_challenge();

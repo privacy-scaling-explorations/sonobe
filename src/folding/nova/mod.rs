@@ -5,6 +5,7 @@ use ark_std::fmt::Debug;
 use ark_std::{One, Zero};
 
 use crate::pedersen::{Params as PedersenParams, Pedersen};
+use crate::transcript::Transcript;
 
 pub mod circuits;
 pub mod nifs;
@@ -24,6 +25,13 @@ impl<C: CurveGroup> CommittedInstance<C> {
             u: C::ScalarField::one(),
             cmW: C::zero(),
             x: Vec::new(),
+        }
+    }
+
+    pub(crate) fn absorb_in_tr(&self, tr: &mut impl Transcript<C>) {
+        tr.absorb_point(&self.cmW);
+        for c in &self.x {
+            tr.absorb(&c)
         }
     }
 }
@@ -48,6 +56,7 @@ where
             rW: C::ScalarField::one(),
         }
     }
+
     pub fn commit(
         &self,
         params: &PedersenParams<C>,

@@ -158,6 +158,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ark_ec::Group;
     use ark_ff::{BigInteger, PrimeField};
     use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
     use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
@@ -165,6 +166,7 @@ mod tests {
     use ark_std::UniformRand;
 
     use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z};
+    use crate::constants::NUM_CHALLENGE_BITS;
     use crate::folding::nova::{nifs::NIFS, Witness};
     use crate::pedersen::Pedersen;
     use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
@@ -215,14 +217,28 @@ mod tests {
         let ci1 = w1.commit(&pedersen_params, x1.clone());
         let ci2 = w2.commit(&pedersen_params, x2.clone());
 
-        // get challenge from transcript
         let config = poseidon_test_config::<Fr>();
-        let mut tr = PoseidonTranscript::<Projective>::new(&config);
-        let r_bits = tr.get_challenge_nbits(128);
-        let r_Fr = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
+        let pp_digest = <Projective as Group>::ScalarField::ZERO;
 
-        let (_w3, ci3, _T, cmT) =
-            NIFS::<Projective>::prove(&pedersen_params, r_Fr, &r1cs, &w1, &ci1, &w2, &ci2);
+        let (_w3, ci3, _T, cmT) = NIFS::<Projective>::prove(
+            &pedersen_params,
+            config.clone(),
+            pp_digest,
+            &r1cs,
+            &w1,
+            &ci1,
+            &w2,
+            &ci2,
+        );
+
+        // get challenge from transcript
+        let mut tr = PoseidonTranscript::<Projective>::new(&config);
+        tr.absorb(&pp_digest);
+        ci1.absorb_in_tr(&mut tr);
+        ci2.absorb_in_tr(&mut tr);
+        tr.absorb_point(&cmT);
+        let r_bits = tr.get_challenge_nbits(NUM_CHALLENGE_BITS);
+        let r_Fr = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 

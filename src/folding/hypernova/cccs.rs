@@ -109,7 +109,9 @@ impl<C: CurveGroup> CCCS<C> {
     ) -> Result<(), Error> {
         // check that C is the commitment of w. Notice that this is not verifying a Pedersen
         // opening, but checking that the Commmitment comes from committing to the witness.
-        assert_eq!(self.C, Pedersen::commit(pedersen_params, &w.w, &w.r_w));
+        if self.C != Pedersen::commit(pedersen_params, &w.w, &w.r_w) {
+            return Err(Error::NotSatisfied);
+        }
 
         // check CCCS relation
         let z: Vec<C::ScalarField> =

@@ -94,12 +94,16 @@ impl<C: CurveGroup> LCCCS<C> {
     ) -> Result<(), Error> {
         // check that C is the commitment of w. Notice that this is not verifying a Pedersen
         // opening, but checking that the Commmitment comes from committing to the witness.
-        assert_eq!(self.C, Pedersen::commit(pedersen_params, &w.w, &w.r_w));
+        if self.C != Pedersen::commit(pedersen_params, &w.w, &w.r_w) {
+            return Err(Error::NotSatisfied);
+        }
 
         // check CCS relation
         let z: Vec<C::ScalarField> = [vec![self.u], self.x.clone(), w.w.to_vec()].concat();
         let computed_v = compute_all_sum_Mz_evals(&ccs.M, &z, &self.r_x, ccs.s_prime);
-        assert_eq!(computed_v, self.v);
+        if computed_v != self.v {
+            return Err(Error::NotSatisfied);
+        }
         Ok(())
     }
 }

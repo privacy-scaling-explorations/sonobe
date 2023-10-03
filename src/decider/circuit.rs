@@ -10,6 +10,7 @@ use core::{borrow::Borrow, marker::PhantomData};
 
 use crate::ccs::r1cs::RelaxedR1CS;
 use crate::utils::vec::SparseMatrix;
+use crate::Error;
 
 pub type ConstraintF<C> = <<C as CurveGroup>::BaseField as Field>::BasePrimeField;
 
@@ -19,13 +20,13 @@ pub struct RelaxedR1CSGadget<F: PrimeField> {
 }
 impl<F: PrimeField> RelaxedR1CSGadget<F> {
     /// performs the RelaxedR1CS check (Az∘Bz==uCz+E)
-    pub fn check(rel_r1cs: RelaxedR1CSVar<F>, z: Vec<FpVar<F>>) -> Result<(), SynthesisError> {
+    pub fn check(rel_r1cs: RelaxedR1CSVar<F>, z: Vec<FpVar<F>>) -> Result<(), Error> {
         let Az = mat_vec_mul_sparse(rel_r1cs.A, z.clone());
         let Bz = mat_vec_mul_sparse(rel_r1cs.B, z.clone());
         let Cz = mat_vec_mul_sparse(rel_r1cs.C, z.clone());
         let uCz = vec_scalar_mul(&Cz, &rel_r1cs.u);
-        let uCzE = vec_add(&uCz, &rel_r1cs.E);
-        let AzBz = hadamard(&Az, &Bz);
+        let uCzE = vec_add(&uCz, &rel_r1cs.E)?;
+        let AzBz = hadamard(&Az, &Bz)?;
         for i in 0..AzBz.len() {
             AzBz[i].enforce_equal(&uCzE[i].clone())?;
         }
@@ -42,13 +43,18 @@ fn mat_vec_mul_sparse<F: PrimeField>(m: SparseMatrixVar<F>, v: Vec<FpVar<F>>) ->
     }
     res
 }
-pub fn vec_add<F: PrimeField>(a: &Vec<FpVar<F>>, b: &Vec<FpVar<F>>) -> Vec<FpVar<F>> {
-    assert_eq!(a.len(), b.len());
+pub fn vec_add<F: PrimeField>(
+    a: &Vec<FpVar<F>>,
+    b: &Vec<FpVar<F>>,
+) -> Result<Vec<FpVar<F>>, Error> {
+    if a.len() != b.len() {
+        return Err(Error::NotSameLength);
+    }
     let mut r: Vec<FpVar<F>> = vec![FpVar::<F>::zero(); a.len()];
     for i in 0..a.len() {
         r[i] = a[i].clone() + b[i].clone();
     }
-    r
+    Ok(r)
 }
 pub fn vec_scalar_mul<F: PrimeField>(vec: &Vec<FpVar<F>>, c: &FpVar<F>) -> Vec<FpVar<F>> {
     let mut result = vec![FpVar::<F>::zero(); vec.len()];
@@ -57,13 +63,18 @@ pub fn vec_scalar_mul<F: PrimeField>(vec: &Vec<FpVar<F>>, c: &FpVar<F>) -> Vec<F
     }
     result
 }
-pub fn hadamard<F: PrimeField>(a: &Vec<FpVar<F>>, b: &Vec<FpVar<F>>) -> Vec<FpVar<F>> {
-    assert_eq!(a.len(), b.len());
+pub fn hadamard<F: PrimeField>(
+    a: &Vec<FpVar<F>>,
+    b: &Vec<FpVar<F>>,
+) -> Result<Vec<FpVar<F>>, Error> {
+    if a.len() != b.len() {
+        return Err(Error::NotSameLength);
+    }
     let mut r: Vec<FpVar<F>> = vec![FpVar::<F>::zero(); a.len()];
     for i in 0..a.len() {
         r[i] = a[i].clone() * b[i].clone();
     }
-    r
+    Ok(r)
 }
 
 #[derive(Debug, Clone)]

@@ -13,6 +13,7 @@ use crate::utils::hypercube::BooleanHypercube;
 use crate::utils::sum_check::structs::IOPProof as SumCheckProof;
 use crate::utils::sum_check::{verifier::interpolate_uni_poly, SumCheck};
 use crate::utils::virtual_polynomial::VPAuxInfo;
+use crate::Error;
 
 use std::marker::PhantomData;
 
@@ -139,8 +140,9 @@ impl<C: CurveGroup> NIMFS<C> {
 
     /// Performs the multifolding prover. Given μ LCCCS instances and ν CCS instances, fold them
     /// into a single LCCCS instance. Since this is the prover, also fold their witness.
-    /// Returns the final folded LCCCS, the folded witness, the sumcheck proof, and the helper
-    /// sumcheck claim sigmas and thetas.
+    /// Returns the final folded LCCCS, the folded witness, and the multifolding proof, which
+    /// contains the sumcheck proof and the helper sumcheck claim sigmas and thetas.
+    #[allow(clippy::type_complexity)]
     pub fn prove(
         transcript: &mut IOPTranscript<C::ScalarField>,
         ccs: &CCS<C>,
@@ -148,11 +150,15 @@ impl<C: CurveGroup> NIMFS<C> {
         new_instances: &[CCCS<C>],
         w_lcccs: &[Witness<C::ScalarField>],
         w_cccs: &[Witness<C::ScalarField>],
-    ) -> (Proof<C>, LCCCS<C>, Witness<C::ScalarField>) {
+    ) -> Result<(Proof<C>, LCCCS<C>, Witness<C::ScalarField>), Error> {
         // TODO appends to transcript
 
-        assert!(!running_instances.is_empty());
-        assert!(!new_instances.is_empty());
+        if running_instances.is_empty() {
+            return Err(Error::Empty);
+        }
+        if new_instances.is_empty() {
+            return Err(Error::Empty);
+        }
 
         // construct the LCCCS z vector from the relaxation factor, public IO and witness
         // XXX this deserves its own function in LCCCS
@@ -205,7 +211,9 @@ impl<C: CurveGroup> NIMFS<C> {
         // note: this is the sum of g(x) over the whole boolean hypercube
         let extracted_sum =
             <PolyIOP<C::ScalarField> as SumCheck<C::ScalarField>>::extract_sum(&sumcheck_proof);
-        assert_eq!(extracted_sum, g_over_bhc);
+        if extracted_sum != g_over_bhc {
+            return Err(Error::NotEqual);
+        }
         // Sanity check 2: expect \sum v_j * gamma^j to be equal to the sum of g(x) over the
         // boolean hypercube (and also equal to the extracted_sum from the SumCheck).
         let mut sum_v_j_gamma = C::ScalarField::zero();
@@ -215,8 +223,12 @@ impl<C: CurveGroup> NIMFS<C> {
                 sum_v_j_gamma += running_instance.v[j] * gamma_j;
             }
         }
-        assert_eq!(g_over_bhc, sum_v_j_gamma);
-        assert_eq!(extracted_sum, sum_v_j_gamma);
+        if g_over_bhc != sum_v_j_gamma {
+            return Err(Error::NotEqual);
+        }
+        if extracted_sum != sum_v_j_gamma {
+            return Err(Error::NotEqual);
+        }
         //////////////////////////////////////////////////////////////////////
 
         // Step 2: dig into the sumcheck and extract r_x_prime
@@ -240,14 +252,14 @@ impl<C: CurveGroup> NIMFS<C> {
         // Step 8: Fold the witnesses
         let folded_witness = Self::fold_witness(w_lcccs, w_cccs, rho);
 
-        (
+        Ok((
             Proof::<C> {
                 sc_proof: sumcheck_proof,
                 sigmas_thetas,
             },
             folded_lcccs,
             folded_witness,
-        )
+        ))
     }
 
     /// Performs the multifolding verifier. Given μ LCCCS instances and ν CCS instances, fold them
@@ -259,11 +271,15 @@ impl<C: CurveGroup> NIMFS<C> {
         running_instances: &[LCCCS<C>],
         new_instances: &[CCCS<C>],
         proof: Proof<C>,
-    ) -> LCCCS<C> {
+    ) -> Result<LCCCS<C>, Error> {
         // TODO appends to transcript
 
-        assert!(!running_instances.is_empty());
-        assert!(!new_instances.is_empty());
+        if running_instances.is_empty() {
+            return Err(Error::Empty);
+        }
+        if new_instances.is_empty() {
+            return Err(Error::Empty);
+        }
 
         // Step 1: Get some challenges
         let gamma: C::ScalarField = transcript.get_and_append_challenge(b"gamma").unwrap();
@@ -312,7 +328,9 @@ impl<C: CurveGroup> NIMFS<C> {
             &r_x_prime,
         );
         // check that the g(r_x') from the sumcheck proof is equal to the computed c from sigmas&thetas
-        assert_eq!(c, sumcheck_subclaim.expected_evaluation);
+        if c != sumcheck_subclaim.expected_evaluation {
+            return Err(Error::NotEqual);
+        }
 
         // Sanity check: we can also compute g(r_x') from the proof last evaluation value, and
         // should be equal to the previously obtained values.
@@ -321,23 +339,24 @@ impl<C: CurveGroup> NIMFS<C> {
             *r_x_prime.last().unwrap(),
         )
         .unwrap();
-        assert_eq!(g_on_rxprime_from_sumcheck_last_eval, c);
-        assert_eq!(
-            g_on_rxprime_from_sumcheck_last_eval,
-            sumcheck_subclaim.expected_evaluation
-        );
+        if g_on_rxprime_from_sumcheck_last_eval != c {
+            return Err(Error::NotEqual);
+        }
+        if g_on_rxprime_from_sumcheck_last_eval != sumcheck_subclaim.expected_evaluation {
+            return Err(Error::NotEqual);
+        }
 
         // Step 6: Get the folding challenge
         let rho: C::ScalarField = transcript.get_and_append_challenge(b"rho").unwrap();
 
         // Step 7: Compute the folded instance
-        Self::fold(
+        Ok(Self::fold(
             running_instances,
             new_instances,
             &proof.sigmas_thetas,
             r_x_prime,
             rho,
-        )
+        ))
     }
 }
 
@@ -417,7 +436,8 @@ pub mod tests {
             &[new_instance.clone()],
             &[w1],
             &[w2],
-        );
+        )
+        .unwrap();
 
         // Verifier's transcript
         let mut transcript_v = IOPTranscript::<Fr>::new(b"multifolding");
@@ -430,7 +450,8 @@ pub mod tests {
             &[running_instance.clone()],
             &[new_instance.clone()],
             proof,
-        );
+        )
+        .unwrap();
         assert_eq!(folded_lcccs, folded_lcccs_v);
 
         // Check that the folded LCCCS instance is a valid instance with respect to the folded witness
@@ -475,7 +496,8 @@ pub mod tests {
                 &[new_instance.clone()],
                 &[w1],
                 &[w2],
-            );
+            )
+            .unwrap();
 
             // run the verifier side of the multifolding
             let folded_lcccs_v = NIMFS::<Projective>::verify(
@@ -484,7 +506,8 @@ pub mod tests {
                 &[running_instance.clone()],
                 &[new_instance.clone()],
                 proof,
-            );
+            )
+            .unwrap();
 
             assert_eq!(folded_lcccs, folded_lcccs_v);
 
@@ -552,7 +575,8 @@ pub mod tests {
             &cccs_instances,
             &w_lcccs,
             &w_cccs,
-        );
+        )
+        .unwrap();
 
         // Verifier's transcript
         let mut transcript_v = IOPTranscript::<Fr>::new(b"multifolding");
@@ -565,7 +589,8 @@ pub mod tests {
             &lcccs_instances,
             &cccs_instances,
             proof,
-        );
+        )
+        .unwrap();
         assert_eq!(folded_lcccs, folded_lcccs_v);
 
         // Check that the folded LCCCS instance is a valid instance with respect to the folded witness
@@ -636,7 +661,8 @@ pub mod tests {
                 &cccs_instances,
                 &w_lcccs,
                 &w_cccs,
-            );
+            )
+            .unwrap();
 
             // Run the verifier side of the multifolding
             let folded_lcccs_v = NIMFS::<Projective>::verify(
@@ -645,7 +671,8 @@ pub mod tests {
                 &lcccs_instances,
                 &cccs_instances,
                 proof,
-            );
+            )
+            .unwrap();
             assert_eq!(folded_lcccs, folded_lcccs_v);
 
             // Check that the folded LCCCS instance is a valid instance with respect to the folded witness

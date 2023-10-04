@@ -3,6 +3,8 @@ pub use ark_relations::r1cs::Matrix as R1CSMatrix;
 use ark_std::cfg_iter;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
+use crate::Error;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SparseMatrix<F: PrimeField> {
     pub n_rows: usize,
@@ -42,22 +44,26 @@ pub fn dense_matrix_to_sparse<F: PrimeField>(m: Vec<Vec<F>>) -> SparseMatrix<F> 
     r
 }
 
-pub fn vec_add<F: PrimeField>(a: &[F], b: &[F]) -> Vec<F> {
-    assert_eq!(a.len(), b.len());
+pub fn vec_add<F: PrimeField>(a: &[F], b: &[F]) -> Result<Vec<F>, Error> {
+    if a.len() != b.len() {
+        return Err(Error::NotSameLength);
+    }
     let mut r: Vec<F> = vec![F::zero(); a.len()];
     for i in 0..a.len() {
         r[i] = a[i] + b[i];
     }
-    r
+    Ok(r)
 }
 
-pub fn vec_sub<F: PrimeField>(a: &[F], b: &[F]) -> Vec<F> {
-    assert_eq!(a.len(), b.len());
+pub fn vec_sub<F: PrimeField>(a: &[F], b: &[F]) -> Result<Vec<F>, Error> {
+    if a.len() != b.len() {
+        return Err(Error::NotSameLength);
+    }
     let mut r: Vec<F> = vec![F::zero(); a.len()];
     for i in 0..a.len() {
         r[i] = a[i] - b[i];
     }
-    r
+    Ok(r)
 }
 
 pub fn vec_scalar_mul<F: PrimeField>(vec: &[F], c: &F) -> Vec<F> {
@@ -77,9 +83,13 @@ pub fn is_zero_vec<F: PrimeField>(vec: &[F]) -> bool {
     true
 }
 
-pub fn mat_vec_mul<F: PrimeField>(M: &Vec<Vec<F>>, z: &[F]) -> Vec<F> {
-    assert!(!M.is_empty());
-    assert_eq!(M[0].len(), z.len());
+pub fn mat_vec_mul<F: PrimeField>(M: &Vec<Vec<F>>, z: &[F]) -> Result<Vec<F>, Error> {
+    if M.is_empty() {
+        return Err(Error::Empty);
+    }
+    if M[0].len() != z.len() {
+        return Err(Error::NotSameLength);
+    }
 
     let mut r: Vec<F> = vec![F::zero(); M.len()];
     for (i, M_i) in M.iter().enumerate() {
@@ -87,7 +97,7 @@ pub fn mat_vec_mul<F: PrimeField>(M: &Vec<Vec<F>>, z: &[F]) -> Vec<F> {
             r[i] += *M_ij * z[j];
         }
     }
-    r
+    Ok(r)
 }
 
 pub fn mat_vec_mul_sparse<F: PrimeField>(matrix: &SparseMatrix<F>, vector: &[F]) -> Vec<F> {
@@ -101,9 +111,11 @@ pub fn mat_vec_mul_sparse<F: PrimeField>(matrix: &SparseMatrix<F>, vector: &[F])
     res
 }
 
-pub fn hadamard<F: PrimeField>(a: &[F], b: &[F]) -> Vec<F> {
-    assert_eq!(a.len(), b.len());
-    cfg_iter!(a).zip(b).map(|(a, b)| *a * b).collect()
+pub fn hadamard<F: PrimeField>(a: &[F], b: &[F]) -> Result<Vec<F>, Error> {
+    if a.len() != b.len() {
+        return Err(Error::NotSameLength);
+    }
+    Ok(cfg_iter!(a).zip(b).map(|(a, b)| *a * b).collect())
 }
 
 #[cfg(test)]
@@ -155,7 +167,7 @@ pub mod tests {
         ])
         .to_dense();
         let z = to_F_vec(vec![1, 3, 35, 9, 27, 30]);
-        assert_eq!(mat_vec_mul(&A, &z), to_F_vec(vec![3, 9, 30, 35]));
+        assert_eq!(mat_vec_mul(&A, &z).unwrap(), to_F_vec(vec![3, 9, 30, 35]));
         assert_eq!(
             mat_vec_mul_sparse(&dense_matrix_to_sparse(A), &z),
             to_F_vec(vec![3, 9, 30, 35])
@@ -165,7 +177,7 @@ pub mod tests {
         let v = to_F_vec(vec![19, 55, 50, 3]);
 
         assert_eq!(
-            mat_vec_mul(&A.to_dense(), &v),
+            mat_vec_mul(&A.to_dense(), &v).unwrap(),
             to_F_vec(vec![418, 1158, 979])
         );
         assert_eq!(mat_vec_mul_sparse(&A, &v), to_F_vec(vec![418, 1158, 979]));
@@ -175,12 +187,18 @@ pub mod tests {
     fn test_hadamard_product() {
         let a = to_F_vec::<Fr>(vec![1, 2, 3, 4, 5, 6]);
         let b = to_F_vec(vec![7, 8, 9, 10, 11, 12]);
-        assert_eq!(hadamard(&a, &b), to_F_vec(vec![7, 16, 27, 40, 55, 72]));
+        assert_eq!(
+            hadamard(&a, &b).unwrap(),
+            to_F_vec(vec![7, 16, 27, 40, 55, 72])
+        );
     }
     #[test]
     fn test_vec_add() {
         let a: Vec<Fr> = to_F_vec::<Fr>(vec![1, 2, 3, 4, 5, 6]);
         let b: Vec<Fr> = to_F_vec(vec![7, 8, 9, 10, 11, 12]);
-        assert_eq!(vec_add(&a, &b), to_F_vec(vec![8, 10, 12, 14, 16, 18]));
+        assert_eq!(
+            vec_add(&a, &b).unwrap(),
+            to_F_vec(vec![8, 10, 12, 14, 16, 18])
+        );
     }
 }

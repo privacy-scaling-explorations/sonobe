@@ -222,7 +222,7 @@ mod tests {
         let r_Fr = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
 
         let (_w3, ci3, _T, cmT) =
-            NIFS::<Projective>::prove(&pedersen_params, r_Fr, &r1cs, &w1, &ci1, &w2, &ci2);
+            NIFS::<Projective>::prove(&pedersen_params, r_Fr, &r1cs, &w1, &ci1, &w2, &ci2).unwrap();
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 

@@ -8,6 +8,7 @@ use crate::folding::nova::{CommittedInstance, Witness};
 use crate::pedersen::{Params as PedersenParams, Pedersen, Proof as PedersenProof};
 use crate::transcript::Transcript;
 use crate::utils::vec::*;
+use crate::Error;
 
 /// Implements the Non-Interactive Folding Scheme described in section 4 of
 /// https://eprint.iacr.org/2021/370.pdf
@@ -26,7 +27,7 @@ where
         u2: C::ScalarField,
         z1: &[C::ScalarField],
         z2: &[C::ScalarField],
-    ) -> Vec<C::ScalarField> {
+    ) -> Result<Vec<C::ScalarField>, Error> {
         let (A, B, C) = (r1cs.A.clone(), r1cs.B.clone(), r1cs.C.clone());
 
         // this is parallelizable (for the future)
@@ -37,12 +38,12 @@ where
         let Bz2 = mat_vec_mul_sparse(&B, z2);
         let Cz2 = mat_vec_mul_sparse(&C, z2);
 
-        let Az1_Bz2 = hadamard(&Az1, &Bz2);
-        let Az2_Bz1 = hadamard(&Az2, &Bz1);
+        let Az1_Bz2 = hadamard(&Az1, &Bz2)?;
+        let Az2_Bz1 = hadamard(&Az2, &Bz1)?;
         let u1Cz2 = vec_scalar_mul(&Cz2, &u1);
         let u2Cz1 = vec_scalar_mul(&Cz1, &u2);
 
-        vec_sub(&vec_sub(&vec_add(&Az1_Bz2, &Az2_Bz1), &u1Cz2), &u2Cz1)
+        vec_sub(&vec_sub(&vec_add(&Az1_Bz2, &Az2_Bz1)?, &u1Cz2)?, &u2Cz1)
     }
 
     pub fn fold_witness(
@@ -51,17 +52,17 @@ where
         w2: &Witness<C>,
         T: &[C::ScalarField],
         rT: C::ScalarField,
-    ) -> Witness<C> {
+    ) -> Result<Witness<C>, Error> {
         let r2 = r * r;
         let E: Vec<C::ScalarField> = vec_add(
-            &vec_add(&w1.E, &vec_scalar_mul(T, &r)),
+            &vec_add(&w1.E, &vec_scalar_mul(T, &r))?,
             &vec_scalar_mul(&w2.E, &r2),
-        );
+        )?;
         let rE = w1.rE + r * rT + r2 * w2.rE;
         let W: Vec<C::ScalarField> = w1.W.iter().zip(&w2.W).map(|(a, b)| *a + (r * b)).collect();
 
         let rW = w1.rW + r * w2.rW;
-        Witness::<C> { E, rE, W, rW }
+        Ok(Witness::<C> { E, rE, W, rW })
     }
 
     pub fn fold_committed_instance(
@@ -95,22 +96,22 @@ where
         ci1: &CommittedInstance<C>,
         w2: &Witness<C>,
         ci2: &CommittedInstance<C>,
-    ) -> (Witness<C>, CommittedInstance<C>, Vec<C::ScalarField>, C) {
+    ) -> Result<(Witness<C>, CommittedInstance<C>, Vec<C::ScalarField>, C), Error> {
         let z1: Vec<C::ScalarField> = [vec![ci1.u], ci1.x.to_vec(), w1.W.to_vec()].concat();
         let z2: Vec<C::ScalarField> = [vec![ci2.u], ci2.x.to_vec(), w2.W.to_vec()].concat();
 
         // compute cross terms
-        let T = Self::compute_T(r1cs, ci1.u, ci2.u, &z1, &z2);
+        let T = Self::compute_T(r1cs, ci1.u, ci2.u, &z1, &z2)?;
         let rT = C::ScalarField::one(); // use 1 as rT since we don't need hiding property for cm(T)
         let cmT = Pedersen::commit(pedersen_params, &T, &rT);
 
         // fold witness
-        let w3 = NIFS::<C>::fold_witness(r, w1, w2, &T, rT);
+        let w3 = NIFS::<C>::fold_witness(r, w1, w2, &T, rT)?;
 
         // fold committed instancs
         let ci3 = NIFS::<C>::fold_committed_instance(r, ci1, ci2, &cmT);
 
-        (w3, ci3, T, cmT)
+        Ok((w3, ci3, T, cmT))
     }
 
     // NIFS.V
@@ -124,28 +125,30 @@ where
         NIFS::<C>::fold_committed_instance(r, ci1, ci2, cmT)
     }
 
-    // verify commited folded instance (ci) relations
+    /// Verify commited folded instance (ci) relations. Notice that this method does not open the
+    /// commitments, but just checks that the given committed instances (ci1, ci2) when folded
+    /// result in the folded committed instance (ci3) values.
     pub fn verify_folded_instance(
         r: C::ScalarField,
         ci1: &CommittedInstance<C>,
         ci2: &CommittedInstance<C>,
         ci3: &CommittedInstance<C>,
         cmT: &C,
-    ) -> bool {
+    ) -> Result<(), Error> {
         let r2 = r * r;
         if ci3.cmE != (ci1.cmE + cmT.mul(r) + ci2.cmE.mul(r2)) {
-            return false;
+            return Err(Error::NotSatisfied);
         }
         if ci3.u != ci1.u + r * ci2.u {
-            return false;
+            return Err(Error::NotSatisfied);
         }
         if ci3.cmW != (ci1.cmW + ci2.cmW.mul(r)) {
-            return false;
+            return Err(Error::NotSatisfied);
         }
-        if ci3.x != vec_add(&ci1.x, &vec_scalar_mul(&ci2.x, &r)) {
-            return false;
+        if ci3.x != vec_add(&ci1.x, &vec_scalar_mul(&ci2.x, &r))? {
+            return Err(Error::NotSatisfied);
         }
-        true
+        Ok(())
     }
 
     pub fn open_commitments(
@@ -155,31 +158,33 @@ where
         ci: &CommittedInstance<C>,
         T: Vec<C::ScalarField>,
         cmT: &C,
-    ) -> (PedersenProof<C>, PedersenProof<C>, PedersenProof<C>) {
-        let cmE_proof = Pedersen::prove(pedersen_params, tr, &ci.cmE, &w.E, &w.rE);
-        let cmW_proof = Pedersen::prove(pedersen_params, tr, &ci.cmW, &w.W, &w.rW);
-        let cmT_proof = Pedersen::prove(pedersen_params, tr, cmT, &T, &C::ScalarField::one()); // cm(T) is committed with rT=1
-        (cmE_proof, cmW_proof, cmT_proof)
+    ) -> Result<[PedersenProof<C>; 3], Error> {
+        let cmE_proof = Pedersen::prove(pedersen_params, tr, &ci.cmE, &w.E, &w.rE)?;
+        let cmW_proof = Pedersen::prove(pedersen_params, tr, &ci.cmW, &w.W, &w.rW)?;
+        let cmT_proof = Pedersen::prove(pedersen_params, tr, cmT, &T, &C::ScalarField::one())?; // cm(T) is committed with rT=1
+        Ok([cmE_proof, cmW_proof, cmT_proof])
     }
     pub fn verify_commitments(
         tr: &mut impl Transcript<C>,
         pedersen_params: &PedersenParams<C>,
         ci: CommittedInstance<C>,
         cmT: C,
-        cmE_proof: PedersenProof<C>,
-        cmW_proof: PedersenProof<C>,
-        cmT_proof: PedersenProof<C>,
-    ) -> bool {
-        if !Pedersen::verify(pedersen_params, tr, ci.cmE, cmE_proof) {
-            return false;
+        cm_proofs: [PedersenProof<C>; 3],
+    ) -> Result<(), Error> {
+        if cm_proofs.len() != 3 {
+            // cm_proofs should have length 3: [cmE_proof, cmW_proof, cmT_proof]
+            return Err(Error::NotExpectedLength);
         }
-        if !Pedersen::verify(pedersen_params, tr, ci.cmW, cmW_proof) {
-            return false;
+        if !Pedersen::verify(pedersen_params, tr, ci.cmE, cm_proofs[0].clone()) {
+            return Err(Error::CommitmentVerificationFail);
         }
-        if !Pedersen::verify(pedersen_params, tr, cmT, cmT_proof) {
-            return false;
+        if !Pedersen::verify(pedersen_params, tr, ci.cmW, cm_proofs[1].clone()) {
+            return Err(Error::CommitmentVerificationFail);
         }
-        true
+        if !Pedersen::verify(pedersen_params, tr, cmT, cm_proofs[2].clone()) {
+            return Err(Error::CommitmentVerificationFail);
+        }
+        Ok(())
     }
 }
 
@@ -222,7 +227,7 @@ mod tests {
 
         // NIFS.P
         let (w3, _, T, cmT) =
-            NIFS::<Projective>::prove(&pedersen_params, r, &r1cs, &w1, &ci1, &w2, &ci2);
+            NIFS::<Projective>::prove(&pedersen_params, r, &r1cs, &w1, &ci1, &w2, &ci2).unwrap();
 
         // NIFS.V
         let ci3 = NIFS::<Projective>::verify(r, &ci1, &ci2, &cmT);
@@ -230,7 +235,7 @@ mod tests {
         // naive check that the folded witness satisfies the relaxed r1cs
         let z3: Vec<Fr> = [vec![ci3.u], ci3.x.to_vec(), w3.W.to_vec()].concat();
         // check that z3 is as expected
-        let z3_aux = vec_add(&z1, &vec_scalar_mul(&z2, &r));
+        let z3_aux = vec_add(&z1, &vec_scalar_mul(&z2, &r)).unwrap();
         assert_eq!(z3, z3_aux);
         // check that relations hold for the 2 inputted instances and the folded one
         check_relaxed_r1cs(&r1cs, z1, ci1.u, &w1.E);
@@ -244,9 +249,7 @@ mod tests {
         assert_eq!(ci3_expected.cmW, ci3.cmW);
 
         // NIFS.Verify_Folded_Instance:
-        assert!(NIFS::<Projective>::verify_folded_instance(
-            r, &ci1, &ci2, &ci3, &cmT
-        ));
+        NIFS::<Projective>::verify_folded_instance(r, &ci1, &ci2, &ci3, &cmT).unwrap();
 
         let poseidon_config = poseidon_test_config::<Fr>();
         // init Prover's transcript
@@ -255,24 +258,23 @@ mod tests {
         let mut transcript_v = PoseidonTranscript::<Projective>::new(&poseidon_config);
 
         // check openings of ci3.cmE, ci3.cmW and cmT
-        let (cmE_proof, cmW_proof, cmT_proof) = NIFS::<Projective>::open_commitments(
+        let cm_proofs = NIFS::<Projective>::open_commitments(
             &mut transcript_p,
             &pedersen_params,
             &w3,
             &ci3,
             T,
             &cmT,
-        );
-        let v = NIFS::<Projective>::verify_commitments(
+        )
+        .unwrap();
+        NIFS::<Projective>::verify_commitments(
             &mut transcript_v,
             &pedersen_params,
             ci3,
             cmT,
-            cmE_proof,
-            cmW_proof,
-            cmT_proof,
-        );
-        assert!(v);
+            cm_proofs,
+        )
+        .unwrap();
     }
 
     #[test]
@@ -319,7 +321,8 @@ mod tests {
                 &running_committed_instance,
                 &incomming_instance_w,
                 &incomming_committed_instance,
-            );
+            )
+            .unwrap();
 
             // NIFS.V
             let folded_committed_instance = NIFS::<Projective>::verify(

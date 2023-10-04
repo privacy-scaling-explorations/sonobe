@@ -22,8 +22,10 @@ impl<F: PrimeField> R1CS<F> {
         let Az = mat_vec_mul_sparse(&self.A, z);
         let Bz = mat_vec_mul_sparse(&self.B, z);
         let Cz = mat_vec_mul_sparse(&self.C, z);
-        let AzBz = hadamard(&Az, &Bz);
-        assert_eq!(AzBz, Cz);
+        let AzBz = hadamard(&Az, &Bz)?;
+        if AzBz != Cz {
+            return Err(Error::NotSatisfied);
+        }
 
         Ok(())
     }
@@ -60,7 +62,9 @@ impl<F: PrimeField> RelaxedR1CS<F> {
         let uCz = vec_scalar_mul(&Cz, &self.u);
         let uCzE = vec_add(&uCz, &self.E);
         let AzBz = hadamard(&Az, &Bz);
-        assert_eq!(AzBz, uCzE);
+        if AzBz != uCzE {
+            return Err(Error::NotSatisfied);
+        }
 
         Ok(())
     }

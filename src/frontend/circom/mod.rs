@@ -1,4 +1,4 @@
-use std::{error::Error, fs::File, io::BufReader, path::PathBuf};
+use std::{error::Error, fs::File, io::BufReader, path::Path};
 
 use color_eyre::Result;
 use num_bigint::BigInt;
@@ -14,6 +14,8 @@ use crate::utils::vec::SparseMatrix;
 pub type Constraints<F> = (ConstraintVec<F>, ConstraintVec<F>, ConstraintVec<F>);
 pub type ConstraintVec<F> = Vec<(usize, F)>;
 
+type ExtractedConstraintsResult<F> = Result<(Vec<Constraints<F>>, usize), Box<dyn Error>>;
+
 // Convert the generic type of constraints from Pairing's ScalarField to PrimeField.
 pub fn convert_constraints_bigint_to_scalar<E, F>(
     constraints: Constraints<E::ScalarField>,
@@ -24,13 +26,13 @@ where
 {
     let convert_vec = |vec: ConstraintVec<E::ScalarField>| -> ConstraintVec<F> {
         vec.into_iter()
-            .filter_map(|(index, element)| {
+            .map(|(index, element)| {
                 // Convert element into BigInt, then to BigUint, then to the destination PrimeField
                 let bigint_e: <<E as Pairing>::ScalarField as PrimeField>::BigInt =
                     element.into_bigint();
                 let generic_biguint: num_bigint::BigUint = bigint_e.into();
                 let f_element: F = F::from(generic_biguint);
-                Some((index, f_element))
+                (index, f_element)
             })
             .collect()
     };
@@ -45,8 +47,8 @@ where
 // Extract constraints on Pairing's ScalarField from an .r1cs file
 // and convert them into constraints on PrimeField
 pub fn extract_constraints_from_r1cs<E, F>(
-    r1cs_filepath: &PathBuf,
-) -> Result<(Vec<Constraints<F>>, usize), Box<dyn Error>>
+    r1cs_filepath: &Path,
+) -> ExtractedConstraintsResult<F>
 where
     E: Pairing,
     F: PrimeField,
@@ -124,7 +126,7 @@ where
 
 // Calculate the witness given the WASM filepath and inputs.
 pub fn calculate_witness<I: IntoIterator<Item = (String, Vec<BigInt>)>>(
-    wasm_filepath: &PathBuf,
+    wasm_filepath: &Path,
     inputs: I,
 ) -> Result<Vec<BigInt>> {
     let mut calculator = WitnessCalculator::new(wasm_filepath.clone())?;
@@ -143,7 +145,7 @@ fn num_bigint_to_ark_bigint<F: PrimeField>(value: &BigInt) -> Result<F::BigInt, 
 // into folding-schemes R1CS and z format.
 pub fn circom_to_folding_schemes_r1cs_and_z<F>(
     constraints: Vec<Constraints<F>>,
-    witness: &Vec<BigInt>,
+    witness: &[BigInt],
     pub_io_len: usize,
 ) -> Result<(R1CS<F>, Vec<F>), Box<dyn Error>>
 where

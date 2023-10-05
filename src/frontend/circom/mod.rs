@@ -46,9 +46,7 @@ where
 
 // Extract constraints on Pairing's ScalarField from an .r1cs file
 // and convert them into constraints on PrimeField
-pub fn extract_constraints_from_r1cs<E, F>(
-    r1cs_filepath: &Path,
-) -> ExtractedConstraintsResult<F>
+pub fn extract_constraints_from_r1cs<E, F>(r1cs_filepath: &Path) -> ExtractedConstraintsResult<F>
 where
     E: Pairing,
     F: PrimeField,

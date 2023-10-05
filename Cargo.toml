@@ -12,7 +12,6 @@ ark-crypto-primitives = { version = "^0.4.0", default-features = false, features
 ark-relations = { version = "^0.4.0", default-features = false }
 ark-r1cs-std = { version = "^0.4.0", default-features = false }
 ark-circom = { git = "https://github.com/gakonst/ark-circom.git" }
-ark-bn254 = "0.4.0"
 thiserror = "1.0"
 rayon = "1.7.0"
 num-bigint = "0.4"
@@ -27,6 +26,7 @@ espresso_transcript = {git="https://github.com/EspressoSystems/hyperplonk", pack
 ark-pallas = {version="0.4.0", features=["r1cs"]}
 ark-vesta = {version="0.4.0"}
 ark-crypto-primitives = { version = "^0.4.0", default-features = false, features = ["crh"] }
+ark-bn254 = "0.4.0"
 
 [features]
 default = ["parallel", "nova", "hypernova"]

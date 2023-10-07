@@ -53,6 +53,7 @@ pub struct RelaxedR1CS<F: PrimeField> {
     pub u: F,
     pub E: Vec<F>,
 }
+
 impl<F: PrimeField> RelaxedR1CS<F> {
     /// check that a RelaxedR1CS structure is satisfied by a z vector. Only for testing.
     pub fn check_relation(&self, z: &[F]) -> Result<(), Error> {

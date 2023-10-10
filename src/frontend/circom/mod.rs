@@ -168,13 +168,9 @@ mod tests {
         let witness = calculate_witness(&wasm_filepath, inputs).expect("Error calculating witness");
         assert!(!witness.is_empty());
 
-        let (r1cs, z) = circom_to_folding_schemes_r1cs_and_z(
-            constraints,
-            &witness,
-            pub_io_len,
-            num_variables,
-        )
-        .expect("Error converting to folding schemes");
+        let (r1cs, z) =
+            circom_to_folding_schemes_r1cs_and_z(constraints, &witness, pub_io_len, num_variables)
+                .expect("Error converting to folding schemes");
         assert!(!z.is_empty());
 
         let check_result = std::panic::catch_unwind(|| {

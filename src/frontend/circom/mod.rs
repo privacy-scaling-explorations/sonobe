@@ -14,10 +14,12 @@ use crate::utils::vec::SparseMatrix;
 pub type Constraints<F> = (ConstraintVec<F>, ConstraintVec<F>, ConstraintVec<F>);
 pub type ConstraintVec<F> = Vec<(usize, F)>;
 
-type ExtractedConstraintsResult<F> = Result<(Vec<Constraints<F>>, usize), Box<dyn Error>>;
+type ExtractedConstraintsResult<F> = Result<(Vec<Constraints<F>>, usize, usize), Box<dyn Error>>;
 
 // Extract the r1cs file
-pub fn extract_constraints_from_r1cs<E>(r1cs_filepath: &Path) -> ExtractedConstraintsResult<E::ScalarField>
+pub fn extract_constraints_from_r1cs<E>(
+    r1cs_filepath: &Path,
+) -> ExtractedConstraintsResult<E::ScalarField>
 where
     E: Pairing,
 {
@@ -29,15 +31,17 @@ where
     let r1cs_file = r1cs_reader::R1CSFile::<E>::new(reader)?;
     let pub_io_len = (r1cs_file.header.n_pub_in + r1cs_file.header.n_pub_out) as usize;
     let r1cs = r1cs_reader::R1CS::<E>::from(r1cs_file);
+    let num_variables = r1cs.num_variables;
     let constraints: Vec<Constraints<E::ScalarField>> = r1cs.constraints;
 
-    Ok((constraints, pub_io_len))
+    Ok((constraints, pub_io_len, num_variables))
 }
 
 // Convert a set of constraints from ark-circom into R1CS format of folding_schemes
 pub fn convert_to_folding_schemes_r1cs<F>(
     constraints: Vec<Constraints<F>>,
     pub_io_len: usize,
+    num_variables: usize,
 ) -> R1CS<F>
 where
     F: PrimeField,
@@ -67,7 +71,7 @@ where
     }
 
     let l = pub_io_len;
-    let n_cols = a_matrix.first().map(|vec| vec.len()).unwrap_or(0);
+    let n_cols = num_variables;
 
     let A = SparseMatrix {
         n_rows,
@@ -111,11 +115,13 @@ pub fn circom_to_folding_schemes_r1cs_and_z<F>(
     constraints: Vec<Constraints<F>>,
     witness: &[BigInt],
     pub_io_len: usize,
+    num_variables: usize,
 ) -> Result<(R1CS<F>, Vec<F>), Box<dyn Error>>
 where
     F: PrimeField,
 {
-    let folding_schemes_r1cs = convert_to_folding_schemes_r1cs(constraints, pub_io_len);
+    let folding_schemes_r1cs =
+        convert_to_folding_schemes_r1cs(constraints, pub_io_len, num_variables);
 
     let z: Result<Vec<F>, _> = witness
         .iter()
@@ -139,6 +145,12 @@ mod tests {
     use num_bigint::BigInt;
     use std::env;
 
+    /*
+    test_circuit represents 35 = x^3 + x + 5 in test_folder/test_circuit.circom.
+    In the test_circom_conversion_success function, x is assigned the value 3, which satisfies the R1CS correctly.
+    In the test_circom_conversion_failure function, x is assigned the value 6, which doesn't satisfy the R1CS.
+    */
+
     fn test_circom_conversion_logic(expect_success: bool, inputs: Vec<(String, Vec<BigInt>)>) {
         let current_dir = env::current_dir().unwrap();
         let base_path = current_dir.join("src/frontend/circom/test_folder");
@@ -148,16 +160,21 @@ mod tests {
         assert!(r1cs_filepath.exists());
         assert!(wasm_filepath.exists());
 
-        let (constraints, pub_io_len) = extract_constraints_from_r1cs::<Bn254>(&r1cs_filepath)
-            .expect("Error extracting constraints");
+        let (constraints, pub_io_len, num_variables) =
+            extract_constraints_from_r1cs::<Bn254>(&r1cs_filepath)
+                .expect("Error extracting constraints");
         assert!(!constraints.is_empty());
 
         let witness = calculate_witness(&wasm_filepath, inputs).expect("Error calculating witness");
         assert!(!witness.is_empty());
 
-        let (r1cs, z) =
-            circom_to_folding_schemes_r1cs_and_z(constraints.clone(), &witness, pub_io_len)
-                .expect("Error converting to folding schemes");
+        let (r1cs, z) = circom_to_folding_schemes_r1cs_and_z(
+            constraints,
+            &witness,
+            pub_io_len,
+            num_variables,
+        )
+        .expect("Error converting to folding schemes");
         assert!(!z.is_empty());
 
         let check_result = std::panic::catch_unwind(|| {

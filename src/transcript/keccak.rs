@@ -41,7 +41,6 @@ impl<C: CurveGroup> Transcript<C> for KeccakTranscript<C> {
     fn get_challenge(&mut self) -> C::ScalarField {
         let mut output = [0u8; 32];
         self.sponge.clone().finalize(&mut output);
-        self.sponge.update(&[output[0]]);
         C::ScalarField::from_le_bytes_mod_order(&[output[0]])
     }
     fn get_challenge_nbits(&mut self, nbits: usize) -> Vec<bool> {
@@ -51,7 +50,6 @@ impl<C: CurveGroup> Transcript<C> for KeccakTranscript<C> {
     fn get_challenges(&mut self, n: usize) -> Vec<C::ScalarField> {
         let mut output = [0u8; 32];
         self.sponge.clone().finalize(&mut output);
-        self.sponge.update(&[output[0]]);
 
         let c: Vec<C::ScalarField> = output
             .iter()
@@ -77,7 +75,7 @@ pub mod tests {
     }
 
     #[test]
-    fn test_transcript_get_challenge() {
+    fn test_transcript_get_challenges_len() {
         let mut rng = ark_std::test_rng();
 
         const n: usize = 10;
@@ -88,5 +86,16 @@ pub mod tests {
         let v: Vec<Fr> = vec![Fr::rand(&mut rng); n];
         let challenges = transcript.get_challenges(v.len());
         assert_eq!(challenges.len(), n);
+    }
+
+    #[test]
+    fn test_transcript_get_challenge() {
+        let config = keccak_test_config::<Fr>();
+        // init transcript
+        let mut transcript = KeccakTranscript::<Projective>::new(&config);
+        transcript.absorb(&Fr::from(42_u32));
+        let c = transcript.get_challenge();
+        let c_2 = transcript.get_challenge();
+        assert_eq!(c, c_2);
     }
 }

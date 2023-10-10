@@ -136,16 +136,11 @@ where
         cmT: &C,
     ) -> Result<(), Error> {
         let r2 = r * r;
-        if ci3.cmE != (ci1.cmE + cmT.mul(r) + ci2.cmE.mul(r2)) {
-            return Err(Error::NotSatisfied);
-        }
-        if ci3.u != ci1.u + r * ci2.u {
-            return Err(Error::NotSatisfied);
-        }
-        if ci3.cmW != (ci1.cmW + ci2.cmW.mul(r)) {
-            return Err(Error::NotSatisfied);
-        }
-        if ci3.x != vec_add(&ci1.x, &vec_scalar_mul(&ci2.x, &r))? {
+        if ci3.cmE != (ci1.cmE + cmT.mul(r) + ci2.cmE.mul(r2))
+            || ci3.u != ci1.u + r * ci2.u
+            || ci3.cmW != (ci1.cmW + ci2.cmW.mul(r))
+            || ci3.x != vec_add(&ci1.x, &vec_scalar_mul(&ci2.x, &r))?
+        {
             return Err(Error::NotSatisfied);
         }
         Ok(())
@@ -175,13 +170,10 @@ where
             // cm_proofs should have length 3: [cmE_proof, cmW_proof, cmT_proof]
             return Err(Error::NotExpectedLength);
         }
-        if !Pedersen::verify(pedersen_params, tr, ci.cmE, cm_proofs[0].clone()) {
-            return Err(Error::CommitmentVerificationFail);
-        }
-        if !Pedersen::verify(pedersen_params, tr, ci.cmW, cm_proofs[1].clone()) {
-            return Err(Error::CommitmentVerificationFail);
-        }
-        if !Pedersen::verify(pedersen_params, tr, cmT, cm_proofs[2].clone()) {
+        if !Pedersen::verify(pedersen_params, tr, ci.cmE, cm_proofs[0].clone())
+            || !Pedersen::verify(pedersen_params, tr, ci.cmW, cm_proofs[1].clone())
+            || !Pedersen::verify(pedersen_params, tr, cmT, cm_proofs[2].clone())
+        {
             return Err(Error::CommitmentVerificationFail);
         }
         Ok(())

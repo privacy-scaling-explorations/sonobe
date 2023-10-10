@@ -48,39 +48,22 @@ pub fn vec_add<F: PrimeField>(a: &[F], b: &[F]) -> Result<Vec<F>, Error> {
     if a.len() != b.len() {
         return Err(Error::NotSameLength);
     }
-    let mut r: Vec<F> = vec![F::zero(); a.len()];
-    for i in 0..a.len() {
-        r[i] = a[i] + b[i];
-    }
-    Ok(r)
+    Ok(a.iter().zip(b.iter()).map(|(x, y)| *x + y).collect())
 }
 
 pub fn vec_sub<F: PrimeField>(a: &[F], b: &[F]) -> Result<Vec<F>, Error> {
     if a.len() != b.len() {
         return Err(Error::NotSameLength);
     }
-    let mut r: Vec<F> = vec![F::zero(); a.len()];
-    for i in 0..a.len() {
-        r[i] = a[i] - b[i];
-    }
-    Ok(r)
+    Ok(a.iter().zip(b.iter()).map(|(x, y)| *x - y).collect())
 }
 
 pub fn vec_scalar_mul<F: PrimeField>(vec: &[F], c: &F) -> Vec<F> {
-    let mut result = vec![F::zero(); vec.len()];
-    for (i, a) in vec.iter().enumerate() {
-        result[i] = *a * c;
-    }
-    result
+    vec.iter().map(|a| *a * c).collect()
 }
 
 pub fn is_zero_vec<F: PrimeField>(vec: &[F]) -> bool {
-    for e in vec {
-        if !e.is_zero() {
-            return false;
-        }
-    }
-    true
+    vec.iter().all(|a| a.is_zero())
 }
 
 pub fn mat_vec_mul<F: PrimeField>(M: &Vec<Vec<F>>, z: &[F]) -> Result<Vec<F>, Error> {
@@ -107,7 +90,6 @@ pub fn mat_vec_mul_sparse<F: PrimeField>(matrix: &SparseMatrix<F>, vector: &[F])
             res[row_i] += value * vector[col_i];
         }
     }
-
     res
 }
 
@@ -127,21 +109,12 @@ pub mod tests {
         dense_matrix_to_sparse(to_F_dense_matrix(M))
     }
     pub fn to_F_dense_matrix<F: PrimeField>(M: Vec<Vec<usize>>) -> Vec<Vec<F>> {
-        let mut R: Vec<Vec<F>> = vec![Vec::new(); M.len()];
-        for i in 0..M.len() {
-            R[i] = vec![F::zero(); M[i].len()];
-            for j in 0..M[i].len() {
-                R[i][j] = F::from(M[i][j] as u64);
-            }
-        }
-        R
+        M.iter()
+            .map(|m| m.iter().map(|r| F::from(*r as u64)).collect())
+            .collect()
     }
     pub fn to_F_vec<F: PrimeField>(z: Vec<usize>) -> Vec<F> {
-        let mut r: Vec<F> = vec![F::zero(); z.len()];
-        for i in 0..z.len() {
-            r[i] = F::from(z[i] as u64);
-        }
-        r
+        z.iter().map(|c| F::from(*c as u64)).collect()
     }
 
     #[test]
@@ -192,6 +165,7 @@ pub mod tests {
             to_F_vec(vec![7, 16, 27, 40, 55, 72])
         );
     }
+
     #[test]
     fn test_vec_add() {
         let a: Vec<Fr> = to_F_vec::<Fr>(vec![1, 2, 3, 4, 5, 6]);

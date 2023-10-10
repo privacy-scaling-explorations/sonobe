@@ -91,6 +91,7 @@ impl<C: CurveGroup> CCS<C> {
             M: vec![r1cs.A, r1cs.B, r1cs.C],
         }
     }
+
     pub fn to_r1cs(self) -> R1CS<C::ScalarField> {
         R1CS::<C::ScalarField> {
             l: self.l,

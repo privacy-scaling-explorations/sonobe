@@ -143,7 +143,19 @@ mod tests {
     use super::*;
     use ark_bn254::Bn254;
     use num_bigint::BigInt;
-    use std::env;
+    use std::{env, process::Command};
+
+    // Compile the .circom file to generate the .r1cs and .wasm files.
+    fn compile_circom_to_r1cs_and_wasm(base_path: &std::path::Path) {
+        let script_path = base_path.join("compile.sh");
+    
+        let status = Command::new("bash")
+            .arg(script_path)
+            .status()
+            .expect("Failed to execute circom compilation script.");
+    
+        assert!(status.success(), "Circom compilation script failed.");
+    }
 
     /*
     test_circuit represents 35 = x^3 + x + 5 in test_folder/test_circuit.circom.
@@ -154,8 +166,11 @@ mod tests {
     fn test_circom_conversion_logic(expect_success: bool, inputs: Vec<(String, Vec<BigInt>)>) {
         let current_dir = env::current_dir().unwrap();
         let base_path = current_dir.join("src/frontend/circom/test_folder");
+
+        compile_circom_to_r1cs_and_wasm(&base_path);
+
         let r1cs_filepath = base_path.join("test_circuit.r1cs");
-        let wasm_filepath = base_path.join("test_circuit.wasm");
+        let wasm_filepath = base_path.join("test_circuit_js/test_circuit.wasm");
 
         assert!(r1cs_filepath.exists());
         assert!(wasm_filepath.exists());
@@ -173,6 +188,7 @@ mod tests {
                 .expect("Error converting to folding schemes");
         assert!(!z.is_empty());
 
+        // Check the relationship for R1CS
         let check_result = std::panic::catch_unwind(|| {
             r1cs.check_relation(&z).unwrap();
         });

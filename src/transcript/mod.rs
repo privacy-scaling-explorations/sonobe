@@ -2,6 +2,8 @@ use ark_ec::CurveGroup;
 use ark_std::fmt::Debug;
 
 pub mod poseidon;
+pub mod keccak;
+pub mod sha3;
 
 pub trait Transcript<C: CurveGroup> {
     type TranscriptConfig: Debug;

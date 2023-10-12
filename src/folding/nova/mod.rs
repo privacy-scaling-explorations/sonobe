@@ -27,13 +27,12 @@ where
     <C as Group>::ScalarField: Absorb,
     <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
 {
-    pub fn empty() -> Self {
-        CommittedInstance {
-            cmE: C::zero(),
-            u: C::ScalarField::one(),
-            cmW: C::zero(),
-            x: Vec::new(),
-        }
+    /// returns a CommittedInstance from an empty Witness
+    pub fn empty(pedersen_params: &PedersenParams<C>) -> Self {
+        // TODO maybe cmE when E=0, can be directly cmE=0 for convinience (this would need a change
+        // in the circuit input allocator)
+        Witness::<C>::new(vec![C::ScalarField::zero()], 1) // TODO e_len will not be 1, might be a param
+            .commit(pedersen_params, vec![C::ScalarField::one()])
     }
 
     /// hash implements the committed instance hash compatible with the gadget implemented in

@@ -39,7 +39,7 @@ pub fn extract_r1cs_and_z<F: PrimeField>(cs: &ConstraintSystem<F>) -> (R1CS<F>, 
 
     (
         R1CS::<F> {
-            l: cs.num_instance_variables,
+            l: cs.num_instance_variables - 1, // -1 to substract the first '1'
             A,
             B,
             C,
@@ -96,5 +96,7 @@ pub mod tests {
 
         let (r1cs, z) = extract_r1cs_and_z::<Fr>(&cs);
         r1cs.check_relation(&z).unwrap();
+        // ensure that number of public inputs (l) is 1
+        assert_eq!(r1cs.l, 1);
     }
 }

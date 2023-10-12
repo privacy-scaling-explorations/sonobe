@@ -2,19 +2,19 @@ use ark_crypto_primitives::crh::{
     poseidon::constraints::{CRHGadget, CRHParametersVar},
     CRHSchemeGadget,
 };
-use ark_crypto_primitives::sponge::Absorb;
+use ark_crypto_primitives::sponge::{poseidon::PoseidonConfig, Absorb};
 use ark_ec::{AffineRepr, CurveGroup, Group};
-use ark_ff::Field;
+use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
     eq::EqGadget,
-    fields::fp::FpVar,
+    fields::{fp::FpVar, FieldVar},
     groups::GroupOpsBounds,
     prelude::CurveVar,
     ToConstraintFieldGadget,
 };
-use ark_relations::r1cs::{Namespace, SynthesisError};
+use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::CommittedInstance;
@@ -35,7 +35,6 @@ pub struct CommittedInstanceVar<C: CurveGroup> {
     _c: PhantomData<C>,
     u: FpVar<C::ScalarField>,
     x: Vec<FpVar<C::ScalarField>>,
-    #[allow(dead_code)] // tmp while we don't have the code of the AugmentedFGadget
     cmE: NonNativeAffineVar<CF2<C>, C::ScalarField>,
     cmW: NonNativeAffineVar<CF2<C>, C::ScalarField>,
 }
@@ -43,7 +42,7 @@ pub struct CommittedInstanceVar<C: CurveGroup> {
 impl<C> AllocVar<CommittedInstance<C>, CF1<C>> for CommittedInstanceVar<C>
 where
     C: CurveGroup,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
+    <C as ark_ec::CurveGroup>::BaseField: PrimeField,
 {
     fn new_variable<T: Borrow<CommittedInstance<C>>>(
         cs: impl Into<Namespace<CF1<C>>>,
@@ -88,7 +87,6 @@ where
     /// CommittedInstance.hash.
     /// Returns `H(i, z_0, z_i, U_i)`, where `i` can be `i` but also `i+1`, and `U` is the
     /// `CommittedInstance`.
-    #[allow(dead_code)] // tmp while we don't have the code of the AugmentedFGadget
     fn hash(
         self,
         crh_params: &CRHParametersVar<CF1<C>>,
@@ -211,20 +209,146 @@ where
     }
 }
 
+/// FCircuit defines the trait of the circuit of the F function, which is the one being executed
+/// inside the agmented F' function.
+pub trait FCircuit<F: PrimeField>: ConstraintSynthesizer<F> + Copy {
+    /// method that returns z_i (input), z_{i+1} (output)
+    fn public(self) -> (F, F);
+}
+
+/// AugmentedFCircuit implements the F' circuit (augmented F) defined in
+/// [Nova](https://eprint.iacr.org/2021/370.pdf).
+pub struct AugmentedFCircuit<C: CurveGroup, FC: FCircuit<CF1<C>>> {
+    _c: PhantomData<C>,
+    pub poseidon_config: PoseidonConfig<CF1<C>>,
+    pub i: Option<CF1<C>>,
+    pub z_0: Option<C::ScalarField>,
+    pub u_i: Option<CommittedInstance<C>>,
+    pub U_i: Option<CommittedInstance<C>>,
+    pub U_i1: Option<CommittedInstance<C>>,
+    pub cmT: Option<C>,
+    pub r: Option<C::ScalarField>, // This will not be an input and derived from a hash internally in the circuit (poseidon transcript)
+    pub F: FC,                     // F circuit
+    pub x: Option<CF1<C>>,         // public inputs (u_{i+1}.x)
+}
+
+impl<C: CurveGroup, FC: FCircuit<CF1<C>>> ConstraintSynthesizer<CF1<C>> for AugmentedFCircuit<C, FC>
+where
+    C: CurveGroup,
+    <C as CurveGroup>::BaseField: PrimeField,
+    <C as Group>::ScalarField: Absorb,
+{
+    fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C>>) -> Result<(), SynthesisError> {
+        let i = FpVar::<CF1<C>>::new_input(cs.clone(), || Ok(self.i.unwrap()))?;
+        let z_0 = FpVar::<CF1<C>>::new_input(cs.clone(), || Ok(self.z_0.unwrap()))?;
+
+        // get z_i & z_{i+1} from the folded circuit
+        let (z_i_native, z_i1_native) = self.F.public();
+        let z_i = FpVar::<CF1<C>>::new_input(cs.clone(), || Ok(z_i_native))?;
+        let z_i1 = FpVar::<CF1<C>>::new_input(cs.clone(), || Ok(z_i1_native))?;
+
+        let u_i = CommittedInstanceVar::<C>::new_witness(cs.clone(), || Ok(self.u_i.unwrap()))?;
+        let U_i = CommittedInstanceVar::<C>::new_witness(cs.clone(), || Ok(self.U_i.unwrap()))?;
+        let U_i1 = CommittedInstanceVar::<C>::new_witness(cs.clone(), || Ok(self.U_i1.unwrap()))?;
+        // let cmT = NonNativeAffineVar::new_witness(cs.clone(), || Ok(self.cmT.unwrap()))?;
+        let r = FpVar::<CF1<C>>::new_witness(cs.clone(), || Ok(self.r.unwrap()))?; // r will come from transcript
+        let x = FpVar::<CF1<C>>::new_input(cs.clone(), || Ok(self.x.unwrap()))?;
+
+        let crh_params =
+            CRHParametersVar::<C::ScalarField>::new_constant(cs.clone(), self.poseidon_config)?;
+
+        // if i=0, output (u_{i+1}.x), u_{i+1}.x = H(vk_nifs, 1, z_0, z_i1, u_empty)
+
+        // (first iteration) u_i.X == H(1, z_0, z_i, U_i)
+        // TODO WIP
+        // let u_i_x_first_iter = U_i.clone().hash(
+        //     &crh_params,
+        //     FpVar::<CF1<C>>::one(),
+        //     z_0.clone(),
+        //     z_i.clone(),
+        // );
+
+        // 1. h_{i+1} = u_i.X == H(i, z_0, z_i, U_i)
+        let u_i_x = U_i
+            .clone()
+            .hash(&crh_params, i.clone(), z_0.clone(), z_i.clone())?;
+        // TODO WIP: x is the output when i=0
+
+        // check that h == phi.x.
+        (u_i.x[0]).enforce_equal(&u_i_x)?;
+
+        // 2. phi.cmE==cm(0), phi.u==1
+        // (phi.cmE.is_zero()?).enforce_equal(&Boolean::TRUE)?; // TODO not cmE=0, but check that cmE = cm(0)
+        (u_i.u.is_one()?).enforce_equal(&Boolean::TRUE)?;
+
+        // 3. nifs.verify, checks that folding u_i & U_i obtains U_{i+1}.
+        // Notice that NIFSGadget::verify is not checking the folding of cmE & cmW, since it will
+        // be done on the other curve.
+        NIFSGadget::<C>::verify(r, u_i, U_i, U_i1.clone())?;
+
+        // 4. zksnark.V(vk_snark, phi_new, proof_phi)
+
+        // h_{i+1} == u_i.X, this is the output of F'
+        // 5. (u_{i+1}.x) phiOut.x == H(i+1, z_0, z_i+1, phiBigOut)
+        let h_i1 = U_i1.hash(
+            &crh_params,
+            i + FpVar::<CF1<C>>::one(),
+            z_0.clone(),
+            z_i1.clone(),
+        )?;
+
+        // check that inputed 'x' is equal to phiOut_x_first_iter or phiOut_x depending if we're at
+        // i=0 or not.
+        // if i==0: check x==phiOut_x_first_iter
+        // u_i1_x_first_iter.enforce_equal(&x)?;
+        // else: check x==h_{i+1}
+        h_i1.enforce_equal(&x)?;
+
+        // WIP assert that z_i1 == F(z_i).z_i1
+        self.F.generate_constraints(cs.clone())?;
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_ff::{BigInteger, PrimeField};
+    use ark_ff::BigInteger;
     use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
     use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::UniformRand;
+    use ark_std::{One, Zero};
 
     use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z};
     use crate::folding::nova::{nifs::NIFS, Witness};
+    use crate::frontend::arkworks::extract_r1cs_and_z;
     use crate::pedersen::Pedersen;
     use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
     use crate::transcript::Transcript;
+
+    #[derive(Clone, Copy, Debug)]
+    pub struct TestFCircuit<F: PrimeField> {
+        z_i: F,  // z_i
+        z_i1: F, // z_{i+1}
+    }
+    impl<F: PrimeField> FCircuit<F> for TestFCircuit<F> {
+        fn public(self) -> (F, F) {
+            (self.z_i, self.z_i1)
+        }
+    }
+    impl<F: PrimeField> ConstraintSynthesizer<F> for TestFCircuit<F> {
+        fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> Result<(), SynthesisError> {
+            let z_i = FpVar::<F>::new_input(cs.clone(), || Ok(self.z_i))?;
+            let z_i1 = FpVar::<F>::new_input(cs.clone(), || Ok(self.z_i1))?;
+            let five = FpVar::<F>::new_constant(cs.clone(), F::from(5u32))?;
+
+            let y = &z_i * &z_i * &z_i + &z_i + &five;
+            y.enforce_equal(&z_i1)?;
+            Ok(())
+        }
+    }
 
     #[test]
     fn test_committed_instance_var() {
@@ -365,5 +489,85 @@ mod tests {
 
         // check that the natively computed and in-circuit computed hashes match
         assert_eq!(hVar.value().unwrap(), h);
+    }
+
+    #[test]
+    fn test_augmented_f_circuit() {
+        // compute z vector for the initial instance
+        let cs = ConstraintSystem::<Fr>::new_ref();
+
+        let i = Fr::zero();
+        let s_i = Fr::from(3_u32);
+        let s_0 = s_i;
+        let s_i1 = Fr::from(35_u32);
+        let test_F_circuit = TestFCircuit::<Fr> {
+            z_i: s_i,
+            z_i1: s_i1,
+        };
+        test_F_circuit.generate_constraints(cs.clone()).unwrap();
+        cs.finalize();
+        assert!(cs.is_satisfied().unwrap());
+
+        let cs = cs.into_inner().unwrap();
+        let (r1cs, z0) = extract_r1cs_and_z::<Fr>(&cs);
+        // let (w0, x0) = r1cs.split_z(&z0);
+
+        let mut rng = ark_std::test_rng();
+        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, r1cs.A.n_cols);
+        let poseidon_config = poseidon_test_config::<Fr>();
+
+        // dummy instance
+        let dummy_instance = CommittedInstance::<Projective>::empty(&pedersen_params);
+        // base case output:
+        // u_0.x = H(0, s_0, s_0, U_d) (U_d := dummy instance)
+        let u0_x = dummy_instance.hash(&poseidon_config, i, s_0, s_i).unwrap();
+        let U0 = dummy_instance.clone();
+
+        // compute committed instances
+        let w0 = Witness::<Projective>::new(z0.clone(), r1cs.A.n_rows);
+        let u0 = w0.commit(&pedersen_params, vec![u0_x]);
+
+        // get challenge from transcript
+        let mut tr = PoseidonTranscript::<Projective>::new(&poseidon_config);
+        let r_bits = tr.get_challenge_nbits(128);
+        let r_Fr = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
+
+        let (_w3, U1, _T, cmT) = NIFS::<Projective>::prove(
+            &pedersen_params,
+            r_Fr,
+            &r1cs,
+            &w0,
+            &u0,
+            &w0.clone(),
+            &U0.clone(),
+        )
+        .unwrap();
+
+        // folded instance output (public input, x)
+        // ci3_x = u_{i+1}.x = H(i+1, s_0, s_{i+1}, U_{i+1})
+        let u1_x = U1.hash(&poseidon_config, i + Fr::one(), s_i, s_i1).unwrap();
+
+        // new ConstraintSystem
+        let cs = ConstraintSystem::<Fr>::new_ref();
+
+        let augmented_F_circuit = AugmentedFCircuit::<Projective, TestFCircuit<Fr>> {
+            _c: PhantomData,
+            poseidon_config,
+            i: Some(i),
+            z_0: Some(s_0),
+            u_i: Some(u0),
+            U_i: Some(U0),
+            U_i1: Some(U1),
+            cmT: Some(cmT),
+            r: Some(r_Fr),
+            F: test_F_circuit,
+            x: Some(u1_x),
+        };
+
+        augmented_F_circuit
+            .generate_constraints(cs.clone())
+            .unwrap();
+        assert!(cs.is_satisfied().unwrap());
+        println!("num_constraints={:?}", cs.num_constraints());
     }
 }

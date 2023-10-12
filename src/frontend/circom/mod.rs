@@ -35,7 +35,7 @@ impl<E: Pairing> CircomWrapper<E> {
     }
 
     // Aggregates multiple functions to obtain R1CS and Z as defined in folding-schemes from Circom.
-    pub fn extract_and_convert(
+    pub fn extract_r1cs_and_z(
         &self,
         inputs: &[(String, Vec<BigInt>)],
     ) -> Result<(R1CS<E::ScalarField>, Vec<E::ScalarField>), Box<dyn Error>> {
@@ -207,7 +207,7 @@ mod tests {
         let circom_wrapper = CircomWrapper::<Bn254>::new(r1cs_filepath, wasm_filepath);
 
         let (r1cs, z) = circom_wrapper
-            .extract_and_convert(&inputs)
+            .extract_r1cs_and_z(&inputs)
             .expect("Error processing input");
 
         // Checks the relationship of R1CS.

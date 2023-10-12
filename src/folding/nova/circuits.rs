@@ -1,4 +1,9 @@
-use ark_ec::{AffineRepr, CurveGroup};
+use ark_crypto_primitives::crh::{
+    poseidon::constraints::{CRHGadget, CRHParametersVar},
+    CRHSchemeGadget,
+};
+use ark_crypto_primitives::sponge::Absorb;
+use ark_ec::{AffineRepr, CurveGroup, Group};
 use ark_ff::Field;
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
@@ -7,30 +12,38 @@ use ark_r1cs_std::{
     fields::fp::FpVar,
     groups::GroupOpsBounds,
     prelude::CurveVar,
+    ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::CommittedInstance;
-use crate::folding::circuits::cyclefold::ECRLC;
+use crate::folding::circuits::{cyclefold::ECRLC, nonnative::NonNativeAffineVar};
 
-/// CF1 represents the ConstraintField used for the main Nova circuit which is over E1::Fr.
+/// CF1 represents the ConstraintField used for the main Nova circuit which is over E1::Fr, where
+/// E1 is the main curve where we do the folding.
 pub type CF1<C> = <<C as CurveGroup>::Affine as AffineRepr>::ScalarField;
-/// CF2 represents the ConstraintField used for the CycleFold circuit which is over E2::Fr=E1::Fq.
+/// CF2 represents the ConstraintField used for the CycleFold circuit which is over E2::Fr=E1::Fq,
+/// where E2 is the auxiliary curve (from [CycleFold](https://eprint.iacr.org/2023/1192.pdf)
+/// approach) where we check the folding of the commitments.
 pub type CF2<C> = <<C as CurveGroup>::BaseField as Field>::BasePrimeField;
 
-/// CommittedInstance on E1 contains the u and x values which are folded on the main Nova
-/// constraints field (E1::Fr).
+/// CommittedInstanceVar contains the u, x, cmE and cmW values which are folded on the main Nova
+/// constraints field (E1::Fr, where E1 is the main curve).
 #[derive(Debug, Clone)]
-pub struct CommittedInstanceE1Var<C: CurveGroup> {
+pub struct CommittedInstanceVar<C: CurveGroup> {
     _c: PhantomData<C>,
     u: FpVar<C::ScalarField>,
     x: Vec<FpVar<C::ScalarField>>,
+    #[allow(dead_code)] // tmp while we don't have the code of the AugmentedFGadget
+    cmE: NonNativeAffineVar<CF2<C>, C::ScalarField>,
+    cmW: NonNativeAffineVar<CF2<C>, C::ScalarField>,
 }
 
-impl<C> AllocVar<CommittedInstance<C>, CF1<C>> for CommittedInstanceE1Var<C>
+impl<C> AllocVar<CommittedInstance<C>, CF1<C>> for CommittedInstanceVar<C>
 where
     C: CurveGroup,
+    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
 {
     fn new_variable<T: Borrow<CommittedInstance<C>>>(
         cs: impl Into<Namespace<CF1<C>>>,
@@ -42,20 +55,63 @@ where
 
             let u = FpVar::<C::ScalarField>::new_variable(cs.clone(), || Ok(val.borrow().u), mode)?;
             let x: Vec<FpVar<C::ScalarField>> =
-                Vec::new_variable(cs, || Ok(val.borrow().x.clone()), mode)?;
+                Vec::new_variable(cs.clone(), || Ok(val.borrow().x.clone()), mode)?;
+
+            let cmE = NonNativeAffineVar::<CF2<C>, C::ScalarField>::new_variable(
+                cs.clone(),
+                || Ok(val.borrow().cmE),
+                mode,
+            )?;
+            let cmW = NonNativeAffineVar::<CF2<C>, C::ScalarField>::new_variable(
+                cs.clone(),
+                || Ok(val.borrow().cmW),
+                mode,
+            )?;
 
             Ok(Self {
                 _c: PhantomData,
                 u,
                 x,
+                cmE,
+                cmW,
             })
         })
     }
 }
 
-/// CommittedInstance on E2 contains the commitments to E and W, which are folded on the auxiliary
-/// curve constraints field (E2::Fr = E1::Fq).
-pub struct CommittedInstanceE2Var<C: CurveGroup, GC: CurveVar<C, CF2<C>>>
+impl<C> CommittedInstanceVar<C>
+where
+    C: CurveGroup,
+    <C as Group>::ScalarField: Absorb,
+{
+    /// hash implements the committed instance hash compatible with the native implementation from
+    /// CommittedInstance.hash.
+    /// Returns `H(i, z_0, z_i, U_i)`, where `i` can be `i` but also `i+1`, and `U` is the
+    /// `CommittedInstance`.
+    #[allow(dead_code)] // tmp while we don't have the code of the AugmentedFGadget
+    fn hash(
+        self,
+        crh_params: &CRHParametersVar<CF1<C>>,
+        i: FpVar<CF1<C>>,
+        z_0: FpVar<CF1<C>>,
+        z_i: FpVar<CF1<C>>,
+    ) -> Result<FpVar<CF1<C>>, SynthesisError> {
+        let input = vec![
+            vec![i, z_0, z_i, self.u],
+            self.x,
+            self.cmE.x.to_constraint_field()?,
+            self.cmE.y.to_constraint_field()?,
+            self.cmW.x.to_constraint_field()?,
+            self.cmW.y.to_constraint_field()?,
+        ]
+        .concat();
+        CRHGadget::<C::ScalarField>::evaluate(crh_params, &input)
+    }
+}
+
+/// CommittedInstanceCycleFoldVar represents the commitments to E and W from the CommittedInstance
+/// on the E2, which are folded on the auxiliary curve constraints field (E2::Fr = E1::Fq).
+pub struct CommittedInstanceCycleFoldVar<C: CurveGroup, GC: CurveVar<C, CF2<C>>>
 where
     for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
 {
@@ -64,7 +120,7 @@ where
     cmW: GC,
 }
 
-impl<C, GC> AllocVar<CommittedInstance<C>, CF2<C>> for CommittedInstanceE2Var<C, GC>
+impl<C, GC> AllocVar<CommittedInstance<C>, CF2<C>> for CommittedInstanceCycleFoldVar<C, GC>
 where
     C: CurveGroup,
     GC: CurveVar<C, CF2<C>>,
@@ -105,9 +161,9 @@ where
     /// the CycleFold circuit.
     pub fn verify(
         r: FpVar<CF1<C>>,
-        ci1: CommittedInstanceE1Var<C>,
-        ci2: CommittedInstanceE1Var<C>,
-        ci3: CommittedInstanceE1Var<C>,
+        ci1: CommittedInstanceVar<C>,
+        ci2: CommittedInstanceVar<C>,
+        ci3: CommittedInstanceVar<C>,
     ) -> Result<(), SynthesisError> {
         // ensure that: ci3.u == ci1.u + r * ci2.u
         ci3.u.enforce_equal(&(ci1.u + r.clone() * ci2.u))?;
@@ -140,9 +196,9 @@ where
     pub fn verify(
         r_bits: Vec<Boolean<CF2<C>>>,
         cmT: GC,
-        ci1: CommittedInstanceE2Var<C, GC>,
-        ci2: CommittedInstanceE2Var<C, GC>,
-        ci3: CommittedInstanceE2Var<C, GC>,
+        ci1: CommittedInstanceCycleFoldVar<C, GC>,
+        ci2: CommittedInstanceCycleFoldVar<C, GC>,
+        ci3: CommittedInstanceCycleFoldVar<C, GC>,
     ) -> Result<(), SynthesisError> {
         // cm(E) check: ci3.cmE == ci1.cmE + r * cmT + r^2 * ci2.cmE
         ci3.cmE.enforce_equal(
@@ -183,16 +239,17 @@ mod tests {
 
         let cs = ConstraintSystem::<Fr>::new_ref();
         let ciVar =
-            CommittedInstanceE1Var::<Projective>::new_witness(cs.clone(), || Ok(ci.clone()))
-                .unwrap();
+            CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || Ok(ci.clone())).unwrap();
         assert_eq!(ciVar.u.value().unwrap(), ci.u);
         assert_eq!(ciVar.x.value().unwrap(), ci.x);
 
         // check the instantiation of the CycleFold side:
         let cs = ConstraintSystem::<Fq>::new_ref();
         let ciVar =
-            CommittedInstanceE2Var::<Projective, GVar>::new_witness(cs.clone(), || Ok(ci.clone()))
-                .unwrap();
+            CommittedInstanceCycleFoldVar::<Projective, GVar>::new_witness(cs.clone(), || {
+                Ok(ci.clone())
+            })
+            .unwrap();
         assert_eq!(ciVar.cmE.value().unwrap(), ci.cmE);
         assert_eq!(ciVar.cmW.value().unwrap(), ci.cmW);
     }
@@ -216,8 +273,8 @@ mod tests {
         let ci2 = w2.commit(&pedersen_params, x2.clone());
 
         // get challenge from transcript
-        let config = poseidon_test_config::<Fr>();
-        let mut tr = PoseidonTranscript::<Projective>::new(&config);
+        let poseidon_config = poseidon_test_config::<Fr>();
+        let mut tr = PoseidonTranscript::<Projective>::new(&poseidon_config);
         let r_bits = tr.get_challenge_nbits(128);
         let r_Fr = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
 
@@ -228,13 +285,13 @@ mod tests {
 
         let rVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(r_Fr)).unwrap();
         let ci1Var =
-            CommittedInstanceE1Var::<Projective>::new_witness(cs.clone(), || Ok(ci1.clone()))
+            CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || Ok(ci1.clone()))
                 .unwrap();
         let ci2Var =
-            CommittedInstanceE1Var::<Projective>::new_witness(cs.clone(), || Ok(ci2.clone()))
+            CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || Ok(ci2.clone()))
                 .unwrap();
         let ci3Var =
-            CommittedInstanceE1Var::<Projective>::new_witness(cs.clone(), || Ok(ci3.clone()))
+            CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || Ok(ci3.clone()))
                 .unwrap();
 
         NIFSGadget::<Projective>::verify(
@@ -253,21 +310,60 @@ mod tests {
         let r_bitsVar = Vec::<Boolean<Fq>>::new_witness(cs_CC.clone(), || Ok(r_bits)).unwrap();
 
         let cmTVar = GVar::new_witness(cs_CC.clone(), || Ok(cmT)).unwrap();
-        let ci1Var = CommittedInstanceE2Var::<Projective, GVar>::new_witness(cs_CC.clone(), || {
-            Ok(ci1.clone())
-        })
-        .unwrap();
-        let ci2Var = CommittedInstanceE2Var::<Projective, GVar>::new_witness(cs_CC.clone(), || {
-            Ok(ci2.clone())
-        })
-        .unwrap();
-        let ci3Var = CommittedInstanceE2Var::<Projective, GVar>::new_witness(cs_CC.clone(), || {
-            Ok(ci3.clone())
-        })
-        .unwrap();
+        let ci1Var =
+            CommittedInstanceCycleFoldVar::<Projective, GVar>::new_witness(cs_CC.clone(), || {
+                Ok(ci1.clone())
+            })
+            .unwrap();
+        let ci2Var =
+            CommittedInstanceCycleFoldVar::<Projective, GVar>::new_witness(cs_CC.clone(), || {
+                Ok(ci2.clone())
+            })
+            .unwrap();
+        let ci3Var =
+            CommittedInstanceCycleFoldVar::<Projective, GVar>::new_witness(cs_CC.clone(), || {
+                Ok(ci3.clone())
+            })
+            .unwrap();
 
         NIFSCycleFoldGadget::<Projective, GVar>::verify(r_bitsVar, cmTVar, ci1Var, ci2Var, ci3Var)
             .unwrap();
         assert!(cs_CC.is_satisfied().unwrap());
+    }
+
+    #[test]
+    fn test_committed_instance_hash() {
+        let mut rng = ark_std::test_rng();
+        let poseidon_config = poseidon_test_config::<Fr>();
+
+        let i = Fr::from(3_u32);
+        let z_0 = Fr::from(3_u32);
+        let z_i = Fr::from(3_u32);
+        let ci = CommittedInstance::<Projective> {
+            cmE: Projective::rand(&mut rng),
+            u: Fr::rand(&mut rng),
+            cmW: Projective::rand(&mut rng),
+            x: vec![Fr::rand(&mut rng); 1],
+        };
+
+        // compute the CommittedInstance hash natively
+        let h = ci.hash(&poseidon_config, i, z_0, z_i).unwrap();
+
+        let cs = ConstraintSystem::<Fr>::new_ref();
+
+        let iVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(i)).unwrap();
+        let z_0Var = FpVar::<Fr>::new_witness(cs.clone(), || Ok(z_0)).unwrap();
+        let z_iVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(z_i)).unwrap();
+        let ciVar =
+            CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || Ok(ci.clone())).unwrap();
+
+        let crh_params = CRHParametersVar::<Fr>::new_constant(cs.clone(), poseidon_config).unwrap();
+
+        // compute the CommittedInstance hash in-circuit
+        let hVar = ciVar.hash(&crh_params, iVar, z_0Var, z_iVar).unwrap();
+        assert!(cs.is_satisfied().unwrap());
+
+        // check that the natively computed and in-circuit computed hashes match
+        assert_eq!(hVar.value().unwrap(), h);
     }
 }

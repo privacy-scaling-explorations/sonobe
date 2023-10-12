@@ -16,21 +16,7 @@ pub type ConstraintVec<F> = Vec<(usize, F)>;
 pub type ExtractedConstraintsResult<F> =
     Result<(Vec<Constraints<F>>, usize, usize), Box<dyn Error>>;
 
-// Trait that provides an interface for extracting R1CS and Z vector from Circom.
-pub trait CircomFrontend<F: PrimeField> {
-    fn get(&self, inputs: &[(String, Vec<BigInt>)]) -> Result<(R1CS<F>, Vec<F>), Box<dyn Error>>;
-}
-
-impl<E: Pairing> CircomFrontend<E::ScalarField> for CircomWrapper<E> {
-    fn get(
-        &self,
-        inputs: &[(String, Vec<BigInt>)],
-    ) -> Result<(R1CS<E::ScalarField>, Vec<E::ScalarField>), Box<dyn Error>> {
-        self.extract_and_convert(inputs)
-    }
-}
-
-// A struct that wraps Circom functionalities, allowing for extraction of R1CS and witnesses 
+// A struct that wraps Circom functionalities, allowing for extraction of R1CS and witnesses
 // based on file paths to Circom's .r1cs and .wasm.
 pub struct CircomWrapper<E: Pairing> {
     r1cs_filepath: PathBuf,
@@ -183,7 +169,7 @@ impl<E: Pairing> CircomWrapper<E> {
 
 #[cfg(test)]
 mod tests {
-    use crate::frontend::circom::{CircomFrontend, CircomWrapper};
+    use crate::frontend::circom::CircomWrapper;
     use ark_bn254::Bn254;
     use num_bigint::BigInt;
     use std::{env, process::Command};
@@ -218,11 +204,10 @@ mod tests {
         assert!(r1cs_filepath.exists());
         assert!(wasm_filepath.exists());
 
-        let circom_frontend =
-            CircomWrapper::<Bn254>::new(r1cs_filepath.clone(), wasm_filepath.clone());
+        let circom_wrapper = CircomWrapper::<Bn254>::new(r1cs_filepath, wasm_filepath);
 
-        let (r1cs, z) = circom_frontend
-            .get(&inputs)
+        let (r1cs, z) = circom_wrapper
+            .extract_and_convert(&inputs)
             .expect("Error processing input");
 
         // Checks the relationship of R1CS.

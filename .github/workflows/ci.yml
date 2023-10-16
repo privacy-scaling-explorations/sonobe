@@ -49,6 +49,14 @@ jobs:
       # use the more efficient nextest
       - uses: taiki-e/install-action@nextest
       - uses: Swatinem/rust-cache@v2
+      - name: Install Circom
+        run: |
+          git clone https://github.com/iden3/circom.git
+          cd circom
+          cargo build --release
+          cargo install --path circom
+      - name: Execute compile.sh
+        run: bash ./src/frontend/circom/test_folder/compile.sh
       - name: Build
         # This build will be reused by nextest,
         # and also checks (--all-targets) that benches don't bit-rot

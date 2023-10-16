@@ -13,8 +13,8 @@ use crate::utils::vec::SparseMatrix;
 // Define the sparse matrices on PrimeFiled.
 pub type Constraints<F> = (ConstraintVec<F>, ConstraintVec<F>, ConstraintVec<F>);
 pub type ConstraintVec<F> = Vec<(usize, F)>;
-pub type ExtractedConstraintsResult<F> =
-    Result<(Vec<Constraints<F>>, usize, usize), Box<dyn Error>>;
+type ExtractedConstraints<F> = (Vec<Constraints<F>>, usize, usize);
+pub type ExtractedConstraintsResult<F> = Result<ExtractedConstraints<F>, Box<dyn Error>>;
 
 // A struct that wraps Circom functionalities, allowing for extraction of R1CS and witnesses
 // based on file paths to Circom's .r1cs and .wasm.
@@ -122,7 +122,7 @@ impl<E: Pairing> CircomWrapper<E> {
     // Calculates the witness given the Wasm filepath and inputs.
     pub fn calculate_witness(&self, inputs: &[(String, Vec<BigInt>)]) -> Result<Vec<BigInt>> {
         let mut calculator = WitnessCalculator::new(&self.wasm_filepath)?;
-        calculator.calculate_witness(inputs.to_vec().into_iter(), true)
+        calculator.calculate_witness(inputs.iter().cloned(), true)
     }
 
     // Converts a num_bigint input to `PrimeField`'s BigInt.

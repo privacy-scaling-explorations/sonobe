@@ -16,10 +16,23 @@ pub mod frontend;
 pub mod pedersen;
 pub mod utils;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub enum Error {
+    #[error("ark_relations::r1cs::SynthesisError")]
+    SynthesisError(#[from] ark_relations::r1cs::SynthesisError),
+
     #[error("Relation not satisfied")]
     NotSatisfied,
+    #[error("Not equal")]
+    NotEqual,
+    #[error("Vectors should have the same length")]
+    NotSameLength,
+    #[error("Vector's length is not the expected")]
+    NotExpectedLength,
+    #[error("Can not be empty")]
+    Empty,
+    #[error("Commitment verification failed")]
+    CommitmentVerificationFail,
 }
 
 /// FoldingScheme defines trait that is implemented by the diverse folding schemes. It is defined

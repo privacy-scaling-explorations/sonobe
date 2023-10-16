@@ -5,6 +5,7 @@ use std::marker::PhantomData;
 use crate::utils::vec::{vec_add, vec_scalar_mul};
 
 use crate::transcript::Transcript;
+use crate::Error;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Proof<C: CurveGroup> {
@@ -47,7 +48,7 @@ impl<C: CurveGroup> Pedersen<C> {
         cm: &C,
         v: &Vec<C::ScalarField>,
         r: &C::ScalarField,
-    ) -> Proof<C> {
+    ) -> Result<Proof<C>, Error> {
         transcript.absorb_point(cm);
         let r1 = transcript.get_challenge();
         let d = transcript.get_challenges(v.len());
@@ -59,11 +60,11 @@ impl<C: CurveGroup> Pedersen<C> {
         let e = transcript.get_challenge();
 
         // u = d + v⋅e
-        let u = vec_add(&vec_scalar_mul(v, &e), &d);
+        let u = vec_add(&vec_scalar_mul(v, &e), &d)?;
         // r_u = e⋅r + r_1
         let r_u = e * r + r1;
 
-        Proof::<C> { R, u, r_u }
+        Ok(Proof::<C> { R, u, r_u })
     }
 
     pub fn verify(
@@ -113,7 +114,7 @@ mod tests {
         let v: Vec<Fr> = vec![Fr::rand(&mut rng); n];
         let r: Fr = Fr::rand(&mut rng);
         let cm = Pedersen::<Projective>::commit(&params, &v, &r);
-        let proof = Pedersen::<Projective>::prove(&params, &mut transcript_p, &cm, &v, &r);
+        let proof = Pedersen::<Projective>::prove(&params, &mut transcript_p, &cm, &v, &r).unwrap();
         let v = Pedersen::<Projective>::verify(&params, &mut transcript_v, cm, proof);
         assert!(v);
     }

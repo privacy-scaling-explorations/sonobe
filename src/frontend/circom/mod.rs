@@ -15,6 +15,7 @@ pub type Constraints<F> = (ConstraintVec<F>, ConstraintVec<F>, ConstraintVec<F>)
 pub type ConstraintVec<F> = Vec<(usize, F)>;
 type ExtractedConstraints<F> = (Vec<Constraints<F>>, usize, usize);
 pub type ExtractedConstraintsResult<F> = Result<ExtractedConstraints<F>, Box<dyn Error>>;
+pub type R1CSandZ<F> = (R1CS<F>, Vec<F>);
 
 // A struct that wraps Circom functionalities, allowing for extraction of R1CS and witnesses
 // based on file paths to Circom's .r1cs and .wasm.
@@ -38,7 +39,7 @@ impl<E: Pairing> CircomWrapper<E> {
     pub fn extract_r1cs_and_z(
         &self,
         inputs: &[(String, Vec<BigInt>)],
-    ) -> Result<(R1CS<E::ScalarField>, Vec<E::ScalarField>), Box<dyn Error>> {
+    ) -> Result<R1CSandZ<E::ScalarField>, Box<dyn Error>> {
         let (constraints, pub_io_len, num_variables) = self.extract_constraints_from_r1cs()?;
         let witness = self.calculate_witness(inputs)?;
         self.circom_to_folding_schemes_r1cs_and_z(constraints, &witness, pub_io_len, num_variables)
@@ -181,7 +182,7 @@ mod tests {
     */
 
     /*
-    To generate .r1cs and .wasm files, run the below command in the terminal. 
+    To generate .r1cs and .wasm files, run the below command in the terminal.
     bash ./src/frontend/circom/test_folder/compile.sh
     */
 

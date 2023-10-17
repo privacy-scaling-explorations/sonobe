@@ -49,6 +49,14 @@ jobs:
       # use the more efficient nextest
       - uses: taiki-e/install-action@nextest
       - uses: Swatinem/rust-cache@v2
+      - name: Download Circom
+        run: |
+          mkdir -p $HOME/bin
+          curl -sSfL https://github.com/iden3/circom/releases/download/v2.1.6/circom-linux-amd64 -o $HOME/bin/circom
+          chmod +x $HOME/bin/circom
+          echo "$HOME/bin" >> $GITHUB_PATH
+      - name: Execute compile.sh to generate .r1cs and .wasm from .circom
+        run: bash ./src/frontend/circom/test_folder/compile.sh
       - name: Build
         # This build will be reused by nextest,
         # and also checks (--all-targets) that benches don't bit-rot

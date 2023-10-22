@@ -8,6 +8,17 @@ use crate::utils::vec::SparseMatrix;
 /// extracts arkworks ConstraintSystem matrices into crate::utils::vec::SparseMatrix format, and
 /// extracts public inputs and witness into z vector. Returns a tuple containing (R1CS, z).
 pub fn extract_r1cs_and_z<F: PrimeField>(cs: &ConstraintSystem<F>) -> (R1CS<F>, Vec<F>) {
+    let r1cs = extract_r1cs(cs);
+
+    // z = (1, x, w)
+    let z = extract_z(cs);
+
+    (r1cs, z)
+}
+
+/// extracts arkworks ConstraintSystem matrices into crate::utils::vec::SparseMatrix format as R1CS
+/// struct.
+pub fn extract_r1cs<F: PrimeField>(cs: &ConstraintSystem<F>) -> R1CS<F> {
     let m = cs.to_matrices().unwrap();
 
     let n_rows = cs.num_constraints;
@@ -29,23 +40,23 @@ pub fn extract_r1cs_and_z<F: PrimeField>(cs: &ConstraintSystem<F>) -> (R1CS<F>, 
         coeffs: m.c,
     };
 
+    R1CS::<F> {
+        l: cs.num_instance_variables - 1, // -1 to substract the first '1'
+        A,
+        B,
+        C,
+    }
+}
+
+/// extracts public inputs and witness into z vector from arkworks ConstraintSystem.
+pub fn extract_z<F: PrimeField>(cs: &ConstraintSystem<F>) -> Vec<F> {
     // z = (1, x, w)
-    let z: Vec<F> = [
+    [
         // 1 is already included in cs.instance_assignment
         cs.instance_assignment.clone(),
         cs.witness_assignment.clone(),
     ]
-    .concat();
-
-    (
-        R1CS::<F> {
-            l: cs.num_instance_variables - 1, // -1 to substract the first '1'
-            A,
-            B,
-            C,
-        },
-        z,
-    )
+    .concat()
 }
 
 #[cfg(test)]

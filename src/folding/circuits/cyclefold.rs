@@ -21,9 +21,8 @@ impl<C: CurveGroup, GC: CurveVar<C, CF<C>>> ECRLC<C, GC> {
         p1: GC,
         p2: GC,
         p3: GC,
-    ) -> Result<(), SynthesisError> {
-        p3.enforce_equal(&(p1 + p2.scalar_mul_le(r_bits.iter())?))?;
-        Ok(())
+    ) -> Result<Boolean<CF<C>>, SynthesisError> {
+        p3.is_eq(&(p1 + p2.scalar_mul_le(r_bits.iter())?))
     }
 }
 
@@ -32,7 +31,7 @@ mod tests {
     use super::*;
     use ark_ff::{BigInteger, PrimeField};
     use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
-    use ark_r1cs_std::alloc::AllocVar;
+    use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget};
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::UniformRand;
     use std::ops::Mul;
@@ -59,7 +58,8 @@ mod tests {
         let p3Var = GVar::new_witness(cs.clone(), || Ok(p3)).unwrap();
 
         // check ECRLC circuit
-        ECRLC::<Projective, GVar>::check(rbitsVar, p1Var, p2Var, p3Var).unwrap();
+        let check_pass = ECRLC::<Projective, GVar>::check(rbitsVar, p1Var, p2Var, p3Var).unwrap();
+        check_pass.enforce_equal(&Boolean::<Fq>::TRUE).unwrap();
         assert!(cs.is_satisfied().unwrap());
     }
 }

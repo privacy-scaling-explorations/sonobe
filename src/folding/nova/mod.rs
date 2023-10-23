@@ -7,6 +7,7 @@ use ark_ec::{CurveGroup, Group};
 use ark_std::fmt::Debug;
 use ark_std::{One, Zero};
 
+use crate::ccs::r1cs::R1CS;
 use crate::folding::circuits::nonnative::point_to_nonnative_limbs;
 use crate::pedersen::{Params as PedersenParams, Pedersen};
 use crate::Error;
@@ -27,14 +28,6 @@ where
     <C as Group>::ScalarField: Absorb,
     <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
 {
-    /// returns a CommittedInstance from an empty Witness
-    pub fn empty(pedersen_params: &PedersenParams<C>) -> Self {
-        // TODO maybe cmE when E=0, can be directly cmE=0 for convinience (this would need a change
-        // in the circuit input allocator)
-        Witness::<C>::new(vec![C::ScalarField::zero()], 1) // TODO e_len will not be 1, might be a param
-            .commit(pedersen_params, vec![C::ScalarField::one()])
-    }
-
     /// hash implements the committed instance hash compatible with the gadget implemented in
     /// nova/circuits.rs::CommittedInstanceVar.hash.
     /// Returns `H(i, z_0, z_i, U_i)`, where `i` can be `i` but also `i+1`, and `U` is the
@@ -99,4 +92,17 @@ where
             x,
         }
     }
+}
+
+pub fn check_instance_relation<C: CurveGroup>(
+    r1cs: &R1CS<C::ScalarField>,
+    W: &Witness<C>,
+    U: &CommittedInstance<C>,
+) -> Result<(), Error> {
+    let mut rel_r1cs = r1cs.clone().relax();
+    rel_r1cs.u = U.u;
+    rel_r1cs.E = W.E.clone();
+
+    let Z: Vec<C::ScalarField> = [vec![U.u], U.x.to_vec(), W.W.to_vec()].concat();
+    rel_r1cs.check_relation(&Z)
 }

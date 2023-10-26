@@ -10,6 +10,7 @@ use ark_std::{One, Zero};
 use crate::ccs::r1cs::R1CS;
 use crate::folding::circuits::nonnative::point_to_nonnative_limbs;
 use crate::pedersen::{Params as PedersenParams, Pedersen};
+use crate::utils::vec::is_zero_vec;
 use crate::Error;
 
 pub mod circuits;
@@ -28,6 +29,15 @@ where
     <C as Group>::ScalarField: Absorb,
     <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
 {
+    pub fn dummy(io_len: usize) -> Self {
+        Self {
+            cmE: C::zero(),
+            u: C::ScalarField::zero(),
+            cmW: C::zero(),
+            x: vec![C::ScalarField::zero(); io_len],
+        }
+    }
+
     /// hash implements the committed instance hash compatible with the gadget implemented in
     /// nova/circuits.rs::CommittedInstanceVar.hash.
     /// Returns `H(i, z_0, z_i, U_i)`, where `i` can be `i` but also `i+1`, and `U` is the
@@ -73,7 +83,7 @@ where
     pub fn new(w: Vec<C::ScalarField>, e_len: usize) -> Self {
         Self {
             E: vec![C::ScalarField::zero(); e_len],
-            rE: C::ScalarField::one(),
+            rE: C::ScalarField::zero(), // because we use C::zero() as cmE
             W: w,
             rW: C::ScalarField::one(),
         }
@@ -83,7 +93,10 @@ where
         params: &PedersenParams<C>,
         x: Vec<C::ScalarField>,
     ) -> CommittedInstance<C> {
-        let cmE = Pedersen::commit(params, &self.E, &self.rE);
+        let mut cmE = C::zero();
+        if !is_zero_vec::<C::ScalarField>(&self.E) {
+            cmE = Pedersen::commit(params, &self.E, &self.rE);
+        }
         let cmW = Pedersen::commit(params, &self.W, &self.rW);
         CommittedInstance {
             cmE,

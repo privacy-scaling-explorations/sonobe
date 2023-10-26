@@ -257,23 +257,26 @@ where
         let z_i = FpVar::<CF1<C>>::new_witness(cs.clone(), || Ok(z_i_native))?;
         let z_i1 = FpVar::<CF1<C>>::new_witness(cs.clone(), || Ok(z_i1_native))?;
 
-        let u_dummy = CommittedInstance {
-            cmE: C::generator(),
+        let u_dummy_native = CommittedInstance {
+            cmE: C::zero(),
             u: C::ScalarField::zero(),
-            cmW: C::generator(),
+            cmW: C::zero(),
             x: vec![CF1::<C>::zero()],
         };
 
+        let u_dummy =
+            CommittedInstanceVar::<C>::new_witness(cs.clone(), || Ok(u_dummy_native.clone()))?;
         let u_i = CommittedInstanceVar::<C>::new_witness(cs.clone(), || {
-            Ok(self.u_i.unwrap_or_else(|| u_dummy.clone()))
+            Ok(self.u_i.unwrap_or_else(|| u_dummy_native.clone()))
         })?;
         let U_i = CommittedInstanceVar::<C>::new_witness(cs.clone(), || {
-            Ok(self.U_i.unwrap_or_else(|| u_dummy.clone()))
+            Ok(self.U_i.unwrap_or_else(|| u_dummy_native.clone()))
         })?;
         let U_i1 = CommittedInstanceVar::<C>::new_witness(cs.clone(), || {
-            Ok(self.U_i1.unwrap_or_else(|| u_dummy.clone()))
+            Ok(self.U_i1.unwrap_or_else(|| u_dummy_native.clone()))
         })?;
-        // let cmT = NonNativeAffineVar::new_witness(cs.clone(), || Ok(self.cmT.unwrap()))?; // TODO TMP
+        let _cmT =
+            NonNativeAffineVar::new_witness(cs.clone(), || Ok(self.cmT.unwrap_or_else(C::zero)))?;
         let r =
             FpVar::<CF1<C>>::new_witness(cs.clone(), || Ok(self.r.unwrap_or_else(CF1::<C>::zero)))?; // r will come from higher level transcript
         let x =
@@ -295,7 +298,10 @@ where
         (u_i.x[0]).conditional_enforce_equal(&u_i_x, &is_not_basecase)?;
 
         // 2. u_i.cmE==cm(0), u_i.u==1
-        // (u_i.cmE.is_zero()?).enforce_equal(&Boolean::TRUE)?; // TODO not cmE=0, but check that cmE = cm(0)
+        (u_i.cmE.x.is_eq(&u_dummy.cmE.x)?)
+            .conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
+        (u_i.cmE.y.is_eq(&u_dummy.cmE.y)?)
+            .conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
         (u_i.u.is_one()?).conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
 
         // 3. nifs.verify, checks that folding u_i & U_i obtains U_{i+1}.
@@ -420,7 +426,7 @@ mod tests {
         let w2 = Witness::<Projective>::new(w2.clone(), r1cs.A.n_rows);
 
         let mut rng = ark_std::test_rng();
-        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, r1cs.A.n_cols);
+        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, r1cs.A.n_rows);
 
         // compute committed instances
         let ci1 = w1.commit(&pedersen_params, x1.clone());
@@ -434,6 +440,9 @@ mod tests {
 
         let (_w3, ci3, _T, cmT) =
             NIFS::<Projective>::prove(&pedersen_params, r_Fr, &r1cs, &w1, &ci1, &w2, &ci2).unwrap();
+
+        let ci3_verifier = NIFS::<Projective>::verify(r_Fr, &ci1, &ci2, &cmT);
+        assert_eq!(ci3_verifier, ci3);
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
@@ -570,19 +579,18 @@ mod tests {
 
         let mut tr = PoseidonTranscript::<Projective>::new(&poseidon_config);
 
-        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, r1cs.A.n_cols);
+        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, r1cs.A.n_rows);
 
         // first step
         let z_0 = Fr::from(3_u32);
-        let mut z_i = z_0;
+        let z_i = z_0;
         let mut z_i1 = Fr::from(35_u32);
 
         // set the circuit to be folded with z_i=z_0=3 and z_{i+1}=35 (initial values)
         let mut test_F_circuit = TestFCircuit::<Fr> { z_i, z_i1 };
 
         let w_dummy = Witness::<Projective>::new(vec![Fr::zero(); F_witness_len], r1cs.A.n_rows);
-        let mut u_dummy = w_dummy.commit(&pedersen_params, vec![Fr::zero(); x.len()]);
-        u_dummy.u = Fr::zero();
+        let u_dummy = CommittedInstance::<Projective>::dummy(x.len());
 
         // Wi is a 'dummy witness', all zeroes, but with the size corresponding to the R1CS that
         // we're working with.
@@ -606,10 +614,6 @@ mod tests {
         let mut u_i1_x: Fr;
         let n_steps: usize = 4;
         for _ in 0..n_steps {
-            dbg!(&i);
-            dbg!(&z_i);
-            dbg!(&z_i1);
-
             if i == Fr::zero() {
                 // base case: i=0, z_i=z_0, U_i = U_d := dummy instance
                 // u_1.x = H(1, z_0, z_i, U_i)
@@ -684,7 +688,6 @@ mod tests {
             }
             assert!(is_satisfied);
 
-            println!("num_constraints={:?}", cs.num_constraints());
             cs.finalize();
             let cs = cs.into_inner().unwrap();
             // notice that here we use 'Z' (uppercase) to denote the 'z-vector' as in the paper,
@@ -705,7 +708,7 @@ mod tests {
             // set values for next iteration
             i += Fr::one();
             test_F_circuit.step(); // advance the F circuit state
-            (z_i, z_i1) = test_F_circuit.public();
+            (_, z_i1) = test_F_circuit.public();
             U_i = U_i1.clone();
             W_i = W_i1.clone();
         }

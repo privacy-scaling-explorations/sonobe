@@ -183,11 +183,13 @@ where
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z};
-    use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
     use ark_ff::PrimeField;
     use ark_pallas::{Fr, Projective};
-    use ark_std::{UniformRand, Zero};
+    use ark_std::{ops::Mul, UniformRand, Zero};
+
+    use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z};
+    use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
+    use crate::utils::vec::vec_scalar_mul;
 
     pub fn check_relaxed_r1cs<F: PrimeField>(r1cs: &R1CS<F>, z: &[F], u: &F, E: &[F]) -> bool {
         let Az = mat_vec_mul_sparse(&r1cs.A, z);
@@ -275,6 +277,10 @@ pub mod tests {
         assert_eq!(ci3_expected.cmE, ci3.cmE);
         assert_eq!(ci3_expected.cmW, ci3.cmW);
 
+        // next equalities should hold since we started from two cmE of zero-vector E's
+        assert_eq!(ci3.cmE, cmT.mul(r));
+        assert_eq!(w3.E, vec_scalar_mul(&T, &r));
+
         // NIFS.Verify_Folded_Instance:
         NIFS::<Projective>::verify_folded_instance(r, &ci1, &ci2, &ci3, &cmT).unwrap();
 
@@ -294,6 +300,7 @@ pub mod tests {
             &cmT,
         )
         .unwrap();
+
         NIFS::<Projective>::verify_commitments(
             &mut transcript_v,
             &pedersen_params,

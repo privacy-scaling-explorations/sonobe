@@ -31,8 +31,10 @@ pub enum Error {
     NotExpectedLength,
     #[error("Can not be empty")]
     Empty,
-    #[error("Commitment verification failed")]
-    CommitmentVerificationFail,
+    #[error("Pedersen parameters length is not suficient")]
+    PedersenParamsLen,
+    #[error("Pedersen verification failed")]
+    PedersenVerificationFail,
 }
 
 /// FoldingScheme defines trait that is implemented by the diverse folding schemes. It is defined

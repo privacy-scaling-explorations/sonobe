@@ -40,15 +40,15 @@ impl<C: CurveGroup> CCS<C> {
         rng: &mut R,
         pedersen_params: &PedersenParams<C>,
         z: &[C::ScalarField],
-    ) -> (LCCCS<C>, Witness<C::ScalarField>) {
+    ) -> Result<(LCCCS<C>, Witness<C::ScalarField>), Error> {
         let w: Vec<C::ScalarField> = z[(1 + self.l)..].to_vec();
         let r_w = C::ScalarField::rand(rng);
-        let C = Pedersen::commit(pedersen_params, &w, &r_w);
+        let C = Pedersen::commit(pedersen_params, &w, &r_w)?;
 
         let r_x: Vec<C::ScalarField> = (0..self.s).map(|_| C::ScalarField::rand(rng)).collect();
         let v = self.compute_v_j(z, &r_x);
 
-        (
+        Ok((
             LCCCS::<C> {
                 C,
                 u: C::ScalarField::one(),
@@ -57,7 +57,7 @@ impl<C: CurveGroup> CCS<C> {
                 v,
             },
             Witness::<C::ScalarField> { w, r_w },
-        )
+        ))
     }
 }
 
@@ -94,7 +94,7 @@ impl<C: CurveGroup> LCCCS<C> {
     ) -> Result<(), Error> {
         // check that C is the commitment of w. Notice that this is not verifying a Pedersen
         // opening, but checking that the Commmitment comes from committing to the witness.
-        if self.C != Pedersen::commit(pedersen_params, &w.w, &w.r_w) {
+        if self.C != Pedersen::commit(pedersen_params, &w.w, &w.r_w)? {
             return Err(Error::NotSatisfied);
         }
 
@@ -129,7 +129,7 @@ pub mod tests {
         ccs.check_relation(&z.clone()).unwrap();
 
         let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, ccs.n - ccs.l - 1);
-        let (lcccs, _) = ccs.to_lcccs(&mut rng, &pedersen_params, &z);
+        let (lcccs, _) = ccs.to_lcccs(&mut rng, &pedersen_params, &z).unwrap();
         // with our test vector comming from R1CS, v should have length 3
         assert_eq!(lcccs.v.len(), 3);
 
@@ -160,7 +160,7 @@ pub mod tests {
 
         let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, ccs.n - ccs.l - 1);
         // Compute v_j with the right z
-        let (lcccs, _) = ccs.to_lcccs(&mut rng, &pedersen_params, &z);
+        let (lcccs, _) = ccs.to_lcccs(&mut rng, &pedersen_params, &z).unwrap();
         // with our test vector comming from R1CS, v should have length 3
         assert_eq!(lcccs.v.len(), 3);
 

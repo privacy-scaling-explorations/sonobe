@@ -103,7 +103,7 @@ where
         // compute cross terms
         let T = Self::compute_T(r1cs, ci1.u, ci2.u, &z1, &z2)?;
         let rT = C::ScalarField::one(); // use 1 as rT since we don't need hiding property for cm(T)
-        let cmT = Pedersen::commit(pedersen_params, &T, &rT);
+        let cmT = Pedersen::commit(pedersen_params, &T, &rT)?;
 
         // fold witness
         let w3 = NIFS::<C>::fold_witness(r, w1, w2, &T, rT)?;
@@ -170,12 +170,9 @@ where
             // cm_proofs should have length 3: [cmE_proof, cmW_proof, cmT_proof]
             return Err(Error::NotExpectedLength);
         }
-        if !Pedersen::verify(pedersen_params, tr, ci.cmE, cm_proofs[0].clone())
-            || !Pedersen::verify(pedersen_params, tr, ci.cmW, cm_proofs[1].clone())
-            || !Pedersen::verify(pedersen_params, tr, cmT, cm_proofs[2].clone())
-        {
-            return Err(Error::CommitmentVerificationFail);
-        }
+        Pedersen::verify(pedersen_params, tr, ci.cmE, cm_proofs[0].clone())?;
+        Pedersen::verify(pedersen_params, tr, ci.cmW, cm_proofs[1].clone())?;
+        Pedersen::verify(pedersen_params, tr, cmT, cm_proofs[2].clone())?;
         Ok(())
     }
 }
@@ -210,7 +207,9 @@ pub mod tests {
 
         // dummy instance, witness and public inputs zeroes
         let w_dummy = Witness::<Projective>::new(vec![Fr::zero(); w1.len()], r1cs.A.n_rows);
-        let mut u_dummy = w_dummy.commit(&pedersen_params, vec![Fr::zero(); x1.len()]);
+        let mut u_dummy = w_dummy
+            .commit(&pedersen_params, vec![Fr::zero(); x1.len()])
+            .unwrap();
         u_dummy.u = Fr::zero();
 
         let w_i = w_dummy.clone();
@@ -250,8 +249,8 @@ pub mod tests {
         let r = Fr::rand(&mut rng); // folding challenge would come from the transcript
 
         // compute committed instances
-        let ci1 = w1.commit(&pedersen_params, x1.clone());
-        let ci2 = w2.commit(&pedersen_params, x2.clone());
+        let ci1 = w1.commit(&pedersen_params, x1.clone()).unwrap();
+        let ci2 = w2.commit(&pedersen_params, x2.clone()).unwrap();
 
         // NIFS.P
         let (w3, ci3_aux, T, cmT) =
@@ -273,7 +272,7 @@ pub mod tests {
 
         // check that folded commitments from folded instance (ci) are equal to folding the
         // use folded rE, rW to commit w3
-        let ci3_expected = w3.commit(&pedersen_params, ci3.x.clone());
+        let ci3_expected = w3.commit(&pedersen_params, ci3.x.clone()).unwrap();
         assert_eq!(ci3_expected.cmE, ci3.cmE);
         assert_eq!(ci3_expected.cmW, ci3.cmW);
 
@@ -322,7 +321,8 @@ pub mod tests {
 
         // prepare the running instance
         let mut running_instance_w = Witness::<Projective>::new(w.clone(), r1cs.A.n_rows);
-        let mut running_committed_instance = running_instance_w.commit(&pedersen_params, x);
+        let mut running_committed_instance =
+            running_instance_w.commit(&pedersen_params, x).unwrap();
         assert!(check_relaxed_r1cs(
             &r1cs,
             &z,
@@ -336,7 +336,8 @@ pub mod tests {
             let incomming_instance_z = get_test_z(i + 4);
             let (w, x) = r1cs.split_z(&incomming_instance_z);
             let incomming_instance_w = Witness::<Projective>::new(w.clone(), r1cs.A.n_rows);
-            let incomming_committed_instance = incomming_instance_w.commit(&pedersen_params, x);
+            let incomming_committed_instance =
+                incomming_instance_w.commit(&pedersen_params, x).unwrap();
             assert!(check_relaxed_r1cs(
                 &r1cs,
                 &incomming_instance_z.clone(),

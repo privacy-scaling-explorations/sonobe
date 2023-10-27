@@ -89,14 +89,14 @@ mod frontend_tests {
 
         // R1CS
         let (r1cs, z_r1cs) = frontend
-            .extract_r1cs_and_z(&[].as_slice())
+            .extract_r1cs_and_z([].as_slice())
             .expect("Frontend: Failed to extract R1CS and Z");
         r1cs.check_relation(&z_r1cs)
             .expect("Relation Check: Failure in R1CS");
 
         // CCS
         let (ccs, z_ccs) = frontend
-            .extract_ccs_and_z(&[].as_slice())
+            .extract_ccs_and_z([].as_slice())
             .expect("Frontend: Failed to extract CCS and Z");
         ccs.check_relation(&z_ccs[..])
             .expect("Relation Check: Failure in CCS");
@@ -140,10 +140,8 @@ mod frontend_tests {
             if ccs_check_result.is_err() {
                 panic!("Relation Check: Failure in CCS");
             }
-        } else {
-            if r1cs_check_result.is_ok() && ccs_check_result.is_ok() {
-                panic!("Relation Check: Unexpected success in both R1CS and CCS");
-            }
+        } else if r1cs_check_result.is_ok() && ccs_check_result.is_ok() {
+            panic!("Relation Check: Unexpected success in both R1CS and CCS");
         }
     }
 

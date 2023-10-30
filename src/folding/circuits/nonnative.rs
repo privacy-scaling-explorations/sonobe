@@ -6,6 +6,7 @@ use ark_r1cs_std::{
     fields::nonnative::NonNativeFieldVar,
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
+use ark_std::{One, Zero};
 use core::borrow::Borrow;
 
 /// NonNativeAffineVar represents an elliptic curve point in Affine represenation in the non-native
@@ -31,6 +32,19 @@ where
             let cs = cs.into();
 
             let affine = val.borrow().into_affine();
+            if affine.is_zero() {
+                let x = NonNativeFieldVar::<C::BaseField, C::ScalarField>::new_variable(
+                    cs.clone(),
+                    || Ok(C::BaseField::zero()),
+                    mode,
+                )?;
+                let y = NonNativeFieldVar::<C::BaseField, C::ScalarField>::new_variable(
+                    cs.clone(),
+                    || Ok(C::BaseField::one()),
+                    mode,
+                )?;
+                return Ok(Self { x, y });
+            }
             let xy = affine.xy().unwrap();
             let x = NonNativeFieldVar::<C::BaseField, C::ScalarField>::new_variable(
                 cs.clone(),
@@ -58,6 +72,20 @@ where
     <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
 {
     let affine = p.into_affine();
+    if affine.is_zero() {
+        let x =
+            AllocatedNonNativeFieldVar::<C::BaseField, C::ScalarField>::get_limbs_representations(
+                &C::BaseField::zero(),
+                OptimizationType::Weight,
+            )?;
+        let y =
+            AllocatedNonNativeFieldVar::<C::BaseField, C::ScalarField>::get_limbs_representations(
+                &C::BaseField::one(),
+                OptimizationType::Weight,
+            )?;
+        return Ok((x, y));
+    }
+
     let (x, y) = affine.xy().unwrap();
     let x = AllocatedNonNativeFieldVar::<C::BaseField, C::ScalarField>::get_limbs_representations(
         x,
@@ -68,4 +96,22 @@ where
         OptimizationType::Weight,
     )?;
     Ok((x, y))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ark_pallas::{Fq, Fr, Projective};
+    use ark_r1cs_std::alloc::AllocVar;
+    use ark_relations::r1cs::ConstraintSystem;
+    use ark_std::Zero;
+
+    #[test]
+    fn test_alloc_nonnativeaffinevar_zero() {
+        let cs = ConstraintSystem::<Fr>::new_ref();
+
+        // dealing with the 'zero' point should not panic when doing the unwrap
+        let p = Projective::zero();
+        NonNativeAffineVar::<Fq, Fr>::new_witness(cs.clone(), || Ok(p)).unwrap();
+    }
 }

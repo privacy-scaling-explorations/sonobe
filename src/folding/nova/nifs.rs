@@ -181,19 +181,55 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
-    use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z};
-    use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
     use ark_ff::PrimeField;
     use ark_pallas::{Fr, Projective};
-    use ark_std::UniformRand;
+    use ark_std::{ops::Mul, UniformRand, Zero};
 
-    pub fn check_relaxed_r1cs<F: PrimeField>(r1cs: &R1CS<F>, z: Vec<F>, u: F, E: &[F]) {
-        let Az = mat_vec_mul_sparse(&r1cs.A, &z);
-        let Bz = mat_vec_mul_sparse(&r1cs.B, &z);
-        let Cz = mat_vec_mul_sparse(&r1cs.C, &z);
-        assert_eq!(hadamard(&Az, &Bz), vec_add(&vec_scalar_mul(&Cz, &u), E));
+    use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z};
+    use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
+    use crate::utils::vec::vec_scalar_mul;
+
+    pub fn check_relaxed_r1cs<F: PrimeField>(r1cs: &R1CS<F>, z: &[F], u: &F, E: &[F]) -> bool {
+        let Az = mat_vec_mul_sparse(&r1cs.A, z);
+        let Bz = mat_vec_mul_sparse(&r1cs.B, z);
+        let Cz = mat_vec_mul_sparse(&r1cs.C, z);
+        hadamard(&Az, &Bz).unwrap() == vec_add(&vec_scalar_mul(&Cz, u), E).unwrap()
+    }
+
+    // fold 2 dummy instances and check that the folded instance holds the relaxed R1CS relation
+    #[test]
+    fn test_nifs_fold_dummy() {
+        let r1cs = get_test_r1cs::<Fr>();
+        let z1 = get_test_z(3);
+        let (w1, x1) = r1cs.split_z(&z1);
+
+        let mut rng = ark_std::test_rng();
+        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, r1cs.A.n_cols);
+
+        // dummy instance, witness and public inputs zeroes
+        let w_dummy = Witness::<Projective>::new(vec![Fr::zero(); w1.len()], r1cs.A.n_rows);
+        let mut u_dummy = w_dummy.commit(&pedersen_params, vec![Fr::zero(); x1.len()]);
+        u_dummy.u = Fr::zero();
+
+        let w_i = w_dummy.clone();
+        let u_i = u_dummy.clone();
+        let W_i = w_dummy.clone();
+        let U_i = u_dummy.clone();
+        let z_dummy = vec![Fr::zero(); z1.len()];
+        assert!(check_relaxed_r1cs(&r1cs, &z_dummy, &u_i.u, &w_i.E));
+        assert!(check_relaxed_r1cs(&r1cs, &z_dummy, &U_i.u, &W_i.E));
+
+        let r_Fr = Fr::from(3_u32);
+
+        let (W_i1, U_i1, _, _) =
+            NIFS::<Projective>::prove(&pedersen_params, r_Fr, &r1cs, &w_i, &u_i, &W_i, &U_i)
+                .unwrap();
+
+        let z: Vec<Fr> = [vec![U_i1.u], U_i1.x.to_vec(), W_i1.W.to_vec()].concat();
+        assert_eq!(z.len(), z1.len());
+        assert!(check_relaxed_r1cs(&r1cs, &z, &U_i1.u, &W_i1.E));
     }
 
     // fold 2 instances into one
@@ -218,11 +254,12 @@ mod tests {
         let ci2 = w2.commit(&pedersen_params, x2.clone());
 
         // NIFS.P
-        let (w3, _, T, cmT) =
+        let (w3, ci3_aux, T, cmT) =
             NIFS::<Projective>::prove(&pedersen_params, r, &r1cs, &w1, &ci1, &w2, &ci2).unwrap();
 
         // NIFS.V
         let ci3 = NIFS::<Projective>::verify(r, &ci1, &ci2, &cmT);
+        assert_eq!(ci3, ci3_aux);
 
         // naive check that the folded witness satisfies the relaxed r1cs
         let z3: Vec<Fr> = [vec![ci3.u], ci3.x.to_vec(), w3.W.to_vec()].concat();
@@ -230,15 +267,19 @@ mod tests {
         let z3_aux = vec_add(&z1, &vec_scalar_mul(&z2, &r)).unwrap();
         assert_eq!(z3, z3_aux);
         // check that relations hold for the 2 inputted instances and the folded one
-        check_relaxed_r1cs(&r1cs, z1, ci1.u, &w1.E);
-        check_relaxed_r1cs(&r1cs, z2, ci2.u, &w2.E);
-        check_relaxed_r1cs(&r1cs, z3, ci3.u, &w3.E);
+        assert!(check_relaxed_r1cs(&r1cs, &z1, &ci1.u, &w1.E));
+        assert!(check_relaxed_r1cs(&r1cs, &z2, &ci2.u, &w2.E));
+        assert!(check_relaxed_r1cs(&r1cs, &z3, &ci3.u, &w3.E));
 
         // check that folded commitments from folded instance (ci) are equal to folding the
         // use folded rE, rW to commit w3
         let ci3_expected = w3.commit(&pedersen_params, ci3.x.clone());
         assert_eq!(ci3_expected.cmE, ci3.cmE);
         assert_eq!(ci3_expected.cmW, ci3.cmW);
+
+        // next equalities should hold since we started from two cmE of zero-vector E's
+        assert_eq!(ci3.cmE, cmT.mul(r));
+        assert_eq!(w3.E, vec_scalar_mul(&T, &r));
 
         // NIFS.Verify_Folded_Instance:
         NIFS::<Projective>::verify_folded_instance(r, &ci1, &ci2, &ci3, &cmT).unwrap();
@@ -259,6 +300,7 @@ mod tests {
             &cmT,
         )
         .unwrap();
+
         NIFS::<Projective>::verify_commitments(
             &mut transcript_v,
             &pedersen_params,
@@ -281,12 +323,12 @@ mod tests {
         // prepare the running instance
         let mut running_instance_w = Witness::<Projective>::new(w.clone(), r1cs.A.n_rows);
         let mut running_committed_instance = running_instance_w.commit(&pedersen_params, x);
-        check_relaxed_r1cs(
+        assert!(check_relaxed_r1cs(
             &r1cs,
-            z,
-            running_committed_instance.u,
+            &z,
+            &running_committed_instance.u,
             &running_instance_w.E,
-        );
+        ));
 
         let num_iters = 10;
         for i in 0..num_iters {
@@ -295,12 +337,12 @@ mod tests {
             let (w, x) = r1cs.split_z(&incomming_instance_z);
             let incomming_instance_w = Witness::<Projective>::new(w.clone(), r1cs.A.n_rows);
             let incomming_committed_instance = incomming_instance_w.commit(&pedersen_params, x);
-            check_relaxed_r1cs(
+            assert!(check_relaxed_r1cs(
                 &r1cs,
-                incomming_instance_z.clone(),
-                incomming_committed_instance.u,
+                &incomming_instance_z.clone(),
+                &incomming_committed_instance.u,
                 &incomming_instance_w.E,
-            );
+            ));
 
             let r = Fr::rand(&mut rng); // folding challenge would come from the transcript
 
@@ -331,7 +373,12 @@ mod tests {
             ]
             .concat();
 
-            check_relaxed_r1cs(&r1cs, folded_z, folded_committed_instance.u, &folded_w.E);
+            assert!(check_relaxed_r1cs(
+                &r1cs,
+                &folded_z,
+                &folded_committed_instance.u,
+                &folded_w.E
+            ));
 
             // set running_instance for next loop iteration
             running_instance_w = folded_w;

@@ -92,18 +92,18 @@ where
         &self,
         params: &PedersenParams<C>,
         x: Vec<C::ScalarField>,
-    ) -> CommittedInstance<C> {
+    ) -> Result<CommittedInstance<C>, Error> {
         let mut cmE = C::zero();
         if !is_zero_vec::<C::ScalarField>(&self.E) {
-            cmE = Pedersen::commit(params, &self.E, &self.rE);
+            cmE = Pedersen::commit(params, &self.E, &self.rE)?;
         }
-        let cmW = Pedersen::commit(params, &self.W, &self.rW);
-        CommittedInstance {
+        let cmW = Pedersen::commit(params, &self.W, &self.rW)?;
+        Ok(CommittedInstance {
             cmE,
             u: C::ScalarField::one(),
             cmW,
             x,
-        }
+        })
     }
 }
 

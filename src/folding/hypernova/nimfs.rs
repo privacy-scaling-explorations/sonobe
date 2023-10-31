@@ -373,8 +373,8 @@ pub mod tests {
     #[test]
     fn test_fold() {
         let ccs = get_test_ccs();
-        let z1 = get_test_z(3);
-        let z2 = get_test_z(4);
+        let z1 = get_test_z::<Fr>(3);
+        let z2 = get_test_z::<Fr>(4);
         ccs.check_relation(&z1).unwrap();
         ccs.check_relation(&z2).unwrap();
 
@@ -386,8 +386,8 @@ pub mod tests {
 
         let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, ccs.n - ccs.l - 1);
 
-        let (lcccs, w1) = ccs.to_lcccs(&mut rng, &pedersen_params, &z1);
-        let (cccs, w2) = ccs.to_cccs(&mut rng, &pedersen_params, &z2);
+        let (lcccs, w1) = ccs.to_lcccs(&mut rng, &pedersen_params, &z1).unwrap();
+        let (cccs, w2) = ccs.to_cccs(&mut rng, &pedersen_params, &z2).unwrap();
 
         lcccs.check_relation(&pedersen_params, &ccs, &w1).unwrap();
         cccs.check_relation(&pedersen_params, &ccs, &w2).unwrap();
@@ -420,9 +420,9 @@ pub mod tests {
         let z_2 = get_test_z(4);
 
         // Create the LCCCS instance out of z_1
-        let (running_instance, w1) = ccs.to_lcccs(&mut rng, &pedersen_params, &z_1);
+        let (running_instance, w1) = ccs.to_lcccs(&mut rng, &pedersen_params, &z_1).unwrap();
         // Create the CCCS instance out of z_2
-        let (new_instance, w2) = ccs.to_cccs(&mut rng, &pedersen_params, &z_2);
+        let (new_instance, w2) = ccs.to_cccs(&mut rng, &pedersen_params, &z_2).unwrap();
 
         // Prover's transcript
         let mut transcript_p = IOPTranscript::<Fr>::new(b"multifolding");
@@ -471,7 +471,8 @@ pub mod tests {
 
         // LCCCS witness
         let z_1 = get_test_z(2);
-        let (mut running_instance, mut w1) = ccs.to_lcccs(&mut rng, &pedersen_params, &z_1);
+        let (mut running_instance, mut w1) =
+            ccs.to_lcccs(&mut rng, &pedersen_params, &z_1).unwrap();
 
         let mut transcript_p = IOPTranscript::<Fr>::new(b"multifolding");
         let mut transcript_v = IOPTranscript::<Fr>::new(b"multifolding");
@@ -486,7 +487,7 @@ pub mod tests {
             let z_2 = get_test_z(i);
             println!("z_2 {:?}", z_2); // DBG
 
-            let (new_instance, w2) = ccs.to_cccs(&mut rng, &pedersen_params, &z_2);
+            let (new_instance, w2) = ccs.to_cccs(&mut rng, &pedersen_params, &z_2).unwrap();
 
             // run the prover side of the multifolding
             let (proof, folded_lcccs, folded_witness) = NIMFS::<Projective>::prove(
@@ -550,7 +551,7 @@ pub mod tests {
         let mut lcccs_instances = Vec::new();
         let mut w_lcccs = Vec::new();
         for z_i in z_lcccs.iter() {
-            let (running_instance, w) = ccs.to_lcccs(&mut rng, &pedersen_params, z_i);
+            let (running_instance, w) = ccs.to_lcccs(&mut rng, &pedersen_params, z_i).unwrap();
             lcccs_instances.push(running_instance);
             w_lcccs.push(w);
         }
@@ -558,7 +559,7 @@ pub mod tests {
         let mut cccs_instances = Vec::new();
         let mut w_cccs = Vec::new();
         for z_i in z_cccs.iter() {
-            let (new_instance, w) = ccs.to_cccs(&mut rng, &pedersen_params, z_i);
+            let (new_instance, w) = ccs.to_cccs(&mut rng, &pedersen_params, z_i).unwrap();
             cccs_instances.push(new_instance);
             w_cccs.push(w);
         }
@@ -640,7 +641,7 @@ pub mod tests {
             let mut lcccs_instances = Vec::new();
             let mut w_lcccs = Vec::new();
             for z_i in z_lcccs.iter() {
-                let (running_instance, w) = ccs.to_lcccs(&mut rng, &pedersen_params, z_i);
+                let (running_instance, w) = ccs.to_lcccs(&mut rng, &pedersen_params, z_i).unwrap();
                 lcccs_instances.push(running_instance);
                 w_lcccs.push(w);
             }
@@ -648,7 +649,7 @@ pub mod tests {
             let mut cccs_instances = Vec::new();
             let mut w_cccs = Vec::new();
             for z_i in z_cccs.iter() {
-                let (new_instance, w) = ccs.to_cccs(&mut rng, &pedersen_params, z_i);
+                let (new_instance, w) = ccs.to_cccs(&mut rng, &pedersen_params, z_i).unwrap();
                 cccs_instances.push(new_instance);
                 w_cccs.push(w);
             }

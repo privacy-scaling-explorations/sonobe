@@ -37,9 +37,17 @@ impl<C: CurveGroup> Pedersen<C> {
         params
     }
 
-    pub fn commit(params: &Params<C>, v: &Vec<C::ScalarField>, r: &C::ScalarField) -> C {
+    pub fn commit(
+        params: &Params<C>,
+        v: &Vec<C::ScalarField>,
+        r: &C::ScalarField,
+    ) -> Result<C, Error> {
+        if params.generators.len() < v.len() {
+            return Err(Error::PedersenParamsLen);
+        }
         // h⋅r + <g, v>
-        params.h.mul(r) + C::msm(&params.generators[..v.len()], v).unwrap()
+        // use msm_unchecked because we already ensured at the if that lengths match
+        Ok(params.h.mul(r) + C::msm_unchecked(&params.generators[..v.len()], v))
     }
 
     pub fn prove(
@@ -49,12 +57,17 @@ impl<C: CurveGroup> Pedersen<C> {
         v: &Vec<C::ScalarField>,
         r: &C::ScalarField,
     ) -> Result<Proof<C>, Error> {
+        if params.generators.len() < v.len() {
+            return Err(Error::PedersenParamsLen);
+        }
+
         transcript.absorb_point(cm);
         let r1 = transcript.get_challenge();
         let d = transcript.get_challenges(v.len());
 
         // R = h⋅r_1 + <g, d>
-        let R: C = params.h.mul(r1) + C::msm(&params.generators[..d.len()], &d).unwrap();
+        // use msm_unchecked because we already ensured at the if that lengths match
+        let R: C = params.h.mul(r1) + C::msm_unchecked(&params.generators[..d.len()], &d);
 
         transcript.absorb_point(&R);
         let e = transcript.get_challenge();
@@ -72,7 +85,11 @@ impl<C: CurveGroup> Pedersen<C> {
         transcript: &mut impl Transcript<C>,
         cm: C,
         proof: Proof<C>,
-    ) -> bool {
+    ) -> Result<(), Error> {
+        if params.generators.len() < proof.u.len() {
+            return Err(Error::PedersenParamsLen);
+        }
+
         transcript.absorb_point(&cm);
         transcript.get_challenge(); // r_1
         transcript.get_challenges(proof.u.len()); // d
@@ -81,12 +98,13 @@ impl<C: CurveGroup> Pedersen<C> {
 
         // check that: R + cm == h⋅r_u + <g, u>
         let lhs = proof.R + cm.mul(e);
+        // use msm_unchecked because we already ensured at the if that lengths match
         let rhs = params.h.mul(proof.r_u)
-            + C::msm(&params.generators[..proof.u.len()], &proof.u).unwrap();
+            + C::msm_unchecked(&params.generators[..proof.u.len()], &proof.u);
         if lhs != rhs {
-            return false;
+            return Err(Error::PedersenVerificationFail);
         }
-        true
+        Ok(())
     }
 }
 
@@ -113,9 +131,8 @@ mod tests {
 
         let v: Vec<Fr> = vec![Fr::rand(&mut rng); n];
         let r: Fr = Fr::rand(&mut rng);
-        let cm = Pedersen::<Projective>::commit(&params, &v, &r);
+        let cm = Pedersen::<Projective>::commit(&params, &v, &r).unwrap();
         let proof = Pedersen::<Projective>::prove(&params, &mut transcript_p, &cm, &v, &r).unwrap();
-        let v = Pedersen::<Projective>::verify(&params, &mut transcript_v, cm, proof);
-        assert!(v);
+        Pedersen::<Projective>::verify(&params, &mut transcript_v, cm, proof).unwrap();
     }
 }

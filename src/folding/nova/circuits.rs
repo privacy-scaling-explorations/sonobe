@@ -424,8 +424,8 @@ mod tests {
         let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, r1cs.A.n_rows);
 
         // compute committed instances
-        let ci1 = w1.commit(&pedersen_params, x1.clone());
-        let ci2 = w2.commit(&pedersen_params, x2.clone());
+        let ci1 = w1.commit(&pedersen_params, x1.clone()).unwrap();
+        let ci2 = w2.commit(&pedersen_params, x2.clone()).unwrap();
 
         // get challenge from transcript
         let poseidon_config = poseidon_test_config::<Fr>();
@@ -695,7 +695,7 @@ mod tests {
             // compute committed instances, w_{i+1}, u_{i+1}, which will be used as w_i, u_i, so we
             // assign them directly to w_i, u_i.
             w_i = Witness::<Projective>::new(w_i1.clone(), r1cs.A.n_rows);
-            u_i = w_i.commit(&pedersen_params, vec![u_i1_x]);
+            u_i = w_i.commit(&pedersen_params, vec![u_i1_x]).unwrap();
 
             check_instance_relation(&r1cs, &w_i, &u_i).unwrap();
             check_instance_relation(&r1cs, &W_i1, &U_i1).unwrap();

@@ -15,6 +15,7 @@ use ark_r1cs_std::{
     ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
+use ark_std::fmt::Debug;
 use ark_std::Zero;
 use core::{borrow::Borrow, marker::PhantomData};
 
@@ -209,15 +210,20 @@ where
 
 /// FCircuit defines the trait of the circuit of the F function, which is the one being executed
 /// inside the agmented F' function.
-pub trait FCircuit<F: PrimeField>: Clone {
-    // TODO Copy
-    /// method that returns z_i (input), z_{i+1} (output)
-    fn public(self) -> (Vec<F>, Vec<F>);
-
-    /// method that computes the next state values in place, assigning z_{i+1} into z_i, and
+pub trait FCircuit<F: PrimeField>: Clone + Copy + Debug {
+    /// computes the next state values in place, assigning z_{i+1} into z_i, and
     /// computing the new z_i
-    fn step_native(&mut self);
-    fn step_circuit(
+    fn step_native(
+        // this method uses self, so that each FCircuit implementation (and different frontends)
+        // can hold a state if needed to store data to compute the next state.
+        self,
+        z_i: Vec<F>,
+    ) -> Vec<F>;
+
+    /// generates the constraints for the step of F for the given z_i
+    fn generate_step_constraints(
+        // this method uses self, so that each FCircuit implementation (and different frontends)
+        // can hold a state if needed to store data to generate the constraints.
         self,
         cs: ConstraintSystemRef<F>,
         z_i: Vec<FpVar<F>>,
@@ -241,6 +247,25 @@ pub struct AugmentedFCircuit<C: CurveGroup, FC: FCircuit<CF1<C>>> {
     pub x: Option<CF1<C>>,         // public inputs (u_{i+1}.x)
 }
 
+impl<C: CurveGroup, FC: FCircuit<CF1<C>>> AugmentedFCircuit<C, FC> {
+    #[allow(dead_code)] // TMP while IVC does not use this method
+    fn empty(poseidon_config: &PoseidonConfig<CF1<C>>, F_circuit: FC) -> Self {
+        Self {
+            poseidon_config: poseidon_config.clone(),
+            i: None,
+            z_0: None,
+            z_i: None,
+            u_i: None,
+            U_i: None,
+            U_i1: None,
+            cmT: None,
+            r: None,
+            F: F_circuit,
+            x: None,
+        }
+    }
+}
+
 impl<C: CurveGroup, FC: FCircuit<CF1<C>>> ConstraintSynthesizer<CF1<C>> for AugmentedFCircuit<C, FC>
 where
     C: CurveGroup,
@@ -258,7 +283,7 @@ where
         })?;
 
         // get z_{i+1} from the F circuit
-        let z_i1 = self.F.step_circuit(cs.clone(), z_i.clone())?;
+        let z_i1 = self.F.generate_step_constraints(cs.clone(), z_i.clone())?;
 
         let u_dummy_native = CommittedInstance {
             cmE: C::zero(),
@@ -357,25 +382,19 @@ mod tests {
     use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
     use crate::transcript::Transcript;
 
-    #[derive(Clone, Debug)] // TODO Copy
+    #[derive(Clone, Copy, Debug)]
     /// TestFCircuit is a variation of `x^3 + x + 5 = y` (as in
     /// src/frontend/arkworks/mod.rs#tests::TestCircuit), adapted to have 2 public inputs which are
     /// used as the state. `z_i` is used as `x`, and `z_{i+1}` is used as `y`, and at the next
     /// step, `z_{i+1}` will be assigned to `z_i`, and a new `z+{i+1}` will be computted.
     pub struct TestFCircuit<F: PrimeField> {
-        z_i: Vec<F>,  // z_i
-        z_i1: Vec<F>, // z_{i+1}
+        _f: PhantomData<F>,
     }
     impl<F: PrimeField> FCircuit<F> for TestFCircuit<F> {
-        fn public(self) -> (Vec<F>, Vec<F>) {
-            (self.z_i, self.z_i1)
+        fn step_native(self, z_i: Vec<F>) -> Vec<F> {
+            vec![z_i[0] * z_i[0] * z_i[0] + z_i[0] + F::from(5_u32)]
         }
-        fn step_native(&mut self) {
-            self.z_i = self.z_i1.clone();
-            self.z_i1 =
-                vec![self.z_i[0] * self.z_i[0] * self.z_i[0] + self.z_i[0] + F::from(5_u32)];
-        }
-        fn step_circuit(
+        fn generate_step_constraints(
             self,
             cs: ConstraintSystemRef<F>,
             z_i: Vec<FpVar<F>>,
@@ -553,23 +572,9 @@ mod tests {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         // prepare the circuit to obtain its R1CS
-        let test_F_circuit_dummy = TestFCircuit::<Fr> {
-            z_i: vec![Fr::zero()],
-            z_i1: vec![Fr::zero()],
-        };
-        let mut augmented_F_circuit = AugmentedFCircuit::<Projective, TestFCircuit<Fr>> {
-            poseidon_config: poseidon_config.clone(),
-            i: None,
-            z_0: None,
-            z_i: None,
-            u_i: None,
-            U_i: None,
-            U_i1: None,
-            cmT: None,
-            r: None,
-            F: test_F_circuit_dummy,
-            x: None,
-        };
+        let F_circuit = TestFCircuit::<Fr> { _f: PhantomData };
+        let mut augmented_F_circuit =
+            AugmentedFCircuit::<Projective, TestFCircuit<Fr>>::empty(&poseidon_config, F_circuit);
         augmented_F_circuit
             .generate_constraints(cs.clone())
             .unwrap();
@@ -584,16 +589,10 @@ mod tests {
 
         let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, r1cs.A.n_rows);
 
-        // first step
+        // first step, set z_i=z_0=3 and z_{i+1}=35 (initial values)
         let z_0 = vec![Fr::from(3_u32)];
         let mut z_i = z_0.clone();
         let mut z_i1 = vec![Fr::from(35_u32)];
-
-        // set the circuit to be folded with z_i=z_0=3 and z_{i+1}=35 (initial values)
-        let mut test_F_circuit = TestFCircuit::<Fr> {
-            z_i: z_i.clone(),
-            z_i1: z_i1.clone(),
-        };
 
         let w_dummy = Witness::<Projective>::new(vec![Fr::zero(); F_witness_len], r1cs.A.n_rows);
         let u_dummy = CommittedInstance::<Projective>::dummy(x.len());
@@ -624,7 +623,7 @@ mod tests {
                 // base case: i=0, z_i=z_0, U_i = U_d := dummy instance
                 // u_1.x = H(1, z_0, z_i, U_i)
                 u_i1_x = U_i
-                    .hash(&poseidon_config, Fr::one(), z_0.clone(), z_i1)
+                    .hash(&poseidon_config, Fr::one(), z_0.clone(), z_i1.clone())
                     .unwrap();
 
                 // base case
@@ -638,7 +637,7 @@ mod tests {
                     U_i1: Some(U_i1.clone()), // = dummy
                     cmT: Some(cmT),
                     r: Some(Fr::one()),
-                    F: test_F_circuit.clone(),
+                    F: F_circuit,
                     x: Some(u_i1_x),
                 };
             } else {
@@ -667,20 +666,20 @@ mod tests {
                 // folded instance output (public input, x)
                 // u_{i+1}.x = H(i+1, z_0, z_{i+1}, U_{i+1})
                 u_i1_x = U_i1
-                    .hash(&poseidon_config, i + Fr::one(), z_0.clone(), z_i1)
+                    .hash(&poseidon_config, i + Fr::one(), z_0.clone(), z_i1.clone())
                     .unwrap();
 
                 augmented_F_circuit = AugmentedFCircuit::<Projective, TestFCircuit<Fr>> {
                     poseidon_config: poseidon_config.clone(),
                     i: Some(i),
                     z_0: Some(z_0.clone()),
-                    z_i: Some(z_i),
+                    z_i: Some(z_i.clone()),
                     u_i: Some(u_i),
                     U_i: Some(U_i.clone()),
                     U_i1: Some(U_i1.clone()),
                     cmT: Some(cmT),
                     r: Some(r_Fr),
-                    F: test_F_circuit.clone(),
+                    F: F_circuit,
                     x: Some(u_i1_x),
                 };
             }
@@ -715,8 +714,9 @@ mod tests {
 
             // set values for next iteration
             i += Fr::one();
-            test_F_circuit.step_native(); // advance the F circuit state
-            (z_i, z_i1) = test_F_circuit.clone().public();
+            // advance the F circuit state
+            z_i = z_i1.clone();
+            z_i1 = F_circuit.step_native(z_i.clone());
             U_i = U_i1.clone();
             W_i = W_i1.clone();
         }

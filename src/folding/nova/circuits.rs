@@ -364,7 +364,7 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use ark_ff::BigInteger;
     use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
@@ -376,7 +376,7 @@ mod tests {
 
     use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z};
     use crate::constants::N_BITS_CHALLENGE;
-    use crate::folding::nova::{check_instance_relation, nifs::NIFS, Witness};
+    use crate::folding::nova::{nifs::NIFS, NovaR1CS, Witness};
     use crate::frontend::arkworks::{extract_r1cs, extract_z};
     use crate::pedersen::Pedersen;
     use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
@@ -388,7 +388,7 @@ mod tests {
     /// used as the state. `z_i` is used as `x`, and `z_{i+1}` is used as `y`, and at the next
     /// step, `z_{i+1}` will be assigned to `z_i`, and a new `z+{i+1}` will be computted.
     pub struct TestFCircuit<F: PrimeField> {
-        _f: PhantomData<F>,
+        pub _f: PhantomData<F>,
     }
     impl<F: PrimeField> FCircuit<F> for TestFCircuit<F> {
         fn step_native(self, z_i: Vec<F>) -> Vec<F> {
@@ -583,7 +583,9 @@ mod tests {
         let r1cs = extract_r1cs::<Fr>(&cs);
         let z = extract_z::<Fr>(&cs); // includes 1 and public inputs
         let (w, x) = r1cs.split_z(&z);
-        let F_witness_len = w.len();
+        assert_eq!(z.len(), r1cs.A.n_cols);
+        assert_eq!(1 + x.len() + w.len(), r1cs.A.n_cols);
+        assert_eq!(r1cs.l, x.len());
 
         let mut tr = PoseidonTranscript::<Projective>::new(&poseidon_config);
 
@@ -594,15 +596,15 @@ mod tests {
         let mut z_i = z_0.clone();
         let mut z_i1 = vec![Fr::from(35_u32)];
 
-        let w_dummy = Witness::<Projective>::new(vec![Fr::zero(); F_witness_len], r1cs.A.n_rows);
+        let w_dummy = Witness::<Projective>::new(vec![Fr::zero(); w.len()], r1cs.A.n_rows);
         let u_dummy = CommittedInstance::<Projective>::dummy(x.len());
 
-        // Wi is a 'dummy witness', all zeroes, but with the size corresponding to the R1CS that
+        // W_i is a 'dummy witness', all zeroes, but with the size corresponding to the R1CS that
         // we're working with.
-        // set U_i <-- dummay instance
+        // set U_i <-- dummy instance
         let mut W_i = w_dummy.clone();
         let mut U_i = u_dummy.clone();
-        check_instance_relation(&r1cs, &W_i, &U_i).unwrap();
+        r1cs.check_instance_relation(&W_i, &U_i).unwrap();
 
         let mut w_i = w_dummy.clone();
         let mut u_i = u_dummy.clone();
@@ -613,12 +615,11 @@ mod tests {
             Projective::generator(),
         );
         // as expected, dummy instances pass the relaxed_r1cs check
-        check_instance_relation(&r1cs, &W_i1, &U_i1).unwrap();
+        r1cs.check_instance_relation(&W_i1, &U_i1).unwrap();
 
         let mut i = Fr::zero();
         let mut u_i1_x: Fr;
-        let n_steps: usize = 4;
-        for _ in 0..n_steps {
+        for _ in 0..4 {
             if i == Fr::zero() {
                 // base case: i=0, z_i=z_0, U_i = U_d := dummy instance
                 // u_1.x = H(1, z_0, z_i, U_i)
@@ -646,8 +647,8 @@ mod tests {
                 let r_bits = tr.get_challenge_nbits(N_BITS_CHALLENGE);
                 let r_Fr = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
 
-                check_instance_relation(&r1cs, &w_i, &u_i).unwrap();
-                check_instance_relation(&r1cs, &W_i, &U_i).unwrap();
+                r1cs.check_instance_relation(&w_i, &u_i).unwrap();
+                r1cs.check_instance_relation(&W_i, &U_i).unwrap();
 
                 // U_{i+1}
                 (W_i1, U_i1, _T, cmT) = NIFS::<Projective>::prove(
@@ -661,7 +662,7 @@ mod tests {
                 )
                 .unwrap();
 
-                check_instance_relation(&r1cs, &W_i1, &U_i1).unwrap();
+                r1cs.check_instance_relation(&W_i1, &U_i1).unwrap();
 
                 // folded instance output (public input, x)
                 // u_{i+1}.x = H(i+1, z_0, z_{i+1}, U_{i+1})
@@ -698,7 +699,7 @@ mod tests {
             cs.finalize();
             let cs = cs.into_inner().unwrap();
             // notice that here we use 'Z' (uppercase) to denote the 'z-vector' as in the paper,
-            // not the value 'z_i' (lowercase) which is the next state
+            // not the value 'z' (lowercase) which is the state
             let Z_i1 = extract_z::<Fr>(&cs);
             let (w_i1, x_i1) = r1cs.split_z(&Z_i1);
             assert_eq!(x_i1.len(), 1);
@@ -709,8 +710,8 @@ mod tests {
             w_i = Witness::<Projective>::new(w_i1.clone(), r1cs.A.n_rows);
             u_i = w_i.commit(&pedersen_params, vec![u_i1_x]).unwrap();
 
-            check_instance_relation(&r1cs, &w_i, &u_i).unwrap();
-            check_instance_relation(&r1cs, &W_i1, &U_i1).unwrap();
+            r1cs.check_instance_relation(&w_i, &u_i).unwrap();
+            r1cs.check_instance_relation(&W_i1, &U_i1).unwrap();
 
             // set values for next iteration
             i += Fr::one();

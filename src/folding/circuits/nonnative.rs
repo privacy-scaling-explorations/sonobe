@@ -32,20 +32,11 @@ where
             let cs = cs.into();
 
             let affine = val.borrow().into_affine();
-            if affine.is_zero() {
-                let x = NonNativeFieldVar::<C::BaseField, C::ScalarField>::new_variable(
-                    cs.clone(),
-                    || Ok(C::BaseField::zero()),
-                    mode,
-                )?;
-                let y = NonNativeFieldVar::<C::BaseField, C::ScalarField>::new_variable(
-                    cs.clone(),
-                    || Ok(C::BaseField::one()),
-                    mode,
-                )?;
-                return Ok(Self { x, y });
+            let xy_obj = &affine.xy();
+            let mut xy = (&C::BaseField::zero(), &C::BaseField::one());
+            if xy_obj.is_some() {
+                xy = xy_obj.unwrap();
             }
-            let xy = affine.xy().unwrap();
             let x = NonNativeFieldVar::<C::BaseField, C::ScalarField>::new_variable(
                 cs.clone(),
                 || Ok(xy.0),

@@ -61,7 +61,7 @@ impl<C: CurveGroup> Pedersen<C> {
             return Err(Error::PedersenParamsLen);
         }
 
-        transcript.absorb_point(cm);
+        transcript.absorb_point(cm)?;
         let r1 = transcript.get_challenge();
         let d = transcript.get_challenges(v.len());
 
@@ -69,7 +69,7 @@ impl<C: CurveGroup> Pedersen<C> {
         // use msm_unchecked because we already ensured at the if that lengths match
         let R: C = params.h.mul(r1) + C::msm_unchecked(&params.generators[..d.len()], &d);
 
-        transcript.absorb_point(&R);
+        transcript.absorb_point(&R)?;
         let e = transcript.get_challenge();
 
         // u = d + v⋅e
@@ -90,10 +90,10 @@ impl<C: CurveGroup> Pedersen<C> {
             return Err(Error::PedersenParamsLen);
         }
 
-        transcript.absorb_point(&cm);
+        transcript.absorb_point(&cm)?;
         transcript.get_challenge(); // r_1
         transcript.get_challenges(proof.u.len()); // d
-        transcript.absorb_point(&proof.R);
+        transcript.absorb_point(&proof.R)?;
         let e = transcript.get_challenge();
 
         // check that: R + cm == h⋅r_u + <g, u>

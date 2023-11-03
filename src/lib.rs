@@ -35,6 +35,10 @@ pub enum Error {
     PedersenParamsLen,
     #[error("Pedersen verification failed")]
     PedersenVerificationFail,
+    #[error("IVC verification failed")]
+    IVCVerificationFail,
+    #[error("R1CS instance is expected to not be relaxed")]
+    R1CSUnrelaxedFail,
 }
 
 /// FoldingScheme defines trait that is implemented by the diverse folding schemes. It is defined

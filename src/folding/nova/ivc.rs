@@ -60,19 +60,8 @@ where
     ) -> Self {
         // prepare the circuit to obtain its R1CS
         let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
-        let augmented_F_circuit = AugmentedFCircuit::<C1, FC> {
-            poseidon_config: poseidon_config.clone(),
-            i: None,
-            z_0: None,
-            z_i: None,
-            u_i: None,
-            U_i: None,
-            U_i1: None,
-            cmT: None,
-            r: None,
-            F,
-            x: None,
-        };
+
+        let augmented_F_circuit = AugmentedFCircuit::<C1, FC>::empty(&poseidon_config, F);
 
         augmented_F_circuit
             .generate_constraints(cs.clone())
@@ -108,6 +97,7 @@ where
         }
     }
 
+    /// Implements IVC.P
     pub fn prove_step(&mut self) -> Result<(), Error> {
         let u_i1_x: C1::ScalarField;
         let augmented_F_circuit: AugmentedFCircuit<C1, FC>;
@@ -171,7 +161,7 @@ where
                 r_Fr, &self.w_i, &self.u_i, &self.W_i, &self.U_i, &T, cmT,
             )?;
 
-            self.r1cs.check_instance_relation(&W_i1, &U_i1)?;
+            self.r1cs.check_relaxed_instance_relation(&W_i1, &U_i1)?;
 
             // folded instance output (public input, x)
             // u_{i+1}.x = H(i+1, z_0, z_{i+1}, U_{i+1})
@@ -229,6 +219,42 @@ where
 
         Ok(())
     }
+
+    /// Implements IVC.V
+    pub fn verify(&mut self, z_0: Vec<C1::ScalarField>, num_steps: u32) -> Result<(), Error> {
+        if self.i != C1::ScalarField::from(num_steps) {
+            return Err(Error::IVCVerificationFail);
+        }
+
+        if self.u_i.x.len() != 1 || self.U_i.x.len() != 1 {
+            return Err(Error::IVCVerificationFail);
+        }
+
+        // check that u_i's output points to the running instance
+        // u_i.X == H(i, z_0, z_i, U_i)
+        let expected_u_i_x = self
+            .U_i
+            .hash(&self.poseidon_config, self.i, z_0, self.z_i.clone())?;
+        if expected_u_i_x != self.u_i.x[0] {
+            return Err(Error::IVCVerificationFail);
+        }
+
+        // check u_i.cmE==0, u_i.u==1 (=u_i is a un-relaxed instance)
+        if self.u_i.cmE != C1::zero() || self.u_i.u != C1::ScalarField::one() {
+            return Err(Error::IVCVerificationFail);
+        }
+
+        // check R1CS satisfiability
+        self.r1cs
+            .check_instance_relation(&self.w_i, &self.u_i)
+            .unwrap();
+        // check RelaxedR1CS satisfiability
+        self.r1cs
+            .check_relaxed_instance_relation(&self.W_i, &self.U_i)
+            .unwrap();
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -254,18 +280,21 @@ mod tests {
                 poseidon_config.clone(), // notice that transcript_config could be different than poseidon (eg. keccak's transcript config)
                 poseidon_config,         // poseidon config
                 F_circuit,
-                z_0,
+                z_0.clone(),
             );
 
-        for _ in 0..4 {
+        let num_steps: usize = 3;
+        for _ in 0..num_steps {
             ivc.prove_step().unwrap();
         }
 
         ivc.r1cs
-            .check_instance_relation(&ivc.w_i, &ivc.u_i)
+            .check_relaxed_instance_relation(&ivc.w_i, &ivc.u_i)
             .unwrap();
         ivc.r1cs
-            .check_instance_relation(&ivc.W_i, &ivc.U_i)
+            .check_relaxed_instance_relation(&ivc.W_i, &ivc.U_i)
             .unwrap();
+
+        ivc.verify(z_0, num_steps as u32).unwrap();
     }
 }

@@ -1,17 +1,10 @@
-use ark_crypto_primitives::{
-    crh::{poseidon::CRH, CRHScheme},
-    sponge::{poseidon::PoseidonConfig, Absorb},
-};
+use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{CurveGroup, Group};
-use ark_std::fmt::Debug;
 use ark_std::{One, Zero};
 
 use super::{CommittedInstance, Witness};
 use crate::ccs::r1cs::R1CS;
-use crate::folding::circuits::nonnative::point_to_nonnative_limbs;
-use crate::pedersen::{Params as PedersenParams, Pedersen};
 use crate::transcript::{poseidon::PoseidonTranscript, Transcript};
-use crate::utils::vec::is_zero_vec;
 use crate::Error;
 
 /// NovaR1CS extends R1CS methods with Nova specific methods
@@ -19,9 +12,16 @@ pub trait NovaR1CS<C: CurveGroup> {
     /// returns a dummy instance (Witness and CommittedInstance) for the current R1CS structure
     fn dummy_instance(&self) -> (Witness<C>, CommittedInstance<C>);
 
+    /// checks the R1CS relation (un-relaxed) for the given Witness and CommittedInstance.
+    fn check_instance_relation(
+        &self,
+        W: &Witness<C>,
+        U: &CommittedInstance<C>,
+    ) -> Result<(), Error>;
+
     /// checks the Relaxed R1CS relation (corresponding to the current R1CS) for the given Witness
     /// and CommittedInstance.
-    fn check_instance_relation(
+    fn check_relaxed_instance_relation(
         &self,
         W: &Witness<C>,
         U: &CommittedInstance<C>,
@@ -41,6 +41,19 @@ where
     }
 
     fn check_instance_relation(
+        &self,
+        W: &Witness<C>,
+        U: &CommittedInstance<C>,
+    ) -> Result<(), Error> {
+        if U.cmE != C::zero() || U.u != C::ScalarField::one() {
+            return Err(Error::R1CSUnrelaxedFail);
+        }
+
+        let Z: Vec<C::ScalarField> = [vec![U.u], U.x.to_vec(), W.W.to_vec()].concat();
+        self.check_relation(&Z)
+    }
+
+    fn check_relaxed_instance_relation(
         &self,
         W: &Witness<C>,
         U: &CommittedInstance<C>,

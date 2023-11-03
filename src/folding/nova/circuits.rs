@@ -248,8 +248,7 @@ pub struct AugmentedFCircuit<C: CurveGroup, FC: FCircuit<CF1<C>>> {
 }
 
 impl<C: CurveGroup, FC: FCircuit<CF1<C>>> AugmentedFCircuit<C, FC> {
-    #[allow(dead_code)] // TMP while IVC does not use this method
-    fn empty(poseidon_config: &PoseidonConfig<CF1<C>>, F_circuit: FC) -> Self {
+    pub fn empty(poseidon_config: &PoseidonConfig<CF1<C>>, F_circuit: FC) -> Self {
         Self {
             poseidon_config: poseidon_config.clone(),
             i: None,
@@ -285,12 +284,7 @@ where
         // get z_{i+1} from the F circuit
         let z_i1 = self.F.generate_step_constraints(cs.clone(), z_i.clone())?;
 
-        let u_dummy_native = CommittedInstance {
-            cmE: C::zero(),
-            u: C::ScalarField::zero(),
-            cmW: C::zero(),
-            x: vec![CF1::<C>::zero()],
-        };
+        let u_dummy_native = CommittedInstance::<C>::dummy(1);
 
         let u_dummy =
             CommittedInstanceVar::<C>::new_witness(cs.clone(), || Ok(u_dummy_native.clone()))?;
@@ -609,7 +603,7 @@ pub mod tests {
         // set U_i <-- dummy instance
         let mut W_i = w_dummy.clone();
         let mut U_i = u_dummy.clone();
-        r1cs.check_instance_relation(&W_i, &U_i).unwrap();
+        r1cs.check_relaxed_instance_relation(&W_i, &U_i).unwrap();
 
         let mut w_i = w_dummy.clone();
         let mut u_i = u_dummy.clone();
@@ -619,7 +613,7 @@ pub mod tests {
             Projective,
         ) = (w_dummy.clone(), u_dummy.clone(), Projective::generator());
         // as expected, dummy instances pass the relaxed_r1cs check
-        r1cs.check_instance_relation(&W_i1, &U_i1).unwrap();
+        r1cs.check_relaxed_instance_relation(&W_i1, &U_i1).unwrap();
 
         let mut i = Fr::zero();
         let mut u_i1_x: Fr;
@@ -646,8 +640,8 @@ pub mod tests {
                     x: Some(u_i1_x),
                 };
             } else {
-                r1cs.check_instance_relation(&w_i, &u_i).unwrap();
-                r1cs.check_instance_relation(&W_i, &U_i).unwrap();
+                r1cs.check_relaxed_instance_relation(&w_i, &u_i).unwrap();
+                r1cs.check_relaxed_instance_relation(&W_i, &U_i).unwrap();
 
                 // U_{i+1}
                 let T: Vec<Fr>;
@@ -670,7 +664,7 @@ pub mod tests {
                     NIFS::<Projective>::fold_instances(r_Fr, &w_i, &u_i, &W_i, &U_i, &T, cmT)
                         .unwrap();
 
-                r1cs.check_instance_relation(&W_i1, &U_i1).unwrap();
+                r1cs.check_relaxed_instance_relation(&W_i1, &U_i1).unwrap();
 
                 // folded instance output (public input, x)
                 // u_{i+1}.x = H(i+1, z_0, z_{i+1}, U_{i+1})
@@ -718,8 +712,8 @@ pub mod tests {
             w_i = Witness::<Projective>::new(w_i1.clone(), r1cs.A.n_rows);
             u_i = w_i.commit(&pedersen_params, vec![u_i1_x]).unwrap();
 
-            r1cs.check_instance_relation(&w_i, &u_i).unwrap();
-            r1cs.check_instance_relation(&W_i1, &U_i1).unwrap();
+            r1cs.check_relaxed_instance_relation(&w_i, &u_i).unwrap();
+            r1cs.check_relaxed_instance_relation(&W_i1, &U_i1).unwrap();
 
             // set values for next iteration
             i += Fr::one();

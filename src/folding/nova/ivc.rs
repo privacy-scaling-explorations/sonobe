@@ -8,7 +8,11 @@ use ark_std::{One, Zero};
 use core::marker::PhantomData;
 
 use super::circuits::{AugmentedFCircuit, FCircuit};
-use super::{nifs::NIFS, CommittedInstance, NovaR1CS, Witness};
+use super::{
+    nifs::NIFS,
+    traits::{NovaR1CS, NovaTranscript},
+    CommittedInstance, Witness,
+};
 use crate::ccs::r1cs::R1CS;
 use crate::constants::N_BITS_CHALLENGE;
 use crate::frontend::arkworks::{extract_r1cs, extract_z}; // TODO once Frontend trait is ready, use that
@@ -16,19 +20,19 @@ use crate::pedersen::{Params as PedersenParams, Pedersen};
 use crate::transcript::Transcript;
 use crate::Error;
 
-pub struct IVC<C1, C2, FC, T>
+pub struct IVC<C1, C2, FC, Tr>
 where
     C1: CurveGroup,
     C2: CurveGroup,
     FC: FCircuit<C1::ScalarField>,
-    T: Transcript<C1>,
+    Tr: Transcript<C1> + NovaTranscript<C1>,
 {
     _c2: PhantomData<C2>,
     r1cs: R1CS<C1::ScalarField>,
     pub poseidon_config: PoseidonConfig<C1::ScalarField>,
     pub pedersen_params: PedersenParams<C1>,
     pub F: FC, // F circuit
-    pub transcript: T,
+    pub transcript: Tr,
     i: C1::ScalarField,
     z_0: Vec<C1::ScalarField>,
     z_i: Vec<C1::ScalarField>,
@@ -38,23 +42,22 @@ where
     U_i: CommittedInstance<C1>,
 }
 
-impl<C1, C2, FC, T> IVC<C1, C2, FC, T>
+impl<C1, C2, FC, Tr> IVC<C1, C2, FC, Tr>
 where
     C1: CurveGroup,
     C2: CurveGroup,
     FC: FCircuit<C1::ScalarField>,
-    T: Transcript<C1>,
+    Tr: Transcript<C1> + NovaTranscript<C1>,
     <C1 as CurveGroup>::BaseField: PrimeField,
     <C1 as Group>::ScalarField: Absorb,
 {
     pub fn new<R: Rng>(
         rng: &mut R,
-        transcript_config: T::TranscriptConfig,
+        transcript_config: Tr::TranscriptConfig,
         poseidon_config: PoseidonConfig<C1::ScalarField>,
         F: FC,
         z_0: Vec<C1::ScalarField>,
     ) -> Self {
-        // initialize params
         // prepare the circuit to obtain its R1CS
         let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
         let augmented_F_circuit = AugmentedFCircuit::<C1, FC> {
@@ -78,7 +81,7 @@ where
         let cs = cs.into_inner().unwrap();
         let r1cs = extract_r1cs::<C1::ScalarField>(&cs);
 
-        let transcript = T::new(&transcript_config);
+        let transcript = Tr::new(&transcript_config);
 
         let pedersen_params = Pedersen::<C1>::new_params(rng, r1cs.A.n_rows);
 
@@ -142,25 +145,31 @@ where
                 x: Some(u_i1_x),
             };
         } else {
-            // TODO absorbs in transcript
-            let r_bits = self.transcript.get_challenge_nbits(N_BITS_CHALLENGE);
-            let r_Fr = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
+            // absorb: u_i, U_i
+            self.transcript
+                .absorb_committed_instance(self.u_i.clone())?;
+            self.transcript
+                .absorb_committed_instance(self.U_i.clone())?;
 
-            self.r1cs.check_instance_relation(&self.w_i, &self.u_i)?;
-            self.r1cs.check_instance_relation(&self.W_i, &self.U_i)?;
-
-            // compute U_{i+1}
-            let _T: Vec<C1::ScalarField>;
-            (W_i1, U_i1, _T, cmT) = NIFS::<C1>::prove(
+            let T: Vec<C1::ScalarField>;
+            (T, cmT) = NIFS::<C1>::compute_cmT(
                 &self.pedersen_params,
-                r_Fr,
                 &self.r1cs,
                 &self.w_i,
                 &self.u_i,
                 &self.W_i,
                 &self.U_i,
-            )
-            .unwrap();
+            )?;
+            // absorb cmT
+            self.transcript.absorb_point(&cmT)?;
+
+            let r_bits = self.transcript.get_challenge_nbits(N_BITS_CHALLENGE);
+            let r_Fr = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
+
+            // compute W_{i+1} and U_{i+1}
+            (W_i1, U_i1) = NIFS::<C1>::fold_instances(
+                r_Fr, &self.w_i, &self.u_i, &self.W_i, &self.U_i, &T, cmT,
+            )?;
 
             self.r1cs.check_instance_relation(&W_i1, &U_i1)?;
 
@@ -242,11 +251,12 @@ mod tests {
         let mut ivc =
             IVC::<Projective, Projective2, TestFCircuit<Fr>, PoseidonTranscript<Projective>>::new(
                 &mut rng,
-                poseidon_config.clone(), // transcript config (could be different than poseidon)
+                poseidon_config.clone(), // notice that transcript_config could be different than poseidon (eg. keccak's transcript config)
                 poseidon_config,         // poseidon config
                 F_circuit,
                 z_0,
             );
+
         for _ in 0..4 {
             ivc.prove_step().unwrap();
         }

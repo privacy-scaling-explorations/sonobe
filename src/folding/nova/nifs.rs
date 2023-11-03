@@ -85,36 +85,49 @@ where
         CommittedInstance::<C> { cmE, u, cmW, x }
     }
 
-    // NIFS.P
-    #[allow(clippy::type_complexity)]
-    pub fn prove(
+    /// NIFS.P is the consecutive combination of compute_cmT with fold_instances
+
+    /// compute_cmT is part of the NIFS.P logic
+    pub fn compute_cmT(
         pedersen_params: &PedersenParams<C>,
-        // r comes from the transcript, and is a n-bit (N_BITS_CHALLENGE) element
-        r: C::ScalarField,
         r1cs: &R1CS<C::ScalarField>,
         w1: &Witness<C>,
         ci1: &CommittedInstance<C>,
         w2: &Witness<C>,
         ci2: &CommittedInstance<C>,
-    ) -> Result<(Witness<C>, CommittedInstance<C>, Vec<C::ScalarField>, C), Error> {
+    ) -> Result<(Vec<C::ScalarField>, C), Error> {
         let z1: Vec<C::ScalarField> = [vec![ci1.u], ci1.x.to_vec(), w1.W.to_vec()].concat();
         let z2: Vec<C::ScalarField> = [vec![ci2.u], ci2.x.to_vec(), w2.W.to_vec()].concat();
 
         // compute cross terms
         let T = Self::compute_T(r1cs, ci1.u, ci2.u, &z1, &z2)?;
-        let rT = C::ScalarField::one(); // use 1 as rT since we don't need hiding property for cm(T)
-        let cmT = Pedersen::commit(pedersen_params, &T, &rT)?;
+        // use r_T=1 since we don't need hiding property for cm(T)
+        let cmT = Pedersen::commit(pedersen_params, &T, &C::ScalarField::one())?;
+        Ok((T, cmT))
+    }
 
+    /// fold_instances is part of the NIFS.P logic
+    pub fn fold_instances(
+        // r comes from the transcript, and is a n-bit (N_BITS_CHALLENGE) element
+        r: C::ScalarField,
+        w1: &Witness<C>,
+        ci1: &CommittedInstance<C>,
+        w2: &Witness<C>,
+        ci2: &CommittedInstance<C>,
+        T: &Vec<C::ScalarField>,
+        cmT: C,
+    ) -> Result<(Witness<C>, CommittedInstance<C>), Error> {
         // fold witness
-        let w3 = NIFS::<C>::fold_witness(r, w1, w2, &T, rT)?;
+        // use r_T=1 since we don't need hiding property for cm(T)
+        let w3 = NIFS::<C>::fold_witness(r, w1, w2, &T, C::ScalarField::one())?;
 
         // fold committed instancs
         let ci3 = NIFS::<C>::fold_committed_instance(r, ci1, ci2, &cmT);
 
-        Ok((w3, ci3, T, cmT))
+        Ok((w3, ci3))
     }
 
-    // NIFS.V
+    /// verify implements NIFS.V logic
     pub fn verify(
         // r comes from the transcript, and is a n-bit (N_BITS_CHALLENGE) element
         r: C::ScalarField,
@@ -222,9 +235,11 @@ pub mod tests {
 
         let r_Fr = Fr::from(3_u32);
 
-        let (W_i1, U_i1, _, _) =
-            NIFS::<Projective>::prove(&pedersen_params, r_Fr, &r1cs, &w_i, &u_i, &W_i, &U_i)
+        let (T, cmT) =
+            NIFS::<Projective>::compute_cmT(&pedersen_params, &r1cs, &w_i, &u_i, &W_i, &U_i)
                 .unwrap();
+        let (W_i1, U_i1) =
+            NIFS::<Projective>::fold_instances(r_Fr, &w_i, &u_i, &W_i, &U_i, &T, cmT).unwrap();
 
         let z: Vec<Fr> = [vec![U_i1.u], U_i1.x.to_vec(), W_i1.W.to_vec()].concat();
         assert_eq!(z.len(), z1.len());
@@ -253,8 +268,10 @@ pub mod tests {
         let ci2 = w2.commit(&pedersen_params, x2.clone()).unwrap();
 
         // NIFS.P
-        let (w3, ci3_aux, T, cmT) =
-            NIFS::<Projective>::prove(&pedersen_params, r, &r1cs, &w1, &ci1, &w2, &ci2).unwrap();
+        let (T, cmT) =
+            NIFS::<Projective>::compute_cmT(&pedersen_params, &r1cs, &w1, &ci1, &w2, &ci2).unwrap();
+        let (w3, ci3_aux) =
+            NIFS::<Projective>::fold_instances(r, &w1, &ci1, &w2, &ci2, &T, cmT).unwrap();
 
         // NIFS.V
         let ci3 = NIFS::<Projective>::verify(r, &ci1, &ci2, &cmT);
@@ -348,14 +365,23 @@ pub mod tests {
             let r = Fr::rand(&mut rng); // folding challenge would come from the transcript
 
             // NIFS.P
-            let (folded_w, _, _, cmT) = NIFS::<Projective>::prove(
+            let (T, cmT) = NIFS::<Projective>::compute_cmT(
                 &pedersen_params,
-                r,
                 &r1cs,
                 &running_instance_w,
                 &running_committed_instance,
                 &incomming_instance_w,
                 &incomming_committed_instance,
+            )
+            .unwrap();
+            let (folded_w, _) = NIFS::<Projective>::fold_instances(
+                r,
+                &running_instance_w,
+                &running_committed_instance,
+                &incomming_instance_w,
+                &incomming_committed_instance,
+                &T,
+                cmT,
             )
             .unwrap();
 

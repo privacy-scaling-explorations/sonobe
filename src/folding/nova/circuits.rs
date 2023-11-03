@@ -376,7 +376,7 @@ pub mod tests {
 
     use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z};
     use crate::constants::N_BITS_CHALLENGE;
-    use crate::folding::nova::{nifs::NIFS, NovaR1CS, Witness};
+    use crate::folding::nova::{nifs::NIFS, traits::NovaR1CS, Witness};
     use crate::frontend::arkworks::{extract_r1cs, extract_z};
     use crate::pedersen::Pedersen;
     use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
@@ -452,14 +452,19 @@ pub mod tests {
         let ci1 = w1.commit(&pedersen_params, x1.clone()).unwrap();
         let ci2 = w2.commit(&pedersen_params, x2.clone()).unwrap();
 
-        // get challenge from transcript
+        // NIFS.P
+        let (T, cmT) =
+            NIFS::<Projective>::compute_cmT(&pedersen_params, &r1cs, &w1, &ci1, &w2, &ci2).unwrap();
+
+        // get challenge from transcript, since we're in a test skip absorbing values into
+        // transcript
         let poseidon_config = poseidon_test_config::<Fr>();
         let mut tr = PoseidonTranscript::<Projective>::new(&poseidon_config);
         let r_bits = tr.get_challenge_nbits(N_BITS_CHALLENGE);
         let r_Fr = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
 
-        let (_w3, ci3, _T, cmT) =
-            NIFS::<Projective>::prove(&pedersen_params, r_Fr, &r1cs, &w1, &ci1, &w2, &ci2).unwrap();
+        let (_, ci3) =
+            NIFS::<Projective>::fold_instances(r_Fr, &w1, &ci1, &w2, &ci2, &T, cmT).unwrap();
 
         let ci3_verifier = NIFS::<Projective>::verify(r_Fr, &ci1, &ci2, &cmT);
         assert_eq!(ci3_verifier, ci3);
@@ -608,12 +613,11 @@ pub mod tests {
 
         let mut w_i = w_dummy.clone();
         let mut u_i = u_dummy.clone();
-        let (mut W_i1, mut U_i1, mut _T, mut cmT) = (
-            w_dummy.clone(),
-            u_dummy.clone(),
-            vec![],
-            Projective::generator(),
-        );
+        let (mut W_i1, mut U_i1, mut cmT): (
+            Witness<Projective>,
+            CommittedInstance<Projective>,
+            Projective,
+        ) = (w_dummy.clone(), u_dummy.clone(), Projective::generator());
         // as expected, dummy instances pass the relaxed_r1cs check
         r1cs.check_instance_relation(&W_i1, &U_i1).unwrap();
 
@@ -642,18 +646,13 @@ pub mod tests {
                     x: Some(u_i1_x),
                 };
             } else {
-                // get challenge from transcript (since this is a test, we skip absorbing values to
-                // the transcript for simplicity)
-                let r_bits = tr.get_challenge_nbits(N_BITS_CHALLENGE);
-                let r_Fr = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
-
                 r1cs.check_instance_relation(&w_i, &u_i).unwrap();
                 r1cs.check_instance_relation(&W_i, &U_i).unwrap();
 
                 // U_{i+1}
-                (W_i1, U_i1, _T, cmT) = NIFS::<Projective>::prove(
+                let T: Vec<Fr>;
+                (T, cmT) = NIFS::<Projective>::compute_cmT(
                     &pedersen_params,
-                    r_Fr,
                     &r1cs,
                     &w_i,
                     &u_i,
@@ -661,6 +660,15 @@ pub mod tests {
                     &U_i,
                 )
                 .unwrap();
+
+                // get challenge from transcript (since this is a test, we skip absorbing values to
+                // the transcript for simplicity)
+                let r_bits = tr.get_challenge_nbits(N_BITS_CHALLENGE);
+                let r_Fr = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
+
+                (W_i1, U_i1) =
+                    NIFS::<Projective>::fold_instances(r_Fr, &w_i, &u_i, &W_i, &U_i, &T, cmT)
+                        .unwrap();
 
                 r1cs.check_instance_relation(&W_i1, &U_i1).unwrap();
 

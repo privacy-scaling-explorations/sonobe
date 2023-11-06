@@ -46,8 +46,8 @@ where
         &self,
         poseidon_config: &PoseidonConfig<C::ScalarField>,
         i: C::ScalarField,
-        z_0: C::ScalarField,
-        z_i: C::ScalarField,
+        z_0: Vec<C::ScalarField>,
+        z_i: Vec<C::ScalarField>,
     ) -> Result<C::ScalarField, Error> {
         let (cmE_x, cmE_y) = point_to_nonnative_limbs::<C>(self.cmE)?;
         let (cmW_x, cmW_y) = point_to_nonnative_limbs::<C>(self.cmW)?;
@@ -55,7 +55,10 @@ where
         Ok(CRH::<C::ScalarField>::evaluate(
             poseidon_config,
             vec![
-                vec![i, z_0, z_i, self.u],
+                vec![i],
+                z_0,
+                z_i,
+                vec![self.u],
                 self.x.clone(),
                 cmE_x,
                 cmE_y,

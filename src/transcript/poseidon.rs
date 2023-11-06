@@ -37,7 +37,8 @@ where
         self.sponge.absorb(&v);
     }
     fn absorb_point(&mut self, p: &C) -> Result<(), Error> {
-        Ok(self.sponge.absorb(&prepare_point(p)?))
+        self.sponge.absorb(&prepare_point(p)?);
+        Ok(())
     }
     fn get_challenge(&mut self) -> C::ScalarField {
         let c = self.sponge.squeeze_field_elements(1);

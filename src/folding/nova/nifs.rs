@@ -114,12 +114,12 @@ where
         ci1: &CommittedInstance<C>,
         w2: &Witness<C>,
         ci2: &CommittedInstance<C>,
-        T: &Vec<C::ScalarField>,
+        T: &[C::ScalarField],
         cmT: C,
     ) -> Result<(Witness<C>, CommittedInstance<C>), Error> {
         // fold witness
         // use r_T=1 since we don't need hiding property for cm(T)
-        let w3 = NIFS::<C>::fold_witness(r, w1, w2, &T, C::ScalarField::one())?;
+        let w3 = NIFS::<C>::fold_witness(r, w1, w2, T, C::ScalarField::one())?;
 
         // fold committed instancs
         let ci3 = NIFS::<C>::fold_committed_instance(r, ci1, ci2, &cmT);

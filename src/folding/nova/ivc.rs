@@ -130,17 +130,10 @@ where
                 U_i: Some(self.U_i.clone()), // = dummy
                 U_i1: Some(U_i1.clone()),    // = dummy
                 cmT: Some(cmT),
-                r: Some(C1::ScalarField::one()),
                 F: self.F,
                 x: Some(u_i1_x),
             };
         } else {
-            // absorb: u_i, U_i
-            self.transcript
-                .absorb_committed_instance(self.u_i.clone())?;
-            self.transcript
-                .absorb_committed_instance(self.U_i.clone())?;
-
             let T: Vec<C1::ScalarField>;
             (T, cmT) = NIFS::<C1>::compute_cmT(
                 &self.pedersen_params,
@@ -150,11 +143,13 @@ where
                 &self.W_i,
                 &self.U_i,
             )?;
-            // absorb cmT
-            self.transcript.absorb_point(&cmT)?;
 
-            let r_bits = self.transcript.get_challenge_nbits(N_BITS_CHALLENGE);
-            let r_Fr = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
+            let r_Fr = AugmentedFCircuit::<C1, FC>::get_challenge_native(
+                &self.poseidon_config,
+                self.u_i.clone(),
+                self.U_i.clone(),
+                cmT.clone(),
+            )?;
 
             // compute W_{i+1} and U_{i+1}
             (W_i1, U_i1) = NIFS::<C1>::fold_instances(
@@ -183,7 +178,6 @@ where
                 U_i: Some(self.U_i.clone()),
                 U_i1: Some(U_i1.clone()),
                 cmT: Some(cmT),
-                r: Some(r_Fr),
                 F: self.F,
                 x: Some(u_i1_x),
             };

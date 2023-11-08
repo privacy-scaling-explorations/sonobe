@@ -13,7 +13,6 @@ use ark_r1cs_std::{
     fields::{fp::FpVar, FieldVar},
     groups::GroupOpsBounds,
     prelude::CurveVar,
-    ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
 use ark_std::fmt::Debug;
@@ -40,8 +39,8 @@ pub type CF2<C> = <<C as CurveGroup>::BaseField as Field>::BasePrimeField;
 pub struct CommittedInstanceVar<C: CurveGroup> {
     u: FpVar<C::ScalarField>,
     x: Vec<FpVar<C::ScalarField>>,
-    cmE: NonNativeAffineVar<CF2<C>, C::ScalarField>,
-    cmW: NonNativeAffineVar<CF2<C>, C::ScalarField>,
+    cmE: NonNativeAffineVar<C::ScalarField>,
+    cmW: NonNativeAffineVar<C::ScalarField>,
 }
 
 impl<C> AllocVar<CommittedInstance<C>, CF1<C>> for CommittedInstanceVar<C>
@@ -61,12 +60,12 @@ where
             let x: Vec<FpVar<C::ScalarField>> =
                 Vec::new_variable(cs.clone(), || Ok(val.borrow().x.clone()), mode)?;
 
-            let cmE = NonNativeAffineVar::<CF2<C>, C::ScalarField>::new_variable(
+            let cmE = NonNativeAffineVar::<C::ScalarField>::new_variable(
                 cs.clone(),
                 || Ok(val.borrow().cmE),
                 mode,
             )?;
-            let cmW = NonNativeAffineVar::<CF2<C>, C::ScalarField>::new_variable(
+            let cmW = NonNativeAffineVar::<C::ScalarField>::new_variable(
                 cs.clone(),
                 || Ok(val.borrow().cmW),
                 mode,
@@ -99,10 +98,10 @@ where
             z_i,
             vec![self.u],
             self.x,
-            self.cmE.x.to_constraint_field()?,
-            self.cmE.y.to_constraint_field()?,
-            self.cmW.x.to_constraint_field()?,
-            self.cmW.y.to_constraint_field()?,
+            self.cmE.x,
+            self.cmE.y,
+            self.cmW.x,
+            self.cmW.y,
         ]
         .concat();
         CRHGadget::<C::ScalarField>::evaluate(crh_params, &input)
@@ -286,13 +285,13 @@ where
         let (cmT_x, cmT_y) = point_to_nonnative_limbs::<C>(cmT)?;
 
         let input = vec![
-            vec![u_i.u.clone()],
+            vec![u_i.u],
             u_i.x.clone(),
             u_cmE_x,
             u_cmE_y,
             u_cmW_x,
             u_cmW_y,
-            vec![U_i.u.clone()],
+            vec![U_i.u],
             U_i.x.clone(),
             U_cmE_x,
             U_cmE_y,
@@ -302,33 +301,33 @@ where
             cmT_y,
         ]
         .concat();
-        Ok(CRH::<C::ScalarField>::evaluate(&poseidon_config, input).unwrap()) // TODO rm unwrap
+        Ok(CRH::<C::ScalarField>::evaluate(poseidon_config, input).unwrap())
     }
 
     pub fn get_challenge(
         crh_params: &CRHParametersVar<C::ScalarField>,
         u_i: CommittedInstanceVar<C>,
         U_i: CommittedInstanceVar<C>,
-        cmT: NonNativeAffineVar<CF2<C>, C::ScalarField>,
+        cmT: NonNativeAffineVar<C::ScalarField>,
     ) -> Result<FpVar<C::ScalarField>, SynthesisError> {
         let input = vec![
             vec![u_i.u.clone()],
             u_i.x.clone(),
-            u_i.cmE.x.to_constraint_field()?,
-            u_i.cmE.y.to_constraint_field()?,
-            u_i.cmW.x.to_constraint_field()?,
-            u_i.cmW.y.to_constraint_field()?,
+            u_i.cmE.x,
+            u_i.cmE.y,
+            u_i.cmW.x,
+            u_i.cmW.y,
             vec![U_i.u.clone()],
             U_i.x.clone(),
-            U_i.cmE.x.to_constraint_field()?,
-            U_i.cmE.y.to_constraint_field()?,
-            U_i.cmW.x.to_constraint_field()?,
-            U_i.cmW.y.to_constraint_field()?,
-            cmT.x.to_constraint_field()?,
-            cmT.y.to_constraint_field()?,
+            U_i.cmE.x,
+            U_i.cmE.y,
+            U_i.cmW.x,
+            U_i.cmW.y,
+            cmT.x,
+            cmT.y,
         ]
         .concat();
-        CRHGadget::<C::ScalarField>::evaluate(&crh_params, &input)
+        CRHGadget::<C::ScalarField>::evaluate(crh_params, &input)
     }
 }
 
@@ -659,9 +658,7 @@ pub mod tests {
         let U_iVar =
             CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || Ok(U_i.clone()))
                 .unwrap();
-        let cmTVar =
-            NonNativeAffineVar::<CF2<Projective>, Fr>::new_witness(cs.clone(), || Ok(cmT.clone()))
-                .unwrap();
+        let cmTVar = NonNativeAffineVar::<Fr>::new_witness(cs.clone(), || Ok(cmT)).unwrap();
 
         let crh_params = CRHParametersVar::<Fr>::new_constant(cs.clone(), poseidon_config).unwrap();
 
@@ -710,9 +707,6 @@ pub mod tests {
         assert_eq!(z.len(), r1cs.A.n_cols);
         assert_eq!(1 + x.len() + w.len(), r1cs.A.n_cols);
         assert_eq!(r1cs.l, x.len());
-
-        // TODO rm
-        // let mut tr = PoseidonTranscript::<Projective>::new(&poseidon_config);
 
         let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, r1cs.A.n_rows);
 
@@ -785,7 +779,7 @@ pub mod tests {
                     &poseidon_config,
                     u_i.clone(),
                     U_i.clone(),
-                    cmT.clone(),
+                    cmT,
                 )
                 .unwrap();
 

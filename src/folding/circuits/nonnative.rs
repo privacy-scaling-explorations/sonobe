@@ -3,22 +3,23 @@ use ark_ff::PrimeField;
 use ark_r1cs_std::fields::nonnative::{params::OptimizationType, AllocatedNonNativeFieldVar};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
-    fields::nonnative::NonNativeFieldVar,
+    fields::{fp::FpVar, nonnative::NonNativeFieldVar},
+    ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
 use ark_std::{One, Zero};
 use core::borrow::Borrow;
 
 /// NonNativeAffineVar represents an elliptic curve point in Affine represenation in the non-native
-/// field. It is not intended to perform operations, but just to contain the affine coordinates in
-/// order to perform hash operations of the point.
+/// field, over the constraint field. It is not intended to perform operations, but just to contain
+/// the affine coordinates in order to perform hash operations of the point.
 #[derive(Debug, Clone)]
-pub struct NonNativeAffineVar<F: PrimeField, CF: PrimeField> {
-    pub x: NonNativeFieldVar<F, CF>,
-    pub y: NonNativeFieldVar<F, CF>,
+pub struct NonNativeAffineVar<F: PrimeField> {
+    pub x: Vec<FpVar<F>>,
+    pub y: Vec<FpVar<F>>,
 }
 
-impl<C> AllocVar<C, C::ScalarField> for NonNativeAffineVar<C::BaseField, C::ScalarField>
+impl<C> AllocVar<C, C::ScalarField> for NonNativeAffineVar<C::ScalarField>
 where
     C: CurveGroup,
     <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
@@ -41,12 +42,14 @@ where
                 cs.clone(),
                 || Ok(xy.0),
                 mode,
-            )?;
+            )?
+            .to_constraint_field()?;
             let y = NonNativeFieldVar::<C::BaseField, C::ScalarField>::new_variable(
                 cs.clone(),
                 || Ok(xy.1),
                 mode,
-            )?;
+            )?
+            .to_constraint_field()?;
 
             Ok(Self { x, y })
         })
@@ -92,7 +95,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_pallas::{Fq, Fr, Projective};
+    use ark_pallas::{Fr, Projective};
     use ark_r1cs_std::alloc::AllocVar;
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::Zero;
@@ -103,6 +106,6 @@ mod tests {
 
         // dealing with the 'zero' point should not panic when doing the unwrap
         let p = Projective::zero();
-        NonNativeAffineVar::<Fq, Fr>::new_witness(cs.clone(), || Ok(p)).unwrap();
+        NonNativeAffineVar::<Fr>::new_witness(cs.clone(), || Ok(p)).unwrap();
     }
 }

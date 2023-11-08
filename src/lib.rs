@@ -39,6 +39,18 @@ pub enum Error {
     IVCVerificationFail,
     #[error("R1CS instance is expected to not be relaxed")]
     R1CSUnrelaxedFail,
+    #[error("Could not find the inner ConstraintSystem")]
+    NoInnerConstraintSystem,
+}
+
+#[macro_export]
+macro_rules! unwrap_or_return_err {
+    ( $e:expr, $err:expr ) => {
+        match $e {
+            Some(x) => x,
+            None => return $err,
+        }
+    };
 }
 
 /// FoldingScheme defines trait that is implemented by the diverse folding schemes. It is defined

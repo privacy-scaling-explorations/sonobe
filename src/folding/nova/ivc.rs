@@ -1,6 +1,6 @@
 use ark_crypto_primitives::sponge::{poseidon::PoseidonConfig, Absorb};
 use ark_ec::{CurveGroup, Group};
-use ark_ff::{BigInteger, PrimeField};
+use ark_ff::PrimeField;
 use ark_relations::r1cs::ConstraintSynthesizer;
 use ark_relations::r1cs::ConstraintSystem;
 use ark_std::rand::Rng;
@@ -14,11 +14,10 @@ use super::{
     CommittedInstance, Witness,
 };
 use crate::ccs::r1cs::R1CS;
-use crate::constants::N_BITS_CHALLENGE;
 use crate::frontend::arkworks::{extract_r1cs, extract_z}; // TODO once Frontend trait is ready, use that
 use crate::pedersen::{Params as PedersenParams, Pedersen};
 use crate::transcript::Transcript;
-use crate::Error;
+use crate::{unwrap_or_return_err, Error};
 
 pub struct IVC<C1, C2, FC, Tr>
 where
@@ -57,17 +56,15 @@ where
         poseidon_config: PoseidonConfig<C1::ScalarField>,
         F: FC,
         z_0: Vec<C1::ScalarField>,
-    ) -> Self {
+    ) -> Result<Self, Error> {
         // prepare the circuit to obtain its R1CS
         let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
 
         let augmented_F_circuit = AugmentedFCircuit::<C1, FC>::empty(&poseidon_config, F);
 
-        augmented_F_circuit
-            .generate_constraints(cs.clone())
-            .unwrap();
+        augmented_F_circuit.generate_constraints(cs.clone())?;
         cs.finalize();
-        let cs = cs.into_inner().unwrap();
+        let cs = unwrap_or_return_err!(cs.into_inner(), Err(Error::NoInnerConstraintSystem));
         let r1cs = extract_r1cs::<C1::ScalarField>(&cs);
 
         let transcript = Tr::new(&transcript_config);
@@ -80,7 +77,7 @@ where
         // W_i=W_0 is a 'dummy witness', all zeroes, but with the size corresponding to the R1CS that
         // we're working with.
         // Set U_i to be dummy instance
-        Self {
+        Ok(Self {
             _c2: PhantomData,
             r1cs,
             poseidon_config,
@@ -94,7 +91,7 @@ where
             u_i: u_dummy.clone(),
             W_i: w_dummy.clone(),
             U_i: u_dummy.clone(),
-        }
+        })
     }
 
     /// Implements IVC.P
@@ -108,15 +105,12 @@ where
         if self.i == C1::ScalarField::zero() {
             // base case: i=0, z_i=z_0, U_i = U_d := dummy instance
             // u_1.x = H(1, z_0, z_i, U_i)
-            u_i1_x = self
-                .U_i
-                .hash(
-                    &self.poseidon_config,
-                    C1::ScalarField::one(),
-                    self.z_0.clone(),
-                    z_i1.clone(),
-                )
-                .unwrap();
+            u_i1_x = self.U_i.hash(
+                &self.poseidon_config,
+                C1::ScalarField::one(),
+                self.z_0.clone(),
+                z_i1.clone(),
+            )?;
 
             (W_i1, U_i1, cmT) = (self.w_i.clone(), self.u_i.clone(), C1::generator());
 
@@ -148,7 +142,7 @@ where
                 &self.poseidon_config,
                 self.u_i.clone(),
                 self.U_i.clone(),
-                cmT.clone(),
+                cmT,
             )?;
 
             // compute W_{i+1} and U_{i+1}
@@ -160,14 +154,12 @@ where
 
             // folded instance output (public input, x)
             // u_{i+1}.x = H(i+1, z_0, z_{i+1}, U_{i+1})
-            u_i1_x = U_i1
-                .hash(
-                    &self.poseidon_config,
-                    self.i + C1::ScalarField::one(),
-                    self.z_0.clone(),
-                    z_i1.clone(),
-                )
-                .unwrap();
+            u_i1_x = U_i1.hash(
+                &self.poseidon_config,
+                self.i + C1::ScalarField::one(),
+                self.z_0.clone(),
+                z_i1.clone(),
+            )?;
 
             augmented_F_circuit = AugmentedFCircuit::<C1, FC> {
                 poseidon_config: self.poseidon_config.clone(),
@@ -185,11 +177,9 @@ where
 
         let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
 
-        augmented_F_circuit
-            .generate_constraints(cs.clone())
-            .unwrap();
+        augmented_F_circuit.generate_constraints(cs.clone())?;
 
-        let cs = cs.into_inner().unwrap();
+        let cs = unwrap_or_return_err!(cs.into_inner(), Err(Error::NoInnerConstraintSystem));
         // notice that here we use 'Z' (uppercase) to denote the 'z-vector' as in the paper, not
         // the value 'z' (lowercase) which is the state
         let Z_i1 = extract_z::<C1::ScalarField>(&cs);
@@ -200,10 +190,7 @@ where
         // compute committed instances, w_{i+1}, u_{i+1}, which will be used as w_i, u_i, so we
         // assign them directly to w_i, u_i.
         self.w_i = Witness::<C1>::new(w_i1.clone(), self.r1cs.A.n_rows);
-        self.u_i = self
-            .w_i
-            .commit(&self.pedersen_params, vec![u_i1_x])
-            .unwrap();
+        self.u_i = self.w_i.commit(&self.pedersen_params, vec![u_i1_x])?;
 
         // set values for next iteration
         self.i += C1::ScalarField::one();
@@ -239,13 +226,10 @@ where
         }
 
         // check R1CS satisfiability
-        self.r1cs
-            .check_instance_relation(&self.w_i, &self.u_i)
-            .unwrap();
+        self.r1cs.check_instance_relation(&self.w_i, &self.u_i)?;
         // check RelaxedR1CS satisfiability
         self.r1cs
-            .check_relaxed_instance_relation(&self.W_i, &self.U_i)
-            .unwrap();
+            .check_relaxed_instance_relation(&self.W_i, &self.U_i)?;
 
         Ok(())
     }
@@ -275,19 +259,13 @@ mod tests {
                 poseidon_config,         // poseidon config
                 F_circuit,
                 z_0.clone(),
-            );
+            )
+            .unwrap();
 
         let num_steps: usize = 3;
         for _ in 0..num_steps {
             ivc.prove_step().unwrap();
         }
-
-        ivc.r1cs
-            .check_relaxed_instance_relation(&ivc.w_i, &ivc.u_i)
-            .unwrap();
-        ivc.r1cs
-            .check_relaxed_instance_relation(&ivc.W_i, &ivc.U_i)
-            .unwrap();
 
         ivc.verify(z_0, num_steps as u32).unwrap();
     }

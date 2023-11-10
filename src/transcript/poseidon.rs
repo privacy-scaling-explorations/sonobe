@@ -171,7 +171,7 @@ pub mod tests {
 
     #[test]
     fn test_transcript_and_transcriptvar_nbits() {
-        let nbits = crate::constants::N_BITS_CHALLENGE;
+        let nbits = 128;
 
         // use 'native' transcript
         let config = poseidon_test_config::<Fq>();

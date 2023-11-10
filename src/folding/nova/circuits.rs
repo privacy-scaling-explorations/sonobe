@@ -436,7 +436,6 @@ pub mod tests {
     use tracing_subscriber::layer::SubscriberExt;
 
     use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z};
-    use crate::constants::N_BITS_CHALLENGE;
     use crate::folding::nova::{nifs::NIFS, traits::NovaR1CS, Witness};
     use crate::frontend::arkworks::{extract_r1cs, extract_z};
     use crate::pedersen::Pedersen;
@@ -521,7 +520,7 @@ pub mod tests {
         // transcript
         let poseidon_config = poseidon_test_config::<Fr>();
         let mut tr = PoseidonTranscript::<Projective>::new(&poseidon_config);
-        let r_bits = tr.get_challenge_nbits(N_BITS_CHALLENGE);
+        let r_bits = tr.get_challenge_nbits(128);
         let r_Fr = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
 
         let (_, ci3) =

@@ -43,6 +43,8 @@ pub enum Error {
     R1CSUnrelaxedFail,
     #[error("Could not find the inner ConstraintSystem")]
     NoInnerConstraintSystem,
+    #[error("Value out of bounds")]
+    OutOfBounds,
 }
 
 /// FoldingScheme defines trait that is implemented by the diverse folding schemes. It is defined

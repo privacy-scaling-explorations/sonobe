@@ -2,7 +2,6 @@
 use ark_ec::CurveGroup;
 use ark_ff::Field;
 
-pub mod cyclefold;
 pub mod nonnative;
 
 // CF represents the constraints field

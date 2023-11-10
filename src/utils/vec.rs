@@ -83,14 +83,17 @@ pub fn mat_vec_mul<F: PrimeField>(M: &Vec<Vec<F>>, z: &[F]) -> Result<Vec<F>, Er
     Ok(r)
 }
 
-pub fn mat_vec_mul_sparse<F: PrimeField>(matrix: &SparseMatrix<F>, vector: &[F]) -> Vec<F> {
-    let mut res = vec![F::zero(); matrix.n_rows];
-    for (row_i, row) in matrix.coeffs.iter().enumerate() {
+pub fn mat_vec_mul_sparse<F: PrimeField>(M: &SparseMatrix<F>, z: &[F]) -> Result<Vec<F>, Error> {
+    if M.n_cols != z.len() {
+        return Err(Error::NotSameLength(M.n_cols, z.len()));
+    }
+    let mut res = vec![F::zero(); M.n_rows];
+    for (row_i, row) in M.coeffs.iter().enumerate() {
         for &(value, col_i) in row.iter() {
-            res[row_i] += value * vector[col_i];
+            res[row_i] += value * z[col_i];
         }
     }
-    res
+    Ok(res)
 }
 
 pub fn hadamard<F: PrimeField>(a: &[F], b: &[F]) -> Result<Vec<F>, Error> {
@@ -142,7 +145,7 @@ pub mod tests {
         let z = to_F_vec(vec![1, 3, 35, 9, 27, 30]);
         assert_eq!(mat_vec_mul(&A, &z).unwrap(), to_F_vec(vec![3, 9, 30, 35]));
         assert_eq!(
-            mat_vec_mul_sparse(&dense_matrix_to_sparse(A), &z),
+            mat_vec_mul_sparse(&dense_matrix_to_sparse(A), &z).unwrap(),
             to_F_vec(vec![3, 9, 30, 35])
         );
 
@@ -153,7 +156,10 @@ pub mod tests {
             mat_vec_mul(&A.to_dense(), &v).unwrap(),
             to_F_vec(vec![418, 1158, 979])
         );
-        assert_eq!(mat_vec_mul_sparse(&A, &v), to_F_vec(vec![418, 1158, 979]));
+        assert_eq!(
+            mat_vec_mul_sparse(&A, &v).unwrap(),
+            to_F_vec(vec![418, 1158, 979])
+        );
     }
 
     #[test]

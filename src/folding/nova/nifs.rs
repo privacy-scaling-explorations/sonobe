@@ -3,8 +3,8 @@ use ark_ec::{CurveGroup, Group};
 use ark_std::One;
 use std::marker::PhantomData;
 
+use super::{CommittedInstance, Witness};
 use crate::ccs::r1cs::R1CS;
-use crate::folding::nova::{CommittedInstance, Witness};
 use crate::pedersen::{Params as PedersenParams, Pedersen, Proof as PedersenProof};
 use crate::transcript::Transcript;
 use crate::utils::vec::*;
@@ -31,12 +31,12 @@ where
         let (A, B, C) = (r1cs.A.clone(), r1cs.B.clone(), r1cs.C.clone());
 
         // this is parallelizable (for the future)
-        let Az1 = mat_vec_mul_sparse(&A, z1);
-        let Bz1 = mat_vec_mul_sparse(&B, z1);
-        let Cz1 = mat_vec_mul_sparse(&C, z1);
-        let Az2 = mat_vec_mul_sparse(&A, z2);
-        let Bz2 = mat_vec_mul_sparse(&B, z2);
-        let Cz2 = mat_vec_mul_sparse(&C, z2);
+        let Az1 = mat_vec_mul_sparse(&A, z1)?;
+        let Bz1 = mat_vec_mul_sparse(&B, z1)?;
+        let Cz1 = mat_vec_mul_sparse(&C, z1)?;
+        let Az2 = mat_vec_mul_sparse(&A, z2)?;
+        let Bz2 = mat_vec_mul_sparse(&B, z2)?;
+        let Cz2 = mat_vec_mul_sparse(&C, z2)?;
 
         let Az1_Bz2 = hadamard(&Az1, &Bz2)?;
         let Az2_Bz1 = hadamard(&Az2, &Bz1)?;
@@ -105,12 +105,31 @@ where
         let cmT = Pedersen::commit(pedersen_params, &T, &C::ScalarField::one())?;
         Ok((T, cmT))
     }
+    pub fn compute_cyclefold_cmT(
+        pedersen_params: &PedersenParams<C>,
+        r1cs: &R1CS<C::ScalarField>, // R1CS over C2.Fr=C1.Fq (here C=C2)
+        w1: &Witness<C>,
+        ci1: &CommittedInstance<C>,
+        w2: &Witness<C>,
+        ci2: &CommittedInstance<C>,
+    ) -> Result<(Vec<C::ScalarField>, C), Error>
+    where
+        <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
+    {
+        let z1: Vec<C::ScalarField> = [vec![ci1.u], ci1.x.to_vec(), w1.W.to_vec()].concat();
+        let z2: Vec<C::ScalarField> = [vec![ci2.u], ci2.x.to_vec(), w2.W.to_vec()].concat();
+
+        // compute cross terms
+        let T = Self::compute_T(r1cs, ci1.u, ci2.u, &z1, &z2)?;
+        // use r_T=1 since we don't need hiding property for cm(T)
+        let cmT = Pedersen::commit(pedersen_params, &T, &C::ScalarField::one())?;
+        Ok((T, cmT))
+    }
 
     /// fold_instances is part of the NIFS.P logic described in
     /// [Nova](https://eprint.iacr.org/2021/370.pdf)'s section 4. It returns the folded Committed
     /// Instances and the Witness.
     pub fn fold_instances(
-        // r comes from the transcript, and is a n-bit (N_BITS_CHALLENGE) element
         r: C::ScalarField,
         w1: &Witness<C>,
         ci1: &CommittedInstance<C>,
@@ -196,19 +215,82 @@ where
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use ark_ff::PrimeField;
+    use ark_ff::{BigInteger, PrimeField};
     use ark_pallas::{Fr, Projective};
     use ark_std::{ops::Mul, UniformRand, Zero};
 
     use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z};
+    use crate::folding::nova::circuits::ChallengeGadget;
+    use crate::folding::nova::traits::NovaR1CS;
     use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
     use crate::utils::vec::vec_scalar_mul;
+    use ark_crypto_primitives::sponge::poseidon::PoseidonConfig;
 
-    pub fn check_relaxed_r1cs<F: PrimeField>(r1cs: &R1CS<F>, z: &[F], u: &F, E: &[F]) -> bool {
-        let Az = mat_vec_mul_sparse(&r1cs.A, z);
-        let Bz = mat_vec_mul_sparse(&r1cs.B, z);
-        let Cz = mat_vec_mul_sparse(&r1cs.C, z);
-        hadamard(&Az, &Bz).unwrap() == vec_add(&vec_scalar_mul(&Cz, u), E).unwrap()
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn prepare_simple_fold_inputs() -> (
+        PedersenParams<Projective>,
+        PoseidonConfig<Fr>,
+        R1CS<Fr>,
+        Witness<Projective>,           // w1
+        CommittedInstance<Projective>, // ci1
+        Witness<Projective>,           // w2
+        CommittedInstance<Projective>, // ci2
+        Witness<Projective>,           // w3
+        CommittedInstance<Projective>, // ci3
+        Vec<Fr>,                       // T
+        Projective,                    // cmT
+        Vec<bool>,                     // r_bits
+        Fr,                            // r_Fr
+    ) {
+        let r1cs = get_test_r1cs();
+        let z1 = get_test_z(3);
+        let z2 = get_test_z(4);
+        let (w1, x1) = r1cs.split_z(&z1);
+        let (w2, x2) = r1cs.split_z(&z2);
+
+        let w1 = Witness::<Projective>::new(w1.clone(), r1cs.A.n_rows);
+        let w2 = Witness::<Projective>::new(w2.clone(), r1cs.A.n_rows);
+
+        let mut rng = ark_std::test_rng();
+        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, r1cs.A.n_cols);
+
+        // compute committed instances
+        let ci1 = w1.commit(&pedersen_params, x1.clone()).unwrap();
+        let ci2 = w2.commit(&pedersen_params, x2.clone()).unwrap();
+
+        // NIFS.P
+        let (T, cmT) =
+            NIFS::<Projective>::compute_cmT(&pedersen_params, &r1cs, &w1, &ci1, &w2, &ci2).unwrap();
+
+        let poseidon_config = poseidon_test_config::<Fr>();
+
+        let r_bits = ChallengeGadget::<Projective>::get_challenge_native(
+            &poseidon_config,
+            ci1.clone(),
+            ci2.clone(),
+            cmT,
+        )
+        .unwrap();
+        let r_Fr = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
+
+        let (w3, ci3) =
+            NIFS::<Projective>::fold_instances(r_Fr, &w1, &ci1, &w2, &ci2, &T, cmT).unwrap();
+
+        (
+            pedersen_params,
+            poseidon_config,
+            r1cs,
+            w1,
+            ci1,
+            w2,
+            ci2,
+            w3,
+            ci3,
+            T,
+            cmT,
+            r_bits,
+            r_Fr,
+        )
     }
 
     // fold 2 dummy instances and check that the folded instance holds the relaxed R1CS relation
@@ -232,9 +314,8 @@ pub mod tests {
         let u_i = u_dummy.clone();
         let W_i = w_dummy.clone();
         let U_i = u_dummy.clone();
-        let z_dummy = vec![Fr::zero(); z1.len()];
-        assert!(check_relaxed_r1cs(&r1cs, &z_dummy, &u_i.u, &w_i.E));
-        assert!(check_relaxed_r1cs(&r1cs, &z_dummy, &U_i.u, &W_i.E));
+        r1cs.check_relaxed_instance_relation(&w_i, &u_i).unwrap();
+        r1cs.check_relaxed_instance_relation(&W_i, &U_i).unwrap();
 
         let r_Fr = Fr::from(3_u32);
 
@@ -243,52 +324,23 @@ pub mod tests {
                 .unwrap();
         let (W_i1, U_i1) =
             NIFS::<Projective>::fold_instances(r_Fr, &w_i, &u_i, &W_i, &U_i, &T, cmT).unwrap();
-
-        let z: Vec<Fr> = [vec![U_i1.u], U_i1.x.to_vec(), W_i1.W.to_vec()].concat();
-        assert_eq!(z.len(), z1.len());
-        assert!(check_relaxed_r1cs(&r1cs, &z, &U_i1.u, &W_i1.E));
+        r1cs.check_relaxed_instance_relation(&W_i1, &U_i1).unwrap();
     }
 
     // fold 2 instances into one
     #[test]
     fn test_nifs_one_fold() {
-        let r1cs = get_test_r1cs();
-        let z1 = get_test_z(3);
-        let z2 = get_test_z(4);
-        let (w1, x1) = r1cs.split_z(&z1);
-        let (w2, x2) = r1cs.split_z(&z2);
-
-        let w1 = Witness::<Projective>::new(w1.clone(), r1cs.A.n_rows);
-        let w2 = Witness::<Projective>::new(w2.clone(), r1cs.A.n_rows);
-
-        let mut rng = ark_std::test_rng();
-        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, r1cs.A.n_cols);
-
-        let r = Fr::rand(&mut rng); // folding challenge would come from the transcript
-
-        // compute committed instances
-        let ci1 = w1.commit(&pedersen_params, x1.clone()).unwrap();
-        let ci2 = w2.commit(&pedersen_params, x2.clone()).unwrap();
-
-        // NIFS.P
-        let (T, cmT) =
-            NIFS::<Projective>::compute_cmT(&pedersen_params, &r1cs, &w1, &ci1, &w2, &ci2).unwrap();
-        let (w3, ci3_aux) =
-            NIFS::<Projective>::fold_instances(r, &w1, &ci1, &w2, &ci2, &T, cmT).unwrap();
+        let (pedersen_params, poseidon_config, r1cs, w1, ci1, w2, ci2, w3, ci3, T, cmT, _, r) =
+            prepare_simple_fold_inputs();
 
         // NIFS.V
-        let ci3 = NIFS::<Projective>::verify(r, &ci1, &ci2, &cmT);
-        assert_eq!(ci3, ci3_aux);
+        let ci3_v = NIFS::<Projective>::verify(r, &ci1, &ci2, &cmT);
+        assert_eq!(ci3_v, ci3);
 
-        // naive check that the folded witness satisfies the relaxed r1cs
-        let z3: Vec<Fr> = [vec![ci3.u], ci3.x.to_vec(), w3.W.to_vec()].concat();
-        // check that z3 is as expected
-        let z3_aux = vec_add(&z1, &vec_scalar_mul(&z2, &r)).unwrap();
-        assert_eq!(z3, z3_aux);
         // check that relations hold for the 2 inputted instances and the folded one
-        assert!(check_relaxed_r1cs(&r1cs, &z1, &ci1.u, &w1.E));
-        assert!(check_relaxed_r1cs(&r1cs, &z2, &ci2.u, &w2.E));
-        assert!(check_relaxed_r1cs(&r1cs, &z3, &ci3.u, &w3.E));
+        r1cs.check_relaxed_instance_relation(&w1, &ci1).unwrap();
+        r1cs.check_relaxed_instance_relation(&w2, &ci2).unwrap();
+        r1cs.check_relaxed_instance_relation(&w3, &ci3).unwrap();
 
         // check that folded commitments from folded instance (ci) are equal to folding the
         // use folded rE, rW to commit w3
@@ -303,7 +355,6 @@ pub mod tests {
         // NIFS.Verify_Folded_Instance:
         NIFS::<Projective>::verify_folded_instance(r, &ci1, &ci2, &ci3, &cmT).unwrap();
 
-        let poseidon_config = poseidon_test_config::<Fr>();
         // init Prover's transcript
         let mut transcript_p = PoseidonTranscript::<Projective>::new(&poseidon_config);
         // init Verifier's transcript
@@ -343,12 +394,9 @@ pub mod tests {
         let mut running_instance_w = Witness::<Projective>::new(w.clone(), r1cs.A.n_rows);
         let mut running_committed_instance =
             running_instance_w.commit(&pedersen_params, x).unwrap();
-        assert!(check_relaxed_r1cs(
-            &r1cs,
-            &z,
-            &running_committed_instance.u,
-            &running_instance_w.E,
-        ));
+
+        r1cs.check_relaxed_instance_relation(&running_instance_w, &running_committed_instance)
+            .unwrap();
 
         let num_iters = 10;
         for i in 0..num_iters {
@@ -358,14 +406,13 @@ pub mod tests {
             let incomming_instance_w = Witness::<Projective>::new(w.clone(), r1cs.A.n_rows);
             let incomming_committed_instance =
                 incomming_instance_w.commit(&pedersen_params, x).unwrap();
-            assert!(check_relaxed_r1cs(
-                &r1cs,
-                &incomming_instance_z.clone(),
-                &incomming_committed_instance.u,
-                &incomming_instance_w.E,
-            ));
+            r1cs.check_relaxed_instance_relation(
+                &incomming_instance_w,
+                &incomming_committed_instance,
+            )
+            .unwrap();
 
-            let r = Fr::rand(&mut rng); // folding challenge would come from the transcript
+            let r = Fr::rand(&mut rng); // folding challenge would come from the RO
 
             // NIFS.P
             let (T, cmT) = NIFS::<Projective>::compute_cmT(
@@ -396,19 +443,8 @@ pub mod tests {
                 &cmT,
             );
 
-            let folded_z: Vec<Fr> = [
-                vec![folded_committed_instance.u],
-                folded_committed_instance.x.to_vec(),
-                folded_w.W.to_vec(),
-            ]
-            .concat();
-
-            assert!(check_relaxed_r1cs(
-                &r1cs,
-                &folded_z,
-                &folded_committed_instance.u,
-                &folded_w.E
-            ));
+            r1cs.check_relaxed_instance_relation(&folded_w, &folded_committed_instance)
+                .unwrap();
 
             // set running_instance for next loop iteration
             running_instance_w = folded_w;

@@ -61,11 +61,9 @@ where
 // over bytes in order to have a logic that can be reproduced in-circuit.
 fn prepare_point<C: CurveGroup>(p: &C) -> Result<Vec<C::ScalarField>, Error> {
     let affine = p.into_affine();
-    let xy_obj = &affine.xy();
-    let mut xy = (&C::BaseField::zero(), &C::BaseField::one());
-    if xy_obj.is_some() {
-        xy = xy_obj.unwrap();
-    }
+    let zero_point = (&C::BaseField::zero(), &C::BaseField::one());
+    let xy = affine.xy().unwrap_or(zero_point);
+
     let x_bi =
         xy.0.to_base_prime_field_elements()
             .next()
@@ -175,7 +173,7 @@ pub mod tests {
 
     #[test]
     fn test_transcript_and_transcriptvar_nbits() {
-        let nbits = 128;
+        let nbits = crate::constants::N_BITS_RO;
 
         // use 'native' transcript
         let config = poseidon_test_config::<Fq>();

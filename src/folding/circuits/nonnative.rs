@@ -10,6 +10,8 @@ use ark_relations::r1cs::{Namespace, SynthesisError};
 use ark_std::{One, Zero};
 use core::borrow::Borrow;
 
+use super::CF;
+
 /// NonNativeAffineVar represents an elliptic curve point in Affine represenation in the non-native
 /// field, over the constraint field. It is not intended to perform operations, but just to contain
 /// the affine coordinates in order to perform hash operations of the point.
@@ -33,11 +35,9 @@ where
             let cs = cs.into();
 
             let affine = val.borrow().into_affine();
-            let xy_obj = &affine.xy();
-            let mut xy = (&C::BaseField::zero(), &C::BaseField::one());
-            if xy_obj.is_some() {
-                xy = xy_obj.unwrap();
-            }
+            let zero_point = (&C::BaseField::zero(), &C::BaseField::one());
+            let xy = affine.xy().unwrap_or(zero_point);
+
             let x = NonNativeFieldVar::<C::BaseField, C::ScalarField>::new_variable(
                 cs.clone(),
                 || Ok(xy.0),
@@ -56,8 +56,8 @@ where
     }
 }
 
-/// point_to_nonnative_limbs is used to return (outside the circuit) the limbs representation that
-/// matches the one used in-circuit.
+/// point_to_nonnative_limbs is used to compute (outside the circuit) the limbs representation of a
+/// point that matches the one used in-circuit.
 #[allow(clippy::type_complexity)]
 pub fn point_to_nonnative_limbs<C: CurveGroup>(
     p: C,
@@ -90,6 +90,41 @@ where
         OptimizationType::Weight,
     )?;
     Ok((x, y))
+}
+
+/// scalar_to_nonnative_limbs is used to compute (outside the circuit) the limbs representation of
+/// a scalar that matches the one used in-circuit.
+pub fn scalar_to_nonnative_limbs<C: CurveGroup>(
+    s: C::ScalarField,
+) -> Result<Vec<CF<C>>, SynthesisError>
+where
+    <C as ark_ec::Group>::ScalarField: ark_ff::PrimeField,
+{
+    let r = AllocatedNonNativeFieldVar::<C::ScalarField, CF<C>>::get_limbs_representations(
+        &s,
+        OptimizationType::Weight,
+    )?;
+    Ok(r)
+}
+
+/// scalar_vec_to_nonnative_limbs is used to compute (outside the circuit) the limbs representation
+/// of a scalar vector that matches the one used in-circuit.
+pub fn scalar_vec_to_nonnative_limbs<C: CurveGroup>(
+    s: Vec<C::ScalarField>,
+) -> Result<Vec<CF<C>>, SynthesisError>
+where
+    <C as ark_ec::Group>::ScalarField: ark_ff::PrimeField,
+{
+    let mut r: Vec<CF<C>> = vec![];
+    for s_i in s.iter() {
+        let mut r_i =
+            AllocatedNonNativeFieldVar::<C::ScalarField, CF<C>>::get_limbs_representations(
+                s_i,
+                OptimizationType::Weight,
+            )?;
+        r.append(&mut r_i);
+    }
+    Ok(r)
 }
 
 #[cfg(test)]

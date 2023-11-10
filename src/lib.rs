@@ -47,6 +47,8 @@ pub enum Error {
     SumCheckProveError(String),
     #[error("Sum-check verify failed: {0}")]
     SumCheckVerifyError(String),
+    #[error("Value out of bounds")]
+    OutOfBounds,
 }
 
 /// FoldingScheme defines trait that is implemented by the diverse folding schemes. It is defined

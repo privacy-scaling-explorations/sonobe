@@ -48,7 +48,12 @@ pub fn vec_add<F: PrimeField>(
     b: &Vec<FpVar<F>>,
 ) -> Result<Vec<FpVar<F>>, Error> {
     if a.len() != b.len() {
-        return Err(Error::NotSameLength(a.len(), b.len()));
+        return Err(Error::NotSameLength(
+            "a.len()".to_string(),
+            a.len(),
+            "b.len()".to_string(),
+            b.len(),
+        ));
     }
     let mut r: Vec<FpVar<F>> = vec![FpVar::<F>::zero(); a.len()];
     for i in 0..a.len() {
@@ -68,7 +73,12 @@ pub fn hadamard<F: PrimeField>(
     b: &Vec<FpVar<F>>,
 ) -> Result<Vec<FpVar<F>>, Error> {
     if a.len() != b.len() {
-        return Err(Error::NotSameLength(a.len(), b.len()));
+        return Err(Error::NotSameLength(
+            "a.len()".to_string(),
+            a.len(),
+            "b.len()".to_string(),
+            b.len(),
+        ));
     }
     let mut r: Vec<FpVar<F>> = vec![FpVar::<F>::zero(); a.len()];
     for i in 0..a.len() {

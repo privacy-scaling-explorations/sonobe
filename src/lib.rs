@@ -29,8 +29,8 @@ pub enum Error {
     NotSatisfied,
     #[error("Not equal")]
     NotEqual,
-    #[error("Vectors should have the same length ({0}, {1})")]
-    NotSameLength(usize, usize),
+    #[error("Vectors should have the same length ({0}: {1}, {2}: {3})")]
+    NotSameLength(String, usize, String, usize),
     #[error("Vector's length ({0}) is not the expected ({1})")]
     NotExpectedLength(usize, usize),
     #[error("Can not be empty")]
@@ -51,6 +51,11 @@ pub enum Error {
     SumCheckVerifyError(String),
     #[error("Value out of bounds")]
     OutOfBounds,
+    #[error("Could not construct the Evaluation Domain")]
+    NewDomainFail,
+
+    #[error(transparent)]
+    ProtoGalaxy(folding::protogalaxy::ProtoGalaxyError),
 }
 
 /// FoldingScheme defines trait that is implemented by the diverse folding schemes. It is defined

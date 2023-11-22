@@ -10,6 +10,7 @@ use num_bigint::BigInt;
 use std::{error::Error, vec::Vec};
 
 // Define a Frontend trait
+#[allow(clippy::type_complexity)]
 pub trait Frontend<C: CurveGroup, F: PrimeField> {
     fn extract_r1cs_and_z(
         &self,
@@ -142,7 +143,7 @@ mod frontend_tests {
             }
         } else if r1cs_check_result.is_ok() && ccs_check_result.is_ok() {
             panic!("Relation Check: Unexpected success in both R1CS and CCS");
-        }
+        }        
     }
 
     #[test]

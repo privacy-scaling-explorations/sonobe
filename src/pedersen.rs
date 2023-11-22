@@ -43,7 +43,7 @@ impl<C: CurveGroup> Pedersen<C> {
         r: &C::ScalarField,
     ) -> Result<C, Error> {
         if params.generators.len() < v.len() {
-            return Err(Error::PedersenParamsLen);
+            return Err(Error::PedersenParamsLen(params.generators.len(), v.len()));
         }
         // h⋅r + <g, v>
         // use msm_unchecked because we already ensured at the if that lengths match
@@ -58,7 +58,7 @@ impl<C: CurveGroup> Pedersen<C> {
         r: &C::ScalarField,
     ) -> Result<Proof<C>, Error> {
         if params.generators.len() < v.len() {
-            return Err(Error::PedersenParamsLen);
+            return Err(Error::PedersenParamsLen(params.generators.len(), v.len()));
         }
 
         transcript.absorb_point(cm)?;
@@ -87,7 +87,10 @@ impl<C: CurveGroup> Pedersen<C> {
         proof: Proof<C>,
     ) -> Result<(), Error> {
         if params.generators.len() < proof.u.len() {
-            return Err(Error::PedersenParamsLen);
+            return Err(Error::PedersenParamsLen(
+                params.generators.len(),
+                proof.u.len(),
+            ));
         }
 
         transcript.absorb_point(&cm)?;

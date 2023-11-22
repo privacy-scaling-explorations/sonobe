@@ -181,7 +181,7 @@ where
     ) -> Result<(), Error> {
         if cm_proofs.len() != 3 {
             // cm_proofs should have length 3: [cmE_proof, cmW_proof, cmT_proof]
-            return Err(Error::NotExpectedLength);
+            return Err(Error::NotExpectedLength(cm_proofs.len(), 3));
         }
         Pedersen::verify(pedersen_params, tr, ci.cmE, cm_proofs[0].clone())?;
         Pedersen::verify(pedersen_params, tr, ci.cmW, cm_proofs[1].clone())?;

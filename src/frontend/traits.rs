@@ -143,7 +143,7 @@ mod frontend_tests {
             }
         } else if r1cs_check_result.is_ok() && ccs_check_result.is_ok() {
             panic!("Relation Check: Unexpected success in both R1CS and CCS");
-        }        
+        }
     }
 
     #[test]

@@ -8,30 +8,25 @@ use ark_std::{One, Zero};
 use core::marker::PhantomData;
 
 use super::circuits::{AugmentedFCircuit, FCircuit};
-use super::{
-    nifs::NIFS,
-    traits::{NovaR1CS, NovaTranscript},
-    CommittedInstance, Witness,
-};
+use super::{nifs::NIFS, traits::NovaR1CS, CommittedInstance, Witness};
 use crate::ccs::r1cs::R1CS;
 use crate::frontend::arkworks::{extract_r1cs, extract_z}; // TODO once Frontend trait is ready, use that
 use crate::pedersen::{Params as PedersenParams, Pedersen};
-use crate::transcript::Transcript;
-use crate::{unwrap_or_return_err, Error};
+use crate::Error;
 
-pub struct IVC<C1, C2, FC, Tr>
+/// Implements the Incremental Verifiable Computation described in sections 1.2 and 5 of
+/// [Nova](https://eprint.iacr.org/2021/370.pdf)
+pub struct IVC<C1, C2, FC>
 where
     C1: CurveGroup,
     C2: CurveGroup,
     FC: FCircuit<C1::ScalarField>,
-    Tr: Transcript<C1> + NovaTranscript<C1>,
 {
     _c2: PhantomData<C2>,
     r1cs: R1CS<C1::ScalarField>,
-    pub poseidon_config: PoseidonConfig<C1::ScalarField>,
-    pub pedersen_params: PedersenParams<C1>,
-    pub F: FC, // F circuit
-    pub transcript: Tr,
+    poseidon_config: PoseidonConfig<C1::ScalarField>,
+    pedersen_params: PedersenParams<C1>,
+    F: FC, // F circuit
     i: C1::ScalarField,
     z_0: Vec<C1::ScalarField>,
     z_i: Vec<C1::ScalarField>,
@@ -41,18 +36,17 @@ where
     U_i: CommittedInstance<C1>,
 }
 
-impl<C1, C2, FC, Tr> IVC<C1, C2, FC, Tr>
+impl<C1, C2, FC> IVC<C1, C2, FC>
 where
     C1: CurveGroup,
     C2: CurveGroup,
     FC: FCircuit<C1::ScalarField>,
-    Tr: Transcript<C1> + NovaTranscript<C1>,
     <C1 as CurveGroup>::BaseField: PrimeField,
     <C1 as Group>::ScalarField: Absorb,
 {
+    /// Initializes the IVC for the given parameters and initial state `z_0`.
     pub fn new<R: Rng>(
         rng: &mut R,
-        transcript_config: Tr::TranscriptConfig,
         poseidon_config: PoseidonConfig<C1::ScalarField>,
         F: FC,
         z_0: Vec<C1::ScalarField>,
@@ -64,10 +58,8 @@ where
 
         augmented_F_circuit.generate_constraints(cs.clone())?;
         cs.finalize();
-        let cs = unwrap_or_return_err!(cs.into_inner(), Err(Error::NoInnerConstraintSystem));
+        let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
         let r1cs = extract_r1cs::<C1::ScalarField>(&cs);
-
-        let transcript = Tr::new(&transcript_config);
 
         let pedersen_params = Pedersen::<C1>::new_params(rng, r1cs.A.n_rows);
 
@@ -83,14 +75,13 @@ where
             poseidon_config,
             pedersen_params,
             F,
-            transcript,
             i: C1::ScalarField::zero(),
             z_0: z_0.clone(),
             z_i: z_0,
             w_i: w_dummy.clone(),
             u_i: u_dummy.clone(),
-            W_i: w_dummy.clone(),
-            U_i: u_dummy.clone(),
+            W_i: w_dummy,
+            U_i: u_dummy,
         })
     }
 
@@ -179,7 +170,7 @@ where
 
         augmented_F_circuit.generate_constraints(cs.clone())?;
 
-        let cs = unwrap_or_return_err!(cs.into_inner(), Err(Error::NoInnerConstraintSystem));
+        let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
         // notice that here we use 'Z' (uppercase) to denote the 'z-vector' as in the paper, not
         // the value 'z' (lowercase) which is the state
         let Z_i1 = extract_z::<C1::ScalarField>(&cs);
@@ -242,25 +233,23 @@ mod tests {
     use ark_vesta::Projective as Projective2;
 
     use crate::folding::nova::circuits::tests::TestFCircuit;
-    use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
+    use crate::transcript::poseidon::tests::poseidon_test_config;
 
     #[test]
     fn test_ivc() {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_test_config::<Fr>();
 
-        let F_circuit = TestFCircuit::<Fr> { _f: PhantomData };
+        let F_circuit = TestFCircuit::<Fr>::new();
         let z_0 = vec![Fr::from(3_u32)];
 
-        let mut ivc =
-            IVC::<Projective, Projective2, TestFCircuit<Fr>, PoseidonTranscript<Projective>>::new(
-                &mut rng,
-                poseidon_config.clone(), // notice that transcript_config could be different than poseidon (eg. keccak's transcript config)
-                poseidon_config,         // poseidon config
-                F_circuit,
-                z_0.clone(),
-            )
-            .unwrap();
+        let mut ivc = IVC::<Projective, Projective2, TestFCircuit<Fr>>::new(
+            &mut rng,
+            poseidon_config, // poseidon config
+            F_circuit,
+            z_0.clone(),
+        )
+        .unwrap();
 
         let num_steps: usize = 3;
         for _ in 0..num_steps {

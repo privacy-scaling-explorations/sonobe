@@ -11,7 +11,7 @@ use crate::utils::vec::*;
 use crate::Error;
 
 /// Implements the Non-Interactive Folding Scheme described in section 4 of
-/// https://eprint.iacr.org/2021/370.pdf
+/// [Nova](https://eprint.iacr.org/2021/370.pdf)
 pub struct NIFS<C: CurveGroup> {
     _phantom: PhantomData<C>,
 }
@@ -106,7 +106,9 @@ where
         Ok((T, cmT))
     }
 
-    /// fold_instances is part of the NIFS.P logic
+    /// fold_instances is part of the NIFS.P logic described in
+    /// [Nova](https://eprint.iacr.org/2021/370.pdf)'s section 4. It returns the folded Committed
+    /// Instances and the Witness.
     pub fn fold_instances(
         // r comes from the transcript, and is a n-bit (N_BITS_CHALLENGE) element
         r: C::ScalarField,
@@ -127,7 +129,8 @@ where
         Ok((w3, ci3))
     }
 
-    /// verify implements NIFS.V logic
+    /// verify implements NIFS.V logic described in [Nova](https://eprint.iacr.org/2021/370.pdf)'s
+    /// section 4. It returns the folded Committed Instance
     pub fn verify(
         // r comes from the transcript, and is a n-bit (N_BITS_CHALLENGE) element
         r: C::ScalarField,
@@ -148,11 +151,11 @@ where
         ci3: &CommittedInstance<C>,
         cmT: &C,
     ) -> Result<(), Error> {
-        let r2 = r * r;
-        if ci3.cmE != (ci1.cmE + cmT.mul(r) + ci2.cmE.mul(r2))
-            || ci3.u != ci1.u + r * ci2.u
-            || ci3.cmW != (ci1.cmW + ci2.cmW.mul(r))
-            || ci3.x != vec_add(&ci1.x, &vec_scalar_mul(&ci2.x, &r))?
+        let expected = Self::fold_committed_instance(r, ci1, ci2, cmT);
+        if ci3.cmE != expected.cmE
+            || ci3.u != expected.u
+            || ci3.cmW != expected.cmW
+            || ci3.x != expected.x
         {
             return Err(Error::NotSatisfied);
         }

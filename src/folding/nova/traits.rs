@@ -4,7 +4,6 @@ use ark_std::{One, Zero};
 
 use super::{CommittedInstance, Witness};
 use crate::ccs::r1cs::R1CS;
-use crate::transcript::{poseidon::PoseidonTranscript, Transcript};
 use crate::Error;
 
 /// NovaR1CS extends R1CS methods with Nova specific methods
@@ -65,21 +64,4 @@ where
         let Z: Vec<C::ScalarField> = [vec![U.u], U.x.to_vec(), W.W.to_vec()].concat();
         rel_r1cs.check_relation(&Z)
     }
-}
-
-/// NovaTranscript extends Transcript with the method to absorb CommittedInstance.
-pub trait NovaTranscript<C: CurveGroup>: Transcript<C> {
-    fn absorb_committed_instance(&mut self, ci: CommittedInstance<C>) -> Result<(), Error> {
-        self.absorb_point(&ci.cmE)?;
-        self.absorb(&ci.u);
-        self.absorb_point(&ci.cmW)?;
-        self.absorb_vec(&ci.x);
-        Ok(())
-    }
-}
-
-// implements NovaTranscript for PoseidonTranscript
-impl<C: CurveGroup> NovaTranscript<C> for PoseidonTranscript<C> where
-    <C as Group>::ScalarField: Absorb
-{
 }

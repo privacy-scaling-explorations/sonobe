@@ -214,6 +214,9 @@ where
 /// FCircuit defines the trait of the circuit of the F function, which is the one being executed
 /// inside the agmented F' function.
 pub trait FCircuit<F: PrimeField>: Clone + Copy + Debug {
+    /// returns a new FCircuit instance
+    fn new() -> Self;
+
     /// computes the next state values in place, assigning z_{i+1} into z_i, and
     /// computing the new z_i
     fn step_native(
@@ -448,9 +451,12 @@ pub mod tests {
     /// used as the state. `z_i` is used as `x`, and `z_{i+1}` is used as `y`, and at the next
     /// step, `z_{i+1}` will be assigned to `z_i`, and a new `z+{i+1}` will be computted.
     pub struct TestFCircuit<F: PrimeField> {
-        pub _f: PhantomData<F>,
+        _f: PhantomData<F>,
     }
     impl<F: PrimeField> FCircuit<F> for TestFCircuit<F> {
+        fn new() -> Self {
+            Self { _f: PhantomData }
+        }
         fn step_native(self, z_i: Vec<F>) -> Vec<F> {
             vec![z_i[0] * z_i[0] * z_i[0] + z_i[0] + F::from(5_u32)]
         }
@@ -691,7 +697,7 @@ pub mod tests {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         // prepare the circuit to obtain its R1CS
-        let F_circuit = TestFCircuit::<Fr> { _f: PhantomData };
+        let F_circuit = TestFCircuit::<Fr>::new();
         let mut augmented_F_circuit =
             AugmentedFCircuit::<Projective, TestFCircuit<Fr>>::empty(&poseidon_config, F_circuit);
         augmented_F_circuit

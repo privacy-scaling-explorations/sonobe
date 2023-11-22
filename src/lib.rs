@@ -20,6 +20,8 @@ pub mod utils;
 pub enum Error {
     #[error("ark_relations::r1cs::SynthesisError")]
     SynthesisError(#[from] ark_relations::r1cs::SynthesisError),
+    #[error("{0}")]
+    Other(String),
 
     #[error("Relation not satisfied")]
     NotSatisfied,
@@ -41,16 +43,6 @@ pub enum Error {
     R1CSUnrelaxedFail,
     #[error("Could not find the inner ConstraintSystem")]
     NoInnerConstraintSystem,
-}
-
-#[macro_export]
-macro_rules! unwrap_or_return_err {
-    ( $e:expr, $err:expr ) => {
-        match $e {
-            Some(x) => x,
-            None => return $err,
-        }
-    };
 }
 
 /// FoldingScheme defines trait that is implemented by the diverse folding schemes. It is defined

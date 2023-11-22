@@ -53,7 +53,7 @@ where
         let (cmE_x, cmE_y) = point_to_nonnative_limbs::<C>(self.cmE)?;
         let (cmW_x, cmW_y) = point_to_nonnative_limbs::<C>(self.cmW)?;
 
-        Ok(CRH::<C::ScalarField>::evaluate(
+        CRH::<C::ScalarField>::evaluate(
             poseidon_config,
             vec![
                 vec![i],
@@ -68,7 +68,7 @@ where
             ]
             .concat(),
         )
-        .unwrap()) // TODO rm unwrap
+        .map_err(|e| Error::Other(e.to_string()))
     }
 }
 

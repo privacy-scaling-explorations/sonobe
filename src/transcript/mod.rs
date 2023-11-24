@@ -21,5 +21,5 @@ pub trait Transcript<C: CurveGroup> {
 /// A (temporary) extension trait to the Transcript trait
 pub trait TranscriptWithAppendableMessagesExt<C: CurveGroup> {
     fn append_serializable_element<S: CanonicalSerialize>(&mut self, label: &'static [u8], group_elem: &S);
-    fn get_and_append_challenge(&self, label: &'static [u8]) -> <C as Group>::ScalarField;
+    fn get_and_append_challenge(&mut self, label: &'static [u8]) -> <C as Group>::ScalarField;
 }

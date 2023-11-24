@@ -7,14 +7,15 @@ use ark_ec::{CurveGroup, Group};
 use ark_std::fmt::Debug;
 use ark_std::{One, Zero};
 
-use crate::ccs::r1cs::R1CS;
 use crate::folding::circuits::nonnative::point_to_nonnative_limbs;
 use crate::pedersen::{Params as PedersenParams, Pedersen};
 use crate::utils::vec::is_zero_vec;
 use crate::Error;
 
 pub mod circuits;
+pub mod ivc;
 pub mod nifs;
+pub mod traits;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct CommittedInstance<C: CurveGroup> {
@@ -52,7 +53,7 @@ where
         let (cmE_x, cmE_y) = point_to_nonnative_limbs::<C>(self.cmE)?;
         let (cmW_x, cmW_y) = point_to_nonnative_limbs::<C>(self.cmW)?;
 
-        Ok(CRH::<C::ScalarField>::evaluate(
+        CRH::<C::ScalarField>::evaluate(
             poseidon_config,
             vec![
                 vec![i],
@@ -67,7 +68,7 @@ where
             ]
             .concat(),
         )
-        .unwrap())
+        .map_err(|e| Error::Other(e.to_string()))
     }
 }
 
@@ -108,17 +109,4 @@ where
             x,
         })
     }
-}
-
-pub fn check_instance_relation<C: CurveGroup>(
-    r1cs: &R1CS<C::ScalarField>,
-    W: &Witness<C>,
-    U: &CommittedInstance<C>,
-) -> Result<(), Error> {
-    let mut rel_r1cs = r1cs.clone().relax();
-    rel_r1cs.u = U.u;
-    rel_r1cs.E = W.E.clone();
-
-    let Z: Vec<C::ScalarField> = [vec![U.u], U.x.to_vec(), W.W.to_vec()].concat();
-    rel_r1cs.check_relation(&Z)
 }

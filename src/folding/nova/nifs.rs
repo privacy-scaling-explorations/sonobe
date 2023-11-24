@@ -11,7 +11,7 @@ use crate::utils::vec::*;
 use crate::Error;
 
 /// Implements the Non-Interactive Folding Scheme described in section 4 of
-/// https://eprint.iacr.org/2021/370.pdf
+/// [Nova](https://eprint.iacr.org/2021/370.pdf)
 pub struct NIFS<C: CurveGroup> {
     _phantom: PhantomData<C>,
 }
@@ -85,36 +85,52 @@ where
         CommittedInstance::<C> { cmE, u, cmW, x }
     }
 
-    // NIFS.P
-    #[allow(clippy::type_complexity)]
-    pub fn prove(
+    /// NIFS.P is the consecutive combination of compute_cmT with fold_instances
+
+    /// compute_cmT is part of the NIFS.P logic
+    pub fn compute_cmT(
         pedersen_params: &PedersenParams<C>,
-        // r comes from the transcript, and is a n-bit (N_BITS_CHALLENGE) element
-        r: C::ScalarField,
         r1cs: &R1CS<C::ScalarField>,
         w1: &Witness<C>,
         ci1: &CommittedInstance<C>,
         w2: &Witness<C>,
         ci2: &CommittedInstance<C>,
-    ) -> Result<(Witness<C>, CommittedInstance<C>, Vec<C::ScalarField>, C), Error> {
+    ) -> Result<(Vec<C::ScalarField>, C), Error> {
         let z1: Vec<C::ScalarField> = [vec![ci1.u], ci1.x.to_vec(), w1.W.to_vec()].concat();
         let z2: Vec<C::ScalarField> = [vec![ci2.u], ci2.x.to_vec(), w2.W.to_vec()].concat();
 
         // compute cross terms
         let T = Self::compute_T(r1cs, ci1.u, ci2.u, &z1, &z2)?;
-        let rT = C::ScalarField::one(); // use 1 as rT since we don't need hiding property for cm(T)
-        let cmT = Pedersen::commit(pedersen_params, &T, &rT)?;
+        // use r_T=1 since we don't need hiding property for cm(T)
+        let cmT = Pedersen::commit(pedersen_params, &T, &C::ScalarField::one())?;
+        Ok((T, cmT))
+    }
 
+    /// fold_instances is part of the NIFS.P logic described in
+    /// [Nova](https://eprint.iacr.org/2021/370.pdf)'s section 4. It returns the folded Committed
+    /// Instances and the Witness.
+    pub fn fold_instances(
+        // r comes from the transcript, and is a n-bit (N_BITS_CHALLENGE) element
+        r: C::ScalarField,
+        w1: &Witness<C>,
+        ci1: &CommittedInstance<C>,
+        w2: &Witness<C>,
+        ci2: &CommittedInstance<C>,
+        T: &[C::ScalarField],
+        cmT: C,
+    ) -> Result<(Witness<C>, CommittedInstance<C>), Error> {
         // fold witness
-        let w3 = NIFS::<C>::fold_witness(r, w1, w2, &T, rT)?;
+        // use r_T=1 since we don't need hiding property for cm(T)
+        let w3 = NIFS::<C>::fold_witness(r, w1, w2, T, C::ScalarField::one())?;
 
         // fold committed instancs
         let ci3 = NIFS::<C>::fold_committed_instance(r, ci1, ci2, &cmT);
 
-        Ok((w3, ci3, T, cmT))
+        Ok((w3, ci3))
     }
 
-    // NIFS.V
+    /// verify implements NIFS.V logic described in [Nova](https://eprint.iacr.org/2021/370.pdf)'s
+    /// section 4. It returns the folded Committed Instance
     pub fn verify(
         // r comes from the transcript, and is a n-bit (N_BITS_CHALLENGE) element
         r: C::ScalarField,
@@ -135,11 +151,11 @@ where
         ci3: &CommittedInstance<C>,
         cmT: &C,
     ) -> Result<(), Error> {
-        let r2 = r * r;
-        if ci3.cmE != (ci1.cmE + cmT.mul(r) + ci2.cmE.mul(r2))
-            || ci3.u != ci1.u + r * ci2.u
-            || ci3.cmW != (ci1.cmW + ci2.cmW.mul(r))
-            || ci3.x != vec_add(&ci1.x, &vec_scalar_mul(&ci2.x, &r))?
+        let expected = Self::fold_committed_instance(r, ci1, ci2, cmT);
+        if ci3.cmE != expected.cmE
+            || ci3.u != expected.u
+            || ci3.cmW != expected.cmW
+            || ci3.x != expected.x
         {
             return Err(Error::NotSatisfied);
         }
@@ -168,7 +184,7 @@ where
     ) -> Result<(), Error> {
         if cm_proofs.len() != 3 {
             // cm_proofs should have length 3: [cmE_proof, cmW_proof, cmT_proof]
-            return Err(Error::NotExpectedLength);
+            return Err(Error::NotExpectedLength(cm_proofs.len(), 3));
         }
         Pedersen::verify(pedersen_params, tr, ci.cmE, cm_proofs[0].clone())?;
         Pedersen::verify(pedersen_params, tr, ci.cmW, cm_proofs[1].clone())?;
@@ -222,9 +238,11 @@ pub mod tests {
 
         let r_Fr = Fr::from(3_u32);
 
-        let (W_i1, U_i1, _, _) =
-            NIFS::<Projective>::prove(&pedersen_params, r_Fr, &r1cs, &w_i, &u_i, &W_i, &U_i)
+        let (T, cmT) =
+            NIFS::<Projective>::compute_cmT(&pedersen_params, &r1cs, &w_i, &u_i, &W_i, &U_i)
                 .unwrap();
+        let (W_i1, U_i1) =
+            NIFS::<Projective>::fold_instances(r_Fr, &w_i, &u_i, &W_i, &U_i, &T, cmT).unwrap();
 
         let z: Vec<Fr> = [vec![U_i1.u], U_i1.x.to_vec(), W_i1.W.to_vec()].concat();
         assert_eq!(z.len(), z1.len());
@@ -253,8 +271,10 @@ pub mod tests {
         let ci2 = w2.commit(&pedersen_params, x2.clone()).unwrap();
 
         // NIFS.P
-        let (w3, ci3_aux, T, cmT) =
-            NIFS::<Projective>::prove(&pedersen_params, r, &r1cs, &w1, &ci1, &w2, &ci2).unwrap();
+        let (T, cmT) =
+            NIFS::<Projective>::compute_cmT(&pedersen_params, &r1cs, &w1, &ci1, &w2, &ci2).unwrap();
+        let (w3, ci3_aux) =
+            NIFS::<Projective>::fold_instances(r, &w1, &ci1, &w2, &ci2, &T, cmT).unwrap();
 
         // NIFS.V
         let ci3 = NIFS::<Projective>::verify(r, &ci1, &ci2, &cmT);
@@ -348,14 +368,23 @@ pub mod tests {
             let r = Fr::rand(&mut rng); // folding challenge would come from the transcript
 
             // NIFS.P
-            let (folded_w, _, _, cmT) = NIFS::<Projective>::prove(
+            let (T, cmT) = NIFS::<Projective>::compute_cmT(
                 &pedersen_params,
-                r,
                 &r1cs,
                 &running_instance_w,
                 &running_committed_instance,
                 &incomming_instance_w,
                 &incomming_committed_instance,
+            )
+            .unwrap();
+            let (folded_w, _) = NIFS::<Projective>::fold_instances(
+                r,
+                &running_instance_w,
+                &running_committed_instance,
+                &incomming_instance_w,
+                &incomming_committed_instance,
+                &T,
+                cmT,
             )
             .unwrap();
 

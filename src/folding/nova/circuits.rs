@@ -1,6 +1,7 @@
 use ark_crypto_primitives::crh::{
     poseidon::constraints::{CRHGadget, CRHParametersVar},
-    CRHSchemeGadget,
+    poseidon::CRH,
+    CRHScheme, CRHSchemeGadget,
 };
 use ark_crypto_primitives::sponge::{poseidon::PoseidonConfig, Absorb};
 use ark_ec::{AffineRepr, CurveGroup, Group};
@@ -12,7 +13,6 @@ use ark_r1cs_std::{
     fields::{fp::FpVar, FieldVar},
     groups::GroupOpsBounds,
     prelude::CurveVar,
-    ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
 use ark_std::fmt::Debug;
@@ -20,7 +20,10 @@ use ark_std::Zero;
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::CommittedInstance;
-use crate::folding::circuits::{cyclefold::ECRLC, nonnative::NonNativeAffineVar};
+use crate::folding::circuits::{
+    cyclefold::ECRLC,
+    nonnative::{point_to_nonnative_limbs, NonNativeAffineVar},
+};
 
 /// CF1 represents the ConstraintField used for the main Nova circuit which is over E1::Fr, where
 /// E1 is the main curve where we do the folding.
@@ -36,8 +39,8 @@ pub type CF2<C> = <<C as CurveGroup>::BaseField as Field>::BasePrimeField;
 pub struct CommittedInstanceVar<C: CurveGroup> {
     u: FpVar<C::ScalarField>,
     x: Vec<FpVar<C::ScalarField>>,
-    cmE: NonNativeAffineVar<CF2<C>, C::ScalarField>,
-    cmW: NonNativeAffineVar<CF2<C>, C::ScalarField>,
+    cmE: NonNativeAffineVar<C::ScalarField>,
+    cmW: NonNativeAffineVar<C::ScalarField>,
 }
 
 impl<C> AllocVar<CommittedInstance<C>, CF1<C>> for CommittedInstanceVar<C>
@@ -57,12 +60,12 @@ where
             let x: Vec<FpVar<C::ScalarField>> =
                 Vec::new_variable(cs.clone(), || Ok(val.borrow().x.clone()), mode)?;
 
-            let cmE = NonNativeAffineVar::<CF2<C>, C::ScalarField>::new_variable(
+            let cmE = NonNativeAffineVar::<C::ScalarField>::new_variable(
                 cs.clone(),
                 || Ok(val.borrow().cmE),
                 mode,
             )?;
-            let cmW = NonNativeAffineVar::<CF2<C>, C::ScalarField>::new_variable(
+            let cmW = NonNativeAffineVar::<C::ScalarField>::new_variable(
                 cs.clone(),
                 || Ok(val.borrow().cmW),
                 mode,
@@ -95,10 +98,10 @@ where
             z_i,
             vec![self.u],
             self.x,
-            self.cmE.x.to_constraint_field()?,
-            self.cmE.y.to_constraint_field()?,
-            self.cmW.x.to_constraint_field()?,
-            self.cmW.y.to_constraint_field()?,
+            self.cmE.x,
+            self.cmE.y,
+            self.cmW.x,
+            self.cmW.y,
         ]
         .concat();
         CRHGadget::<C::ScalarField>::evaluate(crh_params, &input)
@@ -211,6 +214,9 @@ where
 /// FCircuit defines the trait of the circuit of the F function, which is the one being executed
 /// inside the agmented F' function.
 pub trait FCircuit<F: PrimeField>: Clone + Copy + Debug {
+    /// returns a new FCircuit instance
+    fn new() -> Self;
+
     /// computes the next state values in place, assigning z_{i+1} into z_i, and
     /// computing the new z_i
     fn step_native(
@@ -242,14 +248,12 @@ pub struct AugmentedFCircuit<C: CurveGroup, FC: FCircuit<CF1<C>>> {
     pub U_i: Option<CommittedInstance<C>>,
     pub U_i1: Option<CommittedInstance<C>>,
     pub cmT: Option<C>,
-    pub r: Option<C::ScalarField>, // This will not be an input and derived from a hash internally in the circuit (poseidon transcript)
-    pub F: FC,                     // F circuit
-    pub x: Option<CF1<C>>,         // public inputs (u_{i+1}.x)
+    pub F: FC,             // F circuit
+    pub x: Option<CF1<C>>, // public inputs (u_{i+1}.x)
 }
 
 impl<C: CurveGroup, FC: FCircuit<CF1<C>>> AugmentedFCircuit<C, FC> {
-    #[allow(dead_code)] // TMP while IVC does not use this method
-    fn empty(poseidon_config: &PoseidonConfig<CF1<C>>, F_circuit: FC) -> Self {
+    pub fn empty(poseidon_config: &PoseidonConfig<CF1<C>>, F_circuit: FC) -> Self {
         Self {
             poseidon_config: poseidon_config.clone(),
             i: None,
@@ -259,10 +263,74 @@ impl<C: CurveGroup, FC: FCircuit<CF1<C>>> AugmentedFCircuit<C, FC> {
             U_i: None,
             U_i1: None,
             cmT: None,
-            r: None,
             F: F_circuit,
             x: None,
         }
+    }
+}
+
+impl<C: CurveGroup, FC: FCircuit<CF1<C>>> AugmentedFCircuit<C, FC>
+where
+    C: CurveGroup,
+    <C as CurveGroup>::BaseField: PrimeField,
+    <C as Group>::ScalarField: Absorb,
+{
+    pub fn get_challenge_native(
+        poseidon_config: &PoseidonConfig<C::ScalarField>,
+        u_i: CommittedInstance<C>,
+        U_i: CommittedInstance<C>,
+        cmT: C,
+    ) -> Result<C::ScalarField, SynthesisError> {
+        let (u_cmE_x, u_cmE_y) = point_to_nonnative_limbs::<C>(u_i.cmE)?;
+        let (u_cmW_x, u_cmW_y) = point_to_nonnative_limbs::<C>(u_i.cmW)?;
+        let (U_cmE_x, U_cmE_y) = point_to_nonnative_limbs::<C>(U_i.cmE)?;
+        let (U_cmW_x, U_cmW_y) = point_to_nonnative_limbs::<C>(U_i.cmW)?;
+        let (cmT_x, cmT_y) = point_to_nonnative_limbs::<C>(cmT)?;
+
+        let input = vec![
+            vec![u_i.u],
+            u_i.x.clone(),
+            u_cmE_x,
+            u_cmE_y,
+            u_cmW_x,
+            u_cmW_y,
+            vec![U_i.u],
+            U_i.x.clone(),
+            U_cmE_x,
+            U_cmE_y,
+            U_cmW_x,
+            U_cmW_y,
+            cmT_x,
+            cmT_y,
+        ]
+        .concat();
+        Ok(CRH::<C::ScalarField>::evaluate(poseidon_config, input).unwrap())
+    }
+
+    pub fn get_challenge(
+        crh_params: &CRHParametersVar<C::ScalarField>,
+        u_i: CommittedInstanceVar<C>,
+        U_i: CommittedInstanceVar<C>,
+        cmT: NonNativeAffineVar<C::ScalarField>,
+    ) -> Result<FpVar<C::ScalarField>, SynthesisError> {
+        let input = vec![
+            vec![u_i.u.clone()],
+            u_i.x.clone(),
+            u_i.cmE.x,
+            u_i.cmE.y,
+            u_i.cmW.x,
+            u_i.cmW.y,
+            vec![U_i.u.clone()],
+            U_i.x.clone(),
+            U_i.cmE.x,
+            U_i.cmE.y,
+            U_i.cmW.x,
+            U_i.cmW.y,
+            cmT.x,
+            cmT.y,
+        ]
+        .concat();
+        CRHGadget::<C::ScalarField>::evaluate(crh_params, &input)
     }
 }
 
@@ -282,15 +350,7 @@ where
             Ok(self.z_i.unwrap_or_else(|| vec![CF1::<C>::zero()]))
         })?;
 
-        // get z_{i+1} from the F circuit
-        let z_i1 = self.F.generate_step_constraints(cs.clone(), z_i.clone())?;
-
-        let u_dummy_native = CommittedInstance {
-            cmE: C::zero(),
-            u: C::ScalarField::zero(),
-            cmW: C::zero(),
-            x: vec![CF1::<C>::zero()],
-        };
+        let u_dummy_native = CommittedInstance::<C>::dummy(1);
 
         let u_dummy =
             CommittedInstanceVar::<C>::new_witness(cs.clone(), || Ok(u_dummy_native.clone()))?;
@@ -303,15 +363,16 @@ where
         let U_i1 = CommittedInstanceVar::<C>::new_witness(cs.clone(), || {
             Ok(self.U_i1.unwrap_or_else(|| u_dummy_native.clone()))
         })?;
-        let _cmT =
+        let cmT =
             NonNativeAffineVar::new_witness(cs.clone(), || Ok(self.cmT.unwrap_or_else(C::zero)))?;
-        let r =
-            FpVar::<CF1<C>>::new_witness(cs.clone(), || Ok(self.r.unwrap_or_else(CF1::<C>::zero)))?; // r will come from higher level transcript
         let x =
             FpVar::<CF1<C>>::new_input(cs.clone(), || Ok(self.x.unwrap_or_else(CF1::<C>::zero)))?;
 
         let crh_params =
             CRHParametersVar::<C::ScalarField>::new_constant(cs.clone(), self.poseidon_config)?;
+
+        // get z_{i+1} from the F circuit
+        let z_i1 = self.F.generate_step_constraints(cs.clone(), z_i.clone())?;
 
         let zero = FpVar::<CF1<C>>::new_constant(cs.clone(), CF1::<C>::zero())?;
         let is_basecase = i.is_eq(&zero)?;
@@ -333,6 +394,9 @@ where
         (u_i.u.is_one()?).conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
 
         // 3. nifs.verify, checks that folding u_i & U_i obtains U_{i+1}.
+        // compute r = H(u_i, U_i, cmT)
+        let r = Self::get_challenge(&crh_params, u_i.clone(), U_i.clone(), cmT)?;
+
         // Notice that NIFSGadget::verify is not checking the folding of cmE & cmW, since it will
         // be done on the other curve.
         let nifs_check = NIFSGadget::<C>::verify(r, u_i, U_i.clone(), U_i1.clone())?;
@@ -364,7 +428,7 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use ark_ff::BigInteger;
     use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
@@ -375,8 +439,7 @@ mod tests {
     use tracing_subscriber::layer::SubscriberExt;
 
     use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z};
-    use crate::constants::N_BITS_CHALLENGE;
-    use crate::folding::nova::{check_instance_relation, nifs::NIFS, Witness};
+    use crate::folding::nova::{nifs::NIFS, traits::NovaR1CS, Witness};
     use crate::frontend::arkworks::{extract_r1cs, extract_z};
     use crate::pedersen::Pedersen;
     use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
@@ -391,6 +454,9 @@ mod tests {
         _f: PhantomData<F>,
     }
     impl<F: PrimeField> FCircuit<F> for TestFCircuit<F> {
+        fn new() -> Self {
+            Self { _f: PhantomData }
+        }
         fn step_native(self, z_i: Vec<F>) -> Vec<F> {
             vec![z_i[0] * z_i[0] * z_i[0] + z_i[0] + F::from(5_u32)]
         }
@@ -452,14 +518,19 @@ mod tests {
         let ci1 = w1.commit(&pedersen_params, x1.clone()).unwrap();
         let ci2 = w2.commit(&pedersen_params, x2.clone()).unwrap();
 
-        // get challenge from transcript
+        // NIFS.P
+        let (T, cmT) =
+            NIFS::<Projective>::compute_cmT(&pedersen_params, &r1cs, &w1, &ci1, &w2, &ci2).unwrap();
+
+        // get challenge from transcript, since we're in a test skip absorbing values into
+        // transcript
         let poseidon_config = poseidon_test_config::<Fr>();
         let mut tr = PoseidonTranscript::<Projective>::new(&poseidon_config);
-        let r_bits = tr.get_challenge_nbits(N_BITS_CHALLENGE);
+        let r_bits = tr.get_challenge_nbits(128);
         let r_Fr = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
 
-        let (_w3, ci3, _T, cmT) =
-            NIFS::<Projective>::prove(&pedersen_params, r_Fr, &r1cs, &w1, &ci1, &w2, &ci2).unwrap();
+        let (_, ci3) =
+            NIFS::<Projective>::fold_instances(r_Fr, &w1, &ci1, &w2, &ci2, &T, cmT).unwrap();
 
         let ci3_verifier = NIFS::<Projective>::verify(r_Fr, &ci1, &ci2, &cmT);
         assert_eq!(ci3_verifier, ci3);
@@ -556,6 +627,60 @@ mod tests {
         assert_eq!(hVar.value().unwrap(), h);
     }
 
+    // checks that the gadget and native implementations of the challenge computation matcbh
+    #[test]
+    fn test_challenge_gadget() {
+        let mut rng = ark_std::test_rng();
+        let poseidon_config = poseidon_test_config::<Fr>();
+
+        let u_i = CommittedInstance::<Projective> {
+            cmE: Projective::rand(&mut rng),
+            u: Fr::rand(&mut rng),
+            cmW: Projective::rand(&mut rng),
+            x: vec![Fr::rand(&mut rng); 1],
+        };
+        let U_i = CommittedInstance::<Projective> {
+            cmE: Projective::rand(&mut rng),
+            u: Fr::rand(&mut rng),
+            cmW: Projective::rand(&mut rng),
+            x: vec![Fr::rand(&mut rng); 1],
+        };
+        let cmT = Projective::rand(&mut rng);
+
+        // compute the challenge natively
+        let r = AugmentedFCircuit::<Projective, TestFCircuit<Fr>>::get_challenge_native(
+            &poseidon_config,
+            u_i.clone(),
+            U_i.clone(),
+            cmT,
+        )
+        .unwrap();
+
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        let u_iVar =
+            CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || Ok(u_i.clone()))
+                .unwrap();
+        let U_iVar =
+            CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || Ok(U_i.clone()))
+                .unwrap();
+        let cmTVar = NonNativeAffineVar::<Fr>::new_witness(cs.clone(), || Ok(cmT)).unwrap();
+
+        let crh_params = CRHParametersVar::<Fr>::new_constant(cs.clone(), poseidon_config).unwrap();
+
+        // compute the challenge in-circuit
+        let rVar = AugmentedFCircuit::<Projective, TestFCircuit<Fr>>::get_challenge(
+            &crh_params,
+            u_iVar,
+            U_iVar,
+            cmTVar,
+        )
+        .unwrap();
+        assert!(cs.is_satisfied().unwrap());
+
+        // check that the natively computed and in-circuit computed hashes match
+        assert_eq!(rVar.value().unwrap(), r);
+    }
+
     #[test]
     /// test_augmented_f_circuit folds the TestFCircuit circuit in multiple iterations, feeding the
     /// values into the AugmentedFCircuit.
@@ -572,20 +697,21 @@ mod tests {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         // prepare the circuit to obtain its R1CS
-        let F_circuit = TestFCircuit::<Fr> { _f: PhantomData };
+        let F_circuit = TestFCircuit::<Fr>::new();
         let mut augmented_F_circuit =
             AugmentedFCircuit::<Projective, TestFCircuit<Fr>>::empty(&poseidon_config, F_circuit);
         augmented_F_circuit
             .generate_constraints(cs.clone())
             .unwrap();
         cs.finalize();
+        println!("num_constraints={:?}", cs.num_constraints());
         let cs = cs.into_inner().unwrap();
         let r1cs = extract_r1cs::<Fr>(&cs);
         let z = extract_z::<Fr>(&cs); // includes 1 and public inputs
         let (w, x) = r1cs.split_z(&z);
-        let F_witness_len = w.len();
-
-        let mut tr = PoseidonTranscript::<Projective>::new(&poseidon_config);
+        assert_eq!(z.len(), r1cs.A.n_cols);
+        assert_eq!(1 + x.len() + w.len(), r1cs.A.n_cols);
+        assert_eq!(r1cs.l, x.len());
 
         let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, r1cs.A.n_rows);
 
@@ -594,31 +720,29 @@ mod tests {
         let mut z_i = z_0.clone();
         let mut z_i1 = vec![Fr::from(35_u32)];
 
-        let w_dummy = Witness::<Projective>::new(vec![Fr::zero(); F_witness_len], r1cs.A.n_rows);
+        let w_dummy = Witness::<Projective>::new(vec![Fr::zero(); w.len()], r1cs.A.n_rows);
         let u_dummy = CommittedInstance::<Projective>::dummy(x.len());
 
-        // Wi is a 'dummy witness', all zeroes, but with the size corresponding to the R1CS that
+        // W_i is a 'dummy witness', all zeroes, but with the size corresponding to the R1CS that
         // we're working with.
-        // set U_i <-- dummay instance
+        // set U_i <-- dummy instance
         let mut W_i = w_dummy.clone();
         let mut U_i = u_dummy.clone();
-        check_instance_relation(&r1cs, &W_i, &U_i).unwrap();
+        r1cs.check_relaxed_instance_relation(&W_i, &U_i).unwrap();
 
         let mut w_i = w_dummy.clone();
         let mut u_i = u_dummy.clone();
-        let (mut W_i1, mut U_i1, mut _T, mut cmT) = (
-            w_dummy.clone(),
-            u_dummy.clone(),
-            vec![],
-            Projective::generator(),
-        );
+        let (mut W_i1, mut U_i1, mut cmT): (
+            Witness<Projective>,
+            CommittedInstance<Projective>,
+            Projective,
+        ) = (w_dummy.clone(), u_dummy.clone(), Projective::generator());
         // as expected, dummy instances pass the relaxed_r1cs check
-        check_instance_relation(&r1cs, &W_i1, &U_i1).unwrap();
+        r1cs.check_relaxed_instance_relation(&W_i1, &U_i1).unwrap();
 
         let mut i = Fr::zero();
         let mut u_i1_x: Fr;
-        let n_steps: usize = 4;
-        for _ in 0..n_steps {
+        for _ in 0..4 {
             if i == Fr::zero() {
                 // base case: i=0, z_i=z_0, U_i = U_d := dummy instance
                 // u_1.x = H(1, z_0, z_i, U_i)
@@ -636,23 +760,17 @@ mod tests {
                     U_i: Some(U_i.clone()),   // = dummy
                     U_i1: Some(U_i1.clone()), // = dummy
                     cmT: Some(cmT),
-                    r: Some(Fr::one()),
                     F: F_circuit,
                     x: Some(u_i1_x),
                 };
             } else {
-                // get challenge from transcript (since this is a test, we skip absorbing values to
-                // the transcript for simplicity)
-                let r_bits = tr.get_challenge_nbits(N_BITS_CHALLENGE);
-                let r_Fr = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
-
-                check_instance_relation(&r1cs, &w_i, &u_i).unwrap();
-                check_instance_relation(&r1cs, &W_i, &U_i).unwrap();
+                r1cs.check_relaxed_instance_relation(&w_i, &u_i).unwrap();
+                r1cs.check_relaxed_instance_relation(&W_i, &U_i).unwrap();
 
                 // U_{i+1}
-                (W_i1, U_i1, _T, cmT) = NIFS::<Projective>::prove(
+                let T: Vec<Fr>;
+                (T, cmT) = NIFS::<Projective>::compute_cmT(
                     &pedersen_params,
-                    r_Fr,
                     &r1cs,
                     &w_i,
                     &u_i,
@@ -661,7 +779,20 @@ mod tests {
                 )
                 .unwrap();
 
-                check_instance_relation(&r1cs, &W_i1, &U_i1).unwrap();
+                // get challenge r
+                let r_Fr = AugmentedFCircuit::<Projective, TestFCircuit<Fr>>::get_challenge_native(
+                    &poseidon_config,
+                    u_i.clone(),
+                    U_i.clone(),
+                    cmT,
+                )
+                .unwrap();
+
+                (W_i1, U_i1) =
+                    NIFS::<Projective>::fold_instances(r_Fr, &w_i, &u_i, &W_i, &U_i, &T, cmT)
+                        .unwrap();
+
+                r1cs.check_relaxed_instance_relation(&W_i1, &U_i1).unwrap();
 
                 // folded instance output (public input, x)
                 // u_{i+1}.x = H(i+1, z_0, z_{i+1}, U_{i+1})
@@ -678,7 +809,6 @@ mod tests {
                     U_i: Some(U_i.clone()),
                     U_i1: Some(U_i1.clone()),
                     cmT: Some(cmT),
-                    r: Some(r_Fr),
                     F: F_circuit,
                     x: Some(u_i1_x),
                 };
@@ -698,7 +828,7 @@ mod tests {
             cs.finalize();
             let cs = cs.into_inner().unwrap();
             // notice that here we use 'Z' (uppercase) to denote the 'z-vector' as in the paper,
-            // not the value 'z_i' (lowercase) which is the next state
+            // not the value 'z' (lowercase) which is the state
             let Z_i1 = extract_z::<Fr>(&cs);
             let (w_i1, x_i1) = r1cs.split_z(&Z_i1);
             assert_eq!(x_i1.len(), 1);
@@ -709,8 +839,8 @@ mod tests {
             w_i = Witness::<Projective>::new(w_i1.clone(), r1cs.A.n_rows);
             u_i = w_i.commit(&pedersen_params, vec![u_i1_x]).unwrap();
 
-            check_instance_relation(&r1cs, &w_i, &u_i).unwrap();
-            check_instance_relation(&r1cs, &W_i1, &U_i1).unwrap();
+            r1cs.check_relaxed_instance_relation(&w_i, &u_i).unwrap();
+            r1cs.check_relaxed_instance_relation(&W_i1, &U_i1).unwrap();
 
             // set values for next iteration
             i += Fr::one();

@@ -20,21 +20,29 @@ pub mod utils;
 pub enum Error {
     #[error("ark_relations::r1cs::SynthesisError")]
     SynthesisError(#[from] ark_relations::r1cs::SynthesisError),
+    #[error("{0}")]
+    Other(String),
 
     #[error("Relation not satisfied")]
     NotSatisfied,
     #[error("Not equal")]
     NotEqual,
-    #[error("Vectors should have the same length")]
-    NotSameLength,
-    #[error("Vector's length is not the expected")]
-    NotExpectedLength,
+    #[error("Vectors should have the same length ({0}, {1})")]
+    NotSameLength(usize, usize),
+    #[error("Vector's length ({0}) is not the expected ({1})")]
+    NotExpectedLength(usize, usize),
     #[error("Can not be empty")]
     Empty,
-    #[error("Pedersen parameters length is not suficient")]
-    PedersenParamsLen,
+    #[error("Pedersen parameters length is not suficient (generators.len={0} < vector.len={1} unsatisfied)")]
+    PedersenParamsLen(usize, usize),
     #[error("Pedersen verification failed")]
     PedersenVerificationFail,
+    #[error("IVC verification failed")]
+    IVCVerificationFail,
+    #[error("R1CS instance is expected to not be relaxed")]
+    R1CSUnrelaxedFail,
+    #[error("Could not find the inner ConstraintSystem")]
+    NoInnerConstraintSystem,
 }
 
 /// FoldingScheme defines trait that is implemented by the diverse folding schemes. It is defined

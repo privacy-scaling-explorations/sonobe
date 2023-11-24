@@ -7,8 +7,10 @@ use ark_ec::{AffineRepr, CurveGroup, Group};
 use ark_ff::{BigInteger, Field, PrimeField};
 use ark_r1cs_std::{boolean::Boolean, fields::fp::FpVar};
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
+use ark_std::{One, Zero};
 
 use crate::transcript::Transcript;
+use crate::Error;
 
 /// PoseidonTranscript implements the Transcript trait using the Poseidon hash
 pub struct PoseidonTranscript<C: CurveGroup>
@@ -34,8 +36,9 @@ where
     fn absorb_vec(&mut self, v: &[C::ScalarField]) {
         self.sponge.absorb(&v);
     }
-    fn absorb_point(&mut self, p: &C) {
-        self.sponge.absorb(&prepare_point(p));
+    fn absorb_point(&mut self, p: &C) -> Result<(), Error> {
+        self.sponge.absorb(&prepare_point(p)?);
+        Ok(())
     }
     fn get_challenge(&mut self) -> C::ScalarField {
         let c = self.sponge.squeeze_field_elements(1);
@@ -54,25 +57,27 @@ where
 
 // Returns the point coordinates in Fr, so it can be absrobed by the transcript. It does not work
 // over bytes in order to have a logic that can be reproduced in-circuit.
-fn prepare_point<C: CurveGroup>(p: &C) -> Vec<C::ScalarField> {
-    let binding = p.into_affine();
-    let p_coords = &binding.xy().unwrap();
-    let x_bi = p_coords
-        .0
-        .to_base_prime_field_elements()
-        .next()
-        .expect("a")
-        .into_bigint();
-    let y_bi = p_coords
-        .1
-        .to_base_prime_field_elements()
-        .next()
-        .expect("a")
-        .into_bigint();
-    vec![
+fn prepare_point<C: CurveGroup>(p: &C) -> Result<Vec<C::ScalarField>, Error> {
+    let affine = p.into_affine();
+    let xy_obj = &affine.xy();
+    let mut xy = (&C::BaseField::zero(), &C::BaseField::one());
+    if xy_obj.is_some() {
+        xy = xy_obj.unwrap();
+    }
+    let x_bi =
+        xy.0.to_base_prime_field_elements()
+            .next()
+            .expect("a")
+            .into_bigint();
+    let y_bi =
+        xy.1.to_base_prime_field_elements()
+            .next()
+            .expect("a")
+            .into_bigint();
+    Ok(vec![
         C::ScalarField::from_le_bytes_mod_order(x_bi.to_bytes_le().as_ref()),
         C::ScalarField::from_le_bytes_mod_order(y_bi.to_bytes_le().as_ref()),
-    ]
+    ])
 }
 
 /// PoseidonTranscriptVar implements the gadget compatible with PoseidonTranscript
@@ -166,7 +171,7 @@ pub mod tests {
 
     #[test]
     fn test_transcript_and_transcriptvar_nbits() {
-        let nbits = crate::constants::N_BITS_CHALLENGE;
+        let nbits = 128;
 
         // use 'native' transcript
         let config = poseidon_test_config::<Fq>();

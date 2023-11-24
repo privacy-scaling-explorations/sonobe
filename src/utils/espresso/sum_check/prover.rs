@@ -184,6 +184,7 @@ impl<F: PrimeField> SumCheckProver<F> for IOPProverState<F> {
     }
 }
 
+#[allow(clippy::filter_map_bool_then)]
 fn barycentric_weights<F: PrimeField>(points: &[F]) -> Vec<F> {
     let mut weights = points
         .iter()

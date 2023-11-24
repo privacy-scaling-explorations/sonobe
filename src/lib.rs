@@ -14,7 +14,7 @@ pub mod decider;
 pub mod folding;
 pub mod frontend;
 pub mod pedersen;
-pub mod sumcheck;
+pub mod sum_check;
 pub mod utils;
 
 #[derive(Debug, Error, PartialEq)]

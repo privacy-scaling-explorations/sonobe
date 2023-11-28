@@ -85,14 +85,13 @@ where
             )?;
         }
 
-        let res =
-            IOPVerifierStateGeneric::check_and_generate_subclaim(&verifier_state, &claimed_sum);
-        res
+        
+        IOPVerifierStateGeneric::check_and_generate_subclaim(&verifier_state, &claimed_sum)
     }
 
     fn extract_sum(proof: &Self::SumCheckProof) -> C::ScalarField {
-        let res = proof.proofs[0].evaluations[0] + proof.proofs[0].evaluations[1];
-        res
+        
+        proof.proofs[0].evaluations[0] + proof.proofs[0].evaluations[1]
     }
 }
 

@@ -9,7 +9,8 @@
 
 //! This module implements the sum check protocol.
 
-use crate::utils::virtual_polynomial::{VPAuxInfo, VirtualPolynomial};
+use crate::{utils::virtual_polynomial::{VPAuxInfo, VirtualPolynomial}, transcript::Transcript};
+use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_poly::DenseMultilinearExtension;
 use ark_std::{end_timer, start_timer};
@@ -60,6 +61,36 @@ pub trait SumCheck<F: PrimeField> {
         transcript: &mut Self::Transcript,
     ) -> Result<Self::SumCheckSubClaim, PolyIOPErrors>;
 }
+
+/// A generic sum-check trait over a curve group
+pub trait SumCheckGeneric<C: CurveGroup> {
+    type VirtualPolynomial;
+    type VPAuxInfo;
+    type MultilinearExtension;
+
+    type SumCheckProof: Clone + Debug + Default + PartialEq;
+    type SumCheckSubClaim: Clone + Debug + Default + PartialEq;
+
+    /// Extract sum from the proof
+    fn extract_sum(proof: &Self::SumCheckProof) -> C::ScalarField;
+
+    /// Generate proof of the sum of polynomial over {0,1}^`num_vars`
+    ///
+    /// The polynomial is represented in the form of a VirtualPolynomial.
+    fn prove(
+        poly: &Self::VirtualPolynomial,
+        transcript: &mut impl Transcript<C>,
+    ) -> Result<Self::SumCheckProof, PolyIOPErrors>;
+
+    /// Verify the claimed sum using the proof
+    fn verify(
+        sum: C::ScalarField,
+        proof: &Self::SumCheckProof,
+        aux_info: &Self::VPAuxInfo,
+        transcript: &mut impl Transcript<C>,
+    ) -> Result<Self::SumCheckSubClaim, PolyIOPErrors>;
+}
+
 
 /// Trait for sum check protocol prover side APIs.
 pub trait SumCheckProver<F: PrimeField>
@@ -117,6 +148,43 @@ pub trait SumCheckVerifier<F: PrimeField> {
     fn check_and_generate_subclaim(
         &self,
         asserted_sum: &F,
+    ) -> Result<Self::SumCheckSubClaim, PolyIOPErrors>;
+}
+
+/// Trait for sum check protocol verifier side APIs.
+pub trait SumCheckVerifierGeneric<C: CurveGroup> {
+    type VPAuxInfo;
+    type ProverMessage;
+    type Challenge;
+    type Transcript;
+    type SumCheckSubClaim;
+
+    /// Initialize the verifier's state.
+    fn verifier_init(index_info: &Self::VPAuxInfo) -> Self;
+
+    /// Run verifier for the current round, given a prover message.
+    ///
+    /// Note that `verify_round_and_update_state` only samples and stores
+    /// challenges; and update the verifier's state accordingly. The actual
+    /// verifications are deferred (in batch) to `check_and_generate_subclaim`
+    /// at the last step.
+    fn verify_round_and_update_state(
+        &mut self,
+        prover_msg: &Self::ProverMessage,
+        transcript: &mut impl Transcript<C>,
+    ) -> Result<Self::Challenge, PolyIOPErrors>;
+
+    /// This function verifies the deferred checks in the interactive version of
+    /// the protocol; and generate the subclaim. Returns an error if the
+    /// proof failed to verify.
+    ///
+    /// If the asserted sum is correct, then the multilinear polynomial
+    /// evaluated at `subclaim.point` will be `subclaim.expected_evaluation`.
+    /// Otherwise, it is highly unlikely that those two will be equal.
+    /// Larger field size guarantees smaller soundness error.
+    fn check_and_generate_subclaim(
+        &self,
+        asserted_sum: &C::ScalarField,
     ) -> Result<Self::SumCheckSubClaim, PolyIOPErrors>;
 }
 

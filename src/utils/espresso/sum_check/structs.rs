@@ -10,6 +10,7 @@
 //! This module defines structs that are shared by all sub protocols.
 
 use crate::utils::virtual_polynomial::VirtualPolynomial;
+use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_serialize::CanonicalSerialize;
 
@@ -56,4 +57,18 @@ pub struct IOPVerifierState<F: PrimeField> {
     pub(crate) polynomials_received: Vec<Vec<F>>,
     /// a list storing the randomness sampled by the verifier at each round
     pub(crate) challenges: Vec<F>,
+}
+
+/// Verifier State of a PolyIOP, generic over a curve group
+#[derive(Debug)]
+pub struct IOPVerifierStateGeneric<C: CurveGroup> {
+    pub(crate) round: usize,
+    pub(crate) num_vars: usize,
+    pub(crate) max_degree: usize,
+    pub(crate) finished: bool,
+    /// a list storing the univariate polynomial in evaluation form sent by the
+    /// prover at each round
+    pub(crate) polynomials_received: Vec<Vec<C::ScalarField>>,
+    /// a list storing the randomness sampled by the verifier at each round
+    pub(crate) challenges: Vec<C::ScalarField>,
 }

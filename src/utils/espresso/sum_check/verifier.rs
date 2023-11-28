@@ -9,8 +9,11 @@
 
 //! Verifier subroutines for a SumCheck protocol.
 
-use super::{SumCheckSubClaim, SumCheckVerifier};
-use crate::utils::virtual_polynomial::VPAuxInfo;
+use super::{
+    structs::IOPVerifierStateGeneric, SumCheckSubClaim, SumCheckVerifier, SumCheckVerifierGeneric,
+};
+use crate::{transcript::Transcript, utils::virtual_polynomial::VPAuxInfo};
+use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_std::{end_timer, start_timer};
 
@@ -160,6 +163,154 @@ impl<F: PrimeField> SumCheckVerifier<F> for IOPVerifierState<F> {
             .zip(expected_vec.iter())
             .take(self.num_vars)
         {
+            // the deferred check during the interactive phase:
+            // 1. check if the received 'P(0) + P(1) = expected`.
+            if evaluations[0] + evaluations[1] != expected {
+                return Err(PolyIOPErrors::InvalidProof(
+                    "Prover message is not consistent with the claim.".to_string(),
+                ));
+            }
+        }
+        end_timer!(start);
+        Ok(SumCheckSubClaim {
+            point: self.challenges.clone(),
+            // the last expected value (not checked within this function) will be included in the
+            // subclaim
+            expected_evaluation: expected_vec[self.num_vars],
+        })
+    }
+}
+
+impl<C: CurveGroup> SumCheckVerifierGeneric<C> for IOPVerifierStateGeneric<C> {
+    type VPAuxInfo = VPAuxInfo<C::ScalarField>;
+    type ProverMessage = IOPProverMessage<C::ScalarField>;
+    type Challenge = C::ScalarField;
+    type Transcript = IOPTranscript<C::ScalarField>;
+    type SumCheckSubClaim = SumCheckSubClaim<C::ScalarField>;
+
+    /// Initialize the verifier's state.
+    fn verifier_init(index_info: &Self::VPAuxInfo) -> Self {
+        let start = start_timer!(|| "sum check verifier init");
+        let res = Self {
+            round: 1,
+            num_vars: index_info.num_variables,
+            max_degree: index_info.max_degree,
+            finished: false,
+            polynomials_received: Vec::with_capacity(index_info.num_variables),
+            challenges: Vec::with_capacity(index_info.num_variables),
+        };
+        end_timer!(start);
+        res
+    }
+
+    fn verify_round_and_update_state(
+        &mut self,
+        prover_msg: &<IOPVerifierState<C::ScalarField> as SumCheckVerifier<C::ScalarField>>::ProverMessage,
+        transcript: &mut impl Transcript<C>,
+    ) -> Result<
+        <IOPVerifierState<C::ScalarField> as SumCheckVerifier<C::ScalarField>>::Challenge,
+        PolyIOPErrors,
+    > {
+        let start =
+            start_timer!(|| format!("sum check verify {}-th round and update state", self.round));
+
+        if self.finished {
+            return Err(PolyIOPErrors::InvalidVerifier(
+                "Incorrect verifier state: Verifier is already finished.".to_string(),
+            ));
+        }
+
+        // In an interactive protocol, the verifier should
+        //
+        // 1. check if the received 'P(0) + P(1) = expected`.
+        // 2. set `expected` to P(r)`
+        //
+        // When we turn the protocol to a non-interactive one, it is sufficient to defer
+        // such checks to `check_and_generate_subclaim` after the last round.
+        let challenge = transcript.get_challenge();
+        self.challenges.push(challenge);
+        self.polynomials_received
+            .push(prover_msg.evaluations.to_vec());
+
+        if self.round == self.num_vars {
+            // accept and close
+            self.finished = true;
+        } else {
+            // proceed to the next round
+            self.round += 1;
+        }
+
+        end_timer!(start);
+        Ok(challenge)
+    }
+
+    fn check_and_generate_subclaim(
+        &self,
+        asserted_sum: &C::ScalarField,
+    ) -> Result<Self::SumCheckSubClaim, PolyIOPErrors> {
+        let start = start_timer!(|| "sum check check and generate subclaim");
+        if !self.finished {
+            return Err(PolyIOPErrors::InvalidVerifier(
+                "Incorrect verifier state: Verifier has not finished.".to_string(),
+            ));
+        }
+
+        if self.polynomials_received.len() != self.num_vars {
+            return Err(PolyIOPErrors::InvalidVerifier(
+                "insufficient rounds".to_string(),
+            ));
+        }
+
+        // the deferred check during the interactive phase:
+        // 2. set `expected` to P(r)`
+        #[cfg(feature = "parallel")]
+        let mut expected_vec = self
+            .polynomials_received
+            .clone()
+            .into_par_iter()
+            .zip(self.challenges.clone().into_par_iter())
+            .map(|(evaluations, challenge)| {
+                if evaluations.len() != self.max_degree + 1 {
+                    return Err(PolyIOPErrors::InvalidVerifier(format!(
+                        "incorrect number of evaluations: {} vs {}",
+                        evaluations.len(),
+                        self.max_degree + 1
+                    )));
+                }
+                interpolate_uni_poly::<C::ScalarField>(&evaluations, challenge)
+            })
+            .collect::<Result<Vec<_>, PolyIOPErrors>>()?;
+
+        #[cfg(not(feature = "parallel"))]
+        let mut expected_vec = self
+            .polynomials_received
+            .clone()
+            .into_iter()
+            .zip(self.challenges.clone().into_iter())
+            .map(|(evaluations, challenge)| {
+                if evaluations.len() != self.max_degree + 1 {
+                    return Err(PolyIOPErrors::InvalidVerifier(format!(
+                        "incorrect number of evaluations: {} vs {}",
+                        evaluations.len(),
+                        self.max_degree + 1
+                    )));
+                }
+                interpolate_uni_poly::<F>(&evaluations, challenge)
+            })
+            .collect::<Result<Vec<_>, PolyIOPErrors>>()?;
+
+        // insert the asserted_sum to the first position of the expected vector
+        expected_vec.insert(0, *asserted_sum);
+
+        for (evaluations, &expected) in self
+            .polynomials_received
+            .iter()
+            .zip(expected_vec.iter())
+            .take(self.num_vars)
+        {
+            let eval_: C::ScalarField = evaluations[0] + evaluations[1];
+
+            println!("evaluations: {:?}, expected: {:?}", eval_, expected);
             // the deferred check during the interactive phase:
             // 1. check if the received 'P(0) + P(1) = expected`.
             if evaluations[0] + evaluations[1] != expected {

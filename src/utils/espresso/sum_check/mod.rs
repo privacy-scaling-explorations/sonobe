@@ -9,7 +9,10 @@
 
 //! This module implements the sum check protocol.
 
-use crate::{utils::virtual_polynomial::{VPAuxInfo, VirtualPolynomial}, transcript::Transcript};
+use crate::{
+    transcript::Transcript,
+    utils::virtual_polynomial::{VPAuxInfo, VirtualPolynomial},
+};
 use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_poly::DenseMultilinearExtension;
@@ -90,7 +93,6 @@ pub trait SumCheckGeneric<C: CurveGroup> {
         transcript: &mut impl Transcript<C>,
     ) -> Result<Self::SumCheckSubClaim, PolyIOPErrors>;
 }
-
 
 /// Trait for sum check protocol prover side APIs.
 pub trait SumCheckProver<F: PrimeField>

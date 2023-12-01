@@ -53,7 +53,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             b.iter(|| {
                 let mut prover_transcript =
                     PoseidonTranscript::<Projective>::new(&transcript_config);
-                let mut sumcheck = sum_check_unstable::SumCheck::<Projective>::new(&poly);
+                let mut sumcheck = sum_check_unstable::SumCheck::<Projective>::new(poly);
                 sumcheck.prove(&mut prover_transcript).unwrap()
             })
         },
@@ -66,11 +66,11 @@ fn criterion_benchmark(c: &mut Criterion) {
             b.iter(|| {
                 let mut poseidon_transcript_prove: PoseidonTranscript<Projective> =
                     PoseidonTranscript::<Projective>::new(&transcript_config);
-                let sum_check =
+                let _sum_check =
                     folding_schemes::sum_check::SumCheck::<
                         Projective,
                         PoseidonTranscript<Projective>,
-                    >::prove(&virtual_poly, &mut poseidon_transcript_prove)
+                    >::prove(virtual_poly, &mut poseidon_transcript_prove)
                     .unwrap();
             })
         },

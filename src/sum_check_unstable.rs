@@ -87,7 +87,7 @@ impl<C: CurveGroup> SumCheck<C> {
         for _ in 0..self.rounds {
             let message: Message<C::ScalarField> = self.perform_prover_round(challenge);
             self.prover_messages.push(message.clone());
-            transcript.absorb_vec(&vec![message.p_0, message.p_1]);
+            transcript.absorb_vec(&[message.p_0, message.p_1]);
             let verifier_challenge = transcript.get_challenge();
             challenge = Some(verifier_challenge); // see above, since its an Option, need to wrap it in Some
         }
@@ -99,7 +99,7 @@ impl<C: CurveGroup> SumCheck<C> {
         &mut self,
         transcript: &mut impl Transcript<C>,
     ) -> Result<(), IOPError<C::ScalarField>> {
-        if self.verifier_challenges.len() > 0 {
+        if !self.verifier_challenges.is_empty() {
             return Err(IOPError::VerifierChallengesAlreadyInitialized(
                 self.verifier_challenges.len(),
             ));
@@ -109,7 +109,7 @@ impl<C: CurveGroup> SumCheck<C> {
 
         // Verifier computes challenges
         for message in self.prover_messages.iter() {
-            transcript.absorb_vec(&vec![message.p_0, message.p_1]);
+            transcript.absorb_vec(&[message.p_0, message.p_1]);
             self.verifier_challenges.push(transcript.get_challenge());
         }
 
@@ -121,11 +121,11 @@ impl<C: CurveGroup> SumCheck<C> {
             .into_par_iter()
             .zip(self.verifier_challenges.clone())
             .map(|(message, challenge)| {
-                let p_j_minus_1_r = interpolate_uni_poly_fs::<C::ScalarField>(
-                    &vec![message.p_0, message.p_1],
+                
+                interpolate_uni_poly_fs::<C::ScalarField>(
+                    &[message.p_0, message.p_1],
                     challenge,
-                );
-                p_j_minus_1_r
+                )
             })
             .collect();
 
@@ -159,18 +159,18 @@ impl<C: CurveGroup> SumCheck<C> {
     ) -> Message<C::ScalarField> {
         if let Some(challenge) = challenge {
             // in first round, challenge is None
-            self.prover.current_poly = self.prover.current_poly.fix_variables(&vec![challenge]);
+            self.prover.current_poly = self.prover.current_poly.fix_variables(&[challenge]);
         }
         let p_0 = self
             .prover
             .current_poly
-            .fix_variables(&vec![C::ScalarField::ZERO])
+            .fix_variables(&[C::ScalarField::ZERO])
             .iter()
             .sum::<C::ScalarField>();
         let p_1 = self
             .prover
             .current_poly
-            .fix_variables(&vec![C::ScalarField::ONE])
+            .fix_variables(&[C::ScalarField::ONE])
             .iter()
             .sum::<C::ScalarField>();
         self.prover.current_step += 1;
@@ -196,14 +196,14 @@ mod tests {
         let sumcheck = super::SumCheck::<Projective>::new(&poly);
         assert_eq!(sumcheck.prover.current_step, 0);
         assert_eq!(sumcheck.verifier.current_step, 0);
-        assert_eq!(sumcheck.verifier.verified, false);
+        assert!(!sumcheck.verifier.verified);
         assert_eq!(
             sumcheck.prover.claimed_sum,
             sumcheck.poly.evaluations.iter().sum()
         );
         assert_eq!(sumcheck.verifier_challenges.len(), 0);
         assert_eq!(sumcheck.prover_messages.len(), 0);
-        assert_eq!(sumcheck.prover_finished, false);
+        assert!(!sumcheck.prover_finished);
     }
 
     #[test]

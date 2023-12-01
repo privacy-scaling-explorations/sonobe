@@ -121,11 +121,7 @@ impl<C: CurveGroup> SumCheck<C> {
             .into_par_iter()
             .zip(self.verifier_challenges.clone())
             .map(|(message, challenge)| {
-                
-                interpolate_uni_poly_fs::<C::ScalarField>(
-                    &[message.p_0, message.p_1],
-                    challenge,
-                )
+                interpolate_uni_poly_fs::<C::ScalarField>(&[message.p_0, message.p_1], challenge)
             })
             .collect();
 

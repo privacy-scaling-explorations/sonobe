@@ -126,11 +126,7 @@ impl<C: CurveGroup> SumCheck<C> {
             .into_par_iter()
             .zip(self.verifier_challenges.clone())
             .map(|(message, challenge)| {
-                let result = interpolate_uni_poly_fs::<C::ScalarField>(
-                    &[message.p_0, message.p_1],
-                    challenge,
-                );
-                result
+                interpolate_uni_poly_fs::<C::ScalarField>(&[message.p_0, message.p_1], challenge)
             })
             .collect();
 
@@ -265,14 +261,14 @@ mod tests {
         // tests fix_r_and_evaluate_p_0_and_p_1 when n_vars = 1
         let n_vars = 1;
         let mut rng = ark_std::test_rng();
-        for i in 0..1 {
+        for _i in 0..1 {
             let poly = DenseMultilinearExtension::<Fr>::rand(n_vars, &mut rng);
             let r = Fr::rand(&mut rng);
-            let fixed_poly_a = poly.fix_variables(&vec![r]);
-            let (sums, fixed_poly_b) =
+            let fixed_poly_a = poly.fix_variables(&[r]);
+            let (_sums, fixed_poly_b) =
                 super::fix_r_and_evaluate_p_0_and_p_1(&poly.evaluations, &Some(r));
             assert_eq!(fixed_poly_a, fixed_poly_b);
-            println!("{:?}", fixed_poly_a.fix_variables(&vec![Fr::ZERO]));
+            println!("{:?}", fixed_poly_a.fix_variables(&[Fr::ZERO]));
             // assert_eq!(sums.0, fixed_poly_a.evaluations.iter().sum());
         }
     }
@@ -287,11 +283,11 @@ mod tests {
             let (sums, _) = super::fix_r_and_evaluate_p_0_and_p_1(&poly.evaluations, &r);
             assert_eq!(
                 sums.0,
-                poly.fix_variables(&vec![Fr::ZERO]).evaluations.iter().sum()
+                poly.fix_variables(&[Fr::ZERO]).evaluations.iter().sum()
             );
             assert_eq!(
                 sums.1,
-                poly.fix_variables(&vec![Fr::ONE]).evaluations.iter().sum()
+                poly.fix_variables(&[Fr::ONE]).evaluations.iter().sum()
             );
         }
         for _ in 0..150 {
@@ -303,16 +299,16 @@ mod tests {
 
             assert_eq!(
                 sums.0,
-                poly.fix_variables(&vec![r])
-                    .fix_variables(&vec![Fr::ZERO])
+                poly.fix_variables(&[r])
+                    .fix_variables(&[Fr::ZERO])
                     .evaluations
                     .iter()
                     .sum()
             );
             assert_eq!(
                 sums.1,
-                poly.fix_variables(&vec![r])
-                    .fix_variables(&vec![Fr::ONE])
+                poly.fix_variables(&[r])
+                    .fix_variables(&[Fr::ONE])
                     .evaluations
                     .iter()
                     .sum()

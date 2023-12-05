@@ -12,6 +12,8 @@ use ark_std::{One, Zero};
 use crate::transcript::Transcript;
 use crate::Error;
 
+use super::TranscriptVar;
+
 /// PoseidonTranscript implements the Transcript trait using the Poseidon hash
 pub struct PoseidonTranscript<C: CurveGroup>
 where
@@ -84,18 +86,20 @@ fn prepare_point<C: CurveGroup>(p: &C) -> Result<Vec<C::ScalarField>, Error> {
 pub struct PoseidonTranscriptVar<F: PrimeField> {
     sponge: PoseidonSpongeVar<F>,
 }
-impl<F: PrimeField> PoseidonTranscriptVar<F> {
-    pub fn new(cs: ConstraintSystemRef<F>, poseidon_config: &PoseidonConfig<F>) -> Self {
+impl<F: PrimeField> TranscriptVar<F> for PoseidonTranscriptVar<F> {
+    type TranscriptVarConfig = PoseidonConfig<F>;
+
+    fn new(cs: ConstraintSystemRef<F>, poseidon_config: &Self::TranscriptVarConfig) -> Self {
         let sponge = PoseidonSpongeVar::<F>::new(cs, poseidon_config);
         Self { sponge }
     }
-    pub fn absorb(&mut self, v: FpVar<F>) -> Result<(), SynthesisError> {
+    fn absorb(&mut self, v: FpVar<F>) -> Result<(), SynthesisError> {
         self.sponge.absorb(&v)
     }
-    pub fn absorb_vec(&mut self, v: &[FpVar<F>]) -> Result<(), SynthesisError> {
+    fn absorb_vec(&mut self, v: &[FpVar<F>]) -> Result<(), SynthesisError> {
         self.sponge.absorb(&v)
     }
-    pub fn get_challenge(&mut self) -> Result<FpVar<F>, SynthesisError> {
+    fn get_challenge(&mut self) -> Result<FpVar<F>, SynthesisError> {
         let c = self.sponge.squeeze_field_elements(1)?;
         self.sponge.absorb(&c[0])?;
         Ok(c[0].clone())
@@ -103,10 +107,10 @@ impl<F: PrimeField> PoseidonTranscriptVar<F> {
 
     /// returns the bit representation of the challenge, we use its output in-circuit for the
     /// `GC.scalar_mul_le` method.
-    pub fn get_challenge_nbits(&mut self, nbits: usize) -> Result<Vec<Boolean<F>>, SynthesisError> {
+    fn get_challenge_nbits(&mut self, nbits: usize) -> Result<Vec<Boolean<F>>, SynthesisError> {
         self.sponge.squeeze_bits(nbits)
     }
-    pub fn get_challenges(&mut self, n: usize) -> Result<Vec<FpVar<F>>, SynthesisError> {
+    fn get_challenges(&mut self, n: usize) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let c = self.sponge.squeeze_field_elements(n)?;
         self.sponge.absorb(&c)?;
         Ok(c)

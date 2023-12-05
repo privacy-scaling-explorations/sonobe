@@ -3,7 +3,7 @@ use ark_ff::Field;
 use ark_ff::PrimeField;
 use ark_pallas::{Fr, Projective};
 use ark_poly::{DenseMultilinearExtension, MultilinearExtension};
-use folding_schemes::utils::sum_check::verifier;
+
 use folding_schemes::utils::sum_check::SumCheckGeneric;
 use folding_schemes::{
     sum_check_unstable,
@@ -76,11 +76,16 @@ fn criterion_benchmark(c: &mut Criterion) {
                         PoseidonTranscript<Projective>,
                     >::prove(virtual_poly, &mut poseidon_transcript_prove)
                     .unwrap();
-                let claimed_sum =
-                    folding_schemes::sum_check::SumCheck::<Projective, PoseidonTranscript<Projective>>::extract_sum(&sum_check);
+                let claimed_sum = folding_schemes::sum_check::SumCheck::<
+                    Projective,
+                    PoseidonTranscript<Projective>,
+                >::extract_sum(&sum_check);
                 let mut poseidon_transcript_verify: PoseidonTranscript<Projective> =
                     PoseidonTranscript::<Projective>::new(&transcript_config);
-                let res_verify = folding_schemes::sum_check::SumCheck::<Projective, PoseidonTranscript<Projective>>::verify(
+                let _res_verify = folding_schemes::sum_check::SumCheck::<
+                    Projective,
+                    PoseidonTranscript<Projective>,
+                >::verify(
                     claimed_sum,
                     &sum_check,
                     &virtual_poly.aux_info,

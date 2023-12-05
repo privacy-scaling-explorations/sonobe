@@ -3,7 +3,7 @@ use crate::utils::sum_check::verifier::interpolate_uni_poly_fs;
 use ark_ec::CurveGroup;
 use ark_ff::Field;
 use ark_ff::PrimeField;
-use ark_poly::{DenseMultilinearExtension, MultilinearExtension};
+use ark_poly::DenseMultilinearExtension;
 
 use rayon::iter::IndexedParallelIterator;
 use rayon::iter::IntoParallelIterator;
@@ -45,6 +45,7 @@ pub struct SumCheck<C: CurveGroup> {
     pub max_degree: u8,
     pub prover_messages: Vec<Message<C::ScalarField>>,
     pub verifier_challenges: Vec<C::ScalarField>,
+    pub prover_computed_challenges: Vec<C::ScalarField>,
     pub prover_finished: bool,
 }
 
@@ -54,6 +55,7 @@ impl<C: CurveGroup> SumCheck<C> {
     pub fn new(poly: &DenseMultilinearExtension<C::ScalarField>) -> Self {
         let claimed_sum: C::ScalarField = poly.evaluations.iter().sum::<C::ScalarField>();
         let n_vars = poly.num_vars;
+        let prover_computed_challenges = Vec::with_capacity(n_vars);
         let poly = poly.clone();
         let prover = Prover {
             claimed_sum,
@@ -74,6 +76,7 @@ impl<C: CurveGroup> SumCheck<C> {
             prover_messages: Vec::with_capacity(n_vars),
             verifier_challenges: Vec::with_capacity(n_vars),
             prover_finished: false,
+            prover_computed_challenges,
         }
     }
 
@@ -89,6 +92,7 @@ impl<C: CurveGroup> SumCheck<C> {
             self.prover_messages.push(message.clone());
             transcript.absorb_vec(&[message.p_0, message.p_1]);
             let verifier_challenge = transcript.get_challenge();
+            self.prover_computed_challenges.push(verifier_challenge);
             challenge = Some(verifier_challenge); // see above, since its an Option, need to wrap it in Some
         }
         self.prover_finished = true;
@@ -110,7 +114,8 @@ impl<C: CurveGroup> SumCheck<C> {
         // Verifier computes challenges
         for message in self.prover_messages.iter() {
             transcript.absorb_vec(&[message.p_0, message.p_1]);
-            self.verifier_challenges.push(transcript.get_challenge());
+            let challenge = transcript.get_challenge();
+            self.verifier_challenges.push(challenge);
         }
 
         // Verifier computes P_{j-1}(r)
@@ -121,7 +126,11 @@ impl<C: CurveGroup> SumCheck<C> {
             .into_par_iter()
             .zip(self.verifier_challenges.clone())
             .map(|(message, challenge)| {
-                interpolate_uni_poly_fs::<C::ScalarField>(&[message.p_0, message.p_1], challenge)
+                let result = interpolate_uni_poly_fs::<C::ScalarField>(
+                    &[message.p_0, message.p_1],
+                    challenge,
+                );
+                result
             })
             .collect();
 
@@ -153,36 +162,85 @@ impl<C: CurveGroup> SumCheck<C> {
         &mut self,
         challenge: Option<C::ScalarField>,
     ) -> Message<C::ScalarField> {
-        if let Some(challenge) = challenge {
-            // in first round, challenge is None
-            self.prover.current_poly = self.prover.current_poly.fix_variables(&[challenge]);
-        }
-        let p_0 = self
-            .prover
-            .current_poly
-            .fix_variables(&[C::ScalarField::ZERO])
-            .iter()
-            .sum::<C::ScalarField>();
-        let p_1 = self
-            .prover
-            .current_poly
-            .fix_variables(&[C::ScalarField::ONE])
-            .iter()
-            .sum::<C::ScalarField>();
+        let (sums, updated_poly) =
+            fix_r_and_evaluate_p_0_and_p_1(&self.prover.current_poly.evaluations, &challenge);
+        self.prover.current_poly = updated_poly;
         self.prover.current_step += 1;
-        Message { p_0, p_1 }
+        Message {
+            p_0: sums.0,
+            p_1: sums.1,
+        }
     }
+}
+
+fn fix_r_and_evaluate_p_0_and_p_1<F: PrimeField>(
+    poly_evals: &Vec<F>,
+    r: &Option<F>,
+) -> ((F, F), DenseMultilinearExtension<F>) {
+    // draws inspiration from `fix_variables()` in ark_poly
+    let nv = poly_evals.len().trailing_zeros() as usize; // log2(2^nvars)
+    let mut updated_evals = poly_evals.clone();
+
+    let mut sum_a = F::ZERO; // will hold evaluation of polynomial at 0
+    let mut sum_b = F::ZERO; // will hold evaluation of polynomial at 1
+
+    if let Some(r) = r {
+        // need to handle the last step separately
+        // case where r is not None (i.e. only at the first step)
+        for b in (0..(1 << (nv - 1))).step_by(2) {
+            let idx = b << 1;
+            // we "batch" together the updates of evals[b] and evals[b + 1]
+            // this is done to make it possible to compute p(r, 0, x_1, ..., x_n) and p(r, 1, x_1, ..., x_n) within the loop itself
+            let (left_b, right_b) = (updated_evals[idx], updated_evals[idx + 1]);
+            let (left_b_plus_1, right_b_plus_1) =
+                (updated_evals[idx + 2], updated_evals[idx + 1 + 2]);
+            updated_evals[b] = left_b + *(r) * (right_b - left_b);
+            updated_evals[b + 1] = left_b_plus_1 + *(r) * (right_b_plus_1 - left_b_plus_1);
+            // if b < (1 << (nv - 2)) {
+            // we "simulate" fixing the obtained polynomial fixed before at r.
+            // this polynomial evaluated at p(r, 0, x_1, ..., x_n) would be computed by doing the same procedure as above
+            // we would just iterate up until the 1 << nv - 2 index
+            let left = updated_evals[b];
+            let right = updated_evals[b + 1];
+            sum_a += left; // + F::ZERO * (right - left);
+            sum_b += left + (right - left); // + F::ONE * (right - left) ;
+        }
+    } else {
+        // first step only where prover has not received a challenge from verifier
+        // sending back p(0, x_2, ..., x_n) and p(1, x_2, ..., x_n)
+        for b in 0..(1 << (nv - 1)) {
+            let idx = b << 1;
+            let left = updated_evals[idx];
+            let right = updated_evals[idx + 1];
+            // we do not update the polynomial with a fixed value - no challenge from the verifier
+            sum_a += left;
+            sum_b += left + (right - left);
+        }
+        return (
+            (sum_a, sum_b),
+            DenseMultilinearExtension::<F>::from_evaluations_slice(nv, &updated_evals),
+        );
+    }
+
+    let updated_poly = DenseMultilinearExtension::<F>::from_evaluations_slice(
+        nv - 1,
+        &updated_evals[..(1 << (nv - 1))],
+    );
+
+    ((sum_a, sum_b), updated_poly)
+    // sum of evaluations of polynomial at 0 and 1
 }
 
 #[cfg(test)]
 mod tests {
-    use ark_pallas::{Fr, Projective};
-    use ark_poly::{DenseMultilinearExtension, MultilinearExtension};
-
     use crate::transcript::{
         poseidon::{tests::poseidon_test_config, PoseidonTranscript},
         Transcript,
     };
+    use ark_ff::Field;
+    use ark_pallas::{Fr, Projective};
+    use ark_poly::{DenseMultilinearExtension, MultilinearExtension};
+    use ark_std::UniformRand;
 
     #[test]
     fn test_init_sumcheck() {
@@ -203,17 +261,77 @@ mod tests {
     }
 
     #[test]
+    fn test_fix_last_r_and_evaluate_p_0_and_p_1() {
+        // tests fix_r_and_evaluate_p_0_and_p_1 when n_vars = 1
+        let n_vars = 1;
+        let mut rng = ark_std::test_rng();
+        for i in 0..1 {
+            let poly = DenseMultilinearExtension::<Fr>::rand(n_vars, &mut rng);
+            let r = Fr::rand(&mut rng);
+            let fixed_poly_a = poly.fix_variables(&vec![r]);
+            let (sums, fixed_poly_b) =
+                super::fix_r_and_evaluate_p_0_and_p_1(&poly.evaluations, &Some(r));
+            assert_eq!(fixed_poly_a, fixed_poly_b);
+            println!("{:?}", fixed_poly_a.fix_variables(&vec![Fr::ZERO]));
+            // assert_eq!(sums.0, fixed_poly_a.evaluations.iter().sum());
+        }
+    }
+
+    #[test]
+    fn test_fix_r_and_evaluate_p_0_and_p_1() {
+        let n_vars = 10;
+        for _ in 0..150 {
+            let mut rng = ark_std::test_rng();
+            let poly = DenseMultilinearExtension::<Fr>::rand(n_vars, &mut rng);
+            let r = Option::<Fr>::None;
+            let (sums, _) = super::fix_r_and_evaluate_p_0_and_p_1(&poly.evaluations, &r);
+            assert_eq!(
+                sums.0,
+                poly.fix_variables(&vec![Fr::ZERO]).evaluations.iter().sum()
+            );
+            assert_eq!(
+                sums.1,
+                poly.fix_variables(&vec![Fr::ONE]).evaluations.iter().sum()
+            );
+        }
+        for _ in 0..150 {
+            let mut rng = ark_std::test_rng();
+            let poly = DenseMultilinearExtension::<Fr>::rand(n_vars, &mut rng);
+            let r = Fr::rand(&mut rng);
+            let some_r = Option::<Fr>::Some(r);
+            let (sums, _) = super::fix_r_and_evaluate_p_0_and_p_1(&poly.evaluations, &some_r);
+
+            assert_eq!(
+                sums.0,
+                poly.fix_variables(&vec![r])
+                    .fix_variables(&vec![Fr::ZERO])
+                    .evaluations
+                    .iter()
+                    .sum()
+            );
+            assert_eq!(
+                sums.1,
+                poly.fix_variables(&vec![r])
+                    .fix_variables(&vec![Fr::ONE])
+                    .evaluations
+                    .iter()
+                    .sum()
+            );
+        }
+    }
+
+    #[test]
     fn test_sumcheck() {
         let mut rng = ark_std::test_rng();
-        let n_vars = 5;
-        let poly = DenseMultilinearExtension::<Fr>::rand(n_vars, &mut rng);
-        let mut sumcheck = super::SumCheck::<Projective>::new(&poly);
-        let transcript_config = poseidon_test_config();
-        let mut prover_transcript = PoseidonTranscript::<Projective>::new(&transcript_config);
-        let mut verifier_transcript = PoseidonTranscript::<Projective>::new(&transcript_config);
-
-        sumcheck.prove(&mut prover_transcript).unwrap();
-        let verify = sumcheck.verify(&mut verifier_transcript);
-        assert!(verify.is_ok());
+        for n_vars in 2..20 {
+            let poly = DenseMultilinearExtension::<Fr>::rand(n_vars, &mut rng);
+            let mut sumcheck = super::SumCheck::<Projective>::new(&poly);
+            let transcript_config = poseidon_test_config();
+            let mut prover_transcript = PoseidonTranscript::<Projective>::new(&transcript_config);
+            let mut verifier_transcript = PoseidonTranscript::<Projective>::new(&transcript_config);
+            sumcheck.prove(&mut prover_transcript).unwrap();
+            let verify = sumcheck.verify(&mut verifier_transcript);
+            assert!(verify.is_ok());
+        }
     }
 }

@@ -89,7 +89,7 @@ pub struct PoseidonTranscriptVar<F: PrimeField> {
 impl<F: PrimeField> TranscriptVar<F> for PoseidonTranscriptVar<F> {
     type TranscriptVarConfig = PoseidonConfig<F>;
 
-    fn new(cs: ConstraintSystemRef<F>, poseidon_config: &PoseidonConfig<F>) -> Self {
+    fn new(cs: ConstraintSystemRef<F>, poseidon_config: &Self::TranscriptVarConfig) -> Self {
         let sponge = PoseidonSpongeVar::<F>::new(cs, poseidon_config);
         Self { sponge }
     }

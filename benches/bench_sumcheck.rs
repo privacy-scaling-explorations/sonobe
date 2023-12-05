@@ -3,6 +3,7 @@ use ark_ff::Field;
 use ark_ff::PrimeField;
 use ark_pallas::{Fr, Projective};
 use ark_poly::{DenseMultilinearExtension, MultilinearExtension};
+use folding_schemes::utils::sum_check::verifier;
 use folding_schemes::utils::sum_check::SumCheckGeneric;
 use folding_schemes::{
     sum_check_unstable,
@@ -42,7 +43,7 @@ use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 fn criterion_benchmark(c: &mut Criterion) {
     let mut rng = ark_std::test_rng();
     let transcript_config = poseidon_test_config();
-    let n_vars = 20;
+    let n_vars = 25;
     let poly = DenseMultilinearExtension::<Fr>::rand(n_vars, &mut rng);
     let virtual_poly = VirtualPolynomial::new_from_mle(&Arc::new(poly.clone()), Fr::ONE);
 
@@ -53,8 +54,11 @@ fn criterion_benchmark(c: &mut Criterion) {
             b.iter(|| {
                 let mut prover_transcript =
                     PoseidonTranscript::<Projective>::new(&transcript_config);
+                let mut verifier_transcript =
+                    PoseidonTranscript::<Projective>::new(&transcript_config);
                 let mut sumcheck = sum_check_unstable::SumCheck::<Projective>::new(poly);
-                sumcheck.prove(&mut prover_transcript).unwrap()
+                sumcheck.prove(&mut prover_transcript).unwrap();
+                sumcheck.verify(&mut verifier_transcript).unwrap();
             })
         },
     );
@@ -66,12 +70,22 @@ fn criterion_benchmark(c: &mut Criterion) {
             b.iter(|| {
                 let mut poseidon_transcript_prove: PoseidonTranscript<Projective> =
                     PoseidonTranscript::<Projective>::new(&transcript_config);
-                let _sum_check =
+                let sum_check =
                     folding_schemes::sum_check::SumCheck::<
                         Projective,
                         PoseidonTranscript<Projective>,
                     >::prove(virtual_poly, &mut poseidon_transcript_prove)
                     .unwrap();
+                let claimed_sum =
+                    folding_schemes::sum_check::SumCheck::<Projective, PoseidonTranscript<Projective>>::extract_sum(&sum_check);
+                let mut poseidon_transcript_verify: PoseidonTranscript<Projective> =
+                    PoseidonTranscript::<Projective>::new(&transcript_config);
+                let res_verify = folding_schemes::sum_check::SumCheck::<Projective, PoseidonTranscript<Projective>>::verify(
+                    claimed_sum,
+                    &sum_check,
+                    &virtual_poly.aux_info,
+                    &mut poseidon_transcript_verify,
+                );
             })
         },
     );

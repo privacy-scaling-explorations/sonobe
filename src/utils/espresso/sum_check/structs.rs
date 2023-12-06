@@ -47,7 +47,7 @@ pub struct IOPProverState<F: PrimeField> {
 
 /// Verifier State of a PolyIOP, generic over a curve group
 #[derive(Debug)]
-pub struct IOPVerifierStateGeneric<C: CurveGroup> {
+pub struct IOPVerifierState<C: CurveGroup> {
     pub(crate) round: usize,
     pub(crate) num_vars: usize,
     pub(crate) max_degree: usize,

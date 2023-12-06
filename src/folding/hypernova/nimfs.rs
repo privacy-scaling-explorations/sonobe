@@ -10,8 +10,8 @@ use crate::ccs::CCS;
 use crate::transcript::Transcript;
 use crate::utils::hypercube::BooleanHypercube;
 use crate::utils::sum_check::structs::IOPProof as SumCheckProof;
-use crate::utils::sum_check::SumCheckGeneric;
-use crate::utils::sum_check::{verifier::interpolate_uni_poly, SumCheck};
+use crate::utils::sum_check::verifier::interpolate_uni_poly;
+use crate::utils::sum_check::{SumCheck, IOPSumCheck};
 use crate::utils::virtual_polynomial::VPAuxInfo;
 use crate::Error;
 
@@ -201,7 +201,7 @@ where
         let g = compute_g(ccs, running_instances, &z_lcccs, &z_cccs, gamma, &beta);
 
         // Step 3: Run the sumcheck prover
-        let sumcheck_proof = SumCheck::<C, T>::prove(&g, transcript).unwrap();
+        let sumcheck_proof = IOPSumCheck::<C, T>::prove(&g, transcript).unwrap();
 
         // Note: The following two "sanity checks" are done for this prototype, in a final version
         // they should be removed.
@@ -215,7 +215,7 @@ where
         }
 
         // note: this is the sum of g(x) over the whole boolean hypercube
-        let extracted_sum = SumCheck::<C, T>::extract_sum(&sumcheck_proof);
+        let extracted_sum = IOPSumCheck::<C, T>::extract_sum(&sumcheck_proof);
 
         if extracted_sum != g_over_bhc {
             return Err(Error::NotEqual);
@@ -316,7 +316,7 @@ where
 
         // Verify the interactive part of the sumcheck
         let sumcheck_subclaim =
-            SumCheck::<C, T>::verify(sum_v_j_gamma, &proof.sc_proof, &vp_aux_info, transcript)
+            IOPSumCheck::<C, T>::verify(sum_v_j_gamma, &proof.sc_proof, &vp_aux_info, transcript)
                 .unwrap();
 
         // Step 2: Dig into the sumcheck claim and extract the randomness used

@@ -20,7 +20,7 @@ use ark_std::{end_timer, start_timer};
 use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 
 use crate::utils::sum_check::structs::IOPProverMessage;
-use crate::utils::sum_check::structs::IOPVerifierStateGeneric;
+use crate::utils::sum_check::structs::IOPVerifierState;
 use espresso_subroutines::poly_iop::prelude::PolyIOPErrors;
 use structs::{IOPProof, IOPProverState};
 
@@ -29,7 +29,7 @@ pub mod structs;
 pub mod verifier;
 
 /// A generic sum-check trait over a curve group
-pub trait SumCheckGeneric<C: CurveGroup> {
+pub trait SumCheck<C: CurveGroup> {
     type VirtualPolynomial;
     type VPAuxInfo;
     type MultilinearExtension;
@@ -80,7 +80,7 @@ where
 }
 
 /// Trait for sum check protocol verifier side APIs.
-pub trait SumCheckVerifierGeneric<C: CurveGroup> {
+pub trait SumCheckVerifier<C: CurveGroup> {
     type VPAuxInfo;
     type ProverMessage;
     type Challenge;
@@ -128,14 +128,14 @@ pub struct SumCheckSubClaim<F: PrimeField> {
 }
 
 #[derive(Clone, Debug, Default, Copy, PartialEq, Eq)]
-pub struct SumCheck<C: CurveGroup, T: Transcript<C>> {
+pub struct IOPSumCheck<C: CurveGroup, T: Transcript<C>> {
     #[doc(hidden)]
     phantom: PhantomData<C>,
     #[doc(hidden)]
     phantom2: PhantomData<T>,
 }
 
-impl<C: CurveGroup, T: Transcript<C>> SumCheckGeneric<C> for SumCheck<C, T> {
+impl<C: CurveGroup, T: Transcript<C>> SumCheck<C> for IOPSumCheck<C, T> {
     type SumCheckProof = IOPProof<C::ScalarField>;
     type VirtualPolynomial = VirtualPolynomial<C::ScalarField>;
     type VPAuxInfo = VPAuxInfo<C::ScalarField>;
@@ -189,18 +189,18 @@ impl<C: CurveGroup, T: Transcript<C>> SumCheckGeneric<C> for SumCheck<C, T> {
             aux_info.num_variables as u64,
         ));
         transcript.absorb(&<C as Group>::ScalarField::from(aux_info.max_degree as u64));
-        let mut verifier_state = IOPVerifierStateGeneric::verifier_init(aux_info);
+        let mut verifier_state = IOPVerifierState::verifier_init(aux_info);
         for i in 0..aux_info.num_variables {
             let prover_msg = proof.proofs.get(i).expect("proof is incomplete");
             transcript.absorb_vec(&prover_msg.evaluations);
-            IOPVerifierStateGeneric::verify_round_and_update_state(
+            IOPVerifierState::verify_round_and_update_state(
                 &mut verifier_state,
                 prover_msg,
                 transcript,
             )?;
         }
 
-        IOPVerifierStateGeneric::check_and_generate_subclaim(&verifier_state, &claimed_sum)
+        IOPVerifierState::check_and_generate_subclaim(&verifier_state, &claimed_sum)
     }
 }
 
@@ -218,10 +218,10 @@ pub mod tests {
     use crate::transcript::poseidon::tests::poseidon_test_config;
     use crate::transcript::poseidon::PoseidonTranscript;
     use crate::transcript::Transcript;
-    use crate::utils::sum_check::SumCheckGeneric;
+    use crate::utils::sum_check::SumCheck;
     use crate::utils::virtual_polynomial::VirtualPolynomial;
 
-    use super::SumCheck;
+    use super::IOPSumCheck;
 
     #[test]
     pub fn sumcheck_poseidon() {
@@ -233,7 +233,7 @@ pub mod tests {
         // sum-check prove
         let mut poseidon_transcript_prove: PoseidonTranscript<Projective> =
             PoseidonTranscript::<Projective>::new(&poseidon_config);
-        let sum_check = SumCheck::<Projective, PoseidonTranscript<Projective>>::prove(
+        let sum_check = IOPSumCheck::<Projective, PoseidonTranscript<Projective>>::prove(
             &virtual_poly,
             &mut poseidon_transcript_prove,
         )
@@ -241,10 +241,10 @@ pub mod tests {
 
         // sum-check verify
         let claimed_sum =
-            SumCheck::<Projective, PoseidonTranscript<Projective>>::extract_sum(&sum_check);
+            IOPSumCheck::<Projective, PoseidonTranscript<Projective>>::extract_sum(&sum_check);
         let mut poseidon_transcript_verify: PoseidonTranscript<Projective> =
             PoseidonTranscript::<Projective>::new(&poseidon_config);
-        let res_verify = SumCheck::<Projective, PoseidonTranscript<Projective>>::verify(
+        let res_verify = IOPSumCheck::<Projective, PoseidonTranscript<Projective>>::verify(
             claimed_sum,
             &sum_check,
             &virtual_poly.aux_info,

@@ -10,8 +10,8 @@
 //! Verifier subroutines for a SumCheck protocol.
 
 use super::{
-    structs::{IOPProverMessage, IOPVerifierStateGeneric},
-    SumCheckSubClaim, SumCheckVerifierGeneric,
+    structs::{IOPProverMessage, IOPVerifierState},
+    SumCheckSubClaim, SumCheckVerifier,
 };
 use crate::{transcript::Transcript, utils::virtual_polynomial::VPAuxInfo};
 use ark_ec::CurveGroup;
@@ -24,7 +24,7 @@ use espresso_transcript::IOPTranscript;
 #[cfg(feature = "parallel")]
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
-impl<C: CurveGroup> SumCheckVerifierGeneric<C> for IOPVerifierStateGeneric<C> {
+impl<C: CurveGroup> SumCheckVerifier<C> for IOPVerifierState<C> {
     type VPAuxInfo = VPAuxInfo<C::ScalarField>;
     type ProverMessage = IOPProverMessage<C::ScalarField>;
     type Challenge = C::ScalarField;
@@ -48,9 +48,9 @@ impl<C: CurveGroup> SumCheckVerifierGeneric<C> for IOPVerifierStateGeneric<C> {
 
     fn verify_round_and_update_state(
         &mut self,
-        prover_msg: &<IOPVerifierStateGeneric<C> as SumCheckVerifierGeneric<C>>::ProverMessage,
+        prover_msg: &<IOPVerifierState<C> as SumCheckVerifier<C>>::ProverMessage,
         transcript: &mut impl Transcript<C>,
-    ) -> Result<<IOPVerifierStateGeneric<C> as SumCheckVerifierGeneric<C>>::Challenge, PolyIOPErrors>
+    ) -> Result<<IOPVerifierState<C> as SumCheckVerifier<C>>::Challenge, PolyIOPErrors>
     {
         let start =
             start_timer!(|| format!("sum check verify {}-th round and update state", self.round));

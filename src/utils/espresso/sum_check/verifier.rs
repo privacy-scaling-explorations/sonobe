@@ -9,7 +9,10 @@
 
 //! Verifier subroutines for a SumCheck protocol.
 
-use super::{structs::{IOPVerifierStateGeneric, IOPProverMessage}, SumCheckSubClaim, SumCheckVerifierGeneric};
+use super::{
+    structs::{IOPProverMessage, IOPVerifierStateGeneric},
+    SumCheckSubClaim, SumCheckVerifierGeneric,
+};
 use crate::{transcript::Transcript, utils::virtual_polynomial::VPAuxInfo};
 use ark_ec::CurveGroup;
 use ark_ff::PrimeField;

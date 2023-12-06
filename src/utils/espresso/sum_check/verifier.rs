@@ -50,8 +50,7 @@ impl<C: CurveGroup> SumCheckVerifier<C> for IOPVerifierState<C> {
         &mut self,
         prover_msg: &<IOPVerifierState<C> as SumCheckVerifier<C>>::ProverMessage,
         transcript: &mut impl Transcript<C>,
-    ) -> Result<<IOPVerifierState<C> as SumCheckVerifier<C>>::Challenge, PolyIOPErrors>
-    {
+    ) -> Result<<IOPVerifierState<C> as SumCheckVerifier<C>>::Challenge, PolyIOPErrors> {
         let start =
             start_timer!(|| format!("sum check verify {}-th round and update state", self.round));
 

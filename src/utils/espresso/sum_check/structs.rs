@@ -42,6 +42,7 @@ pub struct IOPProverState<C: CurveGroup> {
     pub(crate) poly: VirtualPolynomial<C::ScalarField>,
     /// points with precomputed barycentric weights for extrapolating smaller
     /// degree uni-polys to `max_degree + 1` evaluations.
+    #[allow(clippy::type_complexity)]
     pub(crate) extrapolation_aux: Vec<(Vec<C::ScalarField>, Vec<C::ScalarField>)>,
 }
 

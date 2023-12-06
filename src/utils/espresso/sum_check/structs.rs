@@ -45,20 +45,6 @@ pub struct IOPProverState<F: PrimeField> {
     pub(crate) extrapolation_aux: Vec<(Vec<F>, Vec<F>)>,
 }
 
-/// Prover State of a PolyIOP
-#[derive(Debug)]
-pub struct IOPVerifierState<F: PrimeField> {
-    pub(crate) round: usize,
-    pub(crate) num_vars: usize,
-    pub(crate) max_degree: usize,
-    pub(crate) finished: bool,
-    /// a list storing the univariate polynomial in evaluation form sent by the
-    /// prover at each round
-    pub(crate) polynomials_received: Vec<Vec<F>>,
-    /// a list storing the randomness sampled by the verifier at each round
-    pub(crate) challenges: Vec<F>,
-}
-
 /// Verifier State of a PolyIOP, generic over a curve group
 #[derive(Debug)]
 pub struct IOPVerifierStateGeneric<C: CurveGroup> {

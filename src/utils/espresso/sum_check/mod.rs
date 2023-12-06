@@ -159,7 +159,7 @@ impl<C: CurveGroup, T: Transcript<C>> SumCheck<C> for IOPSumCheck<C, T> {
         transcript.absorb(&<C as Group>::ScalarField::from(
             poly.aux_info.max_degree as u64,
         ));
-        let mut prover_state: IOPProverState<C::ScalarField> = IOPProverState::prover_init(poly)?;
+        let mut prover_state: IOPProverState<C> = IOPProverState::prover_init(poly)?;
         let mut challenge: Option<C::ScalarField> = None;
         let mut prover_msgs: Vec<IOPProverMessage<C::ScalarField>> =
             Vec::with_capacity(poly.aux_info.num_variables);

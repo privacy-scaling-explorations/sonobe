@@ -33,16 +33,16 @@ pub struct IOPProverMessage<F: PrimeField> {
 
 /// Prover State of a PolyIOP.
 #[derive(Debug)]
-pub struct IOPProverState<F: PrimeField> {
+pub struct IOPProverState<C: CurveGroup> {
     /// sampled randomness given by the verifier
-    pub challenges: Vec<F>,
+    pub challenges: Vec<C::ScalarField>,
     /// the current round number
     pub(crate) round: usize,
     /// pointer to the virtual polynomial
-    pub(crate) poly: VirtualPolynomial<F>,
+    pub(crate) poly: VirtualPolynomial<C::ScalarField>,
     /// points with precomputed barycentric weights for extrapolating smaller
     /// degree uni-polys to `max_degree + 1` evaluations.
-    pub(crate) extrapolation_aux: Vec<(Vec<F>, Vec<F>)>,
+    pub(crate) extrapolation_aux: Vec<(Vec<C::ScalarField>, Vec<C::ScalarField>)>,
 }
 
 /// Verifier State of a PolyIOP, generic over a curve group

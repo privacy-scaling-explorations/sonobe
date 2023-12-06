@@ -11,7 +11,7 @@ use crate::transcript::Transcript;
 use crate::utils::hypercube::BooleanHypercube;
 use crate::utils::sum_check::structs::IOPProof as SumCheckProof;
 use crate::utils::sum_check::verifier::interpolate_uni_poly;
-use crate::utils::sum_check::{SumCheck, IOPSumCheck};
+use crate::utils::sum_check::{IOPSumCheck, SumCheck};
 use crate::utils::virtual_polynomial::VPAuxInfo;
 use crate::Error;
 

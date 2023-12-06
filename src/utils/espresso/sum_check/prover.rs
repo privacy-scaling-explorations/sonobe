@@ -11,9 +11,9 @@
 
 use super::SumCheckProver;
 use crate::utils::multilinear_polynomial::fix_variables;
-use ark_ff::Field;
 use crate::utils::virtual_polynomial::VirtualPolynomial;
 use ark_ec::CurveGroup;
+use ark_ff::Field;
 use ark_ff::{batch_inversion, PrimeField};
 use ark_poly::DenseMultilinearExtension;
 use ark_std::{cfg_into_iter, end_timer, start_timer, vec::Vec};
@@ -47,7 +47,9 @@ impl<C: CurveGroup> SumCheckProver<C::ScalarField> for IOPProverState<C> {
             poly: polynomial.clone(),
             extrapolation_aux: (1..polynomial.aux_info.max_degree)
                 .map(|degree| {
-                    let points = (0..1 + degree as u64).map(C::ScalarField::from).collect::<Vec<_>>();
+                    let points = (0..1 + degree as u64)
+                        .map(C::ScalarField::from)
+                        .collect::<Vec<_>>();
                     let weights = barycentric_weights(&points);
                     (points, weights)
                 })

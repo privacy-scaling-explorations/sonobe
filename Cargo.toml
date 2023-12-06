@@ -28,7 +28,6 @@ ark-vesta = {version="0.4.0"}
 ark-bn254 = "0.4.0"
 tracing = { version = "0.1", default-features = false, features = [ "attributes" ] }
 tracing-subscriber = { version = "0.2" }
-criterion = "0.5.1"
 
 [features]
 default = ["parallel", "nova", "hypernova"]
@@ -48,7 +47,3 @@ parallel = [
 # changes done between v0.4.0 and this fix which would break compatibility.
 [patch.crates-io]
 ark-r1cs-std = { git = "https://github.com/arnaucube/ark-r1cs-std-cherry-picked/" }
-
-[[bench]]
-name = "bench_sumcheck"
-harness = false

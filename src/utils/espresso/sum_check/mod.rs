@@ -84,7 +84,6 @@ pub trait SumCheckVerifier<C: CurveGroup> {
     type VPAuxInfo;
     type ProverMessage;
     type Challenge;
-    type Transcript;
     type SumCheckSubClaim;
 
     /// Initialize the verifier's state.

@@ -19,7 +19,6 @@ use ark_ff::PrimeField;
 use ark_std::{end_timer, start_timer};
 
 use espresso_subroutines::poly_iop::prelude::PolyIOPErrors;
-use espresso_transcript::IOPTranscript;
 
 #[cfg(feature = "parallel")]
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
@@ -28,7 +27,6 @@ impl<C: CurveGroup> SumCheckVerifier<C> for IOPVerifierState<C> {
     type VPAuxInfo = VPAuxInfo<C::ScalarField>;
     type ProverMessage = IOPProverMessage<C::ScalarField>;
     type Challenge = C::ScalarField;
-    type Transcript = IOPTranscript<C::ScalarField>;
     type SumCheckSubClaim = SumCheckSubClaim<C::ScalarField>;
 
     /// Initialize the verifier's state.

@@ -58,7 +58,7 @@ pub trait SumCheck<C: CurveGroup> {
 }
 
 /// Trait for sum check protocol prover side APIs.
-pub trait SumCheckProver<F: PrimeField>
+pub trait SumCheckProver<C: CurveGroup>
 where
     Self: Sized,
 {
@@ -75,7 +75,7 @@ where
     /// Main algorithm used is from section 3.2 of [XZZPS19](https://eprint.iacr.org/2019/317.pdf#subsection.3.2).
     fn prove_round_and_update_state(
         &mut self,
-        challenge: &Option<F>,
+        challenge: &Option<C::ScalarField>,
     ) -> Result<Self::ProverMessage, PolyIOPErrors>;
 }
 

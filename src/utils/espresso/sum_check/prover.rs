@@ -26,7 +26,7 @@ use espresso_subroutines::poly_iop::prelude::PolyIOPErrors;
 // #[cfg(feature = "parallel")]
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
-impl<C: CurveGroup> SumCheckProver<C::ScalarField> for IOPProverState<C> {
+impl<C: CurveGroup> SumCheckProver<C> for IOPProverState<C> {
     type VirtualPolynomial = VirtualPolynomial<C::ScalarField>;
     type ProverMessage = IOPProverMessage<C::ScalarField>;
 

@@ -912,4 +912,265 @@ pub mod tests {
             W_i = W_i1.clone();
         }
     }
+
+    #[test]
+    fn test_print_num_constraints() {
+        let poseidon_config = poseidon_test_config::<Fr>();
+        let u_dummy_native = CommittedInstance::<Projective>::dummy(1);
+
+        // FpVar allocation
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        let _ = FpVar::<Fr>::new_witness(cs.clone(), || Ok(Fr::zero())).unwrap();
+        let FpVar_allocation = cs.num_constraints();
+        dbg!(FpVar_allocation);
+
+        // NonNativeFieldVar allocation
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        let _ = NonNativeFieldVar::<Fq, Fr>::new_witness(cs.clone(), || Ok(Fq::zero())).unwrap();
+        let NonNativeFieldVar_allocation = cs.num_constraints();
+        dbg!(NonNativeFieldVar_allocation);
+
+        // to_constraint_field computation
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        let _ = NonNativeFieldVar::<Fq, Fr>::new_witness(cs.clone(), || Ok(Fq::zero()))
+            .unwrap()
+            .to_constraint_field()
+            .unwrap();
+        let to_constraint_field_allocation = cs.num_constraints() - NonNativeFieldVar_allocation;
+        dbg!(to_constraint_field_allocation);
+
+        // NonNativeAffineVar allocation
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        let _ =
+            NonNativeAffineVar::<Fr>::new_witness(cs.clone(), || Ok(Projective::zero())).unwrap();
+        assert_eq!(cs.num_constraints(), 2618);
+        let NonNativeAffineVar_allocation = cs.num_constraints();
+        dbg!(NonNativeAffineVar_allocation);
+
+        // CommittedInstanceVar allocation
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        let _ = CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || {
+            Ok(u_dummy_native.clone())
+        })
+        .unwrap();
+        let CommittedInstanceVar_allocation = cs.num_constraints();
+        assert_eq!(
+            CommittedInstanceVar_allocation,
+            NonNativeAffineVar_allocation * 2
+        );
+        dbg!(CommittedInstanceVar_allocation);
+
+        // ChallengeGadget allocation
+        let ChallengeGadget_allocation =
+            NonNativeAffineVar_allocation + CommittedInstanceVar_allocation * 2;
+        dbg!(ChallengeGadget_allocation);
+
+        // ChallengeGadget computation
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        let cmTVar =
+            NonNativeAffineVar::<Fr>::new_witness(cs.clone(), || Ok(Projective::zero())).unwrap();
+        let u_iVar = CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || {
+            Ok(u_dummy_native.clone())
+        })
+        .unwrap();
+        let U_iVar = CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || {
+            Ok(u_dummy_native.clone())
+        })
+        .unwrap();
+        let _ = ChallengeGadget::<Projective>::get_challenge_gadget(
+            cs.clone(),
+            &poseidon_config,
+            u_iVar.clone(),
+            U_iVar.clone(),
+            cmTVar.clone(),
+        )
+        .unwrap();
+        let ChallengeGadget_computation = cs.num_constraints() - ChallengeGadget_allocation;
+        dbg!(ChallengeGadget_computation);
+
+        // NIFSGadget computation
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        let rVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(Fr::zero())).unwrap();
+        let u_iVar = CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || {
+            Ok(u_dummy_native.clone())
+        })
+        .unwrap();
+        let U_iVar = CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || {
+            Ok(u_dummy_native.clone())
+        })
+        .unwrap();
+        let U_i1Var = CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || {
+            Ok(u_dummy_native.clone())
+        })
+        .unwrap();
+        let nifs_check =
+            NIFSGadget::<Projective>::verify(rVar, u_iVar.clone(), U_iVar.clone(), U_i1Var.clone())
+                .unwrap();
+        nifs_check
+            .conditional_enforce_equal(&Boolean::TRUE, &Boolean::TRUE)
+            .unwrap();
+        let NIFSGadget_computation =
+            cs.num_constraints() - (FpVar_allocation + CommittedInstanceVar_allocation * 3);
+        dbg!(NIFSGadget_computation);
+
+        // CommittedInstance_hash_xlen_2 computation
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        let crh_params =
+            CRHParametersVar::<Fr>::new_constant(cs.clone(), poseidon_config.clone()).unwrap();
+        let U_iVar = CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || {
+            Ok(u_dummy_native.clone())
+        })
+        .unwrap();
+        let z = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(vec![Fr::zero(); 2])).unwrap();
+        let _ = U_iVar
+            .clone()
+            .hash(&crh_params, FpVar::<Fr>::one(), z.clone(), z.clone())
+            .unwrap();
+        let CommittedInstance_hash_xlen_2_computation =
+            cs.num_constraints() - CommittedInstanceVar_allocation;
+        dbg!(CommittedInstance_hash_xlen_2_computation);
+
+        // CommittedInstance_hash_xlen_10 computation
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        let crh_params =
+            CRHParametersVar::<Fr>::new_constant(cs.clone(), poseidon_config.clone()).unwrap();
+        let U_iVar = CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || {
+            Ok(u_dummy_native.clone())
+        })
+        .unwrap();
+        let z = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(vec![Fr::zero(); 10])).unwrap();
+        let _ = U_iVar
+            .clone()
+            .hash(&crh_params, FpVar::<Fr>::one(), z.clone(), z.clone())
+            .unwrap();
+        let CommittedInstance_hash_xlen_10_computation =
+            cs.num_constraints() - CommittedInstanceVar_allocation;
+        dbg!(CommittedInstance_hash_xlen_10_computation);
+
+        // CycleFoldCommittedInstanceVar_allocation
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        let cf_u_dummy_native = CommittedInstance::<Projective2>::dummy(CF_IO_LEN);
+        let _ =
+            CycleFoldCommittedInstanceVar::<Projective2, GVar2>::new_witness(cs.clone(), || {
+                Ok(cf_u_dummy_native.clone())
+            })
+            .unwrap();
+        let CycleFoldCommittedInstanceVar_allocation = cs.num_constraints();
+        dbg!(CycleFoldCommittedInstanceVar_allocation);
+
+        // GVar2 allocation
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        let _ = GVar2::new_witness(cs.clone(), || Ok(Projective2::zero())).unwrap();
+        let GVar2_allocation = cs.num_constraints();
+        dbg!(GVar2_allocation);
+
+        // CycleFoldChallengeGadget_computation
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        let cf_cmT = GVar2::new_witness(cs.clone(), || Ok(Projective2::zero())).unwrap();
+        let cf_u_i =
+            CycleFoldCommittedInstanceVar::<Projective2, GVar2>::new_witness(cs.clone(), || {
+                Ok(cf_u_dummy_native.clone())
+            })
+            .unwrap();
+        let cf_U_i =
+            CycleFoldCommittedInstanceVar::<Projective2, GVar2>::new_witness(cs.clone(), || {
+                Ok(cf_u_dummy_native.clone())
+            })
+            .unwrap();
+        let mut cf_u_i_x: Vec<FpVar<Fr>> = vec![];
+        for x_i in cf_u_i.x.iter() {
+            let mut x_fpvar = x_i.to_constraint_field().unwrap();
+            cf_u_i_x.append(&mut x_fpvar);
+        }
+        let _ = CycleFoldChallengeGadget::<Projective2, GVar2>::get_challenge_gadget(
+            cs.clone(),
+            &poseidon_config,
+            cf_u_i.clone(),
+            cf_u_i_x,
+            cf_U_i.clone(),
+            cf_cmT.clone(),
+        )
+        .unwrap();
+        let CycleFoldChallengeGadget_allocation = CycleFoldCommittedInstanceVar_allocation * 2
+            + GVar2_allocation
+            + to_constraint_field_allocation * cf_u_i.x.len();
+        dbg!(CycleFoldChallengeGadget_allocation);
+        let CycleFoldChallengeGadget_computation =
+            cs.num_constraints() - CycleFoldChallengeGadget_allocation;
+        dbg!(CycleFoldChallengeGadget_computation);
+
+        // NIFSFullGadget computation
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        let cf_r_bits =
+            Vec::<Boolean<Fr>>::new_witness(cs.clone(), || Ok(vec![false; N_BITS_RO])).unwrap();
+        let cf_r_nonnat =
+            NonNativeFieldVar::<Fq, Fr>::new_witness(cs.clone(), || Ok(Fq::zero())).unwrap();
+        let cf_cmT = GVar2::new_witness(cs.clone(), || Ok(Projective2::zero())).unwrap();
+        let cf_u_i =
+            CycleFoldCommittedInstanceVar::<Projective2, GVar2>::new_witness(cs.clone(), || {
+                Ok(cf_u_dummy_native.clone())
+            })
+            .unwrap();
+        let cf_U_i =
+            CycleFoldCommittedInstanceVar::<Projective2, GVar2>::new_witness(cs.clone(), || {
+                Ok(cf_u_dummy_native.clone())
+            })
+            .unwrap();
+        let cf_U_i1 =
+            CycleFoldCommittedInstanceVar::<Projective2, GVar2>::new_witness(cs.clone(), || {
+                Ok(cf_u_dummy_native.clone())
+            })
+            .unwrap();
+        let _ = NIFSFullGadget::<Projective2, GVar2>::verify(
+            cf_r_bits,
+            cf_r_nonnat,
+            cf_cmT.clone(),
+            cf_u_i.clone(),
+            cf_U_i.clone(),
+            cf_U_i1.clone(),
+        )
+        .unwrap();
+        let NIFSFullGadget_allocation = N_BITS_RO
+            + NonNativeFieldVar_allocation
+            + GVar2_allocation
+            + CycleFoldCommittedInstanceVar_allocation * 3;
+        dbg!(NIFSFullGadget_allocation);
+        let NIFSFullGadget_computation = cs.num_constraints() - NIFSFullGadget_allocation;
+        dbg!(NIFSFullGadget_computation);
+
+        dbg!(
+            ChallengeGadget_computation
+                + NIFSFullGadget_computation
+                + CycleFoldChallengeGadget_computation
+                + NIFSFullGadget_computation
+        );
+
+        // AugmentedFCircuit
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        let F_circuit = TestFCircuit::<Fr>::new();
+        let augmented_F_circuit =
+            AugmentedFCircuit::<Projective, Projective2, GVar2, TestFCircuit<Fr>>::empty(
+                &poseidon_config,
+                F_circuit,
+            );
+        augmented_F_circuit
+            .generate_constraints(cs.clone())
+            .unwrap();
+        let AugmentedFCircuit_computation = cs.num_constraints();
+        dbg!(AugmentedFCircuit_computation);
+        let AugmentedFCircuit_allocations = FpVar_allocation // i
+            + FpVar_allocation*2 // z_0, assume F io_len=2
+            + FpVar_allocation*2 // z_i
+            + CommittedInstanceVar_allocation*3 // u_i, U_i, U_i1
+            + NonNativeAffineVar_allocation // cmT
+            + FpVar_allocation // x
+                // cf_u_i, cf_U_i, cf_U_i1
+            + CycleFoldCommittedInstanceVar_allocation*3
+            + NonNativeFieldVar_allocation // cf_r_nonnat
+            ;
+        let AugmentedFCircuit_computation_without_allocations =
+            AugmentedFCircuit_computation - AugmentedFCircuit_allocations;
+        dbg!(AugmentedFCircuit_allocations);
+        dbg!(AugmentedFCircuit_computation_without_allocations);
+    }
 }

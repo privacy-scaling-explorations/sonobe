@@ -452,8 +452,6 @@ where
         ]
         .concat();
 
-        // note: cf_u_i_x later is reused inside CycleFoldChallengeGadget to avoid duplicating
-        // constraints.
         let mut cf_u_i_x: Vec<FpVar<CF2<C2>>> = vec![];
         for x_i in cf_u_i.x.iter() {
             let mut x_fpvar = x_i.to_constraint_field()?;
@@ -466,7 +464,6 @@ where
             cs.clone(),
             &self.poseidon_config,
             cf_u_i.clone(),
-            cf_u_i_x,
             cf_U_i.clone(),
             cf_cmT.clone(),
         )?;

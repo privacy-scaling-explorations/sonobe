@@ -16,10 +16,12 @@ pub mod frontend;
 pub mod pedersen;
 pub mod utils;
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error)]
 pub enum Error {
     #[error("ark_relations::r1cs::SynthesisError")]
     SynthesisError(#[from] ark_relations::r1cs::SynthesisError),
+    #[error("ark_serialize::SerializationError")]
+    SerializationError(#[from] ark_serialize::SerializationError),
     #[error("{0}")]
     Other(String),
 

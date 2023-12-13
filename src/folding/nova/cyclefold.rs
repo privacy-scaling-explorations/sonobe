@@ -8,14 +8,16 @@ use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
+    bits::uint8::UInt8,
     boolean::Boolean,
     eq::EqGadget,
     fields::{fp::FpVar, nonnative::NonNativeFieldVar},
     groups::GroupOpsBounds,
     prelude::CurveVar,
-    ToConstraintFieldGadget,
+    ToBytesGadget,
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
+use ark_serialize::CanonicalSerialize;
 use ark_std::fmt::Debug;
 use ark_std::Zero;
 use core::{borrow::Borrow, marker::PhantomData};
@@ -23,9 +25,7 @@ use core::{borrow::Borrow, marker::PhantomData};
 use super::circuits::CF2;
 use super::CommittedInstance;
 use crate::constants::N_BITS_RO;
-use crate::folding::circuits::nonnative::{
-    scalar_to_nonnative_limbs, scalar_vec_to_nonnative_limbs,
-};
+use crate::Error;
 
 // publi inputs length for the CycleFoldCircuit, |[u_i, U_i, U_{i+1}]|
 pub const CF_IO_LEN: usize = 12;
@@ -226,15 +226,37 @@ where
         poseidon_config: &PoseidonConfig<C::BaseField>,
         u_i: CommittedInstance<C>,
         U_i: CommittedInstance<C>,
-        _cmT: C,
-    ) -> Result<Vec<bool>, SynthesisError> {
+        cmT: C,
+    ) -> Result<Vec<bool>, Error> {
         let mut sponge = PoseidonSponge::<C::BaseField>::new(poseidon_config);
-        let input: Vec<C::BaseField> = [
-            scalar_to_nonnative_limbs::<C>(u_i.u)?,
-            scalar_vec_to_nonnative_limbs::<C>(u_i.x)?,
-            scalar_to_nonnative_limbs::<C>(U_i.u)?,
-            scalar_vec_to_nonnative_limbs::<C>(U_i.x)?,
-            // depends on the gadget version (get_challenge_gadget)
+
+        let u_i_cmE_bytes = point_to_bytes(u_i.cmE);
+        let u_i_cmW_bytes = point_to_bytes(u_i.cmW);
+        let U_i_cmE_bytes = point_to_bytes(U_i.cmE);
+        let U_i_cmW_bytes = point_to_bytes(U_i.cmW);
+        let cmT_bytes = point_to_bytes(cmT);
+
+        let mut u_i_u_bytes = Vec::new();
+        u_i.u.serialize_uncompressed(&mut u_i_u_bytes)?;
+        let mut u_i_x_bytes = Vec::new();
+        u_i.x.serialize_uncompressed(&mut u_i_x_bytes)?;
+        u_i_x_bytes = u_i_x_bytes[8..].to_vec();
+        let mut U_i_u_bytes = Vec::new();
+        U_i.u.serialize_uncompressed(&mut U_i_u_bytes)?;
+        let mut U_i_x_bytes = Vec::new();
+        U_i.x.serialize_uncompressed(&mut U_i_x_bytes)?;
+        U_i_x_bytes = U_i_x_bytes[8..].to_vec();
+
+        let input: Vec<u8> = [
+            u_i_cmE_bytes,
+            u_i_u_bytes,
+            u_i_cmW_bytes,
+            u_i_x_bytes,
+            U_i_cmE_bytes,
+            U_i_u_bytes,
+            U_i_cmW_bytes,
+            U_i_x_bytes,
+            cmT_bytes,
         ]
         .concat();
         sponge.absorb(&input);
@@ -246,34 +268,55 @@ where
         cs: ConstraintSystemRef<C::BaseField>,
         poseidon_config: &PoseidonConfig<C::BaseField>,
         u_i: CycleFoldCommittedInstanceVar<C, GC>,
-        // this is u_i.x, which is already computed previous to this method call, so we don't need
-        // to duplicate constraints
-        u_i_x: Vec<FpVar<CF2<C>>>,
         U_i: CycleFoldCommittedInstanceVar<C, GC>,
-        _cmT: GC,
+        cmT: GC,
     ) -> Result<Vec<Boolean<C::BaseField>>, SynthesisError> {
         let mut sponge = PoseidonSpongeVar::<C::BaseField>::new(cs, poseidon_config);
 
-        let mut U_i_x: Vec<FpVar<CF2<C>>> = vec![];
-        for x_i in U_i.x.iter() {
-            let mut x_fpvar = x_i.to_constraint_field()?;
-            U_i_x.append(&mut x_fpvar);
-        }
+        let u_i_x_bytes: Vec<UInt8<CF2<C>>> = u_i
+            .x
+            .iter()
+            .flat_map(|e| e.to_bytes().unwrap_or(vec![]))
+            .collect::<Vec<UInt8<CF2<C>>>>();
+        let U_i_x_bytes: Vec<UInt8<CF2<C>>> = U_i
+            .x
+            .iter()
+            .flat_map(|e| e.to_bytes().unwrap_or(vec![]))
+            .collect::<Vec<UInt8<CF2<C>>>>();
 
-        let input: Vec<FpVar<C::BaseField>> = [
-            u_i.u.to_constraint_field()?,
-            u_i_x,
-            U_i.u.to_constraint_field()?,
-            U_i_x,
-            // TODO add x,y coordinates of u_i.{cmE,cmW}, U_i.{cmE,cmW}, cmT. Depends exposing x,y
-            // coordinates of GC.
-            // Issue to keep track of this: https://github.com/privacy-scaling-explorations/folding-schemes/issues/44
+        let input: Vec<UInt8<CF2<C>>> = [
+            u_i.cmE.to_bytes()?,
+            u_i.u.to_bytes()?,
+            u_i.cmW.to_bytes()?,
+            u_i_x_bytes,
+            U_i.cmE.to_bytes()?,
+            U_i.u.to_bytes()?,
+            U_i.cmW.to_bytes()?,
+            U_i_x_bytes,
+            cmT.to_bytes()?,
+            // TODO instead of bytes, use field elements, but needs x,y coordinates from
+            // u_i.{cmE,cmW}, U_i.{cmE,cmW}, cmT. Depends exposing x,y coordinates of GC. Issue to
+            // keep track of this:
+            // https://github.com/privacy-scaling-explorations/folding-schemes/issues/44
         ]
         .concat();
         sponge.absorb(&input)?;
         let bits = sponge.squeeze_bits(N_BITS_RO)?;
         Ok(bits)
     }
+}
+
+/// returns the bytes being compatible with the ark_r1cs_std `.to_bytes` approach
+fn point_to_bytes<C: CurveGroup>(p: C) -> Vec<u8> {
+    let l = p.uncompressed_size();
+    let mut b = Vec::new();
+    p.serialize_uncompressed(&mut b).unwrap();
+    b[l - 1] = 0;
+    if p.is_zero() {
+        b[l / 2] = 1;
+        b[l - 1] = 1;
+    }
+    b
 }
 
 /// CycleFoldCircuit contains the constraints that check the correct fold of the committed
@@ -465,16 +508,20 @@ pub mod tests {
         let poseidon_config = poseidon_test_config::<Fq>();
 
         let u_i = CommittedInstance::<Projective> {
-            cmE: Projective::rand(&mut rng),
-            u: Fr::rand(&mut rng),
+            cmE: Projective::zero(), // zero on purpose, so we test also the zero point case
+            u: Fr::zero(),
             cmW: Projective::rand(&mut rng),
-            x: vec![Fr::rand(&mut rng); CF_IO_LEN],
+            x: std::iter::repeat_with(|| Fr::rand(&mut rng))
+                .take(CF_IO_LEN)
+                .collect(),
         };
         let U_i = CommittedInstance::<Projective> {
             cmE: Projective::rand(&mut rng),
             u: Fr::rand(&mut rng),
             cmW: Projective::rand(&mut rng),
-            x: vec![Fr::rand(&mut rng); CF_IO_LEN],
+            x: std::iter::repeat_with(|| Fr::rand(&mut rng))
+                .take(CF_IO_LEN)
+                .collect(),
         };
         let cmT = Projective::rand(&mut rng);
 
@@ -500,17 +547,10 @@ pub mod tests {
             .unwrap();
         let cmTVar = GVar::new_witness(cs.clone(), || Ok(cmT)).unwrap();
 
-        // compute the challenge in-circuit
-        let mut u_iVar_x: Vec<FpVar<CF2<Projective>>> = vec![];
-        for x_i in u_iVar.x.iter() {
-            let mut x_fpvar = x_i.to_constraint_field().unwrap();
-            u_iVar_x.append(&mut x_fpvar);
-        }
         let r_bitsVar = CycleFoldChallengeGadget::<Projective, GVar>::get_challenge_gadget(
             cs.clone(),
             &poseidon_config,
             u_iVar,
-            u_iVar_x,
             U_iVar,
             cmTVar,
         )

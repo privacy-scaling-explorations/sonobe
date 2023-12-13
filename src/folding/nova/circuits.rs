@@ -364,7 +364,6 @@ where
         let z_i1 = self.F.generate_step_constraints(cs.clone(), z_i.clone())?;
 
         let zero = FpVar::<CF1<C1>>::new_constant(cs.clone(), CF1::<C1>::zero())?;
-        let is_basecase = i.is_zero()?;
         let is_not_basecase = i.is_neq(&zero)?;
 
         // 1. u_i.x == H(i, z_0, z_i, U_i)
@@ -406,15 +405,7 @@ where
         let nifs_check = NIFSGadget::<C1>::verify(r, u_i.clone(), U_i.clone(), U_i1.clone())?;
         nifs_check.conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
 
-        // 4. (base case) u_{i+1}.X == H(1, z_0, F(z_0)=F(z_i)=z_{i+1}, U_1=U_{i+1})
-        let u_i1_x_basecase = U_i1.clone().hash(
-            &crh_params,
-            FpVar::<CF1<C1>>::one(),
-            z_0.clone(),
-            z_i1.clone(),
-        )?;
-
-        // 4. (non-base case). u_{i+1}.x = H(i+1, z_0, z_i+1, U_{i+1}), this is the output of F'
+        // 4. u_{i+1}.x = H(i+1, z_0, z_i+1, U_{i+1}), this is the output of F'
         let u_i1_x = U_i1.clone().hash(
             &crh_params,
             i + FpVar::<CF1<C1>>::one(),
@@ -422,10 +413,7 @@ where
             z_i1.clone(),
         )?;
 
-        // if i==0: check x==u_{i+1}.x_basecase
-        u_i1_x_basecase.conditional_enforce_equal(&x, &is_basecase)?;
-        // else: check x==u_{i+1}.x
-        u_i1_x.conditional_enforce_equal(&x, &is_not_basecase)?;
+        u_i1_x.enforce_equal(&x)?;
 
         // CycleFold part
         let cf_u_dummy_native = CommittedInstance::<C2>::dummy(CF_IO_LEN);

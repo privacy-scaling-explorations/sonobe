@@ -127,40 +127,37 @@ where
 
     /// Implements IVC.P
     pub fn prove_step(&mut self) -> Result<(), Error> {
-        let u_i1_x: C1::ScalarField;
-
         let augmented_F_circuit: AugmentedFCircuit<C1, C2, GC2, FC>;
         let cf_circuit: CycleFoldCircuit<C1, GC1>;
 
         let z_i1 = self.F.step_native(self.z_i.clone());
 
-        let (W_i1, U_i1): (Witness<C1>, CommittedInstance<C1>);
+        // compute T and cmT for AugmentedFCircuit
+        let (T, cmT) = self.compute_cmT()?;
+
+        let r_bits = ChallengeGadget::<C1>::get_challenge_native(
+            &self.poseidon_config,
+            self.u_i.clone(),
+            self.U_i.clone(),
+            cmT,
+        )?;
+        let r_Fr = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
+            .ok_or(Error::OutOfBounds)?;
+
+        // fold Nova instances
+        let (W_i1, U_i1): (Witness<C1>, CommittedInstance<C1>) =
+            NIFS::<C1>::fold_instances(r_Fr, &self.w_i, &self.u_i, &self.W_i, &self.U_i, &T, cmT)?;
+
+        // folded instance output (public input, x)
+        // u_{i+1}.x = H(i+1, z_0, z_{i+1}, U_{i+1})
+        let u_i1_x = U_i1.hash(
+            &self.poseidon_config,
+            self.i + C1::ScalarField::one(),
+            self.z_0.clone(),
+            z_i1.clone(),
+        )?;
 
         if self.i == C1::ScalarField::zero() {
-            let (T, cmT) = self.compute_cmT()?;
-
-            let r_bits = ChallengeGadget::<C1>::get_challenge_native(
-                &self.poseidon_config,
-                self.u_i.clone(),
-                self.U_i.clone(),
-                cmT,
-            )?;
-            let r_Fr = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
-                .ok_or(Error::OutOfBounds)?;
-
-            // fold dummy (initial) instances, compute W_{i+1} and U_{i+1}
-            (W_i1, U_i1) = NIFS::<C1>::fold_instances(
-                r_Fr, &self.w_i, &self.u_i, &self.W_i, &self.U_i, &T, cmT,
-            )?;
-
-            // u_i+1.x = H(1, z_0, z_i+1, U_1=U_i+1)
-            u_i1_x = U_i1.hash(
-                &self.poseidon_config,
-                C1::ScalarField::one(),
-                self.z_0.clone(),
-                z_i1.clone(),
-            )?;
-
             // base case
             augmented_F_circuit = AugmentedFCircuit::<C1, C2, GC2, FC> {
                 _gc2: PhantomData,
@@ -180,35 +177,10 @@ where
                 cf_cmT: None,
                 cf_r_nonnat: None,
             };
+
             #[cfg(test)]
             NIFS::verify_folded_instance(r_Fr, &self.u_i, &self.U_i, &U_i1, &cmT)?;
         } else {
-            // compute T and cmT for AugmentedFCircuit
-            let (T, cmT) = self.compute_cmT()?;
-
-            let r_bits = ChallengeGadget::<C1>::get_challenge_native(
-                &self.poseidon_config,
-                self.u_i.clone(),
-                self.U_i.clone(),
-                cmT,
-            )?;
-            let r_Fr = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
-                .ok_or(Error::OutOfBounds)?;
-
-            // fold Nova instances
-            (W_i1, U_i1) = NIFS::<C1>::fold_instances(
-                r_Fr, &self.w_i, &self.u_i, &self.W_i, &self.U_i, &T, cmT,
-            )?;
-
-            // folded instance output (public input, x)
-            // u_{i+1}.x = H(i+1, z_0, z_{i+1}, U_{i+1})
-            u_i1_x = U_i1.hash(
-                &self.poseidon_config,
-                self.i + C1::ScalarField::one(),
-                self.z_0.clone(),
-                z_i1.clone(),
-            )?;
-
             // CycleFold part:
             // get the vector used as public inputs 'x' in the CycleFold circuit
             let cf_u_i_x = [

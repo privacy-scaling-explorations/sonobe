@@ -381,6 +381,7 @@ mod tests {
                 let lagrange_eval = lagrange_poly.evaluate(&query);
                 let eval = poly.evaluate(&query);
                 assert_eq!(eval, lagrange_eval);
+                assert_eq!(lagrange_poly.degree(), poly.degree());
             }
         }
     }

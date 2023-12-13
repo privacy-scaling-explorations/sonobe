@@ -16,9 +16,16 @@ use super::{
 use crate::{transcript::Transcript, utils::virtual_polynomial::VPAuxInfo};
 use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
+use ark_poly::{
+    multivariate::SparsePolynomial, univariate::DensePolynomial, DenseUVPolynomial,
+    EvaluationDomain, Radix2EvaluationDomain,
+};
+use ark_r1cs_std::poly::{
+    domain::Radix2DomainVar, evaluations::univariate::lagrange_interpolator::LagrangeInterpolator,
+};
 use ark_std::{end_timer, start_timer};
-
 use espresso_subroutines::poly_iop::prelude::PolyIOPErrors;
+use std::ops::Div;
 
 #[cfg(feature = "parallel")]
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
@@ -277,6 +284,50 @@ pub fn interpolate_uni_poly<F: PrimeField>(p_i: &[F], eval_at: F) -> Result<F, P
     Ok(res)
 }
 
+pub fn compute_lagrange_poly<F: PrimeField>(p_i: &[F]) -> DensePolynomial<F> {
+    // TODO: build domain directly from field, avoid explicit conversions within the loop
+
+    // domain is 1..p_i.len(), to fit `interpolate_uni_poly` from hyperplonk
+    let domain: Vec<usize> = (1..p_i.len() + 1).into_iter().collect();
+
+    // compute l(x), common to every basis polynomial
+    let mut l_x = DensePolynomial::from_coefficients_vec(vec![F::ONE]);
+    for x_m in domain.clone() {
+        let prod_m = DensePolynomial::from_coefficients_vec(vec![-F::from(x_m as u64), F::ONE]);
+        l_x = &l_x * &prod_m;
+    }
+
+    // compute each w_j - barycentric weights
+    let mut w_j_vector: Vec<F> = vec![];
+    for x_j in domain.clone() {
+        let mut w_j = F::ONE;
+        for x_m in domain.clone() {
+            if x_m != x_j {
+                let prod = (F::from(x_j as u64) - F::from(x_m as u64))
+                    .inverse()
+                    .unwrap();
+                w_j = w_j * prod;
+            }
+        }
+        w_j_vector.push(w_j);
+    }
+
+    // compute each polynomial within the sum L(x)
+    let mut lagrange_poly = DensePolynomial::from_coefficients_vec(vec![F::ZERO]);
+    for (j, w_j) in w_j_vector.iter().enumerate() {
+        let x_j = domain[j];
+        let y_j = p_i[j];
+        // we multiply by l(x) here, otherwise the below division will not work - deg(0)/deg(d)
+        let poly_numerator = &(&l_x * (*w_j)) * (y_j);
+        let poly_denominator =
+            DensePolynomial::from_coefficients_vec(vec![-F::from(x_j as u64), F::ONE]);
+        let poly = &poly_numerator / &poly_denominator;
+        lagrange_poly = &lagrange_poly + &poly;
+    }
+
+    lagrange_poly
+}
+
 /// compute the factorial(a) = 1 * 2 * ... * a
 #[inline]
 fn field_factorial<F: PrimeField>(a: usize) -> F {
@@ -309,11 +360,30 @@ fn u64_factorial(a: usize) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::interpolate_uni_poly;
+    use super::{compute_lagrange_poly, interpolate_uni_poly};
     use ark_pallas::Fr;
     use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
     use ark_std::{vec::Vec, UniformRand};
     use espresso_subroutines::poly_iop::prelude::PolyIOPErrors;
+
+    #[test]
+    fn test_compute_lagrange_poly() {
+        let mut prng = ark_std::test_rng();
+        for degree in 1..30 {
+            let poly = DensePolynomial::<Fr>::rand(degree, &mut prng);
+            // range (which is exclusive) is from 1 to degree + 2, since we need degree + 1 evaluations
+            let evals = (1..(degree + 2))
+                .map(|i| poly.evaluate(&Fr::from(i as u64)))
+                .collect::<Vec<Fr>>();
+            let lagrange_poly = compute_lagrange_poly(&evals);
+            for _ in 0..10 {
+                let query = Fr::rand(&mut prng);
+                let lagrange_eval = lagrange_poly.evaluate(&query);
+                let eval = poly.evaluate(&query);
+                assert_eq!(eval, lagrange_eval);
+            }
+        }
+    }
 
     #[test]
     fn test_interpolation() -> Result<(), PolyIOPErrors> {

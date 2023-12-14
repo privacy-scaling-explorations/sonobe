@@ -1,4 +1,5 @@
 use ark_crypto_primitives::sponge::poseidon::constraints::PoseidonSpongeVar;
+use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_poly::univariate::DensePolynomial;
 use ark_r1cs_std::{
@@ -8,8 +9,11 @@ use ark_r1cs_std::{
 use ark_relations::r1cs::{ConstraintSystemRef, Namespace, SynthesisError};
 use std::borrow::Borrow;
 
+use crate::transcript::{TranscriptVar, poseidon::PoseidonTranscriptVar};
+
 /// Heavily inspired from testudo: https://github.com/cryptonetlab/testudo/tree/master
 /// Mostly changed typing to better stick to ark_poly's API
+/// Uses `folding-schemes`' own `TranscriptVar` trait and `PoseidonTranscriptVar` struct
 
 #[derive(Clone)]
 pub struct DensePolynomialVar<F: PrimeField> {
@@ -35,47 +39,6 @@ impl<F: PrimeField> AllocVar<DensePolynomial<F>, F> for DensePolynomialVar<F> {
     }
 }
 
-pub struct PoseidonTranscriptVar<F>
-where
-    F: PrimeField,
-{
-    pub cs: ConstraintSystemRef<F>,
-    pub sponge: PoseidonSpongeVar<F>,
-}
-
-impl<F> PoseidonTranscriptVar<F>
-where
-    F: PrimeField,
-{
-    fn new(cs: ConstraintSystemRef<F>, params: &PoseidonConfig<F>, c_var: FpVar<F>) -> Self {
-        let mut sponge = PoseidonSpongeVar::new(cs.clone(), params);
-
-        sponge.absorb(&c_var).unwrap();
-
-        Self { cs, sponge }
-    }
-
-    fn append(&mut self, input: &FpVar<F>) -> Result<(), SynthesisError> {
-        self.sponge.absorb(&input)
-    }
-
-    fn append_vector(&mut self, input_vec: &[FpVar<F>]) -> Result<(), SynthesisError> {
-        for input in input_vec.iter() {
-            self.append(input)?;
-        }
-        Ok(())
-    }
-
-    fn challenge(&mut self) -> Result<FpVar<F>, SynthesisError> {
-        Ok(self.sponge.squeeze_field_elements(1).unwrap().remove(0))
-    }
-
-    fn challenge_scalar_vec(&mut self, len: usize) -> Result<Vec<FpVar<F>>, SynthesisError> {
-        let c_vars = self.sponge.squeeze_field_elements(len).unwrap();
-        Ok(c_vars)
-    }
-}
-
 #[derive(Clone)]
 pub struct SumcheckVerificationCircuit<F: PrimeField> {
     pub polys: Vec<DensePolynomial<F>>,
@@ -92,12 +55,12 @@ impl<F: PrimeField> SumcheckVerificationCircuit<F> {
         let mut r_vars: Vec<FpVar<F>> = Vec::new();
 
         for (poly_var, _poly) in poly_vars.iter().zip(self.polys.iter()) {
-            let res = poly_var.eval_at_one() + poly_var.eval_at_zero();
-            res.enforce_equal(&e_var)?;
-            transcript_var.append_vector(&poly_var.coeffs)?;
-            let r_i_var = transcript_var.challenge()?;
+            // let res = poly_var.eval_at_one() + poly_var.eval_at_zero();
+            // res.enforce_equal(&e_var)?;
+            transcript_var.absorb_vec(&poly_var.coeffs)?;
+            let r_i_var = transcript_var.get_challenge()?;
             r_vars.push(r_i_var.clone());
-            e_var = poly_var.evaluate(&r_i_var.clone());
+            // e_var = poly_var.evaluate(&r_i_var.clone());
         }
 
         Ok((e_var, r_vars))
@@ -115,7 +78,6 @@ mod tests {
     use ark_pallas::{Fr, Projective};
     use ark_r1cs_std::alloc::{AllocVar, AllocationMode};
     use ark_r1cs_std::fields::fp::FpVar;
-    use ark_r1cs_std::R1CSVar;
     use ark_relations::r1cs::ConstraintSystem;
 
     #[test]

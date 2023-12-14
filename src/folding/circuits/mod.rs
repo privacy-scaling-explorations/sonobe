@@ -4,6 +4,7 @@ use ark_ff::Field;
 
 pub mod cyclefold;
 pub mod nonnative;
+pub mod sumcheck;
 
 // CF represents the constraints field
 pub type CF<C> = <<C as CurveGroup>::BaseField as Field>::BasePrimeField;

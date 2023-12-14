@@ -25,7 +25,7 @@ use ark_r1cs_std::poly::{
 };
 use ark_std::{end_timer, start_timer};
 use espresso_subroutines::poly_iop::prelude::PolyIOPErrors;
-use std::ops::Div;
+use ark_poly::Polynomial;
 
 #[cfg(feature = "parallel")]
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
@@ -122,7 +122,8 @@ impl<C: CurveGroup> SumCheckVerifier<C> for IOPVerifierState<C> {
                         self.max_degree + 1
                     )));
                 }
-                interpolate_uni_poly::<C::ScalarField>(&evaluations, challenge)
+                let lagrange_poly: DensePolynomial<C::ScalarField> = compute_lagrange_poly::<C::ScalarField>(&evaluations);
+                Ok(lagrange_poly.evaluate(&challenge))
             })
             .collect::<Result<Vec<_>, PolyIOPErrors>>()?;
 
@@ -140,7 +141,8 @@ impl<C: CurveGroup> SumCheckVerifier<C> for IOPVerifierState<C> {
                         self.max_degree + 1
                     )));
                 }
-                interpolate_uni_poly::<F>(&evaluations, challenge)
+                let lagrange_poly: DensePolynomial<C::ScalarField> = compute_lagrange_poly::<C::ScalarField>(&evaluations);
+                Ok(lagrange_poly.evaluate(&challenge))
             })
             .collect::<Result<Vec<_>, PolyIOPErrors>>()?;
 
@@ -287,8 +289,8 @@ pub fn interpolate_uni_poly<F: PrimeField>(p_i: &[F], eval_at: F) -> Result<F, P
 pub fn compute_lagrange_poly<F: PrimeField>(p_i: &[F]) -> DensePolynomial<F> {
     // TODO: build domain directly from field, avoid explicit conversions within the loop
 
-    // domain is 1..p_i.len(), to fit `interpolate_uni_poly` from hyperplonk
-    let domain: Vec<usize> = (1..p_i.len() + 1).into_iter().collect();
+    // domain is 0..p_i.len(), to fit `interpolate_uni_poly` from hyperplonk
+    let domain: Vec<usize> = (0..p_i.len()).into_iter().collect();
 
     // compute l(x), common to every basis polynomial
     let mut l_x = DensePolynomial::from_coefficients_vec(vec![F::ONE]);
@@ -371,8 +373,8 @@ mod tests {
         let mut prng = ark_std::test_rng();
         for degree in 1..30 {
             let poly = DensePolynomial::<Fr>::rand(degree, &mut prng);
-            // range (which is exclusive) is from 1 to degree + 2, since we need degree + 1 evaluations
-            let evals = (1..(degree + 2))
+            // range (which is exclusive) is from 0 to degree + 1, since we need degree + 1 evaluations
+            let evals = (0..(degree + 1))
                 .map(|i| poly.evaluate(&Fr::from(i as u64)))
                 .collect::<Vec<Fr>>();
             let lagrange_poly = compute_lagrange_poly(&evals);
@@ -398,6 +400,7 @@ mod tests {
         let query = Fr::rand(&mut prng);
 
         assert_eq!(poly.evaluate(&query), interpolate_uni_poly(&evals, query)?);
+        assert_eq!(compute_lagrange_poly(&evals).evaluate(&query), interpolate_uni_poly(&evals, query)?);
 
         // test a polynomial with 33 known points, i.e., with degree 32
         let poly = DensePolynomial::<Fr>::rand(33 - 1, &mut prng);
@@ -407,6 +410,7 @@ mod tests {
         let query = Fr::rand(&mut prng);
 
         assert_eq!(poly.evaluate(&query), interpolate_uni_poly(&evals, query)?);
+        assert_eq!(compute_lagrange_poly(&evals).evaluate(&query), interpolate_uni_poly(&evals, query)?);
 
         // test a polynomial with 64 known points, i.e., with degree 63
         let poly = DensePolynomial::<Fr>::rand(64 - 1, &mut prng);
@@ -416,6 +420,7 @@ mod tests {
         let query = Fr::rand(&mut prng);
 
         assert_eq!(poly.evaluate(&query), interpolate_uni_poly(&evals, query)?);
+        assert_eq!(compute_lagrange_poly(&evals).evaluate(&query), interpolate_uni_poly(&evals, query)?);
 
         Ok(())
     }

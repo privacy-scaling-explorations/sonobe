@@ -43,10 +43,10 @@ pub enum Error {
     R1CSUnrelaxedFail,
     #[error("Could not find the inner ConstraintSystem")]
     NoInnerConstraintSystem,
-    #[error("Sum-check prove failed")]
-    SumCheckProveError,
-    #[error("Sum-check verify failed")]
-    SumCheckVerifyError,
+    #[error("Sum-check prove failed: {0}")]
+    SumCheckProveError(String),
+    #[error("Sum-check verify failed: {0}")]
+    SumCheckVerifyError(String),
 }
 
 /// FoldingScheme defines trait that is implemented by the diverse folding schemes. It is defined

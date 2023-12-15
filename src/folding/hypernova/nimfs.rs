@@ -201,13 +201,8 @@ where
         let g = compute_g(ccs, running_instances, &z_lcccs, &z_cccs, gamma, &beta);
 
         // Step 3: Run the sumcheck prover
-        let sumcheck_result = IOPSumCheck::<C, T>::prove(&g, transcript);
-        let sumcheck_proof = match sumcheck_result {
-            Ok(proof) => proof,
-            Err(_err) => {
-                return Err(Error::SumCheckProveError);
-            }
-        };
+        let sumcheck_proof = IOPSumCheck::<C, T>::prove(&g, transcript)
+            .map_err(|err| Error::SumCheckProveError(err.to_string()))?;
 
         // Note: The following two "sanity checks" are done for this prototype, in a final version
         // they should be removed.
@@ -321,14 +316,9 @@ where
         }
 
         // Verify the interactive part of the sumcheck
-        let sumcheck_subclaim_result =
-            IOPSumCheck::<C, T>::verify(sum_v_j_gamma, &proof.sc_proof, &vp_aux_info, transcript);
-        let sumcheck_subclaim = match sumcheck_subclaim_result {
-            Ok(subclaim) => subclaim,
-            Err(_err) => {
-                return Err(Error::SumCheckVerifyError);
-            }
-        };
+        let sumcheck_subclaim =
+            IOPSumCheck::<C, T>::verify(sum_v_j_gamma, &proof.sc_proof, &vp_aux_info, transcript)
+                .map_err(|err| Error::SumCheckVerifyError(err.to_string()))?;
 
         // Step 2: Dig into the sumcheck claim and extract the randomness used
         let r_x_prime = sumcheck_subclaim.point.clone();

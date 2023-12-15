@@ -1,6 +1,5 @@
 use ark_crypto_primitives::sponge::Absorb;
-use ark_crypto_primitives::sponge::Absorb;
-use ark_ec::{{CurveGroup, Group}, Group};
+use ark_ec::{CurveGroup, Group};
 use ark_ff::{Field, PrimeField};
 use ark_poly::univariate::DensePolynomial;
 use ark_poly::{DenseUVPolynomial, Polynomial};
@@ -14,7 +13,6 @@ use crate::transcript::Transcript;
 use crate::utils::hypercube::BooleanHypercube;
 use crate::utils::sum_check::structs::IOPProof as SumCheckProof;
 
-use crate::utils::sum_check::IOPSumCheck;
 use crate::utils::sum_check::{IOPSumCheck, SumCheck};
 use crate::utils::virtual_polynomial::VPAuxInfo;
 use crate::Error;

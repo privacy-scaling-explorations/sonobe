@@ -20,7 +20,6 @@ color-eyre = "=0.6.2"
 # tmp imports for espresso's sumcheck
 ark-serialize = "^0.4.0"
 espresso_subroutines = {git="https://github.com/EspressoSystems/hyperplonk", package="subroutines"}
-espresso_transcript = {git="https://github.com/EspressoSystems/hyperplonk", package="transcript"}
 
 [dev-dependencies]
 ark-pallas = {version="0.4.0", features=["r1cs"]}
@@ -47,3 +46,4 @@ parallel = [
 # changes done between v0.4.0 and this fix which would break compatibility.
 [patch.crates-io]
 ark-r1cs-std = { git = "https://github.com/arnaucube/ark-r1cs-std-cherry-picked/" }
+

@@ -9,24 +9,25 @@
 
 //! Verifier subroutines for a SumCheck protocol.
 
-use super::{SumCheckSubClaim, SumCheckVerifier};
-use crate::utils::virtual_polynomial::VPAuxInfo;
+use super::{
+    structs::{IOPProverMessage, IOPVerifierState},
+    SumCheckSubClaim, SumCheckVerifier,
+};
+use crate::{transcript::Transcript, utils::virtual_polynomial::VPAuxInfo};
+use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_std::{end_timer, start_timer};
 
-use super::structs::{IOPProverMessage, IOPVerifierState};
 use espresso_subroutines::poly_iop::prelude::PolyIOPErrors;
-use espresso_transcript::IOPTranscript;
 
 #[cfg(feature = "parallel")]
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
-impl<F: PrimeField> SumCheckVerifier<F> for IOPVerifierState<F> {
-    type VPAuxInfo = VPAuxInfo<F>;
-    type ProverMessage = IOPProverMessage<F>;
-    type Challenge = F;
-    type Transcript = IOPTranscript<F>;
-    type SumCheckSubClaim = SumCheckSubClaim<F>;
+impl<C: CurveGroup> SumCheckVerifier<C> for IOPVerifierState<C> {
+    type VPAuxInfo = VPAuxInfo<C::ScalarField>;
+    type ProverMessage = IOPProverMessage<C::ScalarField>;
+    type Challenge = C::ScalarField;
+    type SumCheckSubClaim = SumCheckSubClaim<C::ScalarField>;
 
     /// Initialize the verifier's state.
     fn verifier_init(index_info: &Self::VPAuxInfo) -> Self {
@@ -43,17 +44,11 @@ impl<F: PrimeField> SumCheckVerifier<F> for IOPVerifierState<F> {
         res
     }
 
-    /// Run verifier for the current round, given a prover message.
-    ///
-    /// Note that `verify_round_and_update_state` only samples and stores
-    /// challenges; and update the verifier's state accordingly. The actual
-    /// verifications are deferred (in batch) to `check_and_generate_subclaim`
-    /// at the last step.
     fn verify_round_and_update_state(
         &mut self,
-        prover_msg: &Self::ProverMessage,
-        transcript: &mut Self::Transcript,
-    ) -> Result<Self::Challenge, PolyIOPErrors> {
+        prover_msg: &<IOPVerifierState<C> as SumCheckVerifier<C>>::ProverMessage,
+        transcript: &mut impl Transcript<C>,
+    ) -> Result<<IOPVerifierState<C> as SumCheckVerifier<C>>::Challenge, PolyIOPErrors> {
         let start =
             start_timer!(|| format!("sum check verify {}-th round and update state", self.round));
 
@@ -70,8 +65,7 @@ impl<F: PrimeField> SumCheckVerifier<F> for IOPVerifierState<F> {
         //
         // When we turn the protocol to a non-interactive one, it is sufficient to defer
         // such checks to `check_and_generate_subclaim` after the last round.
-
-        let challenge = transcript.get_and_append_challenge(b"Internal round")?;
+        let challenge = transcript.get_challenge();
         self.challenges.push(challenge);
         self.polynomials_received
             .push(prover_msg.evaluations.to_vec());
@@ -88,17 +82,9 @@ impl<F: PrimeField> SumCheckVerifier<F> for IOPVerifierState<F> {
         Ok(challenge)
     }
 
-    /// This function verifies the deferred checks in the interactive version of
-    /// the protocol; and generate the subclaim. Returns an error if the
-    /// proof failed to verify.
-    ///
-    /// If the asserted sum is correct, then the multilinear polynomial
-    /// evaluated at `subclaim.point` will be `subclaim.expected_evaluation`.
-    /// Otherwise, it is highly unlikely that those two will be equal.
-    /// Larger field size guarantees smaller soundness error.
     fn check_and_generate_subclaim(
         &self,
-        asserted_sum: &F,
+        asserted_sum: &C::ScalarField,
     ) -> Result<Self::SumCheckSubClaim, PolyIOPErrors> {
         let start = start_timer!(|| "sum check check and generate subclaim");
         if !self.finished {
@@ -129,7 +115,7 @@ impl<F: PrimeField> SumCheckVerifier<F> for IOPVerifierState<F> {
                         self.max_degree + 1
                     )));
                 }
-                interpolate_uni_poly::<F>(&evaluations, challenge)
+                interpolate_uni_poly::<C::ScalarField>(&evaluations, challenge)
             })
             .collect::<Result<Vec<_>, PolyIOPErrors>>()?;
 
@@ -160,6 +146,9 @@ impl<F: PrimeField> SumCheckVerifier<F> for IOPVerifierState<F> {
             .zip(expected_vec.iter())
             .take(self.num_vars)
         {
+            let eval_: C::ScalarField = evaluations[0] + evaluations[1];
+
+            println!("evaluations: {:?}, expected: {:?}", eval_, expected);
             // the deferred check during the interactive phase:
             // 1. check if the received 'P(0) + P(1) = expected`.
             if evaluations[0] + evaluations[1] != expected {

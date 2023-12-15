@@ -204,7 +204,7 @@ where
         let sumcheck_result = IOPSumCheck::<C, T>::prove(&g, transcript);
         let sumcheck_proof = match sumcheck_result {
             Ok(proof) => proof,
-            Err(err) => {
+            Err(_err) => {
                 return Err(Error::SumCheckProveError);
             }
         };
@@ -325,7 +325,7 @@ where
             IOPSumCheck::<C, T>::verify(sum_v_j_gamma, &proof.sc_proof, &vp_aux_info, transcript);
         let sumcheck_subclaim = match sumcheck_subclaim_result {
             Ok(subclaim) => subclaim,
-            Err(err) => {
+            Err(_err) => {
                 return Err(Error::SumCheckVerifyError);
             }
         };

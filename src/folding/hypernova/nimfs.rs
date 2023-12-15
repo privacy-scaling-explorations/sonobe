@@ -1,6 +1,8 @@
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{CurveGroup, Group};
 use ark_ff::{Field, PrimeField};
+use ark_poly::univariate::DensePolynomial;
+use ark_poly::{DenseUVPolynomial, Polynomial};
 use ark_std::{One, Zero};
 use espresso_subroutines::IOPProof;
 
@@ -353,17 +355,15 @@ where
 
         // Sanity check: we can also compute g(r_x') from the proof last evaluation value, and
         // should be equal to the previously obtained values.
-        // let g_on_rxprime_from_sumcheck_last_eval = interpolate_uni_poly::<C::ScalarField>(
-        // &proof.sc_proof.proofs.last().unwrap().evaluations,
-        // *r_x_prime.last().unwrap(),
-        // )
-        // .unwrap();
-        // if g_on_rxprime_from_sumcheck_last_eval != c {
-        // return Err(Error::NotEqual);
-        // }
-        // if g_on_rxprime_from_sumcheck_last_eval != sumcheck_subclaim.expected_evaluation {
-        // return Err(Error::NotEqual);
-        // }
+        let g_on_rxprime_from_sumcheck_last_eval =
+            DensePolynomial::from_coefficients_slice(&proof.sc_proof.proofs.last().unwrap().coeffs)
+                .evaluate(r_x_prime.last().unwrap());
+        if g_on_rxprime_from_sumcheck_last_eval != c {
+            return Err(Error::NotEqual);
+        }
+        if g_on_rxprime_from_sumcheck_last_eval != sumcheck_subclaim.expected_evaluation {
+            return Err(Error::NotEqual);
+        }
 
         // Step 6: Get the folding challenge
         let rho_scalar = C::ScalarField::from_le_bytes_mod_order(b"rho");

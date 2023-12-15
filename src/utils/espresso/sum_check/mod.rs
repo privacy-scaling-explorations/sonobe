@@ -15,7 +15,8 @@ use crate::{
 };
 use ark_ec::{CurveGroup, Group};
 use ark_ff::PrimeField;
-use ark_poly::DenseMultilinearExtension;
+use ark_poly::{DenseMultilinearExtension, DenseUVPolynomial, Polynomial};
+use ark_poly::univariate::DensePolynomial;
 use ark_std::{end_timer, start_timer};
 use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 
@@ -23,6 +24,7 @@ use crate::utils::sum_check::structs::IOPProverMessage;
 use crate::utils::sum_check::structs::IOPVerifierState;
 use espresso_subroutines::poly_iop::prelude::PolyIOPErrors;
 use structs::{IOPProof, IOPProverState};
+use ark_ff::Field;
 
 mod prover;
 pub mod structs;
@@ -143,7 +145,8 @@ impl<C: CurveGroup, T: Transcript<C>> SumCheck<C> for IOPSumCheck<C, T> {
 
     fn extract_sum(proof: &Self::SumCheckProof) -> C::ScalarField {
         let start = start_timer!(|| "extract sum");
-        let res = proof.proofs[0].evaluations[0] + proof.proofs[0].evaluations[1];
+        let poly = DensePolynomial::from_coefficients_vec(proof.proofs[0].coeffs.clone());
+        let res = poly.evaluate(&C::ScalarField::ONE) + poly.evaluate(&C::ScalarField::ZERO);
         end_timer!(start);
         res
     }
@@ -165,7 +168,7 @@ impl<C: CurveGroup, T: Transcript<C>> SumCheck<C> for IOPSumCheck<C, T> {
         for _ in 0..poly.aux_info.num_variables {
             let prover_msg: IOPProverMessage<C::ScalarField> =
                 IOPProverState::prove_round_and_update_state(&mut prover_state, &challenge)?;
-            transcript.absorb_vec(&prover_msg.evaluations);
+            transcript.absorb_vec(&prover_msg.coeffs);
             prover_msgs.push(prover_msg);
             challenge = Some(transcript.get_challenge());
         }
@@ -191,7 +194,7 @@ impl<C: CurveGroup, T: Transcript<C>> SumCheck<C> for IOPSumCheck<C, T> {
         let mut verifier_state = IOPVerifierState::verifier_init(aux_info);
         for i in 0..aux_info.num_variables {
             let prover_msg = proof.proofs.get(i).expect("proof is incomplete");
-            transcript.absorb_vec(&prover_msg.evaluations);
+            transcript.absorb_vec(&prover_msg.coeffs);
             IOPVerifierState::verify_round_and_update_state(
                 &mut verifier_state,
                 prover_msg,

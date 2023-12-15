@@ -15,9 +15,11 @@ use super::{
 };
 use crate::{transcript::Transcript, utils::virtual_polynomial::VPAuxInfo};
 use ark_ec::CurveGroup;
+use ark_ff::Field;
 use ark_ff::PrimeField;
+use ark_poly::Polynomial;
+use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial};
 use ark_std::{end_timer, start_timer};
-
 use espresso_subroutines::poly_iop::prelude::PolyIOPErrors;
 
 #[cfg(feature = "parallel")]
@@ -67,8 +69,7 @@ impl<C: CurveGroup> SumCheckVerifier<C> for IOPVerifierState<C> {
         // such checks to `check_and_generate_subclaim` after the last round.
         let challenge = transcript.get_challenge();
         self.challenges.push(challenge);
-        self.polynomials_received
-            .push(prover_msg.evaluations.to_vec());
+        self.polynomials_received.push(prover_msg.coeffs.to_vec());
 
         if self.round == self.num_vars {
             // accept and close
@@ -107,15 +108,16 @@ impl<C: CurveGroup> SumCheckVerifier<C> for IOPVerifierState<C> {
             .clone()
             .into_par_iter()
             .zip(self.challenges.clone().into_par_iter())
-            .map(|(evaluations, challenge)| {
-                if evaluations.len() != self.max_degree + 1 {
-                    return Err(PolyIOPErrors::InvalidVerifier(format!(
-                        "incorrect number of evaluations: {} vs {}",
-                        evaluations.len(),
-                        self.max_degree + 1
-                    )));
-                }
-                interpolate_uni_poly::<C::ScalarField>(&evaluations, challenge)
+            .map(|(coeffs, challenge)| {
+                // if coeffs.len() != self.max_degree + 1 {
+                    // return Err(PolyIOPErrors::InvalidVerifier(format!(
+                        // "incorrect number of evaluations: {} vs {}",
+                        // coeffs.len(),
+                        // self.max_degree + 1
+                    // )));
+                // }
+                let prover_poly = DensePolynomial::from_coefficients_slice(&coeffs);
+                Ok(prover_poly.evaluate(&challenge))
             })
             .collect::<Result<Vec<_>, PolyIOPErrors>>()?;
 
@@ -140,18 +142,20 @@ impl<C: CurveGroup> SumCheckVerifier<C> for IOPVerifierState<C> {
         // insert the asserted_sum to the first position of the expected vector
         expected_vec.insert(0, *asserted_sum);
 
-        for (evaluations, &expected) in self
+        for (coeffs, &expected) in self
             .polynomials_received
             .iter()
             .zip(expected_vec.iter())
             .take(self.num_vars)
         {
-            let eval_: C::ScalarField = evaluations[0] + evaluations[1];
+            let poly = DensePolynomial::from_coefficients_slice(&coeffs);
+            let eval_: C::ScalarField =
+                poly.evaluate(&C::ScalarField::ZERO) + poly.evaluate(&C::ScalarField::ONE);
 
             println!("evaluations: {:?}, expected: {:?}", eval_, expected);
             // the deferred check during the interactive phase:
             // 1. check if the received 'P(0) + P(1) = expected`.
-            if evaluations[0] + evaluations[1] != expected {
+            if eval_ != expected {
                 return Err(PolyIOPErrors::InvalidProof(
                     "Prover message is not consistent with the claim.".to_string(),
                 ));
@@ -275,6 +279,50 @@ pub fn interpolate_uni_poly<F: PrimeField>(p_i: &[F], eval_at: F) -> Result<F, P
     }
     end_timer!(start);
     Ok(res)
+}
+
+pub fn compute_lagrange_poly<F: PrimeField>(p_i: &[F]) -> DensePolynomial<F> {
+    // TODO: build domain directly from field, avoid explicit conversions within the loop
+
+    // domain is 0..p_i.len(), to fit `interpolate_uni_poly` from hyperplonk
+    let domain: Vec<usize> = (0..p_i.len()).into_iter().collect();
+
+    // compute l(x), common to every basis polynomial
+    let mut l_x = DensePolynomial::from_coefficients_vec(vec![F::ONE]);
+    for x_m in domain.clone() {
+        let prod_m = DensePolynomial::from_coefficients_vec(vec![-F::from(x_m as u64), F::ONE]);
+        l_x = &l_x * &prod_m;
+    }
+
+    // compute each w_j - barycentric weights
+    let mut w_j_vector: Vec<F> = vec![];
+    for x_j in domain.clone() {
+        let mut w_j = F::ONE;
+        for x_m in domain.clone() {
+            if x_m != x_j {
+                let prod = (F::from(x_j as u64) - F::from(x_m as u64))
+                    .inverse()
+                    .unwrap();
+                w_j = w_j * prod;
+            }
+        }
+        w_j_vector.push(w_j);
+    }
+
+    // compute each polynomial within the sum L(x)
+    let mut lagrange_poly = DensePolynomial::from_coefficients_vec(vec![F::ZERO]);
+    for (j, w_j) in w_j_vector.iter().enumerate() {
+        let x_j = domain[j];
+        let y_j = p_i[j];
+        // we multiply by l(x) here, otherwise the below division will not work - deg(0)/deg(d)
+        let poly_numerator = &(&l_x * (*w_j)) * (y_j);
+        let poly_denominator =
+            DensePolynomial::from_coefficients_vec(vec![-F::from(x_j as u64), F::ONE]);
+        let poly = &poly_numerator / &poly_denominator;
+        lagrange_poly = &lagrange_poly + &poly;
+    }
+
+    lagrange_poly
 }
 
 /// compute the factorial(a) = 1 * 2 * ... * a

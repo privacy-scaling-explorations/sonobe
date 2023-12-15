@@ -46,3 +46,4 @@ parallel = [
 # changes done between v0.4.0 and this fix which would break compatibility.
 [patch.crates-io]
 ark-r1cs-std = { git = "https://github.com/arnaucube/ark-r1cs-std-cherry-picked/" }
+

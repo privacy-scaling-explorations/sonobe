@@ -1,6 +1,8 @@
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{CurveGroup, Group};
 use ark_ff::{Field, PrimeField};
+use ark_poly::univariate::DensePolynomial;
+use ark_poly::{DenseUVPolynomial, Polynomial};
 use ark_std::{One, Zero};
 
 use super::cccs::{Witness, CCCS};
@@ -10,7 +12,6 @@ use crate::ccs::CCS;
 use crate::transcript::Transcript;
 use crate::utils::hypercube::BooleanHypercube;
 use crate::utils::sum_check::structs::IOPProof as SumCheckProof;
-use crate::utils::sum_check::verifier::interpolate_uni_poly;
 use crate::utils::sum_check::{IOPSumCheck, SumCheck};
 use crate::utils::virtual_polynomial::VPAuxInfo;
 use crate::Error;
@@ -201,7 +202,8 @@ where
         let g = compute_g(ccs, running_instances, &z_lcccs, &z_cccs, gamma, &beta);
 
         // Step 3: Run the sumcheck prover
-        let sumcheck_proof = IOPSumCheck::<C, T>::prove(&g, transcript).unwrap();
+        let sumcheck_proof = IOPSumCheck::<C, T>::prove(&g, transcript)
+            .map_err(|err| Error::SumCheckProveError(err.to_string()))?;
 
         // Note: The following two "sanity checks" are done for this prototype, in a final version
         // they should be removed.
@@ -317,7 +319,7 @@ where
         // Verify the interactive part of the sumcheck
         let sumcheck_subclaim =
             IOPSumCheck::<C, T>::verify(sum_v_j_gamma, &proof.sc_proof, &vp_aux_info, transcript)
-                .unwrap();
+                .map_err(|err| Error::SumCheckVerifyError(err.to_string()))?;
 
         // Step 2: Dig into the sumcheck claim and extract the randomness used
         let r_x_prime = sumcheck_subclaim.point.clone();
@@ -341,11 +343,9 @@ where
 
         // Sanity check: we can also compute g(r_x') from the proof last evaluation value, and
         // should be equal to the previously obtained values.
-        let g_on_rxprime_from_sumcheck_last_eval = interpolate_uni_poly::<C::ScalarField>(
-            &proof.sc_proof.proofs.last().unwrap().evaluations,
-            *r_x_prime.last().unwrap(),
-        )
-        .unwrap();
+        let g_on_rxprime_from_sumcheck_last_eval =
+            DensePolynomial::from_coefficients_slice(&proof.sc_proof.proofs.last().unwrap().coeffs)
+                .evaluate(r_x_prime.last().unwrap());
         if g_on_rxprime_from_sumcheck_last_eval != c {
             return Err(Error::NotEqual);
         }

@@ -15,17 +15,12 @@ use super::{
 };
 use crate::{transcript::Transcript, utils::virtual_polynomial::VPAuxInfo};
 use ark_ec::CurveGroup;
+use ark_ff::Field;
 use ark_ff::PrimeField;
-use ark_poly::{
-    multivariate::SparsePolynomial, univariate::DensePolynomial, DenseUVPolynomial,
-    EvaluationDomain, Radix2EvaluationDomain,
-};
-use ark_r1cs_std::poly::{
-    domain::Radix2DomainVar, evaluations::univariate::lagrange_interpolator::LagrangeInterpolator,
-};
+use ark_poly::Polynomial;
+use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial};
 use ark_std::{end_timer, start_timer};
 use espresso_subroutines::poly_iop::prelude::PolyIOPErrors;
-use ark_poly::Polynomial;
 
 #[cfg(feature = "parallel")]
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
@@ -74,8 +69,7 @@ impl<C: CurveGroup> SumCheckVerifier<C> for IOPVerifierState<C> {
         // such checks to `check_and_generate_subclaim` after the last round.
         let challenge = transcript.get_challenge();
         self.challenges.push(challenge);
-        self.polynomials_received
-            .push(prover_msg.evaluations.to_vec());
+        self.polynomials_received.push(prover_msg.coeffs.to_vec());
 
         if self.round == self.num_vars {
             // accept and close
@@ -114,16 +108,10 @@ impl<C: CurveGroup> SumCheckVerifier<C> for IOPVerifierState<C> {
             .clone()
             .into_par_iter()
             .zip(self.challenges.clone().into_par_iter())
-            .map(|(evaluations, challenge)| {
-                if evaluations.len() != self.max_degree + 1 {
-                    return Err(PolyIOPErrors::InvalidVerifier(format!(
-                        "incorrect number of evaluations: {} vs {}",
-                        evaluations.len(),
-                        self.max_degree + 1
-                    )));
-                }
-                let lagrange_poly: DensePolynomial<C::ScalarField> = compute_lagrange_poly::<C::ScalarField>(&evaluations);
-                Ok(lagrange_poly.evaluate(&challenge))
+            .map(|(coeffs, challenge)| {
+                // Removed check on number of evaluations here since verifier receives polynomial in coeffs form
+                let prover_poly = DensePolynomial::from_coefficients_slice(&coeffs);
+                Ok(prover_poly.evaluate(&challenge))
             })
             .collect::<Result<Vec<_>, PolyIOPErrors>>()?;
 
@@ -134,33 +122,29 @@ impl<C: CurveGroup> SumCheckVerifier<C> for IOPVerifierState<C> {
             .into_iter()
             .zip(self.challenges.clone().into_iter())
             .map(|(evaluations, challenge)| {
-                if evaluations.len() != self.max_degree + 1 {
-                    return Err(PolyIOPErrors::InvalidVerifier(format!(
-                        "incorrect number of evaluations: {} vs {}",
-                        evaluations.len(),
-                        self.max_degree + 1
-                    )));
-                }
-                let lagrange_poly: DensePolynomial<C::ScalarField> = compute_lagrange_poly::<C::ScalarField>(&evaluations);
-                Ok(lagrange_poly.evaluate(&challenge))
+                // Removed check on number of evaluations here since verifier receives polynomial in coeffs form
+                let prover_poly = DensePolynomial::from_coefficients_slice(&coeffs);
+                Ok(prover_poly.evaluate(&challenge))
             })
             .collect::<Result<Vec<_>, PolyIOPErrors>>()?;
 
         // insert the asserted_sum to the first position of the expected vector
         expected_vec.insert(0, *asserted_sum);
 
-        for (evaluations, &expected) in self
+        for (coeffs, &expected) in self
             .polynomials_received
             .iter()
             .zip(expected_vec.iter())
             .take(self.num_vars)
         {
-            let eval_: C::ScalarField = evaluations[0] + evaluations[1];
+            let poly = DensePolynomial::from_coefficients_slice(coeffs);
+            let eval_: C::ScalarField =
+                poly.evaluate(&C::ScalarField::ZERO) + poly.evaluate(&C::ScalarField::ONE);
 
             println!("evaluations: {:?}, expected: {:?}", eval_, expected);
             // the deferred check during the interactive phase:
             // 1. check if the received 'P(0) + P(1) = expected`.
-            if evaluations[0] + evaluations[1] != expected {
+            if eval_ != expected {
                 return Err(PolyIOPErrors::InvalidProof(
                     "Prover message is not consistent with the claim.".to_string(),
                 ));
@@ -290,7 +274,7 @@ pub fn compute_lagrange_poly<F: PrimeField>(p_i: &[F]) -> DensePolynomial<F> {
     // TODO: build domain directly from field, avoid explicit conversions within the loop
 
     // domain is 0..p_i.len(), to fit `interpolate_uni_poly` from hyperplonk
-    let domain: Vec<usize> = (0..p_i.len()).into_iter().collect();
+    let domain: Vec<usize> = (0..p_i.len()).collect();
 
     // compute l(x), common to every basis polynomial
     let mut l_x = DensePolynomial::from_coefficients_vec(vec![F::ONE]);
@@ -308,7 +292,7 @@ pub fn compute_lagrange_poly<F: PrimeField>(p_i: &[F]) -> DensePolynomial<F> {
                 let prod = (F::from(x_j as u64) - F::from(x_m as u64))
                     .inverse()
                     .unwrap();
-                w_j = w_j * prod;
+                w_j *= prod;
             }
         }
         w_j_vector.push(w_j);

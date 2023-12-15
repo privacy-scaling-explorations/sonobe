@@ -4,7 +4,7 @@ use ark_ff::{Field, PrimeField};
 use ark_poly::univariate::DensePolynomial;
 use ark_poly::{DenseUVPolynomial, Polynomial};
 use ark_std::{One, Zero};
-use espresso_subroutines::IOPProof;
+
 
 use super::cccs::{Witness, CCCS};
 use super::lcccs::LCCCS;
@@ -13,7 +13,7 @@ use crate::ccs::CCS;
 use crate::transcript::Transcript;
 use crate::utils::hypercube::BooleanHypercube;
 use crate::utils::sum_check::structs::IOPProof as SumCheckProof;
-use crate::utils::sum_check::verifier::interpolate_uni_poly;
+
 use crate::utils::sum_check::{IOPSumCheck, SumCheck};
 use crate::utils::virtual_polynomial::VPAuxInfo;
 use crate::Error;

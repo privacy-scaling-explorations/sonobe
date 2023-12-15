@@ -137,7 +137,7 @@ impl<C: CurveGroup> SumCheckVerifier<C> for IOPVerifierState<C> {
             .zip(expected_vec.iter())
             .take(self.num_vars)
         {
-            let poly = DensePolynomial::from_coefficients_slice(&coeffs);
+            let poly = DensePolynomial::from_coefficients_slice(coeffs);
             let eval_: C::ScalarField =
                 poly.evaluate(&C::ScalarField::ZERO) + poly.evaluate(&C::ScalarField::ONE);
 
@@ -274,7 +274,7 @@ pub fn compute_lagrange_poly<F: PrimeField>(p_i: &[F]) -> DensePolynomial<F> {
     // TODO: build domain directly from field, avoid explicit conversions within the loop
 
     // domain is 0..p_i.len(), to fit `interpolate_uni_poly` from hyperplonk
-    let domain: Vec<usize> = (0..p_i.len()).into_iter().collect();
+    let domain: Vec<usize> = (0..p_i.len()).collect();
 
     // compute l(x), common to every basis polynomial
     let mut l_x = DensePolynomial::from_coefficients_vec(vec![F::ONE]);
@@ -292,7 +292,7 @@ pub fn compute_lagrange_poly<F: PrimeField>(p_i: &[F]) -> DensePolynomial<F> {
                 let prod = (F::from(x_j as u64) - F::from(x_m as u64))
                     .inverse()
                     .unwrap();
-                w_j = w_j * prod;
+                w_j *= prod;
             }
         }
         w_j_vector.push(w_j);

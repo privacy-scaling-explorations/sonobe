@@ -144,6 +144,7 @@ impl<C: CurveGroup, T: Transcript<C>> SumCheck<C> for IOPSumCheck<C, T> {
     type SumCheckSubClaim = SumCheckSubClaim<C::ScalarField>;
 
     fn extract_sum(proof: &Self::SumCheckProof) -> C::ScalarField {
+    fn extract_sum(proof: &Self::SumCheckProof) -> C::ScalarField {
         let start = start_timer!(|| "extract sum");
         let poly = DensePolynomial::from_coefficients_vec(proof.proofs[0].coeffs.clone());
         let res = poly.evaluate(&C::ScalarField::ONE) + poly.evaluate(&C::ScalarField::ZERO);
@@ -166,6 +167,7 @@ impl<C: CurveGroup, T: Transcript<C>> SumCheck<C> for IOPSumCheck<C, T> {
         let mut prover_msgs: Vec<IOPProverMessage<C::ScalarField>> =
             Vec::with_capacity(poly.aux_info.num_variables);
         for _ in 0..poly.aux_info.num_variables {
+            let prover_msg: IOPProverMessage<C::ScalarField> =
             let prover_msg: IOPProverMessage<C::ScalarField> =
                 IOPProverState::prove_round_and_update_state(&mut prover_state, &challenge)?;
             transcript.absorb_vec(&prover_msg.coeffs);

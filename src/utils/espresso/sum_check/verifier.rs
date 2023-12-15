@@ -109,13 +109,7 @@ impl<C: CurveGroup> SumCheckVerifier<C> for IOPVerifierState<C> {
             .into_par_iter()
             .zip(self.challenges.clone().into_par_iter())
             .map(|(coeffs, challenge)| {
-                // if coeffs.len() != self.max_degree + 1 {
-                    // return Err(PolyIOPErrors::InvalidVerifier(format!(
-                        // "incorrect number of evaluations: {} vs {}",
-                        // coeffs.len(),
-                        // self.max_degree + 1
-                    // )));
-                // }
+                // Removed check on number of evaluations here since verifier receives polynomial in coeffs form
                 let prover_poly = DensePolynomial::from_coefficients_slice(&coeffs);
                 Ok(prover_poly.evaluate(&challenge))
             })
@@ -128,14 +122,9 @@ impl<C: CurveGroup> SumCheckVerifier<C> for IOPVerifierState<C> {
             .into_iter()
             .zip(self.challenges.clone().into_iter())
             .map(|(evaluations, challenge)| {
-                if evaluations.len() != self.max_degree + 1 {
-                    return Err(PolyIOPErrors::InvalidVerifier(format!(
-                        "incorrect number of evaluations: {} vs {}",
-                        evaluations.len(),
-                        self.max_degree + 1
-                    )));
-                }
-                interpolate_uni_poly::<F>(&evaluations, challenge)
+                // Removed check on number of evaluations here since verifier receives polynomial in coeffs form
+                let prover_poly = DensePolynomial::from_coefficients_slice(&coeffs);
+                Ok(prover_poly.evaluate(&challenge))
             })
             .collect::<Result<Vec<_>, PolyIOPErrors>>()?;
 

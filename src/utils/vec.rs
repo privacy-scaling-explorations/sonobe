@@ -46,14 +46,24 @@ pub fn dense_matrix_to_sparse<F: PrimeField>(m: Vec<Vec<F>>) -> SparseMatrix<F> 
 
 pub fn vec_add<F: PrimeField>(a: &[F], b: &[F]) -> Result<Vec<F>, Error> {
     if a.len() != b.len() {
-        return Err(Error::NotSameLength(a.len(), b.len()));
+        return Err(Error::NotSameLength(
+            "a.len()".to_string(),
+            a.len(),
+            "b.len()".to_string(),
+            b.len(),
+        ));
     }
     Ok(a.iter().zip(b.iter()).map(|(x, y)| *x + y).collect())
 }
 
 pub fn vec_sub<F: PrimeField>(a: &[F], b: &[F]) -> Result<Vec<F>, Error> {
     if a.len() != b.len() {
-        return Err(Error::NotSameLength(a.len(), b.len()));
+        return Err(Error::NotSameLength(
+            "a.len()".to_string(),
+            a.len(),
+            "b.len()".to_string(),
+            b.len(),
+        ));
     }
     Ok(a.iter().zip(b.iter()).map(|(x, y)| *x - y).collect())
 }
@@ -71,7 +81,12 @@ pub fn mat_vec_mul<F: PrimeField>(M: &Vec<Vec<F>>, z: &[F]) -> Result<Vec<F>, Er
         return Err(Error::Empty);
     }
     if M[0].len() != z.len() {
-        return Err(Error::NotSameLength(M[0].len(), z.len()));
+        return Err(Error::NotSameLength(
+            "M[0].len()".to_string(),
+            M[0].len(),
+            "z.len()".to_string(),
+            z.len(),
+        ));
     }
 
     let mut r: Vec<F> = vec![F::zero(); M.len()];
@@ -85,7 +100,12 @@ pub fn mat_vec_mul<F: PrimeField>(M: &Vec<Vec<F>>, z: &[F]) -> Result<Vec<F>, Er
 
 pub fn mat_vec_mul_sparse<F: PrimeField>(M: &SparseMatrix<F>, z: &[F]) -> Result<Vec<F>, Error> {
     if M.n_cols != z.len() {
-        return Err(Error::NotSameLength(M.n_cols, z.len()));
+        return Err(Error::NotSameLength(
+            "M.n_cols".to_string(),
+            M.n_cols,
+            "z.len()".to_string(),
+            z.len(),
+        ));
     }
     let mut res = vec![F::zero(); M.n_rows];
     for (row_i, row) in M.coeffs.iter().enumerate() {
@@ -98,7 +118,12 @@ pub fn mat_vec_mul_sparse<F: PrimeField>(M: &SparseMatrix<F>, z: &[F]) -> Result
 
 pub fn hadamard<F: PrimeField>(a: &[F], b: &[F]) -> Result<Vec<F>, Error> {
     if a.len() != b.len() {
-        return Err(Error::NotSameLength(a.len(), b.len()));
+        return Err(Error::NotSameLength(
+            "a.len()".to_string(),
+            a.len(),
+            "b.len()".to_string(),
+            b.len(),
+        ));
     }
     Ok(cfg_iter!(a).zip(b).map(|(a, b)| *a * b).collect())
 }

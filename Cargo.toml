@@ -29,9 +29,7 @@ tracing = { version = "0.1", default-features = false, features = [ "attributes"
 tracing-subscriber = { version = "0.2" }
 
 [features]
-default = ["parallel", "nova", "hypernova"]
-hypernova=[]
-nova=[]
+default = ["parallel"]
 
 parallel = [ 
     "ark-std/parallel", 

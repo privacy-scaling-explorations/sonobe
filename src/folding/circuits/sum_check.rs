@@ -1,17 +1,20 @@
-use crate::transcript::{poseidon::PoseidonTranscriptVar, TranscriptVar};
+use crate::{
+    transcript::{poseidon::PoseidonTranscriptVar, TranscriptVar},
+    utils::sum_check::structs::IOPProof,
+};
 /// Heavily inspired from testudo: https://github.com/cryptonetlab/testudo/tree/master
 /// Some changes:
 /// - Typings to better stick to ark_poly's API
 /// - Uses `folding-schemes`' own `TranscriptVar` trait and `PoseidonTranscriptVar` struct
 /// - API made closer to gadgets found in `folding-schemes`
 use ark_ff::PrimeField;
-use ark_poly::univariate::DensePolynomial;
+use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     eq::EqGadget,
     fields::fp::FpVar,
 };
-use ark_relations::r1cs::{Namespace, SynthesisError};
+use ark_relations::r1cs::{ConstraintSystemRef, Namespace, SynthesisError};
 use std::{borrow::Borrow, marker::PhantomData};
 
 #[derive(Clone, Debug)]
@@ -90,85 +93,107 @@ impl<F: PrimeField> SumCheckVerifierGadget<F> {
     }
 }
 
+fn get_poly_vars_from_sumcheck_proof<F: PrimeField>(
+    sum_check: &IOPProof<F>,
+    cs: ConstraintSystemRef<F>,
+) -> Vec<DensePolynomialVar<F>> {
+    let mut poly_vars = Vec::with_capacity(sum_check.proofs.len());
+    sum_check.proofs.iter().for_each(|message| {
+        let poly_received = DensePolynomial::from_coefficients_slice(&message.coeffs);
+        let poly_received_var = DensePolynomialVar::new_variable(
+            cs.clone(),
+            || Ok(poly_received),
+            AllocationMode::Witness,
+        )
+        .unwrap();
+        poly_vars.push(poly_received_var);
+    });
+    poly_vars
+}
+
 #[cfg(test)]
 mod tests {
 
     use std::sync::Arc;
 
+    use crate::folding::circuits::sum_check::get_poly_vars_from_sumcheck_proof;
     use crate::transcript::poseidon::PoseidonTranscriptVar;
     use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
     use crate::transcript::{Transcript, TranscriptVar};
     use crate::utils::sum_check::structs::IOPProof;
     use crate::utils::sum_check::{IOPSumCheck, SumCheck};
     use crate::utils::virtual_polynomial::VirtualPolynomial;
+    use ark_crypto_primitives::sponge::poseidon::PoseidonConfig;
+    use ark_crypto_primitives::sponge::Absorb;
+    use ark_ec::CurveGroup;
     use ark_ff::Field;
     use ark_pallas::{Fr, Projective};
-    use ark_poly::univariate::DensePolynomial;
-    use ark_poly::{DenseMultilinearExtension, DenseUVPolynomial, MultilinearExtension};
+    use ark_poly::{DenseMultilinearExtension, MultilinearExtension};
     use ark_r1cs_std::alloc::{AllocVar, AllocationMode};
     use ark_r1cs_std::fields::fp::FpVar;
     use ark_relations::r1cs::ConstraintSystem;
 
-    use super::{DensePolynomialVar, SumCheckVerifierGadget};
+    use super::SumCheckVerifierGadget;
+
+    /// Primarily used for testing the sumcheck gadget
+    /// Returns a random virtual polynomial, the poseidon config used and the associated sumcheck proof
+    pub fn get_test_sumcheck_proof<C: CurveGroup>(
+        num_vars: usize,
+    ) -> (
+        VirtualPolynomial<C::ScalarField>,
+        PoseidonConfig<C::ScalarField>,
+        IOPProof<C::ScalarField>,
+    )
+    where
+        <C as ark_ec::Group>::ScalarField: Absorb,
+    {
+        let mut rng = ark_std::test_rng();
+        let poseidon_config: PoseidonConfig<C::ScalarField> =
+            poseidon_test_config::<C::ScalarField>();
+        let mut poseidon_transcript_prove = PoseidonTranscript::<C>::new(&poseidon_config);
+        let poly_mle = DenseMultilinearExtension::rand(num_vars, &mut rng);
+        let virtual_poly =
+            VirtualPolynomial::new_from_mle(&Arc::new(poly_mle), C::ScalarField::ONE);
+        let sum_check: IOPProof<C::ScalarField> = IOPSumCheck::<C, PoseidonTranscript<C>>::prove(
+            &virtual_poly,
+            &mut poseidon_transcript_prove,
+        )
+        .unwrap();
+        (virtual_poly, poseidon_config, sum_check)
+    }
 
     #[test]
     fn test_sum_check_circuit() {
-        let poseidon_config = poseidon_test_config::<Fr>();
-        let mut poseidon_transcript_prove: PoseidonTranscript<Projective> =
-            PoseidonTranscript::<Projective>::new(&poseidon_config);
-        let cs = ConstraintSystem::<Fr>::new_ref();
-        let mut rng = ark_std::test_rng();
-
-        let poly_mle = DenseMultilinearExtension::rand(5, &mut rng);
-        let virtual_poly = VirtualPolynomial::new_from_mle(&Arc::new(poly_mle), Fr::ONE);
-
-        let sum_check: IOPProof<Fr> =
-            IOPSumCheck::<Projective, PoseidonTranscript<Projective>>::prove(
-                &virtual_poly,
-                &mut poseidon_transcript_prove,
-            )
-            .unwrap();
-
-        // initiate univariate polynomial variables
-        let mut poly_vars = Vec::with_capacity(sum_check.proofs.len());
-        sum_check.proofs.iter().for_each(|message| {
-            let poly_received = DensePolynomial::from_coefficients_slice(&message.coeffs);
-            let poly_received_var = DensePolynomialVar::new_variable(
+        for num_vars in 1..15 {
+            let cs = ConstraintSystem::<Fr>::new_ref();
+            let (virtual_poly, poseidon_config, sum_check) =
+                get_test_sumcheck_proof::<Projective>(num_vars);
+            // initiate univariate polynomial variables
+            let poly_vars = get_poly_vars_from_sumcheck_proof(&sum_check, cs.clone());
+            let poly_num_variables_var = FpVar::new_variable(
                 cs.clone(),
-                || Ok(poly_received),
+                || Ok(Fr::from(virtual_poly.aux_info.num_variables as u64)),
                 AllocationMode::Witness,
             )
             .unwrap();
-            poly_vars.push(poly_received_var);
-        });
-
-        let poly_num_variables_var = FpVar::new_variable(
-            cs.clone(),
-            || Ok(Fr::from(virtual_poly.aux_info.num_variables as u64)),
-            AllocationMode::Witness,
-        )
-        .unwrap();
-
-        let poly_max_degree_var = FpVar::new_variable(
-            cs.clone(),
-            || Ok(Fr::from(virtual_poly.aux_info.max_degree as u64)),
-            AllocationMode::Witness,
-        )
-        .unwrap();
-
-        let mut poseidon_var = PoseidonTranscriptVar::new(cs.clone(), &poseidon_config);
-        poseidon_var.absorb(poly_num_variables_var).unwrap();
-        poseidon_var.absorb(poly_max_degree_var).unwrap();
-
-        let claim =
-            IOPSumCheck::<Projective, PoseidonTranscript<Projective>>::extract_sum(&sum_check);
-        let claim_var =
-            FpVar::new_variable(cs.clone(), || Ok(claim), AllocationMode::Witness).unwrap();
-
-        let res =
-            SumCheckVerifierGadget::verify_sumcheck(&poly_vars, &claim_var, &mut poseidon_var);
-
-        assert!(res.is_ok());
-        assert!(cs.is_satisfied().unwrap());
+            let poly_max_degree_var = FpVar::new_variable(
+                cs.clone(),
+                || Ok(Fr::from(virtual_poly.aux_info.max_degree as u64)),
+                AllocationMode::Witness,
+            )
+            .unwrap();
+            let mut poseidon_var = PoseidonTranscriptVar::new(cs.clone(), &poseidon_config);
+            poseidon_var.absorb(poly_num_variables_var).unwrap();
+            poseidon_var.absorb(poly_max_degree_var).unwrap();
+            let claim =
+                IOPSumCheck::<Projective, PoseidonTranscript<Projective>>::extract_sum(&sum_check);
+            let claim_var =
+                FpVar::new_variable(cs.clone(), || Ok(claim), AllocationMode::Witness).unwrap();
+            let res =
+                SumCheckVerifierGadget::verify_sumcheck(&poly_vars, &claim_var, &mut poseidon_var);
+            assert!(res.is_ok());
+            assert!(cs.is_satisfied().unwrap());
+        }
     }
+
 }

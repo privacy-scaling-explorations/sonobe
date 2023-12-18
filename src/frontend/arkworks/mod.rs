@@ -59,6 +59,15 @@ pub fn extract_z<F: PrimeField>(cs: &ConstraintSystem<F>) -> Vec<F> {
     .concat()
 }
 
+/// extracts the witness and the public inputs from arkworks ConstraintSystem.
+pub fn extract_w_x<F: PrimeField>(cs: &ConstraintSystem<F>) -> (Vec<F>, Vec<F>) {
+    (
+        cs.witness_assignment.clone(),
+        // skip the first element which is '1'
+        cs.instance_assignment[1..].to_vec(),
+    )
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;

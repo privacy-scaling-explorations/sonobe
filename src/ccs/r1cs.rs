@@ -19,9 +19,9 @@ impl<F: PrimeField> R1CS<F> {
 
     /// check that a R1CS structure is satisfied by a z vector. Only for testing.
     pub fn check_relation(&self, z: &[F]) -> Result<(), Error> {
-        let Az = mat_vec_mul_sparse(&self.A, z);
-        let Bz = mat_vec_mul_sparse(&self.B, z);
-        let Cz = mat_vec_mul_sparse(&self.C, z);
+        let Az = mat_vec_mul_sparse(&self.A, z)?;
+        let Bz = mat_vec_mul_sparse(&self.B, z)?;
+        let Cz = mat_vec_mul_sparse(&self.C, z)?;
         let AzBz = hadamard(&Az, &Bz)?;
         if AzBz != Cz {
             return Err(Error::NotSatisfied);
@@ -57,12 +57,12 @@ pub struct RelaxedR1CS<F: PrimeField> {
 impl<F: PrimeField> RelaxedR1CS<F> {
     /// check that a RelaxedR1CS structure is satisfied by a z vector. Only for testing.
     pub fn check_relation(&self, z: &[F]) -> Result<(), Error> {
-        let Az = mat_vec_mul_sparse(&self.A, z);
-        let Bz = mat_vec_mul_sparse(&self.B, z);
-        let Cz = mat_vec_mul_sparse(&self.C, z);
+        let Az = mat_vec_mul_sparse(&self.A, z)?;
+        let Bz = mat_vec_mul_sparse(&self.B, z)?;
+        let Cz = mat_vec_mul_sparse(&self.C, z)?;
         let uCz = vec_scalar_mul(&Cz, &self.u);
-        let uCzE = vec_add(&uCz, &self.E);
-        let AzBz = hadamard(&Az, &Bz);
+        let uCzE = vec_add(&uCz, &self.E)?;
+        let AzBz = hadamard(&Az, &Bz)?;
         if AzBz != uCzE {
             return Err(Error::NotSatisfied);
         }

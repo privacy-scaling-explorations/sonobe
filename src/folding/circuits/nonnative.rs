@@ -33,11 +33,9 @@ where
             let cs = cs.into();
 
             let affine = val.borrow().into_affine();
-            let xy_obj = &affine.xy();
-            let mut xy = (&C::BaseField::zero(), &C::BaseField::one());
-            if xy_obj.is_some() {
-                xy = xy_obj.unwrap();
-            }
+            let zero_point = (&C::BaseField::zero(), &C::BaseField::one());
+            let xy = affine.xy().unwrap_or(zero_point);
+
             let x = NonNativeFieldVar::<C::BaseField, C::ScalarField>::new_variable(
                 cs.clone(),
                 || Ok(xy.0),
@@ -56,8 +54,8 @@ where
     }
 }
 
-/// point_to_nonnative_limbs is used to return (outside the circuit) the limbs representation that
-/// matches the one used in-circuit.
+/// point_to_nonnative_limbs is used to compute (outside the circuit) the limbs representation of a
+/// point that matches the one used in-circuit.
 #[allow(clippy::type_complexity)]
 pub fn point_to_nonnative_limbs<C: CurveGroup>(
     p: C,

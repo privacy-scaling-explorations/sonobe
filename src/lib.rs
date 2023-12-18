@@ -16,10 +16,12 @@ pub mod frontend;
 pub mod pedersen;
 pub mod utils;
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error)]
 pub enum Error {
     #[error("ark_relations::r1cs::SynthesisError")]
     SynthesisError(#[from] ark_relations::r1cs::SynthesisError),
+    #[error("ark_serialize::SerializationError")]
+    SerializationError(#[from] ark_serialize::SerializationError),
     #[error("{0}")]
     Other(String),
 
@@ -47,6 +49,8 @@ pub enum Error {
     SumCheckProveError(String),
     #[error("Sum-check verify failed: {0}")]
     SumCheckVerifyError(String),
+    #[error("Value out of bounds")]
+    OutOfBounds,
 }
 
 /// FoldingScheme defines trait that is implemented by the diverse folding schemes. It is defined

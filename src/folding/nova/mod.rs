@@ -13,6 +13,7 @@ use crate::utils::vec::is_zero_vec;
 use crate::Error;
 
 pub mod circuits;
+pub mod cyclefold;
 pub mod ivc;
 pub mod nifs;
 pub mod traits;
@@ -25,11 +26,7 @@ pub struct CommittedInstance<C: CurveGroup> {
     pub x: Vec<C::ScalarField>,
 }
 
-impl<C: CurveGroup> CommittedInstance<C>
-where
-    <C as Group>::ScalarField: Absorb,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-{
+impl<C: CurveGroup> CommittedInstance<C> {
     pub fn dummy(io_len: usize) -> Self {
         Self {
             cmE: C::zero(),
@@ -38,7 +35,13 @@ where
             x: vec![C::ScalarField::zero(); io_len],
         }
     }
+}
 
+impl<C: CurveGroup> CommittedInstance<C>
+where
+    <C as Group>::ScalarField: Absorb,
+    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
+{
     /// hash implements the committed instance hash compatible with the gadget implemented in
     /// nova/circuits.rs::CommittedInstanceVar.hash.
     /// Returns `H(i, z_0, z_i, U_i)`, where `i` can be `i` but also `i+1`, and `U` is the

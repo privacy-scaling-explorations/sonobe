@@ -132,7 +132,9 @@ mod tests {
         // init Verifier's transcript
         let mut transcript_v = PoseidonTranscript::<Projective>::new(&poseidon_config);
 
-        let v: Vec<Fr> = vec![Fr::rand(&mut rng); n];
+        let v: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(&mut rng))
+            .take(n)
+            .collect();
         let r: Fr = Fr::rand(&mut rng);
         let cm = Pedersen::<Projective>::commit(&params, &v, &r).unwrap();
         let proof = Pedersen::<Projective>::prove(&params, &mut transcript_p, &cm, &v, &r).unwrap();

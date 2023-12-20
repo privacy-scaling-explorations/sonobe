@@ -1,5 +1,4 @@
-use ark_ec::CurveGroup;
-use ark_ff::{Field, PrimeField};
+use ark_ff::PrimeField;
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     fields::FieldVar,
@@ -7,11 +6,8 @@ use ark_r1cs_std::{
 use ark_relations::r1cs::{Namespace, SynthesisError};
 use core::{borrow::Borrow, marker::PhantomData};
 
-use crate::ccs::r1cs::RelaxedR1CS;
+use crate::ccs::r1cs::R1CS;
 use crate::utils::vec::SparseMatrix;
-use crate::Error;
-
-pub type ConstraintF<C> = <<C as CurveGroup>::BaseField as Field>::BasePrimeField;
 
 #[derive(Debug, Clone)]
 pub struct RelaxedR1CSGadget<F: PrimeField, CF: PrimeField, FV: FieldVar<F, CF>> {
@@ -21,12 +17,17 @@ pub struct RelaxedR1CSGadget<F: PrimeField, CF: PrimeField, FV: FieldVar<F, CF>>
 }
 impl<F: PrimeField, CF: PrimeField, FV: FieldVar<F, CF>> RelaxedR1CSGadget<F, CF, FV> {
     /// performs the RelaxedR1CS check (Az∘Bz==uCz+E)
-    pub fn check(rel_r1cs: RelaxedR1CSVar<F, CF, FV>, z: Vec<FV>) -> Result<(), Error> {
-        let Az = mat_vec_mul_sparse(rel_r1cs.A, z.clone());
-        let Bz = mat_vec_mul_sparse(rel_r1cs.B, z.clone());
-        let Cz = mat_vec_mul_sparse(rel_r1cs.C, z.clone());
-        let uCz = vec_scalar_mul(&Cz, &rel_r1cs.u);
-        let uCzE = vec_add(&uCz, &rel_r1cs.E)?;
+    pub fn check(
+        r1cs: R1CSVar<F, CF, FV>,
+        E: Vec<FV>,
+        u: FV,
+        z: Vec<FV>,
+    ) -> Result<(), SynthesisError> {
+        let Az = mat_vec_mul_sparse(r1cs.A, z.clone());
+        let Bz = mat_vec_mul_sparse(r1cs.B, z.clone());
+        let Cz = mat_vec_mul_sparse(r1cs.C, z.clone());
+        let uCz = vec_scalar_mul(&Cz, &u);
+        let uCzE = vec_add(&uCz, &E)?;
         let AzBz = hadamard(&Az, &Bz)?;
         for i in 0..AzBz.len() {
             AzBz[i].enforce_equal(&uCzE[i].clone())?;
@@ -50,14 +51,9 @@ fn mat_vec_mul_sparse<F: PrimeField, CF: PrimeField, FV: FieldVar<F, CF>>(
 pub fn vec_add<F: PrimeField, CF: PrimeField, FV: FieldVar<F, CF>>(
     a: &Vec<FV>,
     b: &Vec<FV>,
-) -> Result<Vec<FV>, Error> {
+) -> Result<Vec<FV>, SynthesisError> {
     if a.len() != b.len() {
-        return Err(Error::NotSameLength(
-            "a.len()".to_string(),
-            a.len(),
-            "b.len()".to_string(),
-            b.len(),
-        ));
+        return Err(SynthesisError::Unsatisfiable);
     }
     let mut r: Vec<FV> = vec![FV::zero(); a.len()];
     for i in 0..a.len() {
@@ -78,14 +74,9 @@ pub fn vec_scalar_mul<F: PrimeField, CF: PrimeField, FV: FieldVar<F, CF>>(
 pub fn hadamard<F: PrimeField, CF: PrimeField, FV: FieldVar<F, CF>>(
     a: &Vec<FV>,
     b: &Vec<FV>,
-) -> Result<Vec<FV>, Error> {
+) -> Result<Vec<FV>, SynthesisError> {
     if a.len() != b.len() {
-        return Err(Error::NotSameLength(
-            "a.len()".to_string(),
-            a.len(),
-            "b.len()".to_string(),
-            b.len(),
-        ));
+        return Err(SynthesisError::Unsatisfiable);
     }
     let mut r: Vec<FV> = vec![FV::zero(); a.len()];
     for i in 0..a.len() {
@@ -142,27 +133,25 @@ where
 }
 
 #[derive(Debug, Clone)]
-pub struct RelaxedR1CSVar<F: PrimeField, CF: PrimeField, FV: FieldVar<F, CF>> {
+pub struct R1CSVar<F: PrimeField, CF: PrimeField, FV: FieldVar<F, CF>> {
     _f: PhantomData<F>,
     _cf: PhantomData<CF>,
     _fv: PhantomData<FV>,
     pub A: SparseMatrixVar<F, CF, FV>,
     pub B: SparseMatrixVar<F, CF, FV>,
     pub C: SparseMatrixVar<F, CF, FV>,
-    pub u: FV,
-    pub E: Vec<FV>,
 }
 
-impl<F, CF, FV> AllocVar<RelaxedR1CS<F>, CF> for RelaxedR1CSVar<F, CF, FV>
+impl<F, CF, FV> AllocVar<R1CS<F>, CF> for R1CSVar<F, CF, FV>
 where
     F: PrimeField,
     CF: PrimeField,
     FV: FieldVar<F, CF>,
 {
-    fn new_variable<T: Borrow<RelaxedR1CS<F>>>(
+    fn new_variable<T: Borrow<R1CS<F>>>(
         cs: impl Into<Namespace<CF>>,
         f: impl FnOnce() -> Result<T, SynthesisError>,
-        mode: AllocationMode,
+        _mode: AllocationMode,
     ) -> Result<Self, SynthesisError> {
         f().and_then(|val| {
             let cs = cs.into();
@@ -170,8 +159,6 @@ where
             let A = SparseMatrixVar::<F, CF, FV>::new_constant(cs.clone(), &val.borrow().A)?;
             let B = SparseMatrixVar::<F, CF, FV>::new_constant(cs.clone(), &val.borrow().B)?;
             let C = SparseMatrixVar::<F, CF, FV>::new_constant(cs.clone(), &val.borrow().C)?;
-            let E = Vec::<FV>::new_variable(cs.clone(), || Ok(val.borrow().E.clone()), mode)?;
-            let u = FV::new_variable(cs.clone(), || Ok(val.borrow().u), mode)?;
 
             Ok(Self {
                 _f: PhantomData,
@@ -180,8 +167,6 @@ where
                 A,
                 B,
                 C,
-                E,
-                u,
             })
         })
     }
@@ -219,16 +204,17 @@ mod tests {
     #[test]
     fn test_relaxed_r1cs_small_gadget_handcrafted() {
         let r1cs: R1CS<Fr> = get_test_r1cs();
-        let rel_r1cs = r1cs.relax();
+        let rel_r1cs = r1cs.clone().relax();
         let z = get_test_z(3);
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         let zVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z)).unwrap();
-        let rel_r1csVar =
-            RelaxedR1CSVar::<Fr, Fr, FpVar<Fr>>::new_witness(cs.clone(), || Ok(rel_r1cs)).unwrap();
+        let EVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(rel_r1cs.E)).unwrap();
+        let uVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(rel_r1cs.u)).unwrap();
+        let r1csVar = R1CSVar::<Fr, Fr, FpVar<Fr>>::new_witness(cs.clone(), || Ok(r1cs)).unwrap();
 
-        RelaxedR1CSGadget::<Fr, Fr, FpVar<Fr>>::check(rel_r1csVar, zVar).unwrap();
+        RelaxedR1CSGadget::<Fr, Fr, FpVar<Fr>>::check(r1csVar, EVar, uVar, zVar).unwrap();
         assert!(cs.is_satisfied().unwrap());
     }
 
@@ -246,18 +232,18 @@ mod tests {
         let (r1cs, z) = extract_r1cs_and_z::<Fr>(&cs);
         r1cs.check_relation(&z).unwrap();
 
-        let relaxed_r1cs = r1cs.relax();
+        let relaxed_r1cs = r1cs.clone().relax();
         relaxed_r1cs.check_relation(&z).unwrap();
 
         // set new CS for the circuit that checks the RelaxedR1CS of our original circuit
         let cs = ConstraintSystem::<Fr>::new_ref();
         // prepare the inputs for our circuit
         let zVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z)).unwrap();
-        let rel_r1csVar =
-            RelaxedR1CSVar::<Fr, Fr, FpVar<Fr>>::new_witness(cs.clone(), || Ok(relaxed_r1cs))
-                .unwrap();
+        let EVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(relaxed_r1cs.E)).unwrap();
+        let uVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(relaxed_r1cs.u)).unwrap();
+        let r1csVar = R1CSVar::<Fr, Fr, FpVar<Fr>>::new_witness(cs.clone(), || Ok(r1cs)).unwrap();
 
-        RelaxedR1CSGadget::<Fr, Fr, FpVar<Fr>>::check(rel_r1csVar, zVar).unwrap();
+        RelaxedR1CSGadget::<Fr, Fr, FpVar<Fr>>::check(r1csVar, EVar, uVar, zVar).unwrap();
         assert!(cs.is_satisfied().unwrap());
     }
 
@@ -367,25 +353,29 @@ mod tests {
         let cs = cs.into_inner().unwrap();
         let (r1cs, z) = extract_r1cs_and_z::<Fq>(&cs);
 
-        let relaxed_r1cs = r1cs.relax();
+        let relaxed_r1cs = r1cs.clone().relax();
 
         // natively
         let cs = ConstraintSystem::<Fq>::new_ref();
         let zVar = Vec::<FpVar<Fq>>::new_witness(cs.clone(), || Ok(z.clone())).unwrap();
-        let rel_r1csVar = RelaxedR1CSVar::<Fq, Fq, FpVar<Fq>>::new_witness(cs.clone(), || {
-            Ok(relaxed_r1cs.clone())
-        })
-        .unwrap();
-        RelaxedR1CSGadget::<Fq, Fq, FpVar<Fq>>::check(rel_r1csVar, zVar).unwrap();
+        let EVar =
+            Vec::<FpVar<Fq>>::new_witness(cs.clone(), || Ok(relaxed_r1cs.clone().E)).unwrap();
+        let uVar = FpVar::<Fq>::new_witness(cs.clone(), || Ok(relaxed_r1cs.u)).unwrap();
+        let r1csVar =
+            R1CSVar::<Fq, Fq, FpVar<Fq>>::new_witness(cs.clone(), || Ok(r1cs.clone())).unwrap();
+        RelaxedR1CSGadget::<Fq, Fq, FpVar<Fq>>::check(r1csVar, EVar, uVar, zVar).unwrap();
 
         // non-natively
         let cs = ConstraintSystem::<Fr>::new_ref();
         let zVar = Vec::<NonNativeFieldVar<Fq, Fr>>::new_witness(cs.clone(), || Ok(z)).unwrap();
-        let rel_r1csVar =
-            RelaxedR1CSVar::<Fq, Fr, NonNativeFieldVar<Fq, Fr>>::new_witness(cs.clone(), || {
-                Ok(relaxed_r1cs)
-            })
+        let EVar = Vec::<NonNativeFieldVar<Fq, Fr>>::new_witness(cs.clone(), || Ok(relaxed_r1cs.E))
             .unwrap();
-        RelaxedR1CSGadget::<Fq, Fr, NonNativeFieldVar<Fq, Fr>>::check(rel_r1csVar, zVar).unwrap();
+        let uVar =
+            NonNativeFieldVar::<Fq, Fr>::new_witness(cs.clone(), || Ok(relaxed_r1cs.u)).unwrap();
+        let r1csVar =
+            R1CSVar::<Fq, Fr, NonNativeFieldVar<Fq, Fr>>::new_witness(cs.clone(), || Ok(r1cs))
+                .unwrap();
+        RelaxedR1CSGadget::<Fq, Fr, NonNativeFieldVar<Fq, Fr>>::check(r1csVar, EVar, uVar, zVar)
+            .unwrap();
     }
 }

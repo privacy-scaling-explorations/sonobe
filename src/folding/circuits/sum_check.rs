@@ -72,7 +72,7 @@ pub struct SumCheckVerifierGadget<F: PrimeField> {
 }
 
 impl<F: PrimeField> SumCheckVerifierGadget<F> {
-    pub fn verify_sumcheck(
+    pub fn verify(
         poly_vars: &[DensePolynomialVar<F>],
         claim_var: &FpVar<F>,
         transcript_var: &mut PoseidonTranscriptVar<F>,
@@ -190,7 +190,7 @@ mod tests {
             let claim_var =
                 FpVar::new_variable(cs.clone(), || Ok(claim), AllocationMode::Witness).unwrap();
             let res =
-                SumCheckVerifierGadget::verify_sumcheck(&poly_vars, &claim_var, &mut poseidon_var);
+                SumCheckVerifierGadget::verify(&poly_vars, &claim_var, &mut poseidon_var);
             assert!(res.is_ok());
             assert!(cs.is_satisfied().unwrap());
         }

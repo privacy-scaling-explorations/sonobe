@@ -37,7 +37,6 @@ impl<C: CurveGroup> SumCheckVerifier<C> for IOPVerifierState<C> {
         let res = Self {
             round: 1,
             num_vars: index_info.num_variables,
-            max_degree: index_info.max_degree,
             finished: false,
             polynomials_received: Vec::with_capacity(index_info.num_variables),
             challenges: Vec::with_capacity(index_info.num_variables),

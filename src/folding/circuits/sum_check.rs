@@ -1,5 +1,6 @@
 use crate::{
     transcript::{poseidon::PoseidonTranscriptVar, TranscriptVar},
+    utils::sum_check::structs::IOPProof,
 };
 /// Heavily inspired from testudo: https://github.com/cryptonetlab/testudo/tree/master
 /// Some changes:
@@ -7,13 +8,13 @@ use crate::{
 /// - Uses `folding-schemes`' own `TranscriptVar` trait and `PoseidonTranscriptVar` struct
 /// - API made closer to gadgets found in `folding-schemes`
 use ark_ff::PrimeField;
-use ark_poly::univariate::DensePolynomial;
+use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     eq::EqGadget,
     fields::fp::FpVar,
 };
-use ark_relations::r1cs::{Namespace, SynthesisError};
+use ark_relations::r1cs::{ConstraintSystemRef, Namespace, SynthesisError};
 use std::{borrow::Borrow, marker::PhantomData};
 
 #[derive(Clone, Debug)]
@@ -92,11 +93,30 @@ impl<F: PrimeField> SumCheckVerifierGadget<F> {
     }
 }
 
+pub fn get_poly_vars_from_sumcheck_proof<F: PrimeField>(
+    sum_check: &IOPProof<F>,
+    cs: ConstraintSystemRef<F>,
+) -> Vec<DensePolynomialVar<F>> {
+    let mut poly_vars = Vec::with_capacity(sum_check.proofs.len());
+    sum_check.proofs.iter().for_each(|message| {
+        let poly_received = DensePolynomial::from_coefficients_slice(&message.coeffs);
+        let poly_received_var = DensePolynomialVar::new_variable(
+            cs.clone(),
+            || Ok(poly_received),
+            AllocationMode::Witness,
+        )
+        .unwrap();
+        poly_vars.push(poly_received_var);
+    });
+    poly_vars
+}
+
 #[cfg(test)]
 mod tests {
 
     use std::sync::Arc;
 
+    use crate::folding::circuits::sum_check::get_poly_vars_from_sumcheck_proof;
     use crate::transcript::poseidon::PoseidonTranscriptVar;
     use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
     use crate::transcript::{Transcript, TranscriptVar};
@@ -106,7 +126,7 @@ mod tests {
     use ark_crypto_primitives::sponge::poseidon::PoseidonConfig;
     use ark_crypto_primitives::sponge::Absorb;
     use ark_ec::CurveGroup;
-    use ark_ff::{Field, PrimeField};
+    use ark_ff::Field;
     use ark_pallas::{Fr, Projective};
     use ark_poly::{DenseMultilinearExtension, MultilinearExtension};
     use ark_r1cs_std::alloc::{AllocVar, AllocationMode};
@@ -115,7 +135,7 @@ mod tests {
 
     use super::SumCheckVerifierGadget;
 
-    pub type TestSumCheckProof<F: PrimeField> = (
+    pub type TestSumCheckProof<F> = (
         VirtualPolynomial<F>,
         PoseidonConfig<F>,
         IOPProof<F>,
@@ -171,9 +191,11 @@ mod tests {
                 IOPSumCheck::<Projective, PoseidonTranscript<Projective>>::extract_sum(&sum_check);
             let claim_var =
                 FpVar::new_variable(cs.clone(), || Ok(claim), AllocationMode::Witness).unwrap();
-            let res = SumCheckVerifierGadget::verify(&poly_vars, &claim_var, &mut poseidon_var);
+            let res =
+                SumCheckVerifierGadget::verify(&poly_vars, &claim_var, &mut poseidon_var);
             assert!(res.is_ok());
             assert!(cs.is_satisfied().unwrap());
         }
     }
+
 }

@@ -13,7 +13,7 @@ use crate::{
     transcript::Transcript,
     utils::virtual_polynomial::{VPAuxInfo, VirtualPolynomial},
 };
-use ark_ec::{CurveGroup, Group};
+use ark_ec::{CurveGroup};
 use ark_ff::PrimeField;
 use ark_poly::{DenseMultilinearExtension, DenseUVPolynomial, Polynomial};
 use ark_poly::univariate::DensePolynomial;

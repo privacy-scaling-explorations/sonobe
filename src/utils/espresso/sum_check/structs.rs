@@ -51,7 +51,6 @@ pub struct IOPProverState<C: CurveGroup> {
 pub struct IOPVerifierState<C: CurveGroup> {
     pub(crate) round: usize,
     pub(crate) num_vars: usize,
-    pub(crate) max_degree: usize,
     pub(crate) finished: bool,
     /// a list storing the univariate polynomial in evaluation form sent by the
     /// prover at each round

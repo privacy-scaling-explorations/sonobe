@@ -155,10 +155,10 @@ impl<C: CurveGroup, T: Transcript<C>> SumCheck<C> for IOPSumCheck<C, T> {
         poly: &VirtualPolynomial<C::ScalarField>,
         transcript: &mut impl Transcript<C>,
     ) -> Result<IOPProof<C::ScalarField>, PolyIOPErrors> {
-        transcript.absorb(&<C as Group>::ScalarField::from(
+        transcript.absorb(&C::ScalarField::from(
             poly.aux_info.num_variables as u64,
         ));
-        transcript.absorb(&<C as Group>::ScalarField::from(
+        transcript.absorb(&C::ScalarField::from(
             poly.aux_info.max_degree as u64,
         ));
         let mut prover_state: IOPProverState<C> = IOPProverState::prover_init(poly)?;
@@ -187,10 +187,10 @@ impl<C: CurveGroup, T: Transcript<C>> SumCheck<C> for IOPSumCheck<C, T> {
         aux_info: &VPAuxInfo<C::ScalarField>,
         transcript: &mut impl Transcript<C>,
     ) -> Result<SumCheckSubClaim<C::ScalarField>, PolyIOPErrors> {
-        transcript.absorb(&<C as Group>::ScalarField::from(
+        transcript.absorb(&C::ScalarField::from(
             aux_info.num_variables as u64,
         ));
-        transcript.absorb(&<C as Group>::ScalarField::from(aux_info.max_degree as u64));
+        transcript.absorb(&C::ScalarField::from(aux_info.max_degree as u64));
         let mut verifier_state = IOPVerifierState::verifier_init(aux_info);
         for i in 0..aux_info.num_variables {
             let prover_msg = proof.proofs.get(i).expect("proof is incomplete");

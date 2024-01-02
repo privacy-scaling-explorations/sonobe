@@ -93,30 +93,11 @@ impl<F: PrimeField> SumCheckVerifierGadget<F> {
     }
 }
 
-pub fn get_poly_vars_from_sumcheck_proof<F: PrimeField>(
-    sum_check: &IOPProof<F>,
-    cs: ConstraintSystemRef<F>,
-) -> Vec<DensePolynomialVar<F>> {
-    let mut poly_vars = Vec::with_capacity(sum_check.proofs.len());
-    sum_check.proofs.iter().for_each(|message| {
-        let poly_received = DensePolynomial::from_coefficients_slice(&message.coeffs);
-        let poly_received_var = DensePolynomialVar::new_variable(
-            cs.clone(),
-            || Ok(poly_received),
-            AllocationMode::Witness,
-        )
-        .unwrap();
-        poly_vars.push(poly_received_var);
-    });
-    poly_vars
-}
-
 #[cfg(test)]
 mod tests {
 
     use std::sync::Arc;
 
-    use crate::folding::circuits::sum_check::get_poly_vars_from_sumcheck_proof;
     use crate::transcript::poseidon::PoseidonTranscriptVar;
     use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
     use crate::transcript::{Transcript, TranscriptVar};
@@ -171,7 +152,7 @@ mod tests {
             let (virtual_poly, poseidon_config, sum_check) =
                 get_test_sumcheck_proof::<Projective>(num_vars);
             // initiate univariate polynomial variables
-            let poly_vars = get_poly_vars_from_sumcheck_proof(&sum_check, cs.clone());
+            let poly_vars = sum_check.get_poly_vars_from_sumcheck_proof(cs.clone());
             let poly_num_variables_var = FpVar::new_variable(
                 cs.clone(),
                 || Ok(Fr::from(virtual_poly.aux_info.num_variables as u64)),

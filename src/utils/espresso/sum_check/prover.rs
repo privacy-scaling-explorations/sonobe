@@ -9,8 +9,8 @@
 
 //! Prover subroutines for a SumCheck protocol.
 
-use super::SumCheckProver;
 use super::verifier::compute_lagrange_poly;
+use super::SumCheckProver;
 use crate::utils::multilinear_polynomial::fix_variables;
 use crate::utils::virtual_polynomial::VirtualPolynomial;
 use ark_ec::CurveGroup;

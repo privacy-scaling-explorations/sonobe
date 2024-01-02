@@ -13,18 +13,18 @@ use crate::{
     transcript::Transcript,
     utils::virtual_polynomial::{VPAuxInfo, VirtualPolynomial},
 };
-use ark_ec::{CurveGroup};
+use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
-use ark_poly::{DenseMultilinearExtension, DenseUVPolynomial, Polynomial};
 use ark_poly::univariate::DensePolynomial;
+use ark_poly::{DenseMultilinearExtension, DenseUVPolynomial, Polynomial};
 use ark_std::{end_timer, start_timer};
 use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 
 use crate::utils::sum_check::structs::IOPProverMessage;
 use crate::utils::sum_check::structs::IOPVerifierState;
+use ark_ff::Field;
 use espresso_subroutines::poly_iop::prelude::PolyIOPErrors;
 use structs::{IOPProof, IOPProverState};
-use ark_ff::Field;
 
 mod prover;
 pub mod structs;
@@ -155,12 +155,8 @@ impl<C: CurveGroup, T: Transcript<C>> SumCheck<C> for IOPSumCheck<C, T> {
         poly: &VirtualPolynomial<C::ScalarField>,
         transcript: &mut impl Transcript<C>,
     ) -> Result<IOPProof<C::ScalarField>, PolyIOPErrors> {
-        transcript.absorb(&C::ScalarField::from(
-            poly.aux_info.num_variables as u64,
-        ));
-        transcript.absorb(&C::ScalarField::from(
-            poly.aux_info.max_degree as u64,
-        ));
+        transcript.absorb(&C::ScalarField::from(poly.aux_info.num_variables as u64));
+        transcript.absorb(&C::ScalarField::from(poly.aux_info.max_degree as u64));
         let mut prover_state: IOPProverState<C> = IOPProverState::prover_init(poly)?;
         let mut challenge: Option<C::ScalarField> = None;
         let mut prover_msgs: Vec<IOPProverMessage<C::ScalarField>> =
@@ -187,9 +183,7 @@ impl<C: CurveGroup, T: Transcript<C>> SumCheck<C> for IOPSumCheck<C, T> {
         aux_info: &VPAuxInfo<C::ScalarField>,
         transcript: &mut impl Transcript<C>,
     ) -> Result<SumCheckSubClaim<C::ScalarField>, PolyIOPErrors> {
-        transcript.absorb(&C::ScalarField::from(
-            aux_info.num_variables as u64,
-        ));
+        transcript.absorb(&C::ScalarField::from(aux_info.num_variables as u64));
         transcript.absorb(&C::ScalarField::from(aux_info.max_degree as u64));
         let mut verifier_state = IOPVerifierState::verifier_init(aux_info);
         for i in 0..aux_info.num_variables {

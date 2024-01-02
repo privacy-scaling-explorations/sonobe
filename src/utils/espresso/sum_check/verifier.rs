@@ -15,7 +15,6 @@ use super::{
 };
 use crate::{transcript::Transcript, utils::virtual_polynomial::VPAuxInfo};
 use ark_ec::CurveGroup;
-use ark_ff::Field;
 use ark_ff::PrimeField;
 use ark_poly::Polynomial;
 use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial};
@@ -384,7 +383,10 @@ mod tests {
         let query = Fr::rand(&mut prng);
 
         assert_eq!(poly.evaluate(&query), interpolate_uni_poly(&evals, query)?);
-        assert_eq!(compute_lagrange_poly(&evals).evaluate(&query), interpolate_uni_poly(&evals, query)?);
+        assert_eq!(
+            compute_lagrange_poly(&evals).evaluate(&query),
+            interpolate_uni_poly(&evals, query)?
+        );
 
         // test a polynomial with 33 known points, i.e., with degree 32
         let poly = DensePolynomial::<Fr>::rand(33 - 1, &mut prng);
@@ -394,7 +396,10 @@ mod tests {
         let query = Fr::rand(&mut prng);
 
         assert_eq!(poly.evaluate(&query), interpolate_uni_poly(&evals, query)?);
-        assert_eq!(compute_lagrange_poly(&evals).evaluate(&query), interpolate_uni_poly(&evals, query)?);
+        assert_eq!(
+            compute_lagrange_poly(&evals).evaluate(&query),
+            interpolate_uni_poly(&evals, query)?
+        );
 
         // test a polynomial with 64 known points, i.e., with degree 63
         let poly = DensePolynomial::<Fr>::rand(64 - 1, &mut prng);
@@ -404,7 +409,10 @@ mod tests {
         let query = Fr::rand(&mut prng);
 
         assert_eq!(poly.evaluate(&query), interpolate_uni_poly(&evals, query)?);
-        assert_eq!(compute_lagrange_poly(&evals).evaluate(&query), interpolate_uni_poly(&evals, query)?);
+        assert_eq!(
+            compute_lagrange_poly(&evals).evaluate(&query),
+            interpolate_uni_poly(&evals, query)?
+        );
 
         Ok(())
     }

@@ -9,7 +9,9 @@
 
 //! This module defines structs that are shared by all sub protocols.
 
-use crate::{utils::virtual_polynomial::VirtualPolynomial, folding::circuits::sum_check::DensePolynomialVar};
+use crate::{
+    folding::circuits::sum_check::DensePolynomialVar, utils::virtual_polynomial::VirtualPolynomial,
+};
 use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial};

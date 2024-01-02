@@ -386,6 +386,7 @@ where
         // the CycleFoldCircuit are the sames used in the public inputs 'x', which come from the
         // AugmentedFCircuit.
         // TODO: Issue to keep track of this: https://github.com/privacy-scaling-explorations/folding-schemes/issues/44
+        // and https://github.com/privacy-scaling-explorations/folding-schemes/issues/48
 
         Ok(())
     }

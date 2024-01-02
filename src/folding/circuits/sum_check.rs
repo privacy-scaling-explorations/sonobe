@@ -1,20 +1,17 @@
-use crate::{
-    transcript::{poseidon::PoseidonTranscriptVar, TranscriptVar},
-    utils::sum_check::structs::IOPProof,
-};
+use crate::transcript::{poseidon::PoseidonTranscriptVar, TranscriptVar};
 /// Heavily inspired from testudo: https://github.com/cryptonetlab/testudo/tree/master
 /// Some changes:
 /// - Typings to better stick to ark_poly's API
 /// - Uses `folding-schemes`' own `TranscriptVar` trait and `PoseidonTranscriptVar` struct
 /// - API made closer to gadgets found in `folding-schemes`
 use ark_ff::PrimeField;
-use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial};
+use ark_poly::univariate::DensePolynomial;
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     eq::EqGadget,
     fields::fp::FpVar,
 };
-use ark_relations::r1cs::{ConstraintSystemRef, Namespace, SynthesisError};
+use ark_relations::r1cs::{Namespace, SynthesisError};
 use std::{borrow::Borrow, marker::PhantomData};
 
 #[derive(Clone, Debug)]
@@ -95,32 +92,31 @@ impl<F: PrimeField> SumCheckVerifierGadget<F> {
 
 #[cfg(test)]
 mod tests {
-
-    use std::sync::Arc;
-
-    use crate::transcript::poseidon::PoseidonTranscriptVar;
-    use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
-    use crate::transcript::{Transcript, TranscriptVar};
-    use crate::utils::sum_check::structs::IOPProof;
-    use crate::utils::sum_check::{IOPSumCheck, SumCheck};
-    use crate::utils::virtual_polynomial::VirtualPolynomial;
-    use ark_crypto_primitives::sponge::poseidon::PoseidonConfig;
-    use ark_crypto_primitives::sponge::Absorb;
+    use crate::{
+        transcript::{
+            poseidon::{tests::poseidon_test_config, PoseidonTranscript, PoseidonTranscriptVar},
+            Transcript, TranscriptVar,
+        },
+        utils::{
+            sum_check::{structs::IOPProof, IOPSumCheck, SumCheck},
+            virtual_polynomial::VirtualPolynomial,
+        },
+    };
+    use ark_crypto_primitives::sponge::{poseidon::PoseidonConfig, Absorb};
     use ark_ec::CurveGroup;
     use ark_ff::Field;
     use ark_pallas::{Fr, Projective};
     use ark_poly::{DenseMultilinearExtension, MultilinearExtension};
-    use ark_r1cs_std::alloc::{AllocVar, AllocationMode};
-    use ark_r1cs_std::fields::fp::FpVar;
+    use ark_r1cs_std::{
+        alloc::{AllocVar, AllocationMode},
+        fields::fp::FpVar,
+    };
     use ark_relations::r1cs::ConstraintSystem;
+    use std::sync::Arc;
 
     use super::SumCheckVerifierGadget;
 
-    pub type TestSumCheckProof<F> = (
-        VirtualPolynomial<F>,
-        PoseidonConfig<F>,
-        IOPProof<F>,
-    );
+    pub type TestSumCheckProof<F> = (VirtualPolynomial<F>, PoseidonConfig<F>, IOPProof<F>);
 
     /// Primarily used for testing the sumcheck gadget
     /// Returns a random virtual polynomial, the poseidon config used and the associated sumcheck proof
@@ -172,11 +168,9 @@ mod tests {
                 IOPSumCheck::<Projective, PoseidonTranscript<Projective>>::extract_sum(&sum_check);
             let claim_var =
                 FpVar::new_variable(cs.clone(), || Ok(claim), AllocationMode::Witness).unwrap();
-            let res =
-                SumCheckVerifierGadget::verify(&poly_vars, &claim_var, &mut poseidon_var);
+            let res = SumCheckVerifierGadget::verify(&poly_vars, &claim_var, &mut poseidon_var);
             assert!(res.is_ok());
             assert!(cs.is_satisfied().unwrap());
         }
     }
-
 }

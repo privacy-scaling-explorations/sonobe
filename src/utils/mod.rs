@@ -1,7 +1,7 @@
 pub mod hypercube;
+pub mod lagrange_poly;
 pub mod mle;
 pub mod vec;
-pub mod lagrange_poly;
 
 // expose espresso local modules
 pub mod espresso;

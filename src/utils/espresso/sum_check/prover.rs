@@ -9,10 +9,11 @@
 
 //! Prover subroutines for a SumCheck protocol.
 
-use super::verifier::compute_lagrange_poly;
 use super::SumCheckProver;
-use crate::utils::multilinear_polynomial::fix_variables;
-use crate::utils::virtual_polynomial::VirtualPolynomial;
+use crate::utils::{
+    lagrange_poly::compute_lagrange_poly, multilinear_polynomial::fix_variables,
+    virtual_polynomial::VirtualPolynomial,
+};
 use ark_ec::CurveGroup;
 use ark_ff::Field;
 use ark_ff::{batch_inversion, PrimeField};

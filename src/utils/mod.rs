@@ -1,4 +1,5 @@
 pub mod bit;
+pub mod gadgets;
 pub mod hypercube;
 pub mod mle;
 pub mod vec;

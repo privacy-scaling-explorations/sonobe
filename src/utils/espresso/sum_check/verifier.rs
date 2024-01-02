@@ -137,13 +137,14 @@ impl<C: CurveGroup> SumCheckVerifier<C> for IOPVerifierState<C> {
             .take(self.num_vars)
         {
             let poly = DensePolynomial::from_coefficients_slice(coeffs);
-            let eval_: C::ScalarField =
-                poly.evaluate(&C::ScalarField::ZERO) + poly.evaluate(&C::ScalarField::ONE);
+            let eval_at_one: C::ScalarField = poly.iter().sum();
+            let eval_at_zero: C::ScalarField = poly.coeffs[0];
+            let eval = eval_at_one + eval_at_zero;
 
-            println!("evaluations: {:?}, expected: {:?}", eval_, expected);
+            println!("evaluations: {:?}, expected: {:?}", eval, expected);
             // the deferred check during the interactive phase:
             // 1. check if the received 'P(0) + P(1) = expected`.
-            if eval_ != expected {
+            if eval != expected {
                 return Err(PolyIOPErrors::InvalidProof(
                     "Prover message is not consistent with the claim.".to_string(),
                 ));

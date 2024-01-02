@@ -73,14 +73,14 @@ pub struct SumCheckVerifierGadget<F: PrimeField> {
 
 impl<F: PrimeField> SumCheckVerifierGadget<F> {
     pub fn verify(
-        poly_vars: &[DensePolynomialVar<F>],
+        poly_coeffs_var: &[DensePolynomialVar<F>],
         claim_var: &FpVar<F>,
         transcript_var: &mut PoseidonTranscriptVar<F>,
     ) -> Result<(FpVar<F>, Vec<FpVar<F>>), SynthesisError> {
         let mut e_var = claim_var.clone();
         let mut r_vars: Vec<FpVar<F>> = Vec::new();
 
-        for poly_var in poly_vars.iter() {
+        for poly_var in poly_coeffs_var.iter() {
             let res = poly_var.eval_at_one() + poly_var.eval_at_zero();
             res.enforce_equal(&e_var)?;
             transcript_var.absorb_vec(&poly_var.coeffs)?;

@@ -85,8 +85,8 @@ impl<F: PrimeField> SumCheckVerifierGadget<F> {
             res.enforce_equal(&e_var)?;
             transcript_var.absorb_vec(&poly_var.coeffs)?;
             let r_i_var = transcript_var.get_challenge()?;
-            r_vars.push(r_i_var.clone());
-            e_var = poly_var.evaluate(&r_i_var.clone());
+            e_var = poly_var.evaluate(&r_i_var);
+            r_vars.push(r_i_var);
         }
 
         Ok((e_var, r_vars))

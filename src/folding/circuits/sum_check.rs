@@ -1,4 +1,5 @@
 use crate::utils::espresso::sum_check::SumCheck;
+use crate::utils::virtual_polynomial::VPAuxInfo;
 use crate::{
     transcript::{
         poseidon::{PoseidonTranscript, PoseidonTranscriptVar},
@@ -84,15 +85,15 @@ where
     <C as Group>::ScalarField: Absorb,
 {
     fn new_variable<T: Borrow<IOPProof<C::ScalarField>>>(
-        _cs: impl Into<Namespace<C::ScalarField>>,
-        _f: impl FnOnce() -> Result<T, SynthesisError>,
-        _mode: AllocationMode,
+        cs: impl Into<Namespace<C::ScalarField>>,
+        f: impl FnOnce() -> Result<T, SynthesisError>,
+        mode: AllocationMode,
     ) -> Result<Self, SynthesisError> {
-        _f().and_then(|c| {
-            let cs = _cs.into();
+        f().and_then(|c| {
+            let cs = cs.into();
             let cp: &IOPProof<C::ScalarField> = c.borrow();
             let claim = IOPSumCheck::<C, PoseidonTranscript<C>>::extract_sum(cp);
-            let claim = FpVar::<C::ScalarField>::new_variable(cs.clone(), || Ok(claim), _mode)?;
+            let claim = FpVar::<C::ScalarField>::new_variable(cs.clone(), || Ok(claim), mode)?;
             let mut proofs =
                 Vec::<DensePolynomialVar<C::ScalarField>>::with_capacity(cp.proofs.len());
             for proof in cp.proofs.iter() {
@@ -100,7 +101,7 @@ where
                 let proof = DensePolynomialVar::<C::ScalarField>::new_variable(
                     cs.clone(),
                     || Ok(poly),
-                    _mode,
+                    mode,
                 )?;
                 proofs.push(proof);
             }
@@ -109,28 +110,28 @@ where
     }
 }
 
-/// Auxillary information for a polynomial, (num_variables, max_degree)
-type PolyAuxInfo = (usize, usize);
-
 #[derive(Clone, Debug)]
-pub struct PolyAuxInfoVar<F: PrimeField> {
+pub struct VPAuxInfoVar<F: PrimeField> {
     pub num_variables: FpVar<F>,
     pub max_degree: FpVar<F>,
 }
 
-impl<F: PrimeField> AllocVar<PolyAuxInfo, F> for PolyAuxInfoVar<F> {
-    fn new_variable<T: Borrow<PolyAuxInfo>>(
-        _cs: impl Into<Namespace<F>>,
-        _f: impl FnOnce() -> Result<T, SynthesisError>,
-        _mode: AllocationMode,
+impl<F: PrimeField> AllocVar<VPAuxInfo<F>, F> for VPAuxInfoVar<F> {
+    fn new_variable<T: Borrow<VPAuxInfo<F>>>(
+        cs: impl Into<Namespace<F>>,
+        f: impl FnOnce() -> Result<T, SynthesisError>,
+        mode: AllocationMode,
     ) -> Result<Self, SynthesisError> {
-        _f().and_then(|c| {
-            let cs = _cs.into();
-            let cp: &PolyAuxInfo = c.borrow();
-            let num_variables =
-                FpVar::<F>::new_variable(cs.clone(), || Ok(F::from(cp.0 as u64)), _mode)?;
+        f().and_then(|c| {
+            let cs = cs.into();
+            let cp: &VPAuxInfo<F> = c.borrow();
+            let num_variables = FpVar::<F>::new_variable(
+                cs.clone(),
+                || Ok(F::from(cp.num_variables as u64)),
+                mode,
+            )?;
             let max_degree =
-                FpVar::<F>::new_variable(cs.clone(), || Ok(F::from(cp.1 as u64)), _mode)?;
+                FpVar::<F>::new_variable(cs.clone(), || Ok(F::from(cp.max_degree as u64)), mode)?;
             Ok(Self {
                 num_variables,
                 max_degree,
@@ -148,7 +149,7 @@ impl<C: CurveGroup> SumCheckVerifierGadget<C> {
     #[allow(clippy::type_complexity)]
     pub fn verify(
         iop_proof_var: &IOPProofVar<C>,
-        poly_aux_info_var: &PolyAuxInfoVar<C::ScalarField>,
+        poly_aux_info_var: &VPAuxInfoVar<C::ScalarField>,
         transcript_var: &mut PoseidonTranscriptVar<C::ScalarField>,
     ) -> Result<(FpVar<C::ScalarField>, Vec<FpVar<C::ScalarField>>), SynthesisError> {
         let mut e_var = iop_proof_var.claim.clone();
@@ -172,7 +173,7 @@ impl<C: CurveGroup> SumCheckVerifierGadget<C> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        folding::circuits::sum_check::{IOPProofVar, PolyAuxInfoVar},
+        folding::circuits::sum_check::{IOPProofVar, VPAuxInfoVar},
         transcript::{
             poseidon::{tests::poseidon_test_config, PoseidonTranscript, PoseidonTranscriptVar},
             Transcript, TranscriptVar,
@@ -232,14 +233,9 @@ mod tests {
                 AllocationMode::Witness,
             )
             .unwrap();
-            let poly_aux_info_var = PolyAuxInfoVar::<Fr>::new_variable(
+            let poly_aux_info_var = VPAuxInfoVar::<Fr>::new_variable(
                 cs.clone(),
-                || {
-                    Ok((
-                        virtual_poly.aux_info.num_variables,
-                        virtual_poly.aux_info.max_degree,
-                    ))
-                },
+                || Ok(virtual_poly.aux_info),
                 AllocationMode::Witness,
             )
             .unwrap();

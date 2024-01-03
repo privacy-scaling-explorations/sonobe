@@ -303,14 +303,14 @@ fn u64_factorial(a: usize) -> u64 {
 mod tests {
 
     use super::interpolate_uni_poly;
-    use crate::utils::lagrange_poly::compute_lagrange_poly;
+    use crate::utils::lagrange_poly::compute_lagrange_interpolated_poly;
     use ark_pallas::Fr;
     use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
     use ark_std::{vec::Vec, UniformRand};
     use espresso_subroutines::poly_iop::prelude::PolyIOPErrors;
 
     #[test]
-    fn test_compute_lagrange_poly() {
+    fn test_compute_lagrange_interpolated_poly() {
         let mut prng = ark_std::test_rng();
         for degree in 1..30 {
             let poly = DensePolynomial::<Fr>::rand(degree, &mut prng);
@@ -318,7 +318,7 @@ mod tests {
             let evals = (0..(degree + 1))
                 .map(|i| poly.evaluate(&Fr::from(i as u64)))
                 .collect::<Vec<Fr>>();
-            let lagrange_poly = compute_lagrange_poly(&evals);
+            let lagrange_poly = compute_lagrange_interpolated_poly(&evals);
             for _ in 0..10 {
                 let query = Fr::rand(&mut prng);
                 let lagrange_eval = lagrange_poly.evaluate(&query);
@@ -342,7 +342,7 @@ mod tests {
 
         assert_eq!(poly.evaluate(&query), interpolate_uni_poly(&evals, query)?);
         assert_eq!(
-            compute_lagrange_poly(&evals).evaluate(&query),
+            compute_lagrange_interpolated_poly(&evals).evaluate(&query),
             interpolate_uni_poly(&evals, query)?
         );
 
@@ -355,7 +355,7 @@ mod tests {
 
         assert_eq!(poly.evaluate(&query), interpolate_uni_poly(&evals, query)?);
         assert_eq!(
-            compute_lagrange_poly(&evals).evaluate(&query),
+            compute_lagrange_interpolated_poly(&evals).evaluate(&query),
             interpolate_uni_poly(&evals, query)?
         );
 
@@ -368,7 +368,7 @@ mod tests {
 
         assert_eq!(poly.evaluate(&query), interpolate_uni_poly(&evals, query)?);
         assert_eq!(
-            compute_lagrange_poly(&evals).evaluate(&query),
+            compute_lagrange_interpolated_poly(&evals).evaluate(&query),
             interpolate_uni_poly(&evals, query)?
         );
 

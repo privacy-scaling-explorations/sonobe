@@ -1,7 +1,8 @@
 use ark_ff::PrimeField;
 use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial};
 
-pub fn compute_lagrange_poly<F: PrimeField>(p_i: &[F]) -> DensePolynomial<F> {
+/// Computes the lagrange interpolated polynomial from the given points `p_i`
+pub fn compute_lagrange_interpolated_poly<F: PrimeField>(p_i: &[F]) -> DensePolynomial<F> {
     // TODO: build domain directly from field, avoid explicit conversions within the loop
 
     // domain is 0..p_i.len(), to fit `interpolate_uni_poly` from hyperplonk

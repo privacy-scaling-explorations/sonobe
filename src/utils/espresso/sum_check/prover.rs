@@ -11,7 +11,7 @@
 
 use super::SumCheckProver;
 use crate::utils::{
-    lagrange_poly::compute_lagrange_poly, multilinear_polynomial::fix_variables,
+    lagrange_poly::compute_lagrange_interpolated_poly, multilinear_polynomial::fix_variables,
     virtual_polynomial::VirtualPolynomial,
 };
 use ark_ec::CurveGroup;
@@ -184,7 +184,7 @@ impl<C: CurveGroup> SumCheckProver<C> for IOPProverState<C> {
             .map(|x| Arc::new(x.clone()))
             .collect();
 
-        let prover_poly = compute_lagrange_poly::<C::ScalarField>(&products_sum);
+        let prover_poly = compute_lagrange_interpolated_poly::<C::ScalarField>(&products_sum);
         Ok(IOPProverMessage {
             coeffs: prover_poly.coeffs,
         })

@@ -145,6 +145,7 @@ pub struct SumCheckVerifierGadget<C: CurveGroup> {
 }
 
 impl<C: CurveGroup> SumCheckVerifierGadget<C> {
+    #[allow(clippy::type_complexity)]
     pub fn verify(
         iop_proof_var: &IOPProofVar<C>,
         poly_aux_info_var: &PolyAuxInfoVar<C::ScalarField>,

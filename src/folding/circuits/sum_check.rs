@@ -151,22 +151,23 @@ impl<C: CurveGroup> SumCheckVerifierGadget<C> {
         iop_proof_var: &IOPProofVar<C>,
         poly_aux_info_var: &VPAuxInfoVar<C::ScalarField>,
         transcript_var: &mut PoseidonTranscriptVar<C::ScalarField>,
-    ) -> Result<(FpVar<C::ScalarField>, Vec<FpVar<C::ScalarField>>), SynthesisError> {
-        let mut e_var = iop_proof_var.claim.clone();
+    ) -> Result<(Vec<FpVar<C::ScalarField>>, Vec<FpVar<C::ScalarField>>), SynthesisError> {
+        let mut e_vars = vec![iop_proof_var.claim.clone()];
         let mut r_vars: Vec<FpVar<C::ScalarField>> = Vec::new();
         transcript_var.absorb(poly_aux_info_var.num_variables.clone())?;
         transcript_var.absorb(poly_aux_info_var.max_degree.clone())?;
 
         for poly_var in iop_proof_var.proofs.iter() {
             let res = poly_var.eval_at_one() + poly_var.eval_at_zero();
-            res.enforce_equal(&e_var)?;
+            let e_var = e_vars.last().unwrap();
+            res.enforce_equal(e_var)?;
             transcript_var.absorb_vec(&poly_var.coeffs)?;
             let r_i_var = transcript_var.get_challenge()?;
-            e_var = poly_var.evaluate(&r_i_var);
+            e_vars.push(poly_var.evaluate(&r_i_var));
             r_vars.push(r_i_var);
         }
 
-        Ok((e_var, r_vars))
+        Ok((e_vars, r_vars))
     }
 }
 
@@ -187,8 +188,14 @@ mod tests {
     use ark_ec::CurveGroup;
     use ark_ff::Field;
     use ark_pallas::{Fr, Projective};
-    use ark_poly::{DenseMultilinearExtension, MultilinearExtension};
-    use ark_r1cs_std::alloc::{AllocVar, AllocationMode};
+    use ark_poly::{
+        univariate::DensePolynomial, DenseMultilinearExtension, DenseUVPolynomial,
+        MultilinearExtension, Polynomial,
+    };
+    use ark_r1cs_std::{
+        alloc::{AllocVar, AllocationMode},
+        R1CSVar,
+    };
     use ark_relations::r1cs::ConstraintSystem;
     use std::sync::Arc;
 
@@ -244,7 +251,33 @@ mod tests {
                 &poly_aux_info_var,
                 &mut poseidon_var,
             );
+
             assert!(res.is_ok());
+            let (circuit_evals, r_challenges) = res.unwrap();
+
+            // 1. assert claim from circuit is equal to the one from the sum-check
+            let claim: Fr =
+                IOPSumCheck::<Projective, PoseidonTranscript<Projective>>::extract_sum(&sum_check);
+            assert_eq!(circuit_evals[0].value().unwrap(), claim);
+
+            // 2. assert that all in-circuit evaluations are equal to the ones from the sum-check
+            for ((proof, point), circuit_eval) in sum_check
+                .proofs
+                .iter()
+                .zip(sum_check.point.iter())
+                .zip(circuit_evals.iter().skip(1))
+            // we skip the first one since it's the above checked claim
+            {
+                let poly = DensePolynomial::from_coefficients_slice(&proof.coeffs);
+                let eval = poly.evaluate(point);
+                assert_eq!(eval, circuit_eval.value().unwrap());
+            }
+
+            // 3. assert that all challenges are equal to the ones from the sum-check
+            for (point, r_challenge) in sum_check.point.iter().zip(r_challenges.iter()) {
+                assert_eq!(*point, r_challenge.value().unwrap());
+            }
+
             assert!(cs.is_satisfied().unwrap());
         }
     }

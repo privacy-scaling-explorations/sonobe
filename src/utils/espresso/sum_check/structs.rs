@@ -9,14 +9,9 @@
 
 //! This module defines structs that are shared by all sub protocols.
 
-use crate::{
-    folding::circuits::sum_check::DensePolynomialVar, utils::virtual_polynomial::VirtualPolynomial,
-};
+use crate::utils::virtual_polynomial::VirtualPolynomial;
 use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
-use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial};
-use ark_r1cs_std::alloc::{AllocVar, AllocationMode};
-use ark_relations::r1cs::ConstraintSystemRef;
 use ark_serialize::CanonicalSerialize;
 
 /// An IOP proof is a collections of
@@ -27,28 +22,6 @@ use ark_serialize::CanonicalSerialize;
 pub struct IOPProof<F: PrimeField> {
     pub point: Vec<F>,
     pub proofs: Vec<IOPProverMessage<F>>,
-}
-
-impl<F: PrimeField> IOPProof<F> {
-    /// Instantiates polynomial received in coeffs format in the passed constraint system
-    /// Intended to be called before verifying a sum-check proof in the verifier circuit
-    pub fn get_poly_vars_from_sumcheck_proof(
-        &self,
-        cs: ConstraintSystemRef<F>,
-    ) -> Vec<DensePolynomialVar<F>> {
-        let mut poly_vars = Vec::with_capacity(self.proofs.len());
-        self.proofs.iter().for_each(|message| {
-            let poly_received = DensePolynomial::from_coefficients_slice(&message.coeffs);
-            let poly_received_var = DensePolynomialVar::new_variable(
-                cs.clone(),
-                || Ok(poly_received),
-                AllocationMode::Witness,
-            )
-            .unwrap();
-            poly_vars.push(poly_received_var);
-        });
-        poly_vars
-    }
 }
 
 /// A message from the prover to the verifier at a given round

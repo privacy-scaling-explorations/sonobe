@@ -1,11 +1,20 @@
-use crate::transcript::{poseidon::PoseidonTranscriptVar, TranscriptVar};
+use crate::utils::espresso::sum_check::SumCheck;
+use crate::{
+    transcript::{
+        poseidon::{PoseidonTranscript, PoseidonTranscriptVar},
+        TranscriptVar,
+    },
+    utils::sum_check::{structs::IOPProof, IOPSumCheck},
+};
+use ark_crypto_primitives::sponge::Absorb;
+use ark_ec::{CurveGroup, Group};
 /// Heavily inspired from testudo: https://github.com/cryptonetlab/testudo/tree/master
 /// Some changes:
 /// - Typings to better stick to ark_poly's API
 /// - Uses `folding-schemes`' own `TranscriptVar` trait and `PoseidonTranscriptVar` struct
 /// - API made closer to gadgets found in `folding-schemes`
 use ark_ff::PrimeField;
-use ark_poly::univariate::DensePolynomial;
+use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     eq::EqGadget,
@@ -63,25 +72,90 @@ impl<F: PrimeField> DensePolynomialVar<F> {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct SumCheckVerifierGadget<F: PrimeField> {
-    _f: PhantomData<F>,
+#[derive(Clone, Debug)]
+pub struct IOPProofVar<C: CurveGroup> {
+    // We have to be generic over a CurveGroup because instantiating a IOPProofVar will call IOPSumCheck which requires a CurveGroup
+    pub proofs: Vec<DensePolynomialVar<C::ScalarField>>,
+    pub claim: FpVar<C::ScalarField>,
 }
 
-impl<F: PrimeField> SumCheckVerifierGadget<F> {
-    pub fn verify(
-        poly_coeffs_var: &[DensePolynomialVar<F>],
-        poly_num_variables_var: &FpVar<F>,
-        poly_max_degree_var: &FpVar<F>,
-        claim_var: &FpVar<F>,
-        transcript_var: &mut PoseidonTranscriptVar<F>,
-    ) -> Result<(FpVar<F>, Vec<FpVar<F>>), SynthesisError> {
-        let mut e_var = claim_var.clone();
-        let mut r_vars: Vec<FpVar<F>> = Vec::new();
-        transcript_var.absorb(poly_num_variables_var.clone())?;
-        transcript_var.absorb(poly_max_degree_var.clone())?;
+impl<C: CurveGroup> AllocVar<IOPProof<C::ScalarField>, C::ScalarField> for IOPProofVar<C>
+where
+    <C as Group>::ScalarField: Absorb,
+{
+    fn new_variable<T: Borrow<IOPProof<C::ScalarField>>>(
+        _cs: impl Into<Namespace<C::ScalarField>>,
+        _f: impl FnOnce() -> Result<T, SynthesisError>,
+        _mode: AllocationMode,
+    ) -> Result<Self, SynthesisError> {
+        _f().and_then(|c| {
+            let cs = _cs.into();
+            let cp: &IOPProof<C::ScalarField> = c.borrow();
+            let claim = IOPSumCheck::<C, PoseidonTranscript<C>>::extract_sum(cp);
+            let claim = FpVar::<C::ScalarField>::new_variable(cs.clone(), || Ok(claim), _mode)?;
+            let mut proofs =
+                Vec::<DensePolynomialVar<C::ScalarField>>::with_capacity(cp.proofs.len());
+            for proof in cp.proofs.iter() {
+                let poly = DensePolynomial::from_coefficients_slice(&proof.coeffs);
+                let proof = DensePolynomialVar::<C::ScalarField>::new_variable(
+                    cs.clone(),
+                    || Ok(poly),
+                    _mode,
+                )?;
+                proofs.push(proof);
+            }
+            Ok(Self { proofs, claim })
+        })
+    }
+}
 
-        for poly_var in poly_coeffs_var.iter() {
+/// Auxillary information for a polynomial, (num_variables, max_degree)
+type PolyAuxInfo = (usize, usize);
+
+#[derive(Clone, Debug)]
+pub struct PolyAuxInfoVar<F: PrimeField> {
+    pub num_variables: FpVar<F>,
+    pub max_degree: FpVar<F>,
+}
+
+impl<F: PrimeField> AllocVar<PolyAuxInfo, F> for PolyAuxInfoVar<F> {
+    fn new_variable<T: Borrow<PolyAuxInfo>>(
+        _cs: impl Into<Namespace<F>>,
+        _f: impl FnOnce() -> Result<T, SynthesisError>,
+        _mode: AllocationMode,
+    ) -> Result<Self, SynthesisError> {
+        _f().and_then(|c| {
+            let cs = _cs.into();
+            let cp: &PolyAuxInfo = c.borrow();
+            let num_variables =
+                FpVar::<F>::new_variable(cs.clone(), || Ok(F::from(cp.0 as u64)), _mode)?;
+            let max_degree =
+                FpVar::<F>::new_variable(cs.clone(), || Ok(F::from(cp.1 as u64)), _mode)?;
+            Ok(Self {
+                num_variables,
+                max_degree,
+            })
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SumCheckVerifierGadget<C: CurveGroup> {
+    _f: PhantomData<C>,
+}
+
+impl<C: CurveGroup> SumCheckVerifierGadget<C> {
+    pub fn verify(
+        iop_proof_var: &IOPProofVar<C>,
+        poly_aux_info_var: &PolyAuxInfoVar<C::ScalarField>,
+        transcript_var: &mut PoseidonTranscriptVar<C::ScalarField>,
+    ) -> Result<(FpVar<C::ScalarField>, Vec<FpVar<C::ScalarField>>), SynthesisError> {
+        let mut e_var = iop_proof_var.claim.clone();
+        let mut r_vars: Vec<FpVar<C::ScalarField>> = Vec::new();
+        transcript_var.absorb(poly_aux_info_var.num_variables.clone())?;
+        transcript_var.absorb(poly_aux_info_var.max_degree.clone())?;
+
+        for poly_var in iop_proof_var.proofs.iter() {
             let res = poly_var.eval_at_one() + poly_var.eval_at_zero();
             res.enforce_equal(&e_var)?;
             transcript_var.absorb_vec(&poly_var.coeffs)?;
@@ -97,6 +171,7 @@ impl<F: PrimeField> SumCheckVerifierGadget<F> {
 #[cfg(test)]
 mod tests {
     use crate::{
+        folding::circuits::sum_check::{IOPProofVar, PolyAuxInfoVar},
         transcript::{
             poseidon::{tests::poseidon_test_config, PoseidonTranscript, PoseidonTranscriptVar},
             Transcript, TranscriptVar,
@@ -111,10 +186,7 @@ mod tests {
     use ark_ff::Field;
     use ark_pallas::{Fr, Projective};
     use ark_poly::{DenseMultilinearExtension, MultilinearExtension};
-    use ark_r1cs_std::{
-        alloc::{AllocVar, AllocationMode},
-        fields::fp::FpVar,
-    };
+    use ark_r1cs_std::alloc::{AllocVar, AllocationMode};
     use ark_relations::r1cs::ConstraintSystem;
     use std::sync::Arc;
 
@@ -151,30 +223,28 @@ mod tests {
             let cs = ConstraintSystem::<Fr>::new_ref();
             let (virtual_poly, poseidon_config, sum_check) =
                 get_test_sumcheck_proof::<Projective>(num_vars);
-            // initiate univariate polynomial variables
-            let poly_vars = sum_check.get_poly_vars_from_sumcheck_proof(cs.clone());
-            let poly_num_variables_var = FpVar::new_variable(
+            let mut poseidon_var: PoseidonTranscriptVar<Fr> =
+                PoseidonTranscriptVar::new(cs.clone(), &poseidon_config);
+            let iop_proof_var = IOPProofVar::<Projective>::new_variable(
                 cs.clone(),
-                || Ok(Fr::from(virtual_poly.aux_info.num_variables as u64)),
+                || Ok(&sum_check),
                 AllocationMode::Witness,
             )
             .unwrap();
-            let poly_max_degree_var = FpVar::new_variable(
+            let poly_aux_info_var = PolyAuxInfoVar::<Fr>::new_variable(
                 cs.clone(),
-                || Ok(Fr::from(virtual_poly.aux_info.max_degree as u64)),
+                || {
+                    Ok((
+                        virtual_poly.aux_info.num_variables,
+                        virtual_poly.aux_info.max_degree,
+                    ))
+                },
                 AllocationMode::Witness,
             )
             .unwrap();
-            let mut poseidon_var: PoseidonTranscriptVar<Fr> = PoseidonTranscriptVar::new(cs.clone(), &poseidon_config);
-            let claim =
-                IOPSumCheck::<Projective, PoseidonTranscript<Projective>>::extract_sum(&sum_check);
-            let claim_var =
-                FpVar::new_variable(cs.clone(), || Ok(claim), AllocationMode::Witness).unwrap();
-            let res = SumCheckVerifierGadget::verify(
-                &poly_vars,
-                &poly_num_variables_var,
-                &poly_max_degree_var,
-                &claim_var,
+            let res = SumCheckVerifierGadget::<Projective>::verify(
+                &iop_proof_var,
+                &poly_aux_info_var,
                 &mut poseidon_var,
             );
             assert!(res.is_ok());

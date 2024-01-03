@@ -33,21 +33,29 @@ where
     _gc1: PhantomData<GC1>,
     _c2: PhantomData<C2>,
     _gc2: PhantomData<GC2>,
+    /// R1CS of the Augmented Function circuit
     pub r1cs: R1CS<C1::ScalarField>,
-    pub cf_r1cs: R1CS<C2::ScalarField>, // Notice that this is a different set of R1CS constraints than the 'r1cs'. This is the R1CS of the CycleFoldCircuit
+    /// R1CS of the CycleFold circuit
+    pub cf_r1cs: R1CS<C2::ScalarField>,
     pub poseidon_config: PoseidonConfig<C1::ScalarField>,
-    pub pedersen_params: PedersenParams<C1>, // PedersenParams over C1
-    pub cf_pedersen_params: PedersenParams<C2>, // CycleFold PedersenParams, over C2
-    pub F: FC,                               // F circuit
+    /// PedersenParams over C1
+    pub pedersen_params: PedersenParams<C1>,
+    /// CycleFold PedersenParams, over C2
+    pub cf_pedersen_params: PedersenParams<C2>,
+    /// F circuit, the circuit that is being folded
+    pub F: FC,
     pub i: C1::ScalarField,
+    /// initial state
     pub z_0: Vec<C1::ScalarField>,
+    /// current i-th state
     pub z_i: Vec<C1::ScalarField>,
+    /// Nova instances
     pub w_i: Witness<C1>,
     pub u_i: CommittedInstance<C1>,
     pub W_i: Witness<C1>,
     pub U_i: CommittedInstance<C1>,
 
-    // cyclefold running instance
+    /// CycleFold running instance
     pub cf_W_i: Witness<C2>,
     pub cf_U_i: CommittedInstance<C2>,
 }

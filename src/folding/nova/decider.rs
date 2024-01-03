@@ -28,13 +28,6 @@ use crate::utils::gadgets::{
     hadamard, mat_vec_mul_sparse, vec_add, vec_scalar_mul, SparseMatrixVar,
 };
 
-#[cfg(not(test))]
-use crate::folding::nova::cyclefold::{CycleFoldCommittedInstanceVar, CF_IO_LEN};
-#[cfg(not(test))]
-use crate::pedersen::PedersenGadget;
-#[cfg(not(test))]
-use ark_r1cs_std::ToBitsGadget;
-
 #[derive(Debug, Clone)]
 pub struct RelaxedR1CSGadget<F: PrimeField, CF: PrimeField, FV: FieldVar<F, CF>> {
     _f: PhantomData<F>,
@@ -197,19 +190,28 @@ where
     _c2: PhantomData<C2>,
     _gc2: PhantomData<GC2>,
 
+    /// E vector's length of the Nova instance witness
     pub E_len: usize,
+    /// E vector's length of the CycleFold instance witness
     pub cf_E_len: usize,
+    /// R1CS of the Augmented Function circuit
     pub r1cs: R1CS<C1::ScalarField>,
+    /// R1CS of the CycleFold circuit
     pub cf_r1cs: R1CS<C2::ScalarField>,
-    pub cf_pedersen_params: PedersenParams<C2>, // CycleFold's Pedersen params
+    /// CycleFold PedersenParams, over C2
+    pub cf_pedersen_params: PedersenParams<C2>,
     pub poseidon_config: PoseidonConfig<CF1<C1>>,
     pub i: Option<CF1<C1>>,
+    /// initial state
     pub z_0: Option<Vec<C1::ScalarField>>,
+    /// current i-th state
     pub z_i: Option<Vec<C1::ScalarField>>,
+    /// Nova instances
     pub u_i: Option<CommittedInstance<C1>>,
     pub w_i: Option<Witness<C1>>,
     pub U_i: Option<CommittedInstance<C1>>,
     pub W_i: Option<Witness<C1>>,
+    /// CycleFold running instance
     pub cf_U_i: Option<CommittedInstance<C2>>,
     pub cf_W_i: Option<Witness<C2>>,
 }
@@ -324,6 +326,7 @@ where
         )?;
 
         // 3. u_i.cmE==cm(0), u_i.u==1
+        // Here zero_x & zero_y are the x & y coordinates of the zero point affine representation.
         let zero_x = NonNativeFieldVar::<C1::BaseField, C1::ScalarField>::new_constant(
             cs.clone(),
             C1::BaseField::zero(),
@@ -349,6 +352,12 @@ where
         // the test
         #[cfg(not(test))]
         {
+            // imports here instead of at the top of the file, so we avoid having multiple
+            // `#[cfg(not(test))]
+            use crate::folding::nova::cyclefold::{CycleFoldCommittedInstanceVar, CF_IO_LEN};
+            use crate::pedersen::PedersenGadget;
+            use ark_r1cs_std::ToBitsGadget;
+
             let cf_r1cs = R1CSVar::<
                 C1::BaseField,
                 CF1<C1>,

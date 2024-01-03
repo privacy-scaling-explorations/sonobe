@@ -71,11 +71,15 @@ pub struct SumCheckVerifierGadget<F: PrimeField> {
 impl<F: PrimeField> SumCheckVerifierGadget<F> {
     pub fn verify(
         poly_coeffs_var: &[DensePolynomialVar<F>],
+        poly_num_variables_var: &FpVar<F>,
+        poly_max_degree_var: &FpVar<F>,
         claim_var: &FpVar<F>,
         transcript_var: &mut PoseidonTranscriptVar<F>,
     ) -> Result<(FpVar<F>, Vec<FpVar<F>>), SynthesisError> {
         let mut e_var = claim_var.clone();
         let mut r_vars: Vec<FpVar<F>> = Vec::new();
+        transcript_var.absorb(poly_num_variables_var.clone())?;
+        transcript_var.absorb(poly_max_degree_var.clone())?;
 
         for poly_var in poly_coeffs_var.iter() {
             let res = poly_var.eval_at_one() + poly_var.eval_at_zero();
@@ -161,14 +165,18 @@ mod tests {
                 AllocationMode::Witness,
             )
             .unwrap();
-            let mut poseidon_var = PoseidonTranscriptVar::new(cs.clone(), &poseidon_config);
-            poseidon_var.absorb(poly_num_variables_var).unwrap();
-            poseidon_var.absorb(poly_max_degree_var).unwrap();
+            let mut poseidon_var: PoseidonTranscriptVar<Fr> = PoseidonTranscriptVar::new(cs.clone(), &poseidon_config);
             let claim =
                 IOPSumCheck::<Projective, PoseidonTranscript<Projective>>::extract_sum(&sum_check);
             let claim_var =
                 FpVar::new_variable(cs.clone(), || Ok(claim), AllocationMode::Witness).unwrap();
-            let res = SumCheckVerifierGadget::verify(&poly_vars, &claim_var, &mut poseidon_var);
+            let res = SumCheckVerifierGadget::verify(
+                &poly_vars,
+                &poly_num_variables_var,
+                &poly_max_degree_var,
+                &claim_var,
+                &mut poseidon_var,
+            );
             assert!(res.is_ok());
             assert!(cs.is_satisfied().unwrap());
         }

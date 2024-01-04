@@ -3,8 +3,6 @@ use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial};
 
 /// Computes the lagrange interpolated polynomial from the given points `p_i`
 pub fn compute_lagrange_interpolated_poly<F: PrimeField>(p_i: &[F]) -> DensePolynomial<F> {
-    // TODO: build domain directly from field, avoid explicit conversions within the loop
-
     // domain is 0..p_i.len(), to fit `interpolate_uni_poly` from hyperplonk
     let domain: Vec<usize> = (0..p_i.len()).collect();
 
@@ -23,7 +21,8 @@ pub fn compute_lagrange_interpolated_poly<F: PrimeField>(p_i: &[F]) -> DensePoly
             if x_m != x_j {
                 let prod = (F::from(x_j as u64) - F::from(x_m as u64))
                     .inverse()
-                    .unwrap();
+                    .unwrap(); // an inverse always exists since x_j != x_m (!=0)
+                               // hence, we call unwrap() here without checking the Option's content
                 w_j *= prod;
             }
         }

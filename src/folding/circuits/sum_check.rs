@@ -234,18 +234,10 @@ mod tests {
                 get_test_sumcheck_proof::<Projective>(num_vars);
             let mut poseidon_var: PoseidonTranscriptVar<Fr> =
                 PoseidonTranscriptVar::new(cs.clone(), &poseidon_config);
-            let iop_proof_var = IOPProofVar::<Projective>::new_variable(
-                cs.clone(),
-                || Ok(&sum_check),
-                AllocationMode::Witness,
-            )
-            .unwrap();
-            let poly_aux_info_var = VPAuxInfoVar::<Fr>::new_variable(
-                cs.clone(),
-                || Ok(virtual_poly.aux_info),
-                AllocationMode::Witness,
-            )
-            .unwrap();
+            let iop_proof_var =
+                IOPProofVar::<Projective>::new_witness(cs.clone(), || Ok(&sum_check)).unwrap();
+            let poly_aux_info_var =
+                VPAuxInfoVar::<Fr>::new_witness(cs.clone(), || Ok(virtual_poly.aux_info)).unwrap();
             let res = SumCheckVerifierGadget::<Projective>::verify(
                 &iop_proof_var,
                 &poly_aux_info_var,

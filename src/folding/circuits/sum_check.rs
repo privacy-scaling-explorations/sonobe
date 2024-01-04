@@ -159,7 +159,7 @@ impl<C: CurveGroup> SumCheckVerifierGadget<C> {
 
         for poly_var in iop_proof_var.proofs.iter() {
             let res = poly_var.eval_at_one() + poly_var.eval_at_zero();
-            let e_var = e_vars.last().unwrap();
+            let e_var = e_vars.last().ok_or(SynthesisError::Unsatisfiable)?;
             res.enforce_equal(e_var)?;
             transcript_var.absorb_vec(&poly_var.coeffs)?;
             let r_i_var = transcript_var.get_challenge()?;

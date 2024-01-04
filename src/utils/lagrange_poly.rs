@@ -44,3 +44,80 @@ pub fn compute_lagrange_interpolated_poly<F: PrimeField>(p_i: &[F]) -> DensePoly
 
     lagrange_poly
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::utils::espresso::sum_check::verifier::interpolate_uni_poly;
+    use crate::utils::lagrange_poly::compute_lagrange_interpolated_poly;
+    use ark_pallas::Fr;
+    use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
+    use ark_std::{vec::Vec, UniformRand};
+    use espresso_subroutines::poly_iop::prelude::PolyIOPErrors;
+
+    #[test]
+    fn test_compute_lagrange_interpolated_poly() {
+        let mut prng = ark_std::test_rng();
+        for degree in 1..30 {
+            let poly = DensePolynomial::<Fr>::rand(degree, &mut prng);
+            // range (which is exclusive) is from 0 to degree + 1, since we need degree + 1 evaluations
+            let evals = (0..(degree + 1))
+                .map(|i| poly.evaluate(&Fr::from(i as u64)))
+                .collect::<Vec<Fr>>();
+            let lagrange_poly = compute_lagrange_interpolated_poly(&evals);
+            for _ in 0..10 {
+                let query = Fr::rand(&mut prng);
+                let lagrange_eval = lagrange_poly.evaluate(&query);
+                let eval = poly.evaluate(&query);
+                assert_eq!(eval, lagrange_eval);
+                assert_eq!(lagrange_poly.degree(), poly.degree());
+            }
+        }
+    }
+
+    #[test]
+    fn test_interpolation() -> Result<(), PolyIOPErrors> {
+        let mut prng = ark_std::test_rng();
+
+        // test a polynomial with 20 known points, i.e., with degree 19
+        let poly = DensePolynomial::<Fr>::rand(20 - 1, &mut prng);
+        let evals = (0..20)
+            .map(|i| poly.evaluate(&Fr::from(i)))
+            .collect::<Vec<Fr>>();
+        let query = Fr::rand(&mut prng);
+
+        assert_eq!(poly.evaluate(&query), interpolate_uni_poly(&evals, query)?);
+        assert_eq!(
+            compute_lagrange_interpolated_poly(&evals).evaluate(&query),
+            interpolate_uni_poly(&evals, query)?
+        );
+
+        // test a polynomial with 33 known points, i.e., with degree 32
+        let poly = DensePolynomial::<Fr>::rand(33 - 1, &mut prng);
+        let evals = (0..33)
+            .map(|i| poly.evaluate(&Fr::from(i)))
+            .collect::<Vec<Fr>>();
+        let query = Fr::rand(&mut prng);
+
+        assert_eq!(poly.evaluate(&query), interpolate_uni_poly(&evals, query)?);
+        assert_eq!(
+            compute_lagrange_interpolated_poly(&evals).evaluate(&query),
+            interpolate_uni_poly(&evals, query)?
+        );
+
+        // test a polynomial with 64 known points, i.e., with degree 63
+        let poly = DensePolynomial::<Fr>::rand(64 - 1, &mut prng);
+        let evals = (0..64)
+            .map(|i| poly.evaluate(&Fr::from(i)))
+            .collect::<Vec<Fr>>();
+        let query = Fr::rand(&mut prng);
+
+        assert_eq!(poly.evaluate(&query), interpolate_uni_poly(&evals, query)?);
+        assert_eq!(
+            compute_lagrange_interpolated_poly(&evals).evaluate(&query),
+            interpolate_uni_poly(&evals, query)?
+        );
+
+        Ok(())
+    }
+}

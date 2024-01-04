@@ -192,10 +192,7 @@ mod tests {
         univariate::DensePolynomial, DenseMultilinearExtension, DenseUVPolynomial,
         MultilinearExtension, Polynomial,
     };
-    use ark_r1cs_std::{
-        alloc::{AllocVar},
-        R1CSVar,
-    };
+    use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
     use ark_relations::r1cs::ConstraintSystem;
     use std::sync::Arc;
 

@@ -193,7 +193,7 @@ mod tests {
         MultilinearExtension, Polynomial,
     };
     use ark_r1cs_std::{
-        alloc::{AllocVar, AllocationMode},
+        alloc::{AllocVar},
         R1CSVar,
     };
     use ark_relations::r1cs::ConstraintSystem;

@@ -10,8 +10,10 @@
 //! Prover subroutines for a SumCheck protocol.
 
 use super::SumCheckProver;
-use crate::utils::multilinear_polynomial::fix_variables;
-use crate::utils::virtual_polynomial::VirtualPolynomial;
+use crate::utils::{
+    lagrange_poly::compute_lagrange_interpolated_poly, multilinear_polynomial::fix_variables,
+    virtual_polynomial::VirtualPolynomial,
+};
 use ark_ec::CurveGroup;
 use ark_ff::Field;
 use ark_ff::{batch_inversion, PrimeField};
@@ -182,8 +184,9 @@ impl<C: CurveGroup> SumCheckProver<C> for IOPProverState<C> {
             .map(|x| Arc::new(x.clone()))
             .collect();
 
+        let prover_poly = compute_lagrange_interpolated_poly::<C::ScalarField>(&products_sum);
         Ok(IOPProverMessage {
-            evaluations: products_sum,
+            coeffs: prover_poly.coeffs,
         })
     }
 }

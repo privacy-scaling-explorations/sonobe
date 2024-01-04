@@ -13,14 +13,16 @@ use crate::{
     transcript::Transcript,
     utils::virtual_polynomial::{VPAuxInfo, VirtualPolynomial},
 };
-use ark_ec::{CurveGroup, Group};
+use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
-use ark_poly::DenseMultilinearExtension;
+use ark_poly::univariate::DensePolynomial;
+use ark_poly::{DenseMultilinearExtension, DenseUVPolynomial, Polynomial};
 use ark_std::{end_timer, start_timer};
 use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 
 use crate::utils::sum_check::structs::IOPProverMessage;
 use crate::utils::sum_check::structs::IOPVerifierState;
+use ark_ff::Field;
 use espresso_subroutines::poly_iop::prelude::PolyIOPErrors;
 use structs::{IOPProof, IOPProverState};
 
@@ -143,7 +145,8 @@ impl<C: CurveGroup, T: Transcript<C>> SumCheck<C> for IOPSumCheck<C, T> {
 
     fn extract_sum(proof: &Self::SumCheckProof) -> C::ScalarField {
         let start = start_timer!(|| "extract sum");
-        let res = proof.proofs[0].evaluations[0] + proof.proofs[0].evaluations[1];
+        let poly = DensePolynomial::from_coefficients_vec(proof.proofs[0].coeffs.clone());
+        let res = poly.evaluate(&C::ScalarField::ONE) + poly.evaluate(&C::ScalarField::ZERO);
         end_timer!(start);
         res
     }
@@ -152,12 +155,8 @@ impl<C: CurveGroup, T: Transcript<C>> SumCheck<C> for IOPSumCheck<C, T> {
         poly: &VirtualPolynomial<C::ScalarField>,
         transcript: &mut impl Transcript<C>,
     ) -> Result<IOPProof<C::ScalarField>, PolyIOPErrors> {
-        transcript.absorb(&<C as Group>::ScalarField::from(
-            poly.aux_info.num_variables as u64,
-        ));
-        transcript.absorb(&<C as Group>::ScalarField::from(
-            poly.aux_info.max_degree as u64,
-        ));
+        transcript.absorb(&C::ScalarField::from(poly.aux_info.num_variables as u64));
+        transcript.absorb(&C::ScalarField::from(poly.aux_info.max_degree as u64));
         let mut prover_state: IOPProverState<C> = IOPProverState::prover_init(poly)?;
         let mut challenge: Option<C::ScalarField> = None;
         let mut prover_msgs: Vec<IOPProverMessage<C::ScalarField>> =
@@ -165,7 +164,7 @@ impl<C: CurveGroup, T: Transcript<C>> SumCheck<C> for IOPSumCheck<C, T> {
         for _ in 0..poly.aux_info.num_variables {
             let prover_msg: IOPProverMessage<C::ScalarField> =
                 IOPProverState::prove_round_and_update_state(&mut prover_state, &challenge)?;
-            transcript.absorb_vec(&prover_msg.evaluations);
+            transcript.absorb_vec(&prover_msg.coeffs);
             prover_msgs.push(prover_msg);
             challenge = Some(transcript.get_challenge());
         }
@@ -184,14 +183,12 @@ impl<C: CurveGroup, T: Transcript<C>> SumCheck<C> for IOPSumCheck<C, T> {
         aux_info: &VPAuxInfo<C::ScalarField>,
         transcript: &mut impl Transcript<C>,
     ) -> Result<SumCheckSubClaim<C::ScalarField>, PolyIOPErrors> {
-        transcript.absorb(&<C as Group>::ScalarField::from(
-            aux_info.num_variables as u64,
-        ));
-        transcript.absorb(&<C as Group>::ScalarField::from(aux_info.max_degree as u64));
+        transcript.absorb(&C::ScalarField::from(aux_info.num_variables as u64));
+        transcript.absorb(&C::ScalarField::from(aux_info.max_degree as u64));
         let mut verifier_state = IOPVerifierState::verifier_init(aux_info);
         for i in 0..aux_info.num_variables {
             let prover_msg = proof.proofs.get(i).expect("proof is incomplete");
-            transcript.absorb_vec(&prover_msg.evaluations);
+            transcript.absorb_vec(&prover_msg.coeffs);
             IOPVerifierState::verify_round_and_update_state(
                 &mut verifier_state,
                 prover_msg,

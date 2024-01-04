@@ -1,5 +1,6 @@
 pub mod bit;
 pub mod hypercube;
+pub mod lagrange_poly;
 pub mod mle;
 pub mod vec;
 

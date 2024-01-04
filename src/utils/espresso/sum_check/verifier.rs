@@ -16,8 +16,9 @@ use super::{
 use crate::{transcript::Transcript, utils::virtual_polynomial::VPAuxInfo};
 use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
+use ark_poly::Polynomial;
+use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial};
 use ark_std::{end_timer, start_timer};
-
 use espresso_subroutines::poly_iop::prelude::PolyIOPErrors;
 
 #[cfg(feature = "parallel")]
@@ -35,7 +36,6 @@ impl<C: CurveGroup> SumCheckVerifier<C> for IOPVerifierState<C> {
         let res = Self {
             round: 1,
             num_vars: index_info.num_variables,
-            max_degree: index_info.max_degree,
             finished: false,
             polynomials_received: Vec::with_capacity(index_info.num_variables),
             challenges: Vec::with_capacity(index_info.num_variables),
@@ -67,8 +67,7 @@ impl<C: CurveGroup> SumCheckVerifier<C> for IOPVerifierState<C> {
         // such checks to `check_and_generate_subclaim` after the last round.
         let challenge = transcript.get_challenge();
         self.challenges.push(challenge);
-        self.polynomials_received
-            .push(prover_msg.evaluations.to_vec());
+        self.polynomials_received.push(prover_msg.coeffs.to_vec());
 
         if self.round == self.num_vars {
             // accept and close
@@ -107,15 +106,10 @@ impl<C: CurveGroup> SumCheckVerifier<C> for IOPVerifierState<C> {
             .clone()
             .into_par_iter()
             .zip(self.challenges.clone().into_par_iter())
-            .map(|(evaluations, challenge)| {
-                if evaluations.len() != self.max_degree + 1 {
-                    return Err(PolyIOPErrors::InvalidVerifier(format!(
-                        "incorrect number of evaluations: {} vs {}",
-                        evaluations.len(),
-                        self.max_degree + 1
-                    )));
-                }
-                interpolate_uni_poly::<C::ScalarField>(&evaluations, challenge)
+            .map(|(coeffs, challenge)| {
+                // Removed check on number of evaluations here since verifier receives polynomial in coeffs form
+                let prover_poly = DensePolynomial::from_coefficients_slice(&coeffs);
+                Ok(prover_poly.evaluate(&challenge))
             })
             .collect::<Result<Vec<_>, PolyIOPErrors>>()?;
 
@@ -126,32 +120,30 @@ impl<C: CurveGroup> SumCheckVerifier<C> for IOPVerifierState<C> {
             .into_iter()
             .zip(self.challenges.clone().into_iter())
             .map(|(evaluations, challenge)| {
-                if evaluations.len() != self.max_degree + 1 {
-                    return Err(PolyIOPErrors::InvalidVerifier(format!(
-                        "incorrect number of evaluations: {} vs {}",
-                        evaluations.len(),
-                        self.max_degree + 1
-                    )));
-                }
-                interpolate_uni_poly::<F>(&evaluations, challenge)
+                // Removed check on number of evaluations here since verifier receives polynomial in coeffs form
+                let prover_poly = DensePolynomial::from_coefficients_slice(&coeffs);
+                Ok(prover_poly.evaluate(&challenge))
             })
             .collect::<Result<Vec<_>, PolyIOPErrors>>()?;
 
         // insert the asserted_sum to the first position of the expected vector
         expected_vec.insert(0, *asserted_sum);
 
-        for (evaluations, &expected) in self
+        for (coeffs, &expected) in self
             .polynomials_received
             .iter()
             .zip(expected_vec.iter())
             .take(self.num_vars)
         {
-            let eval_: C::ScalarField = evaluations[0] + evaluations[1];
+            let poly = DensePolynomial::from_coefficients_slice(coeffs);
+            let eval_at_one: C::ScalarField = poly.iter().sum();
+            let eval_at_zero: C::ScalarField = poly.coeffs[0];
+            let eval = eval_at_one + eval_at_zero;
 
-            println!("evaluations: {:?}, expected: {:?}", eval_, expected);
+            println!("evaluations: {:?}, expected: {:?}", eval, expected);
             // the deferred check during the interactive phase:
             // 1. check if the received 'P(0) + P(1) = expected`.
-            if evaluations[0] + evaluations[1] != expected {
+            if eval != expected {
                 return Err(PolyIOPErrors::InvalidProof(
                     "Prover message is not consistent with the claim.".to_string(),
                 ));
@@ -305,47 +297,4 @@ fn u64_factorial(a: usize) -> u64 {
         res *= i as u64;
     }
     res
-}
-
-#[cfg(test)]
-mod tests {
-    use super::interpolate_uni_poly;
-    use ark_pallas::Fr;
-    use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
-    use ark_std::{vec::Vec, UniformRand};
-    use espresso_subroutines::poly_iop::prelude::PolyIOPErrors;
-
-    #[test]
-    fn test_interpolation() -> Result<(), PolyIOPErrors> {
-        let mut prng = ark_std::test_rng();
-
-        // test a polynomial with 20 known points, i.e., with degree 19
-        let poly = DensePolynomial::<Fr>::rand(20 - 1, &mut prng);
-        let evals = (0..20)
-            .map(|i| poly.evaluate(&Fr::from(i)))
-            .collect::<Vec<Fr>>();
-        let query = Fr::rand(&mut prng);
-
-        assert_eq!(poly.evaluate(&query), interpolate_uni_poly(&evals, query)?);
-
-        // test a polynomial with 33 known points, i.e., with degree 32
-        let poly = DensePolynomial::<Fr>::rand(33 - 1, &mut prng);
-        let evals = (0..33)
-            .map(|i| poly.evaluate(&Fr::from(i)))
-            .collect::<Vec<Fr>>();
-        let query = Fr::rand(&mut prng);
-
-        assert_eq!(poly.evaluate(&query), interpolate_uni_poly(&evals, query)?);
-
-        // test a polynomial with 64 known points, i.e., with degree 63
-        let poly = DensePolynomial::<Fr>::rand(64 - 1, &mut prng);
-        let evals = (0..64)
-            .map(|i| poly.evaluate(&Fr::from(i)))
-            .collect::<Vec<Fr>>();
-        let query = Fr::rand(&mut prng);
-
-        assert_eq!(poly.evaluate(&query), interpolate_uni_poly(&evals, query)?);
-
-        Ok(())
-    }
 }

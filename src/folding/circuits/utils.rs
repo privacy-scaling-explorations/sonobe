@@ -1,10 +1,7 @@
-// hypernova nimfs verifier circuit
-// see section 5 in https://eprint.iacr.org/2023/573.pdf
-use std::marker::PhantomData;
-
 use ark_ff::PrimeField;
 use ark_r1cs_std::fields::{fp::FpVar, FieldVar};
 use ark_relations::r1cs::SynthesisError;
+use std::marker::PhantomData;
 
 /// EqEval is a gadget for computing $\tilde{eq}(a, b) = \Pi_{i=1}^{l}(a_i \cdot b_i + (1 - a_i)(1 - b_i))$
 /// :warning: This is not the ark_r1cs_std::eq::EqGadget

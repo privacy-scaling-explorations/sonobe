@@ -2,9 +2,9 @@
 use ark_ec::CurveGroup;
 use ark_ff::Field;
 
-pub mod nimfs_verifier;
 pub mod nonnative;
 pub mod sum_check;
+pub mod utils;
 
 // CF represents the constraints field
 pub type CF<C> = <<C as CurveGroup>::BaseField as Field>::BasePrimeField;

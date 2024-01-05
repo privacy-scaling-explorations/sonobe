@@ -2,7 +2,6 @@
 use ark_ec::CurveGroup;
 use ark_ff::Field;
 
-pub mod nimfs_verifier;
 pub mod nonnative;
 pub mod sum_check;
 

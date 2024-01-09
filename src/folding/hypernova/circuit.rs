@@ -4,36 +4,11 @@
 use crate::folding::circuits::utils::VecFpVar;
 use ark_ff::PrimeField;
 use ark_r1cs_std::{
-    alloc::{AllocVar, AllocationMode},
     fields::{fp::FpVar, FieldVar},
     ToBitsGadget,
 };
-use ark_relations::r1cs::{Namespace, SynthesisError};
-use std::{borrow::Borrow, marker::PhantomData};
-
-/// `GammaVar` is a wrapper around an `FpVar` for $\gamma$.
-#[derive(Clone)]
-pub struct GammaVar<F: PrimeField> {
-    pub value: FpVar<F>,
-}
-
-impl<F: PrimeField> AllocVar<F, F> for GammaVar<F> {
-    fn new_variable<T: Borrow<F>>(
-        cs: impl Into<Namespace<F>>,
-        f: impl FnOnce() -> Result<T, SynthesisError>,
-        mode: AllocationMode,
-    ) -> Result<Self, SynthesisError> {
-        FpVar::new_variable(cs, f, mode).map(|value| Self { value })
-    }
-}
-
-impl<F: PrimeField> GammaVar<F> {
-    /// An helper to compute $\gamma^{pow}$
-    pub fn pow(&self, pow: FpVar<F>) -> Result<FpVar<F>, SynthesisError> {
-        let pow = pow.to_bits_le()?;
-        self.value.pow_le(&pow)
-    }
-}
+use ark_relations::r1cs::SynthesisError;
+use std::marker::PhantomData;
 
 /// Gadget to compute the sum of all $\gamma^{j} \cdot eq(r_{x_j}, r_x^{\prime}) \cdot \sigma_j$.
 pub struct SumMulsGammaPowsEqSigmaGadget<F: PrimeField> {
@@ -55,14 +30,14 @@ impl<F: PrimeField> SumMulsGammaPowsEqSigmaGadget<F> {
     pub fn sum_muls_gamma_pows_eq_sigma(
         sigmas: VecFpVar<F>,
         eq_eval: FpVar<F>,
-        gamma: GammaVar<F>,
+        gamma: FpVar<F>,
         j: FpVar<F>,
     ) -> Result<FpVar<F>, SynthesisError> {
         let mut result = FpVar::<F>::zero();
-        let mut gamma_pow = gamma.pow(j).map_err(|_| SynthesisError::Unsatisfiable)?;
+        let mut gamma_pow = gamma.pow_le(&j.to_bits_le()?)?;
         for sigma in sigmas {
             result += gamma_pow.clone() * eq_eval.clone() * sigma;
-            gamma_pow *= gamma.value.clone();
+            gamma_pow *= gamma.clone();
         }
         Ok(result)
     }
@@ -70,7 +45,7 @@ impl<F: PrimeField> SumMulsGammaPowsEqSigmaGadget<F> {
 
 #[cfg(test)]
 mod tests {
-    use super::{GammaVar, SumMulsGammaPowsEqSigmaGadget};
+    use super::SumMulsGammaPowsEqSigmaGadget;
     use crate::{
         ccs::{
             tests::{get_test_ccs, get_test_z},
@@ -111,7 +86,7 @@ mod tests {
 
         // Initialize cs and gamma
         let cs = ConstraintSystem::<Fr>::new_ref();
-        let gamma_var = GammaVar::<Fr>::new_constant(cs.clone(), gamma).unwrap();
+        let gamma_var = FpVar::<Fr>::new_constant(cs.clone(), gamma).unwrap();
 
         for (i, sigmas) in sigmas_thetas.0.iter().enumerate() {
             let expected =

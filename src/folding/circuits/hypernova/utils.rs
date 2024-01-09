@@ -32,23 +32,24 @@ impl<F: PrimeField> GammaVar<F> {
     }
 }
 
-/// `SumMulsGammaPowEqSigmaGadget` is a gadget that computes the sum of all $\gamma^{j} \cdot eq(r_{x_j}, r_x^{\prime}) \cdot \sigma_j$.
-pub struct SumMulsGammaPowEqSigmaGadget<F: PrimeField> {
+/// Gadget to compute the sum of all $\gamma^{j} \cdot eq(r_{x_j}, r_x^{\prime}) \cdot \sigma_j$.
+pub struct SumMulsGammaPowsEqSigmaGadget<F: PrimeField> {
     _f: PhantomData<F>,
 }
 
-impl<F: PrimeField> SumMulsGammaPowEqSigmaGadget<F> {
+impl<F: PrimeField> SumMulsGammaPowsEqSigmaGadget<F> {
     /// Computes the sum $\Sigma_{j}^{j + n} \gamma^{j} \cdot eq_eval \cdot \sigma_{j}$, where $n$ is the length of the `sigmas` vector
-    /// It corresponds to the first term of the sum that $\mathcal{V}$ has to compute at step 5. in section 5 "A multi-folding scheme for CCS"
+    /// It corresponds to the first term of the sum that $\mathcal{V}$ has to compute at section 5, step 5 of "A multi-folding scheme for CCS".
+    ///
     /// # Arguments
-    /// - `sigmas` is `VecFpVar`
-    /// - `eq_eval` is the value of $\tilde{eq}(x_j, x^{\prime})$
-    /// - `gamma` is a `GammaVar`, which supports a `pow` method
-    /// - `j`, the power at which we start to compute $\gamma^{j}$
+    /// - `sigmas`: vector of $\sigma_j$ values
+    /// - `eq_eval`: the value of $\tilde{eq}(x_j, x^{\prime})$
+    /// - `gamma`: a `GammaVar`, which supports a `pow` method, representing $\gamma$
+    /// - `j`: the power at which we start to compute $\gamma^{j}$. This is needed in the contexxt of multifolding.
     ///
     /// # Notes
     /// In the context of multifolding, `j` corresponds to `ccs.t` in `compute_c_from_sigmas_and_thetas`
-    pub fn sum_muls_gamma_pow_eq_sigma(
+    pub fn sum_muls_gamma_pows_eq_sigma(
         sigmas: VecFpVar<F>,
         eq_eval: FpVar<F>,
         gamma: GammaVar<F>,
@@ -66,7 +67,7 @@ impl<F: PrimeField> SumMulsGammaPowEqSigmaGadget<F> {
 
 #[cfg(test)]
 mod tests {
-    use super::{GammaVar, SumMulsGammaPowEqSigmaGadget};
+    use super::{GammaVar, SumMulsGammaPowsEqSigmaGadget};
     use crate::{
         ccs::{
             tests::{get_test_ccs, get_test_z},
@@ -87,7 +88,6 @@ mod tests {
     #[test]
     pub fn test_sum_muls_gamma_pow_eq_sigma_gadget() {
         let mut rng = test_rng();
-        let cs = ConstraintSystem::<Fr>::new_ref();
         let ccs: CCS<Projective> = get_test_ccs();
         let z1 = get_test_z(3);
         let z2 = get_test_z(4);
@@ -106,14 +106,17 @@ mod tests {
             e_lcccs.push(eq_eval(r_x, &r_x_prime).unwrap());
         }
 
+        // Initialize cs and gamma
+        let cs = ConstraintSystem::<Fr>::new_ref();
         let gamma_var = GammaVar::<Fr>::new_constant(cs.clone(), gamma).unwrap();
+
         for (i, sigmas) in sigmas_thetas.0.iter().enumerate() {
             let expected =
                 sum_muls_gamma_pows_eq_sigma(gamma, e_lcccs[i], sigmas, (i * ccs.t) as u64);
             let sigmas_var = VecFpVar::<Fr>::new_constant(cs.clone(), sigmas).unwrap();
             let eq_var = FpVar::<Fr>::new_constant(cs.clone(), e_lcccs[i]).unwrap();
             let pow = FpVar::<Fr>::new_constant(cs.clone(), Fr::from((i * ccs.t) as u64)).unwrap();
-            let computed = SumMulsGammaPowEqSigmaGadget::sum_muls_gamma_pow_eq_sigma(
+            let computed = SumMulsGammaPowsEqSigmaGadget::sum_muls_gamma_pow_eq_sigma(
                 sigmas_var,
                 eq_var,
                 gamma_var.clone(),
@@ -121,7 +124,6 @@ mod tests {
             )
             .unwrap();
             assert_eq!(expected, computed.value().unwrap());
-            dbg!(expected, computed.value().unwrap());
         }
     }
 }

@@ -91,12 +91,12 @@ pub fn compute_sigmas_and_thetas<C: CurveGroup>(
 pub fn sum_muls_gamma_pows_eq_sigma<F: PrimeField>(
     gamma: F,
     eq_eval: F,
-    sigmas: &Vec<F>,
+    sigmas: &[F],
     pow: u64,
 ) -> F {
     let mut result = F::zero();
     for (j, sigma_j) in sigmas.iter().enumerate() {
-        let gamma_j = gamma.pow([(pow + (j as u64)) as u64]);
+        let gamma_j = gamma.pow([(pow + (j as u64))]);
         result += gamma_j * eq_eval * sigma_j;
     }
     result

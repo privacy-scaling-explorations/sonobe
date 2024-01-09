@@ -116,7 +116,7 @@ mod tests {
             let sigmas_var = VecFpVar::<Fr>::new_constant(cs.clone(), sigmas).unwrap();
             let eq_var = FpVar::<Fr>::new_constant(cs.clone(), e_lcccs[i]).unwrap();
             let pow = FpVar::<Fr>::new_constant(cs.clone(), Fr::from((i * ccs.t) as u64)).unwrap();
-            let computed = SumMulsGammaPowsEqSigmaGadget::sum_muls_gamma_pow_eq_sigma(
+            let computed = SumMulsGammaPowsEqSigmaGadget::sum_muls_gamma_pows_eq_sigma(
                 sigmas_var,
                 eq_var,
                 gamma_var.clone(),

@@ -52,14 +52,14 @@ impl<F: PrimeField> SumMulsGammaPowsEqSigmaGadget<F> {
     pub fn sum_muls_gamma_pows_eq_sigma(
         sigmas: VecFpVar<F>,
         eq_eval: FpVar<F>,
-        gamma: GammaVar<F>,
+        gamma: FpVar<F>,
         j: FpVar<F>,
     ) -> Result<FpVar<F>, SynthesisError> {
         let mut result = FpVar::<F>::zero();
-        let mut gamma_pow = gamma.pow(j).map_err(|_| SynthesisError::Unsatisfiable)?;
+        let mut gamma_pow = gamma.pow_le(&j.to_bits_le()?)?;
         for sigma in sigmas {
             result += gamma_pow.clone() * eq_eval.clone() * sigma;
-            gamma_pow *= gamma.value.clone();
+            gamma_pow *= gamma.clone();
         }
         Ok(result)
     }

@@ -32,6 +32,7 @@ use super::{
 };
 use crate::constants::N_BITS_RO;
 use crate::folding::circuits::nonnative::{point_to_nonnative_limbs, NonNativeAffineVar};
+use crate::frontend::FCircuit;
 
 /// CF1 represents the ConstraintField used for the main Nova circuit which is over E1::Fr, where
 /// E1 is the main curve where we do the folding.
@@ -229,31 +230,6 @@ where
         let bits = sponge.squeeze_bits(N_BITS_RO)?;
         Ok(bits)
     }
-}
-
-/// FCircuit defines the trait of the circuit of the F function, which is the one being executed
-/// inside the agmented F' function.
-pub trait FCircuit<F: PrimeField>: Clone + Copy + Debug {
-    /// returns a new FCircuit instance
-    fn new() -> Self;
-
-    /// computes the next state values in place, assigning z_{i+1} into z_i, and
-    /// computing the new z_i
-    fn step_native(
-        // this method uses self, so that each FCircuit implementation (and different frontends)
-        // can hold a state if needed to store data to compute the next state.
-        self,
-        z_i: Vec<F>,
-    ) -> Vec<F>;
-
-    /// generates the constraints for the step of F for the given z_i
-    fn generate_step_constraints(
-        // this method uses self, so that each FCircuit implementation (and different frontends)
-        // can hold a state if needed to store data to generate the constraints.
-        self,
-        cs: ConstraintSystemRef<F>,
-        z_i: Vec<FpVar<F>>,
-    ) -> Result<Vec<FpVar<F>>, SynthesisError>;
 }
 
 /// AugmentedFCircuit implements the F' circuit (augmented F) defined in
@@ -493,40 +469,14 @@ pub mod tests {
     use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
     use tracing_subscriber::layer::SubscriberExt;
 
+    use crate::ccs::r1cs::{extract_r1cs, extract_w_x};
     use crate::folding::nova::nifs::tests::prepare_simple_fold_inputs;
     use crate::folding::nova::{
         ivc::get_committed_instance_coordinates, nifs::NIFS, traits::NovaR1CS, Witness,
     };
-    use crate::frontend::arkworks::{extract_r1cs, extract_z};
+    use crate::frontend::tests::CubicFCircuit;
     use crate::pedersen::Pedersen;
     use crate::transcript::poseidon::tests::poseidon_test_config;
-
-    #[derive(Clone, Copy, Debug)]
-    /// TestFCircuit is a variation of `x^3 + x + 5 = y` (as in
-    /// src/frontend/arkworks/mod.rs#tests::TestCircuit), adapted to have 2 public inputs which are
-    /// used as the state. `z_i` is used as `x`, and `z_{i+1}` is used as `y`, and at the next
-    /// step, `z_{i+1}` will be assigned to `z_i`, and a new `z+{i+1}` will be computted.
-    pub struct TestFCircuit<F: PrimeField> {
-        _f: PhantomData<F>,
-    }
-    impl<F: PrimeField> FCircuit<F> for TestFCircuit<F> {
-        fn new() -> Self {
-            Self { _f: PhantomData }
-        }
-        fn step_native(self, z_i: Vec<F>) -> Vec<F> {
-            vec![z_i[0] * z_i[0] * z_i[0] + z_i[0] + F::from(5_u32)]
-        }
-        fn generate_step_constraints(
-            self,
-            cs: ConstraintSystemRef<F>,
-            z_i: Vec<FpVar<F>>,
-        ) -> Result<Vec<FpVar<F>>, SynthesisError> {
-            let five = FpVar::<F>::new_constant(cs.clone(), F::from(5u32))?;
-            let z_i = z_i[0].clone();
-
-            Ok(vec![&z_i * &z_i * &z_i + &z_i + &five])
-        }
-    }
 
     #[test]
     fn test_committed_instance_var() {
@@ -675,7 +625,7 @@ pub mod tests {
     }
 
     #[test]
-    /// test_augmented_f_circuit folds the TestFCircuit circuit in multiple iterations, feeding the
+    /// test_augmented_f_circuit folds the CubicFCircuit circuit in multiple iterations, feeding the
     /// values into the AugmentedFCircuit.
     fn test_augmented_f_circuit() {
         let mut layer = ConstraintLayer::default();
@@ -690,9 +640,9 @@ pub mod tests {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         // prepare the circuit to obtain its R1CS
-        let F_circuit = TestFCircuit::<Fr>::new();
+        let F_circuit = CubicFCircuit::<Fr>::new(());
         let mut augmented_F_circuit =
-            AugmentedFCircuit::<Projective, Projective2, GVar2, TestFCircuit<Fr>>::empty(
+            AugmentedFCircuit::<Projective, Projective2, GVar2, CubicFCircuit<Fr>>::empty(
                 &poseidon_config,
                 F_circuit,
             );
@@ -703,9 +653,7 @@ pub mod tests {
         println!("num_constraints={:?}", cs.num_constraints());
         let cs = cs.into_inner().unwrap();
         let r1cs = extract_r1cs::<Fr>(&cs);
-        let z = extract_z::<Fr>(&cs); // includes 1 and public inputs
-        let (w, x) = r1cs.split_z(&z);
-        assert_eq!(z.len(), r1cs.A.n_cols);
+        let (w, x) = extract_w_x::<Fr>(&cs);
         assert_eq!(1 + x.len() + w.len(), r1cs.A.n_cols);
         assert_eq!(r1cs.l, x.len());
 
@@ -748,7 +696,7 @@ pub mod tests {
 
                 // base case
                 augmented_F_circuit =
-                    AugmentedFCircuit::<Projective, Projective2, GVar2, TestFCircuit<Fr>> {
+                    AugmentedFCircuit::<Projective, Projective2, GVar2, CubicFCircuit<Fr>> {
                         _gc2: PhantomData,
                         poseidon_config: poseidon_config.clone(),
                         i: Some(i),             // = 0
@@ -840,7 +788,7 @@ pub mod tests {
                 .unwrap();
 
                 augmented_F_circuit =
-                    AugmentedFCircuit::<Projective, Projective2, GVar2, TestFCircuit<Fr>> {
+                    AugmentedFCircuit::<Projective, Projective2, GVar2, CubicFCircuit<Fr>> {
                         _gc2: PhantomData,
                         poseidon_config: poseidon_config.clone(),
                         i: Some(i),
@@ -873,10 +821,7 @@ pub mod tests {
 
             cs.finalize();
             let cs = cs.into_inner().unwrap();
-            // notice that here we use 'Z' (uppercase) to denote the 'z-vector' as in the paper,
-            // not the value 'z' (lowercase) which is the state
-            let Z_i1 = extract_z::<Fr>(&cs);
-            let (w_i1, x_i1) = r1cs.split_z(&Z_i1);
+            let (w_i1, x_i1) = extract_w_x::<Fr>(&cs);
             assert_eq!(x_i1.len(), 1);
             assert_eq!(x_i1[0], u_i1_x);
 
@@ -892,7 +837,7 @@ pub mod tests {
             i += Fr::one();
             // advance the F circuit state
             z_i = z_i1.clone();
-            z_i1 = F_circuit.step_native(z_i.clone());
+            z_i1 = F_circuit.step_native(z_i.clone()).unwrap();
             U_i = U_i1.clone();
             W_i = W_i1.clone();
         }

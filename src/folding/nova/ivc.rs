@@ -8,12 +8,13 @@ use ark_std::{One, Zero};
 use core::marker::PhantomData;
 
 use super::{
-    circuits::{AugmentedFCircuit, ChallengeGadget, FCircuit, CF2},
+    circuits::{AugmentedFCircuit, ChallengeGadget, CF2},
     cyclefold::{CycleFoldChallengeGadget, CycleFoldCircuit},
 };
 use super::{nifs::NIFS, traits::NovaR1CS, CommittedInstance, Witness};
 use crate::ccs::r1cs::R1CS;
-use crate::frontend::arkworks::{extract_r1cs, extract_w_x}; // TODO once Frontend trait is ready, use that
+use crate::ccs::r1cs::{extract_r1cs, extract_w_x};
+use crate::frontend::FCircuit;
 use crate::pedersen::{Params as PedersenParams, Pedersen};
 use crate::Error;
 
@@ -138,7 +139,7 @@ where
         let augmented_F_circuit: AugmentedFCircuit<C1, C2, GC2, FC>;
         let cf_circuit: CycleFoldCircuit<C1, GC1>;
 
-        let z_i1 = self.F.step_native(self.z_i.clone());
+        let z_i1 = self.F.step_native(self.z_i.clone())?;
 
         // compute T and cmT for AugmentedFCircuit
         let (T, cmT) = self.compute_cmT()?;
@@ -397,7 +398,7 @@ mod tests {
     use ark_pallas::{constraints::GVar, Fr, Projective};
     use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
 
-    use crate::folding::nova::circuits::tests::TestFCircuit;
+    use crate::frontend::tests::CubicFCircuit;
     use crate::transcript::poseidon::tests::poseidon_test_config;
 
     #[test]
@@ -405,10 +406,10 @@ mod tests {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_test_config::<Fr>();
 
-        let F_circuit = TestFCircuit::<Fr>::new();
+        let F_circuit = CubicFCircuit::<Fr>::new(());
         let z_0 = vec![Fr::from(3_u32)];
 
-        let mut ivc = IVC::<Projective, GVar, Projective2, GVar2, TestFCircuit<Fr>>::new(
+        let mut ivc = IVC::<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>>::new(
             &mut rng,
             poseidon_config,
             F_circuit,

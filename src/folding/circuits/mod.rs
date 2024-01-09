@@ -2,7 +2,6 @@
 use ark_ec::CurveGroup;
 use ark_ff::Field;
 
-pub mod hypernova;
 pub mod nonnative;
 pub mod sum_check;
 pub mod utils;

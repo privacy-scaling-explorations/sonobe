@@ -86,14 +86,15 @@ mod tests {
 
         // Initialize cs and gamma
         let cs = ConstraintSystem::<Fr>::new_ref();
-        let gamma_var = FpVar::<Fr>::new_constant(cs.clone(), gamma).unwrap();
+        let gamma_var = FpVar::<Fr>::new_witness(cs.clone(), || Ok(gamma)).unwrap();
 
         for (i, sigmas) in sigmas_thetas.0.iter().enumerate() {
             let expected =
                 sum_muls_gamma_pows_eq_sigma(gamma, e_lcccs[i], sigmas, (i * ccs.t) as u64);
-            let sigmas_var = VecFpVar::<Fr>::new_constant(cs.clone(), sigmas).unwrap();
-            let eq_var = FpVar::<Fr>::new_constant(cs.clone(), e_lcccs[i]).unwrap();
-            let pow = FpVar::<Fr>::new_constant(cs.clone(), Fr::from((i * ccs.t) as u64)).unwrap();
+            let sigmas_var = VecFpVar::<Fr>::new_witness(cs.clone(), || Ok(sigmas)).unwrap();
+            let eq_var = FpVar::<Fr>::new_witness(cs.clone(), || Ok(e_lcccs[i])).unwrap();
+            let pow =
+                FpVar::<Fr>::new_witness(cs.clone(), || Ok(Fr::from((i * ccs.t) as u64))).unwrap();
             let computed = SumMulsGammaPowsEqSigmaGadget::sum_muls_gamma_pows_eq_sigma(
                 sigmas_var,
                 eq_var,

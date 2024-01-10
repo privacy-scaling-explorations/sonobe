@@ -1,7 +1,6 @@
 // hypernova nimfs verifier circuit
 // see section 5 in https://eprint.iacr.org/2023/573.pdf
 
-use crate::folding::circuits::utils::VecFpVar;
 use ark_ff::PrimeField;
 use ark_r1cs_std::{
     fields::{fp::FpVar, FieldVar},
@@ -28,7 +27,7 @@ impl<F: PrimeField> SumMulsGammaPowsEqSigmaGadget<F> {
     /// # Notes
     /// In the context of multifolding, `j` corresponds to `ccs.t` in `compute_c_from_sigmas_and_thetas`
     pub fn sum_muls_gamma_pows_eq_sigma(
-        sigmas: VecFpVar<F>,
+        sigmas: Vec<FpVar<F>>,
         eq_eval: FpVar<F>,
         gamma: FpVar<F>,
         j: FpVar<F>,
@@ -51,10 +50,7 @@ mod tests {
             tests::{get_test_ccs, get_test_z},
             CCS,
         },
-        folding::{
-            circuits::utils::VecFpVar,
-            hypernova::utils::{compute_sigmas_and_thetas, sum_muls_gamma_pows_eq_sigma},
-        },
+        folding::hypernova::utils::{compute_sigmas_and_thetas, sum_muls_gamma_pows_eq_sigma},
         pedersen::Pedersen,
         utils::virtual_polynomial::eq_eval,
     };
@@ -91,7 +87,8 @@ mod tests {
         for (i, sigmas) in sigmas_thetas.0.iter().enumerate() {
             let expected =
                 sum_muls_gamma_pows_eq_sigma(gamma, e_lcccs[i], sigmas, (i * ccs.t) as u64);
-            let sigmas_var = VecFpVar::<Fr>::new_witness(cs.clone(), || Ok(sigmas)).unwrap();
+            let sigmas_var =
+                Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(sigmas.clone())).unwrap();
             let eq_var = FpVar::<Fr>::new_witness(cs.clone(), || Ok(e_lcccs[i])).unwrap();
             let pow =
                 FpVar::<Fr>::new_witness(cs.clone(), || Ok(Fr::from((i * ccs.t) as u64))).unwrap();

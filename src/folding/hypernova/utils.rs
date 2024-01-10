@@ -102,6 +102,22 @@ pub fn sum_muls_gamma_pows_eq_sigma<F: PrimeField>(
     result
 }
 
+/// Computes $\Sigma_{i=1}^{q} c_i * \Pi_{j \in S_i} theta_j
+pub fn sum_ci_mul_prod_thetaj<C: CurveGroup>(
+    ccs: &CCS<C>,
+    thetas: &Vec<C::ScalarField>,
+) -> C::ScalarField {
+    let mut result = C::ScalarField::zero();
+    for i in 0..ccs.q {
+        let mut prod = C::ScalarField::one();
+        for j in ccs.S[i].clone() {
+            prod *= thetas[j];
+        }
+        result += ccs.c[i] * prod;
+    }
+    result
+}
+
 /// Compute the right-hand-side of step 5 of the multifolding scheme
 pub fn compute_c_from_sigmas_and_thetas<C: CurveGroup>(
     ccs: &CCS<C>,
@@ -127,14 +143,7 @@ pub fn compute_c_from_sigmas_and_thetas<C: CurveGroup>(
     let e2 = eq_eval(beta, r_x_prime).unwrap();
     for (k, thetas) in vec_thetas.iter().enumerate() {
         // + gamma^{t+1} * e2 * sum c_i * prod theta_j
-        let mut lhs = C::ScalarField::zero();
-        for i in 0..ccs.q {
-            let mut prod = C::ScalarField::one();
-            for j in ccs.S[i].clone() {
-                prod *= thetas[j];
-            }
-            lhs += ccs.c[i] * prod;
-        }
+        let lhs = sum_ci_mul_prod_thetaj(ccs, thetas);
         let gamma_t1 = gamma.pow([(mu * ccs.t + k) as u64]);
         c += gamma_t1 * e2 * lhs;
     }

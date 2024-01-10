@@ -1,6 +1,7 @@
 // hypernova nimfs verifier circuit
 // see section 5 in https://eprint.iacr.org/2023/573.pdf
 
+use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_r1cs_std::{
     fields::{fp::FpVar, FieldVar},
@@ -52,7 +53,7 @@ impl<F: PrimeField> SumCiMulProdThetajGadget<F> {
     ///
     /// # Arguments
     /// - `c_i`: vector of $c_i$ values
-    /// - `thetas`: vector of pre-processed $\thetas[j]$ values, i.e. corresponding to a ccs.S[i]
+    /// - `thetas`: vector of pre-processed $\thetas[j]$ values corresponding to a particular `ccs.S[i]`
     ///
     /// # Notes
     /// This is a part of the second term of the sum that $\mathcal{V}$ has to compute at section 5, step 5 of "A multi-folding scheme for CCS".
@@ -69,6 +70,19 @@ impl<F: PrimeField> SumCiMulProdThetajGadget<F> {
     }
 }
 
+/// Returns a vector of thetas for a corresponding $S_i$
+/// An helper function to run before computing $\Pi_{j \in S_i} \theta_j$ in a circuit.
+pub fn get_prepared_thetas<C: CurveGroup>(
+    S: &Vec<usize>,
+    thetas: &Vec<C::ScalarField>,
+) -> Vec<C::ScalarField> {
+    let mut prepared: Vec<C::ScalarField> = Vec::new();
+    for j in S {
+        prepared.push(thetas[*j]);
+    }
+    prepared
+}
+
 #[cfg(test)]
 mod tests {
     use super::{SumCiMulProdThetajGadget, SumMulsGammaPowsEqSigmaGadget};
@@ -77,8 +91,11 @@ mod tests {
             tests::{get_test_ccs, get_test_z},
             CCS,
         },
-        folding::hypernova::utils::{
-            compute_sigmas_and_thetas, sum_ci_mul_prod_thetaj, sum_muls_gamma_pows_eq_sigma,
+        folding::hypernova::{
+            circuit::get_prepared_thetas,
+            utils::{
+                compute_sigmas_and_thetas, sum_ci_mul_prod_thetaj, sum_muls_gamma_pows_eq_sigma,
+            },
         },
         pedersen::Pedersen,
         utils::virtual_polynomial::eq_eval,
@@ -152,18 +169,15 @@ mod tests {
             e_lcccs.push(eq_eval(r_x, &r_x_prime).unwrap());
         }
 
-        // Initialize cs and gamma
+        // Initialize cs
         let cs = ConstraintSystem::<Fr>::new_ref();
         let vec_thetas = sigmas_thetas.1;
         for (_, thetas) in vec_thetas.iter().enumerate() {
-            // + gamma^{t+1} * e2 * sum c_i * prod theta_j
-            let expected = sum_ci_mul_prod_thetaj(&ccs, thetas);
+            // sum c_i * prod theta_j
+            let expected = sum_ci_mul_prod_thetaj(&ccs, thetas); // from `compute_c_from_sigmas_and_thetas`
             let mut prepared_thetas = Vec::new();
             for i in 0..ccs.q {
-                let mut prepared: Vec<Fr> = Vec::new();
-                for j in ccs.S[i].clone() {
-                    prepared.push(thetas[j]);
-                }
+                let prepared = get_prepared_thetas::<Projective>(&ccs.S[i], thetas);
                 prepared_thetas
                     .push(Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(prepared)).unwrap());
             }

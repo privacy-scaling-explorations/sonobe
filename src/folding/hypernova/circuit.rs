@@ -73,11 +73,11 @@ impl<F: PrimeField> SumCiMulProdThetajGadget<F> {
 /// Returns a vector of thetas for a corresponding $S_i$
 /// An helper function to run before computing $\Pi_{j \in S_i} \theta_j$ in a circuit.
 pub fn get_prepared_thetas<C: CurveGroup>(
-    S: &Vec<usize>,
+    S_i: &Vec<usize>,
     thetas: &Vec<C::ScalarField>,
 ) -> Vec<C::ScalarField> {
     let mut prepared: Vec<C::ScalarField> = Vec::new();
-    for j in S {
+    for j in S_i {
         prepared.push(thetas[*j]);
     }
     prepared

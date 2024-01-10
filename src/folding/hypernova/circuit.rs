@@ -16,7 +16,7 @@ pub struct SumMulsGammaPowsEqSigmaGadget<F: PrimeField> {
 }
 
 impl<F: PrimeField> SumMulsGammaPowsEqSigmaGadget<F> {
-    /// Computes the sum $\Sigma_{j}^{j + n} \gamma^{j} \cdot eq_eval \cdot \sigma_{j}$, where $n$ is the length of the `sigmas` vector
+    /// Computes the sum $\sum_{j}^{j + n} \gamma^{j} \cdot eq_eval \cdot \sigma_{j}$, where $n$ is the length of the `sigmas` vector
     /// It corresponds to the first term of the sum that $\mathcal{V}$ has to compute at section 5, step 5 of "A multi-folding scheme for CCS".
     ///
     /// # Arguments
@@ -43,13 +43,13 @@ impl<F: PrimeField> SumMulsGammaPowsEqSigmaGadget<F> {
     }
 }
 
-/// Gadget to compute $\Sigma_{i=1}^{q} c_i * \Pi_{j \in S_i} theta_j$.
+/// Gadget to compute $\sum_{i=1}^{q} c_i * \prod_{j \in S_i} theta_j$.
 pub struct SumCiMulProdThetajGadget<F: PrimeField> {
     _f: PhantomData<F>,
 }
 
 impl<F: PrimeField> SumCiMulProdThetajGadget<F> {
-    /// Computes $\Sigma_{i=1}^{q} c_i * \Pi_{j \in S_i} theta_j$
+    /// Computes $\sum_{i=1}^{q} c_i * \prod_{j \in S_i} theta_j$
     ///
     /// # Arguments
     /// - `c_i`: vector of $c_i$ values
@@ -71,7 +71,7 @@ impl<F: PrimeField> SumCiMulProdThetajGadget<F> {
 }
 
 /// Returns a vector of thetas for a corresponding $S_i$
-/// An helper function to run before computing $\Pi_{j \in S_i} \theta_j$ in a circuit.
+/// An helper function to run before computing $\prod_{j \in S_i} \theta_j$ in a circuit.
 pub fn get_prepared_thetas<C: CurveGroup>(
     S_i: &Vec<usize>,
     thetas: &[C::ScalarField],

@@ -86,7 +86,7 @@ pub fn compute_sigmas_and_thetas<C: CurveGroup>(
     SigmasThetas(sigmas, thetas)
 }
 
-/// Computes the sum $\Sigma_{j = 0}^{n} \gamma^{\text{pow} + j} \cdot eq_eval \cdot \sigma_{j}$
+/// Computes the sum $\sum_{j = 0}^{n} \gamma^{\text{pow} + j} \cdot eq_eval \cdot \sigma_{j}$
 /// `pow` corresponds to `i * ccs.t` in `compute_c_from_sigmas_and_thetas`
 pub fn sum_muls_gamma_pows_eq_sigma<F: PrimeField>(
     gamma: F,
@@ -102,7 +102,7 @@ pub fn sum_muls_gamma_pows_eq_sigma<F: PrimeField>(
     result
 }
 
-/// Computes $\Sigma_{i=1}^{q} c_i * \Pi_{j \in S_i} theta_j$
+/// Computes $\sum_{i=1}^{q} c_i * \prod_{j \in S_i} theta_j$
 pub fn sum_ci_mul_prod_thetaj<C: CurveGroup>(
     ccs: &CCS<C>,
     thetas: &[C::ScalarField],

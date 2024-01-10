@@ -105,7 +105,7 @@ pub fn sum_muls_gamma_pows_eq_sigma<F: PrimeField>(
 /// Computes $\Sigma_{i=1}^{q} c_i * \Pi_{j \in S_i} theta_j$
 pub fn sum_ci_mul_prod_thetaj<C: CurveGroup>(
     ccs: &CCS<C>,
-    thetas: &Vec<C::ScalarField>,
+    thetas: &[C::ScalarField],
 ) -> C::ScalarField {
     let mut result = C::ScalarField::zero();
     for i in 0..ccs.q {

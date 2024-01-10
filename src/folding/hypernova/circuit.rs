@@ -1,7 +1,6 @@
 // hypernova nimfs verifier circuit
 // see section 5 in https://eprint.iacr.org/2023/573.pdf
 
-use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_r1cs_std::{
     fields::{fp::FpVar, FieldVar},
@@ -70,19 +69,6 @@ impl<F: PrimeField> SumCiMulProdThetajGadget<F> {
     }
 }
 
-/// Returns a vector of thetas for a corresponding $S_i$
-/// An helper function to run before computing $\prod_{j \in S_i} \theta_j$ in a circuit.
-pub fn get_prepared_thetas<C: CurveGroup>(
-    S_i: &Vec<usize>,
-    thetas: &[C::ScalarField],
-) -> Vec<C::ScalarField> {
-    let mut prepared: Vec<C::ScalarField> = Vec::new();
-    for j in S_i {
-        prepared.push(thetas[*j]);
-    }
-    prepared
-}
-
 #[cfg(test)]
 mod tests {
     use super::{SumCiMulProdThetajGadget, SumMulsGammaPowsEqSigmaGadget};
@@ -91,11 +77,8 @@ mod tests {
             tests::{get_test_ccs, get_test_z},
             CCS,
         },
-        folding::hypernova::{
-            circuit::get_prepared_thetas,
-            utils::{
-                compute_sigmas_and_thetas, sum_ci_mul_prod_thetaj, sum_muls_gamma_pows_eq_sigma,
-            },
+        folding::hypernova::utils::{
+            compute_sigmas_and_thetas, sum_ci_mul_prod_thetaj, sum_muls_gamma_pows_eq_sigma,
         },
         pedersen::Pedersen,
         utils::virtual_polynomial::eq_eval,
@@ -177,7 +160,7 @@ mod tests {
             let expected = sum_ci_mul_prod_thetaj(&ccs, thetas); // from `compute_c_from_sigmas_and_thetas`
             let mut prepared_thetas = Vec::new();
             for i in 0..ccs.q {
-                let prepared = get_prepared_thetas::<Projective>(&ccs.S[i], thetas);
+                let prepared: Vec<Fr> = ccs.S[i].iter().map(|j| thetas[*j]).collect();
                 prepared_thetas
                     .push(Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(prepared)).unwrap());
             }

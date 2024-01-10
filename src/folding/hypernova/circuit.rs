@@ -21,7 +21,7 @@ impl<F: PrimeField> SumMulsGammaPowsEqSigmaGadget<F> {
     /// # Arguments
     /// - `sigmas`: vector of $\sigma_j$ values
     /// - `eq_eval`: the value of $\tilde{eq}(x_j, x^{\prime})$
-    /// - `gamma`: a `GammaVar`, which supports a `pow` method, representing $\gamma$
+    /// - `gamma`: value $\gamma$
     /// - `j`: the power at which we start to compute $\gamma^{j}$. This is needed in the contexxt of multifolding.
     ///
     /// # Notes

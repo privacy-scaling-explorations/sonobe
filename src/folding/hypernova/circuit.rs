@@ -42,15 +42,44 @@ impl<F: PrimeField> SumMulsGammaPowsEqSigmaGadget<F> {
     }
 }
 
+/// Gadget to compute $\Sigma_{i=1}^{q} c_i * \Pi_{j \in S_i} theta_j$.
+pub struct SumCiMulProdThetajGadget<F: PrimeField> {
+    _f: PhantomData<F>,
+}
+
+impl<F: PrimeField> SumCiMulProdThetajGadget<F> {
+    /// Computes $\Sigma_{i=1}^{q} c_i * \Pi_{j \in S_i} theta_j$
+    ///
+    /// # Arguments
+    /// - `c_i`: vector of $c_i$ values
+    /// - `thetas`: vector of pre-processed $\thetas[j]$ values, i.e. corresponding to a ccs.S[i]
+    ///
+    /// # Notes
+    /// This is a part of the second term of the sum that $\mathcal{V}$ has to compute at section 5, step 5 of "A multi-folding scheme for CCS".
+    /// The first term is computed by `SumMulsGammaPowsEqSigmaGadget::sum_muls_gamma_pows_eq_sigma`.
+    /// This is a doct product between a vector of c_i values and a vector of pre-processed $\theta_j$ values, where $j$ is a value from $S_i$.
+    /// Hence, this requires some pre-processing of the $\theta_j$ values, before running this gadget.
+    pub fn sum_ci_mul_prod_thetaj(c_i: Vec<FpVar<F>>, thetas: Vec<Vec<FpVar<F>>>) -> FpVar<F> {
+        let mut result = FpVar::<F>::zero();
+        for (i, c_i) in c_i.iter().enumerate() {
+            let prod = &thetas[i].iter().fold(FpVar::one(), |acc, e| acc * e);
+            result += c_i * prod;
+        }
+        result
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::SumMulsGammaPowsEqSigmaGadget;
+    use super::{SumCiMulProdThetajGadget, SumMulsGammaPowsEqSigmaGadget};
     use crate::{
         ccs::{
             tests::{get_test_ccs, get_test_z},
             CCS,
         },
-        folding::hypernova::utils::{compute_sigmas_and_thetas, sum_muls_gamma_pows_eq_sigma},
+        folding::hypernova::utils::{
+            compute_sigmas_and_thetas, sum_ci_mul_prod_thetaj, sum_muls_gamma_pows_eq_sigma,
+        },
         pedersen::Pedersen,
         utils::virtual_polynomial::eq_eval,
     };
@@ -99,6 +128,49 @@ mod tests {
                 pow,
             )
             .unwrap();
+            assert_eq!(expected, computed.value().unwrap());
+        }
+    }
+
+    #[test]
+    pub fn test_sum_ci_mul_prod_thetaj_gadget() {
+        let mut rng = test_rng();
+        let ccs: CCS<Projective> = get_test_ccs();
+        let z1 = get_test_z(3);
+        let z2 = get_test_z(4);
+
+        let r_x_prime: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
+
+        // Initialize a multifolding object
+        let pedersen_params = Pedersen::new_params(&mut rng, ccs.n - ccs.l - 1);
+        let (lcccs_instance, _) = ccs.to_lcccs(&mut rng, &pedersen_params, &z1).unwrap();
+        let sigmas_thetas =
+            compute_sigmas_and_thetas(&ccs, &[z1.clone()], &[z2.clone()], &r_x_prime);
+
+        let mut e_lcccs = Vec::new();
+        for r_x in &vec![lcccs_instance.r_x] {
+            e_lcccs.push(eq_eval(r_x, &r_x_prime).unwrap());
+        }
+
+        // Initialize cs and gamma
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        let vec_thetas = sigmas_thetas.1;
+        for (_, thetas) in vec_thetas.iter().enumerate() {
+            // + gamma^{t+1} * e2 * sum c_i * prod theta_j
+            let expected = sum_ci_mul_prod_thetaj(&ccs, thetas);
+            let mut prepared_thetas = Vec::new();
+            for i in 0..ccs.q {
+                let mut prepared: Vec<Fr> = Vec::new();
+                for j in ccs.S[i].clone() {
+                    prepared.push(thetas[j]);
+                }
+                prepared_thetas
+                    .push(Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(prepared)).unwrap());
+            }
+            let computed = SumCiMulProdThetajGadget::sum_ci_mul_prod_thetaj(
+                Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(ccs.c.clone())).unwrap(),
+                prepared_thetas,
+            );
             assert_eq!(expected, computed.value().unwrap());
         }
     }

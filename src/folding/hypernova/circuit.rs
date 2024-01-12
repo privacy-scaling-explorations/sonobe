@@ -87,6 +87,20 @@ impl<F: PrimeField, C: CurveGroup> ComputeCFromSigmasAndThetasGadget<F, C>
 where
     Vec<<C as Group>::ScalarField>: Borrow<[F]>,
 {
+    /// Computes the sum that the verifier has to compute at section 5, step 5 of "A multi-folding scheme for CCS".
+    ///
+    /// # Arguments
+    /// - `cs`: constraint system
+    /// - `ccs`: the CCS instance
+    /// - `vec_sigmas`: vector of $\sigma_j$ values
+    /// - `vec_thetas`: vector of $\theta_j$ values
+    /// - `gamma`: value $\gamma$
+    /// - `beta`: vector of $\beta_j$ values
+    /// - `vec_r_x`: vector of $r_{x_j}$ values
+    /// - `vec_r_x_prime`: vector of $r_{x_j}^{\prime}$ values
+    ///
+    /// # Notes
+    /// Arguments to this function are *almost* the same as the arguments to `compute_c_from_sigmas_and_thetas` in `utils.rs`.
     pub fn compute_c_from_sigmas_and_thetas(
         cs: ConstraintSystemRef<F>,
         ccs: &CCS<C>,

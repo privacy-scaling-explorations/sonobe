@@ -2,7 +2,7 @@
 // see section 5 in https://eprint.iacr.org/2023/573.pdf
 
 use crate::{ccs::CCS, folding::circuits::utils::EqEvalGadget};
-use ark_ec::{CurveGroup, Group};
+use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_r1cs_std::{
     alloc::AllocVar,
@@ -11,7 +11,7 @@ use ark_r1cs_std::{
 };
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 use ark_std::Zero;
-use std::{borrow::Borrow, marker::PhantomData};
+use std::marker::PhantomData;
 
 /// Gadget to compute the sum of all $\gamma^{j} \cdot eq(r_{x_j}, r_x^{\prime}) \cdot \sigma_j$.
 pub struct SumMulsGammaPowsEqSigmaGadget<F: PrimeField> {

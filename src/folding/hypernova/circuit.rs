@@ -101,6 +101,7 @@ where
     ///
     /// # Notes
     /// Arguments to this function are *almost* the same as the arguments to `compute_c_from_sigmas_and_thetas` in `utils.rs`.
+    #[allow(clippy::too_many_arguments)]
     pub fn compute_c_from_sigmas_and_thetas(
         cs: ConstraintSystemRef<F>,
         ccs: &CCS<C>,
@@ -112,7 +113,7 @@ where
         vec_r_x_prime: Vec<FpVar<F>>,
     ) -> Result<FpVar<F>, SynthesisError> {
         let mut c = FpVar::<F>::new_witness(cs.clone(), || Ok(F::zero()))?;
-        let t = FpVar::<F>::new_witness(cs.clone(), || Ok(F::from(ccs.t.clone() as u64)))?;
+        let t = FpVar::<F>::new_witness(cs.clone(), || Ok(F::from(ccs.t as u64)))?;
 
         let mut e_lcccs = Vec::new();
         for r_x in vec_r_x.iter() {

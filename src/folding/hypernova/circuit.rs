@@ -76,7 +76,7 @@ impl<F: PrimeField> SumCiMulProdThetajGadget<F> {
     }
 }
 
-/// Gadget to compute $\sum_{j \in [t]} \gamma^{j} \cdot e_1 \cdot \sigma_j + \gamma^{t+1} \cdot e_2 \cdot \sum_{i=1}^{q} c_i * \prod_{j \in S_i} theta_j$.
+/// Gadget to compute $\sum_{j \in [t]} \gamma^{j} \cdot e_1 \cdot \sigma_j + \gamma^{t+1} \cdot e_2 \cdot \sum_{i=1}^{q} c_i * \prod_{j \in S_i} \theta_j$.
 /// This is the sum computed by the verifier and laid out in section 5, step 5 of "A multi-folding scheme for CCS".
 pub struct ComputeCFromSigmasAndThetasGadget<C: CurveGroup> {
     _c: PhantomData<C>,

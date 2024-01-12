@@ -1,6 +1,7 @@
 // hypernova nimfs verifier circuit
 // see section 5 in https://eprint.iacr.org/2023/573.pdf
 
+use crate::{ccs::CCS, folding::circuits::utils::EqEvalGadget};
 use ark_ec::{CurveGroup, Group};
 use ark_ff::PrimeField;
 use ark_r1cs_std::{
@@ -9,9 +10,8 @@ use ark_r1cs_std::{
     ToBitsGadget,
 };
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
+use ark_std::Zero;
 use std::{borrow::Borrow, marker::PhantomData};
-
-use crate::{ccs::CCS, folding::circuits::utils::EqEvalGadget};
 
 /// Gadget to compute the sum of all $\gamma^{j} \cdot eq(r_{x_j}, r_x^{\prime}) \cdot \sigma_j$.
 pub struct SumMulsGammaPowsEqSigmaGadget<F: PrimeField> {
@@ -78,15 +78,11 @@ impl<F: PrimeField> SumCiMulProdThetajGadget<F> {
 
 /// Gadget to compute $\sum_{j \in [t]} \gamma^{j} \cdot e_1 \cdot \sigma_j + \gamma^{t+1} \cdot e_2 \cdot \sum_{i=1}^{q} c_i * \prod_{j \in S_i} theta_j$.
 /// This is the sum computed by the verifier and laid out in section 5, step 5 of "A multi-folding scheme for CCS".
-pub struct ComputeCFromSigmasAndThetasGadget<F: PrimeField, C: CurveGroup> {
-    _f: PhantomData<F>,
+pub struct ComputeCFromSigmasAndThetasGadget<C: CurveGroup> {
     _c: PhantomData<C>,
 }
 
-impl<F: PrimeField, C: CurveGroup> ComputeCFromSigmasAndThetasGadget<F, C>
-where
-    Vec<<C as Group>::ScalarField>: Borrow<[F]>,
-{
+impl<C: CurveGroup> ComputeCFromSigmasAndThetasGadget<C> {
     /// Computes the sum that the verifier has to compute at section 5, step 5 of "A multi-folding scheme for CCS".
     ///
     /// # Arguments
@@ -103,17 +99,20 @@ where
     /// Arguments to this function are *almost* the same as the arguments to `compute_c_from_sigmas_and_thetas` in `utils.rs`.
     #[allow(clippy::too_many_arguments)]
     pub fn compute_c_from_sigmas_and_thetas(
-        cs: ConstraintSystemRef<F>,
+        cs: ConstraintSystemRef<C::ScalarField>,
         ccs: &CCS<C>,
-        vec_sigmas: Vec<Vec<FpVar<F>>>,
-        vec_thetas: Vec<Vec<FpVar<F>>>,
-        gamma: FpVar<F>,
-        beta: Vec<FpVar<F>>,
-        vec_r_x: Vec<Vec<FpVar<F>>>,
-        vec_r_x_prime: Vec<FpVar<F>>,
-    ) -> Result<FpVar<F>, SynthesisError> {
-        let mut c = FpVar::<F>::new_witness(cs.clone(), || Ok(F::zero()))?;
-        let t = FpVar::<F>::new_witness(cs.clone(), || Ok(F::from(ccs.t as u64)))?;
+        vec_sigmas: Vec<Vec<FpVar<C::ScalarField>>>,
+        vec_thetas: Vec<Vec<FpVar<C::ScalarField>>>,
+        gamma: FpVar<C::ScalarField>,
+        beta: Vec<FpVar<C::ScalarField>>,
+        vec_r_x: Vec<Vec<FpVar<C::ScalarField>>>,
+        vec_r_x_prime: Vec<FpVar<C::ScalarField>>,
+    ) -> Result<FpVar<C::ScalarField>, SynthesisError> {
+        let mut c =
+            FpVar::<C::ScalarField>::new_witness(cs.clone(), || Ok(C::ScalarField::zero()))?;
+        let t = FpVar::<C::ScalarField>::new_witness(cs.clone(), || {
+            Ok(C::ScalarField::from(ccs.t as u64))
+        })?;
 
         let mut e_lcccs = Vec::new();
         for r_x in vec_r_x.iter() {
@@ -122,7 +121,9 @@ where
         }
 
         for (i, sigmas) in vec_sigmas.iter().enumerate() {
-            let i_var = FpVar::<F>::new_witness(cs.clone(), || Ok(F::from(i as u64)))?;
+            let i_var = FpVar::<C::ScalarField>::new_witness(cs.clone(), || {
+                Ok(C::ScalarField::from(i as u64))
+            })?;
             let pow = i_var * t.clone();
             c += SumMulsGammaPowsEqSigmaGadget::sum_muls_gamma_pows_eq_sigma(
                 gamma.clone(),
@@ -132,17 +133,21 @@ where
             )?;
         }
 
-        let mu = FpVar::<F>::new_witness(cs.clone(), || Ok(F::from(vec_sigmas.len() as u64)))?;
+        let mu = FpVar::<C::ScalarField>::new_witness(cs.clone(), || {
+            Ok(C::ScalarField::from(vec_sigmas.len() as u64))
+        })?;
         let e_2 = EqEvalGadget::eq_eval(beta, vec_r_x_prime)?;
         for (k, thetas) in vec_thetas.iter().enumerate() {
             // get prepared thetas. only step different from original `compute_c_from_sigmas_and_thetas`
             let mut prepared_thetas = Vec::new();
             for i in 0..ccs.q {
-                let prepared: Vec<FpVar<F>> = ccs.S[i].iter().map(|j| thetas[*j].clone()).collect();
+                let prepared: Vec<FpVar<C::ScalarField>> =
+                    ccs.S[i].iter().map(|j| thetas[*j].clone()).collect();
                 prepared_thetas.push(prepared.to_vec());
             }
 
-            let c_i = Vec::<FpVar<F>>::new_witness(cs.clone(), || Ok(ccs.c.clone())).unwrap();
+            let c_i = Vec::<FpVar<C::ScalarField>>::new_witness(cs.clone(), || Ok(ccs.c.clone()))
+                .unwrap();
             let lhs = SumCiMulProdThetajGadget::sum_ci_mul_prod_thetaj(
                 c_i.clone(),
                 prepared_thetas.clone(),
@@ -150,7 +155,9 @@ where
 
             // compute gamma^(t+1)
             let pow = mu.clone() * t.clone()
-                + FpVar::<F>::new_witness(cs.clone(), || Ok(F::from(k as u64)))?;
+                + FpVar::<C::ScalarField>::new_witness(cs.clone(), || {
+                    Ok(C::ScalarField::from(k as u64))
+                })?;
             let gamma_t1 = gamma.pow_le(&pow.to_bits_le()?)?;
 
             c += gamma_t1.clone() * e_2.clone() * lhs.clone();

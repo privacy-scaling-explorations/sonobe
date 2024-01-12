@@ -3,7 +3,6 @@
 
 use crate::{ccs::CCS, folding::circuits::utils::EqEvalGadget};
 use ark_ec::CurveGroup;
-use ark_ff::PrimeField;
 use ark_r1cs_std::{
     alloc::AllocVar,
     fields::{fp::FpVar, FieldVar},
@@ -13,12 +12,13 @@ use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 use ark_std::Zero;
 use std::marker::PhantomData;
 
-/// Gadget to compute the sum of all $\gamma^{j} \cdot eq(r_{x_j}, r_x^{\prime}) \cdot \sigma_j$.
-pub struct SumMulsGammaPowsEqSigmaGadget<F: PrimeField> {
-    _f: PhantomData<F>,
+/// Gadget to compute $\sum_{j \in [t]} \gamma^{j} \cdot e_1 \cdot \sigma_j + \gamma^{t+1} \cdot e_2 \cdot \sum_{i=1}^{q} c_i * \prod_{j \in S_i} \theta_j$.
+/// This is the sum computed by the verifier and laid out in section 5, step 5 of "A multi-folding scheme for CCS".
+pub struct ComputeCFromSigmasAndThetasGadget<C: CurveGroup> {
+    _c: PhantomData<C>,
 }
 
-impl<F: PrimeField> SumMulsGammaPowsEqSigmaGadget<F> {
+impl<C: CurveGroup> ComputeCFromSigmasAndThetasGadget<C> {
     /// Computes the sum $\sum_{j}^{j + n} \gamma^{j} \cdot eq_eval \cdot \sigma_{j}$, where $n$ is the length of the `sigmas` vector
     /// It corresponds to the first term of the sum that $\mathcal{V}$ has to compute at section 5, step 5 of "A multi-folding scheme for CCS".
     ///
@@ -30,13 +30,13 @@ impl<F: PrimeField> SumMulsGammaPowsEqSigmaGadget<F> {
     ///
     /// # Notes
     /// In the context of multifolding, `j` corresponds to `ccs.t` in `compute_c_from_sigmas_and_thetas`
-    pub fn sum_muls_gamma_pows_eq_sigma(
-        gamma: FpVar<F>,
-        eq_eval: FpVar<F>,
-        sigmas: Vec<FpVar<F>>,
-        j: FpVar<F>,
-    ) -> Result<FpVar<F>, SynthesisError> {
-        let mut result = FpVar::<F>::zero();
+    fn sum_muls_gamma_pows_eq_sigma(
+        gamma: FpVar<C::ScalarField>,
+        eq_eval: FpVar<C::ScalarField>,
+        sigmas: Vec<FpVar<C::ScalarField>>,
+        j: FpVar<C::ScalarField>,
+    ) -> Result<FpVar<C::ScalarField>, SynthesisError> {
+        let mut result = FpVar::<C::ScalarField>::zero();
         let mut gamma_pow = gamma.pow_le(&j.to_bits_le()?)?;
         for sigma in sigmas {
             result += gamma_pow.clone() * eq_eval.clone() * sigma;
@@ -44,14 +44,7 @@ impl<F: PrimeField> SumMulsGammaPowsEqSigmaGadget<F> {
         }
         Ok(result)
     }
-}
 
-/// Gadget to compute $\sum_{i=1}^{q} c_i * \prod_{j \in S_i} theta_j$.
-pub struct SumCiMulProdThetajGadget<F: PrimeField> {
-    _f: PhantomData<F>,
-}
-
-impl<F: PrimeField> SumCiMulProdThetajGadget<F> {
     /// Computes $\sum_{i=1}^{q} c_i * \prod_{j \in S_i} theta_j$
     ///
     /// # Arguments
@@ -63,26 +56,18 @@ impl<F: PrimeField> SumCiMulProdThetajGadget<F> {
     /// The first term is computed by `SumMulsGammaPowsEqSigmaGadget::sum_muls_gamma_pows_eq_sigma`.
     /// This is a doct product between a vector of c_i values and a vector of pre-processed $\theta_j$ values, where $j$ is a value from $S_i$.
     /// Hence, this requires some pre-processing of the $\theta_j$ values, before running this gadget.
-    pub fn sum_ci_mul_prod_thetaj(
-        c_i: Vec<FpVar<F>>,
-        thetas: Vec<Vec<FpVar<F>>>,
-    ) -> Result<FpVar<F>, SynthesisError> {
-        let mut result = FpVar::<F>::zero();
+    fn sum_ci_mul_prod_thetaj(
+        c_i: Vec<FpVar<C::ScalarField>>,
+        thetas: Vec<Vec<FpVar<C::ScalarField>>>,
+    ) -> Result<FpVar<C::ScalarField>, SynthesisError> {
+        let mut result = FpVar::<C::ScalarField>::zero();
         for (i, c_i) in c_i.iter().enumerate() {
             let prod = &thetas[i].iter().fold(FpVar::one(), |acc, e| acc * e);
             result += c_i * prod;
         }
         Ok(result)
     }
-}
 
-/// Gadget to compute $\sum_{j \in [t]} \gamma^{j} \cdot e_1 \cdot \sigma_j + \gamma^{t+1} \cdot e_2 \cdot \sum_{i=1}^{q} c_i * \prod_{j \in S_i} \theta_j$.
-/// This is the sum computed by the verifier and laid out in section 5, step 5 of "A multi-folding scheme for CCS".
-pub struct ComputeCFromSigmasAndThetasGadget<C: CurveGroup> {
-    _c: PhantomData<C>,
-}
-
-impl<C: CurveGroup> ComputeCFromSigmasAndThetasGadget<C> {
     /// Computes the sum that the verifier has to compute at section 5, step 5 of "A multi-folding scheme for CCS".
     ///
     /// # Arguments
@@ -125,7 +110,7 @@ impl<C: CurveGroup> ComputeCFromSigmasAndThetasGadget<C> {
                 Ok(C::ScalarField::from(i as u64))
             })?;
             let pow = i_var * t.clone();
-            c += SumMulsGammaPowsEqSigmaGadget::sum_muls_gamma_pows_eq_sigma(
+            c += Self::sum_muls_gamma_pows_eq_sigma(
                 gamma.clone(),
                 e_lcccs[i].clone(),
                 sigmas.to_vec(),
@@ -148,10 +133,7 @@ impl<C: CurveGroup> ComputeCFromSigmasAndThetasGadget<C> {
 
             let c_i = Vec::<FpVar<C::ScalarField>>::new_witness(cs.clone(), || Ok(ccs.c.clone()))
                 .unwrap();
-            let lhs = SumCiMulProdThetajGadget::sum_ci_mul_prod_thetaj(
-                c_i.clone(),
-                prepared_thetas.clone(),
-            )?;
+            let lhs = Self::sum_ci_mul_prod_thetaj(c_i.clone(), prepared_thetas.clone())?;
 
             // compute gamma^(t+1)
             let pow = mu.clone() * t.clone()
@@ -169,9 +151,7 @@ impl<C: CurveGroup> ComputeCFromSigmasAndThetasGadget<C> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        ComputeCFromSigmasAndThetasGadget, SumCiMulProdThetajGadget, SumMulsGammaPowsEqSigmaGadget,
-    };
+    use super::ComputeCFromSigmasAndThetasGadget;
     use crate::{
         ccs::{
             tests::{get_test_ccs, get_test_z},
@@ -222,13 +202,14 @@ mod tests {
             let eq_var = FpVar::<Fr>::new_witness(cs.clone(), || Ok(e_lcccs[i])).unwrap();
             let pow =
                 FpVar::<Fr>::new_witness(cs.clone(), || Ok(Fr::from((i * ccs.t) as u64))).unwrap();
-            let computed = SumMulsGammaPowsEqSigmaGadget::sum_muls_gamma_pows_eq_sigma(
-                gamma_var.clone(),
-                eq_var,
-                sigmas_var,
-                pow,
-            )
-            .unwrap();
+            let computed =
+                ComputeCFromSigmasAndThetasGadget::<Projective>::sum_muls_gamma_pows_eq_sigma(
+                    gamma_var.clone(),
+                    eq_var,
+                    sigmas_var,
+                    pow,
+                )
+                .unwrap();
             assert_eq!(expected, computed.value().unwrap());
         }
     }
@@ -265,7 +246,7 @@ mod tests {
                 prepared_thetas
                     .push(Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(prepared)).unwrap());
             }
-            let computed = SumCiMulProdThetajGadget::sum_ci_mul_prod_thetaj(
+            let computed = ComputeCFromSigmasAndThetasGadget::<Projective>::sum_ci_mul_prod_thetaj(
                 Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(ccs.c.clone())).unwrap(),
                 prepared_thetas,
             )

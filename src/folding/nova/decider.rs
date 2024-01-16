@@ -19,10 +19,11 @@ use core::{borrow::Borrow, marker::PhantomData};
 
 use crate::ccs::r1cs::R1CS;
 use crate::folding::nova::{
-    circuits::{CommittedInstanceVar, FCircuit, CF1, CF2},
+    circuits::{CommittedInstanceVar, CF1, CF2},
     ivc::IVC,
     CommittedInstance, Witness,
 };
+use crate::frontend::FCircuit;
 use crate::pedersen::Params as PedersenParams;
 use crate::utils::gadgets::{
     hadamard, mat_vec_mul_sparse, vec_add, vec_scalar_mul, SparseMatrixVar,
@@ -436,15 +437,15 @@ pub mod tests {
     use ark_relations::r1cs::ConstraintSystem;
     use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
 
-    use crate::folding::nova::circuits::{tests::TestFCircuit, FCircuit};
     use crate::folding::nova::ivc::IVC;
+    use crate::frontend::tests::{CubicFCircuit, CustomFCircuit, WrapperCircuit};
     use crate::transcript::poseidon::tests::poseidon_test_config;
 
+    use crate::ccs::r1cs::{extract_r1cs, extract_w_x};
     use crate::ccs::r1cs::{
         tests::{get_test_r1cs, get_test_z},
         R1CS,
     };
-    use crate::frontend::arkworks::{extract_r1cs_and_z, tests::TestCircuit};
 
     #[test]
     fn test_relaxed_r1cs_small_gadget_handcrafted() {
@@ -474,7 +475,9 @@ pub mod tests {
 
         let cs = cs.into_inner().unwrap();
 
-        let (r1cs, z) = extract_r1cs_and_z::<Fr>(&cs);
+        let r1cs = extract_r1cs::<Fr>(&cs);
+        let (w, x) = extract_w_x::<Fr>(&cs);
+        let z = [vec![Fr::one()], x, w].concat();
         r1cs.check_relation(&z).unwrap();
 
         let relaxed_r1cs = r1cs.clone().relax();
@@ -494,9 +497,14 @@ pub mod tests {
 
     #[test]
     fn test_relaxed_r1cs_small_gadget_arkworks() {
-        let x = Fr::from(5_u32);
-        let y = x * x * x + x + Fr::from(5_u32);
-        let circuit = TestCircuit::<Fr> { x, y };
+        let z_i = vec![Fr::from(3_u32)];
+        let cubic_circuit = CubicFCircuit::<Fr>::new(());
+        let circuit = WrapperCircuit::<Fr, CubicFCircuit<Fr>> {
+            FC: cubic_circuit,
+            z_i: Some(z_i.clone()),
+            z_i1: Some(cubic_circuit.step_native(z_i).unwrap()),
+        };
+
         test_relaxed_r1cs_gadget(circuit);
     }
 
@@ -529,59 +537,15 @@ pub mod tests {
         test_relaxed_r1cs_gadget(circuit);
     }
 
-    // circuit that has the number of constraints specified in the `n_constraints` parameter. Note
-    // that the generated circuit will have very sparse matrices, so the resulting constraints
-    // number of the RelaxedR1CS gadget must take that into account.
-    struct CustomTestCircuit<F: PrimeField> {
-        _f: PhantomData<F>,
-        pub n_constraints: usize,
-        pub x: F,
-        pub y: F,
-    }
-    impl<F: PrimeField> CustomTestCircuit<F> {
-        fn new(n_constraints: usize) -> Self {
-            let x = F::from(5_u32);
-            let mut y = F::one();
-            for _ in 0..n_constraints - 1 {
-                y *= x;
-            }
-            Self {
-                _f: PhantomData,
-                n_constraints,
-                x,
-                y,
-            }
-        }
-    }
-    impl<F: PrimeField> ConstraintSynthesizer<F> for CustomTestCircuit<F> {
-        fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> Result<(), SynthesisError> {
-            let x = FpVar::<F>::new_witness(cs.clone(), || Ok(self.x))?;
-            let y = FpVar::<F>::new_input(cs.clone(), || Ok(self.y))?;
-
-            let mut comp_y = FpVar::<F>::new_witness(cs.clone(), || Ok(F::one()))?;
-            for _ in 0..self.n_constraints - 1 {
-                comp_y *= x.clone();
-            }
-
-            comp_y.enforce_equal(&y)?;
-            Ok(())
-        }
-    }
-
     #[test]
     fn test_relaxed_r1cs_custom_circuit() {
         let n_constraints = 10_000;
-        let x = Fr::from(5_u32);
-        let mut y = Fr::one();
-        for _ in 0..n_constraints - 1 {
-            y *= x;
-        }
-
-        let circuit = CustomTestCircuit::<Fr> {
-            _f: PhantomData,
-            n_constraints,
-            x,
-            y,
+        let custom_circuit = CustomFCircuit::<Fr>::new(n_constraints);
+        let z_i = vec![Fr::from(5_u32)];
+        let circuit = WrapperCircuit::<Fr, CustomFCircuit<Fr>> {
+            FC: custom_circuit,
+            z_i: Some(z_i.clone()),
+            z_i1: Some(custom_circuit.step_native(z_i).unwrap()),
         };
         test_relaxed_r1cs_gadget(circuit);
     }
@@ -592,11 +556,19 @@ pub mod tests {
         // in practice we would use CycleFoldCircuit, but is a very big circuit (when computed
         // non-natively inside the RelaxedR1CS circuit), so in order to have a short test we use a
         // custom circuit.
-        let circuit = CustomTestCircuit::<Fq>::new(10);
+        let custom_circuit = CustomFCircuit::<Fq>::new(10);
+        let z_i = vec![Fq::from(5_u32)];
+        let circuit = WrapperCircuit::<Fq, CustomFCircuit<Fq>> {
+            FC: custom_circuit,
+            z_i: Some(z_i.clone()),
+            z_i1: Some(custom_circuit.step_native(z_i).unwrap()),
+        };
         circuit.generate_constraints(cs.clone()).unwrap();
         cs.finalize();
         let cs = cs.into_inner().unwrap();
-        let (r1cs, z) = extract_r1cs_and_z::<Fq>(&cs);
+        let r1cs = extract_r1cs::<Fq>(&cs);
+        let (w, x) = extract_w_x::<Fq>(&cs);
+        let z = [vec![Fq::one()], x, w].concat();
 
         let relaxed_r1cs = r1cs.clone().relax();
 
@@ -629,11 +601,11 @@ pub mod tests {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_test_config::<Fr>();
 
-        let F_circuit = TestFCircuit::<Fr>::new();
+        let F_circuit = CubicFCircuit::<Fr>::new(());
         let z_0 = vec![Fr::from(3_u32)];
 
         // generate an IVC and do a step of it
-        let mut ivc = IVC::<Projective, GVar, Projective2, GVar2, TestFCircuit<Fr>>::new(
+        let mut ivc = IVC::<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>>::new(
             &mut rng,
             poseidon_config,
             F_circuit,

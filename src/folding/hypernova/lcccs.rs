@@ -8,7 +8,7 @@ use ark_std::{rand::Rng, UniformRand};
 use super::cccs::Witness;
 use super::utils::{compute_all_sum_Mz_evals, compute_sum_Mz};
 use crate::ccs::CCS;
-use crate::pedersen::{Params as PedersenParams, Pedersen};
+use crate::commitment::pedersen::{Params as PedersenParams, Pedersen};
 use crate::utils::mle::{matrix_to_mle, vec_to_mle};
 use crate::utils::virtual_polynomial::VirtualPolynomial;
 use crate::Error;

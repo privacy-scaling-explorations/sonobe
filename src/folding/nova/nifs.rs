@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 
 use super::{CommittedInstance, Witness};
 use crate::ccs::r1cs::R1CS;
-use crate::pedersen::{Params as PedersenParams, Pedersen, Proof as PedersenProof};
+use crate::commitment::pedersen::{Params as PedersenParams, Pedersen, Proof as PedersenProof};
 use crate::transcript::Transcript;
 use crate::utils::vec::*;
 use crate::Error;

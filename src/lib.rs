@@ -9,10 +9,10 @@ use thiserror::Error;
 pub mod transcript;
 use transcript::Transcript;
 pub mod ccs;
+pub mod commitment;
 pub mod constants;
 pub mod folding;
 pub mod frontend;
-pub mod pedersen;
 pub mod utils;
 
 #[derive(Debug, Error)]
@@ -21,6 +21,10 @@ pub enum Error {
     SynthesisError(#[from] ark_relations::r1cs::SynthesisError),
     #[error("ark_serialize::SerializationError")]
     SerializationError(#[from] ark_serialize::SerializationError),
+    #[error("ark_poly_commit::Error")]
+    PolyCommitError(#[from] ark_poly_commit::Error),
+    #[error("crate::utils::espresso::virtual_polynomial::ArithErrors")]
+    ArithError(#[from] utils::espresso::virtual_polynomial::ArithErrors),
     #[error("{0}")]
     Other(String),
 
@@ -36,8 +40,8 @@ pub enum Error {
     Empty,
     #[error("Pedersen parameters length is not suficient (generators.len={0} < vector.len={1} unsatisfied)")]
     PedersenParamsLen(usize, usize),
-    #[error("Pedersen verification failed")]
-    PedersenVerificationFail,
+    #[error("Commitment verification failed")]
+    CommitmentVerificationFail,
     #[error("IVC verification failed")]
     IVCVerificationFail,
     #[error("R1CS instance is expected to not be relaxed")]

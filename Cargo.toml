@@ -9,6 +9,7 @@ ark-ff = "^0.4.0"
 ark-poly = "^0.4.0"
 ark-std = "^0.4.0"
 ark-crypto-primitives = { version = "^0.4.0", default-features = false, features = ["r1cs", "sponge", "crh"] }
+ark-poly-commit = "^0.4.0"
 ark-relations = { version = "^0.4.0", default-features = false }
 ark-r1cs-std = { default-features = false } # use latest version from the patch
 ark-serialize = "^0.4.0"
@@ -17,6 +18,7 @@ thiserror = "1.0"
 rayon = "1.7.0"
 num-bigint = "0.4"
 color-eyre = "=0.6.2"
+derivative = { version = "2", features = [ "use_core" ] }
 
 # tmp imports for espresso's sumcheck
 espresso_subroutines = {git="https://github.com/EspressoSystems/hyperplonk", package="subroutines"}

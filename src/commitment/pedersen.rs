@@ -53,6 +53,14 @@ impl<C: CurveGroup> Pedersen<C> {
         Ok(params.h.mul(r) + C::msm_unchecked(&params.generators[..v.len()], v))
     }
 
+    // pub fn prove(
+    //     params: &Params<C>,
+    //     transcript: &mut impl Transcript<C>, // TODO rm
+    //     cm: &C, // TODO rm
+    //     v: &Vec<C::ScalarField>,
+    //     // TODO potser afegir challenge? o pedersen no n'usa?
+    //     r: &C::ScalarField, // TODO es el blinding factor? comprovar
+    // ) -> Result<Proof<C>, Error> {
     pub fn prove(
         params: &Params<C>,
         transcript: &mut impl Transcript<C>,
@@ -108,7 +116,7 @@ impl<C: CurveGroup> Pedersen<C> {
         let rhs = params.h.mul(proof.r_u)
             + C::msm_unchecked(&params.generators[..proof.u.len()], &proof.u);
         if lhs != rhs {
-            return Err(Error::PedersenVerificationFail);
+            return Err(Error::CommitmentVerificationFail);
         }
         Ok(())
     }

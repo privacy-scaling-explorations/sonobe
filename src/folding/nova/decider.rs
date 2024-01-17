@@ -18,13 +18,13 @@ use ark_std::{One, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
 use crate::ccs::r1cs::R1CS;
+use crate::commitment::pedersen::Params as PedersenParams;
 use crate::folding::nova::{
     circuits::{CommittedInstanceVar, CF1, CF2},
     ivc::IVC,
     CommittedInstance, Witness,
 };
 use crate::frontend::FCircuit;
-use crate::pedersen::Params as PedersenParams;
 use crate::utils::gadgets::{
     hadamard, mat_vec_mul_sparse, vec_add, vec_scalar_mul, SparseMatrixVar,
 };
@@ -355,8 +355,8 @@ where
         {
             // imports here instead of at the top of the file, so we avoid having multiple
             // `#[cfg(not(test))]
+            use crate::commitment::pedersen::PedersenGadget;
             use crate::folding::nova::cyclefold::{CycleFoldCommittedInstanceVar, CF_IO_LEN};
-            use crate::pedersen::PedersenGadget;
             use ark_r1cs_std::ToBitsGadget;
 
             let cf_r1cs = R1CSVar::<

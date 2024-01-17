@@ -7,8 +7,8 @@ use ark_ec::{CurveGroup, Group};
 use ark_std::fmt::Debug;
 use ark_std::{One, Zero};
 
+use crate::commitment::pedersen::{Params as PedersenParams, Pedersen};
 use crate::folding::circuits::nonnative::point_to_nonnative_limbs;
-use crate::pedersen::{Params as PedersenParams, Pedersen};
 use crate::utils::vec::is_zero_vec;
 use crate::Error;
 

@@ -28,4 +28,8 @@ pub enum ProtoGalaxyError {
     CouldNotDivideByVanishing,
     #[error("The number of incoming instances + 1 should be a power of two, current number of instances: {0}")]
     WrongNumInstances(usize),
+    #[error("The number of incoming items should be a power of two, current number of coefficients: {0}")]
+    BTreeNotFull(usize),
+    #[error("The lengths of β and δ do not equal: |β| = {0}, |δ|={0}")]
+    WrongLenBetas(usize, usize),
 }

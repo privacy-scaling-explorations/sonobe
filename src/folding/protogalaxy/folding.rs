@@ -92,7 +92,7 @@ where
 
         // F(X)
         let F_X: SparsePolynomial<C::ScalarField> =
-            calc_f_from_btree(&f_w, &instance.betas, &deltas);
+            calc_f_from_btree(&f_w, &instance.betas, &deltas).expect("Error calculating F[x]");
         let F_X_dense = DensePolynomial::from(F_X.clone());
         transcript.absorb_vec(&F_X_dense.coeffs);
 
@@ -304,9 +304,29 @@ fn pow_i<F: PrimeField>(i: usize, betas: &Vec<F>) -> F {
     r
 }
 
-fn calc_f_from_btree<F: PrimeField>(fw: &[F], betas: &[F], deltas: &[F]) -> SparsePolynomial<F> {
-    assert_eq!(fw.len() & (fw.len() - 1), 0);
-    assert_eq!(betas.len(), deltas.len());
+/// calculates F[x] using the optimized binary-tree technique
+/// described in Claim 4.4
+/// of [Protogalaxy](https://eprint.iacr.org/2023/1106.pdf)
+fn calc_f_from_btree<F: PrimeField>(
+    fw: &[F],
+    betas: &[F],
+    deltas: &[F],
+) -> Result<SparsePolynomial<F>, Error> {
+    let fw_len = fw.len();
+    let betas_len = betas.len();
+    let deltas_len = deltas.len();
+
+    // ensure our binary tree is full
+    if !fw_len.is_power_of_two() {
+        return Err(Error::ProtoGalaxy(ProtoGalaxyError::BTreeNotFull(fw_len)));
+    }
+
+    if betas_len != deltas_len {
+        return Err(Error::ProtoGalaxy(ProtoGalaxyError::WrongLenBetas(
+            betas_len, deltas_len,
+        )));
+    }
+
     let mut layers: Vec<Vec<SparsePolynomial<F>>> = Vec::new();
     let leaves: Vec<SparsePolynomial<F>> = fw
         .iter()
@@ -331,8 +351,8 @@ fn calc_f_from_btree<F: PrimeField>(fw: &[F], betas: &[F], deltas: &[F]) -> Spar
             }
             let left = ni.clone();
             let right = SparsePolynomial::<F>::from_coefficients_vec(vec![
-                (0, betas[layers.len() - 2]),  // FIXME
-                (1, deltas[layers.len() - 2]), // FIXME
+                (0, betas[layers.len() - 2]),
+                (1, deltas[layers.len() - 2]),
             ])
             .mul(&currentNodes[i + 1]);
 
@@ -341,7 +361,7 @@ fn calc_f_from_btree<F: PrimeField>(fw: &[F], betas: &[F], deltas: &[F]) -> Spar
         currentNodes = layers[index].clone();
     }
     let root_index = layers.len() - 1;
-    layers[root_index][0].clone()
+    Ok(layers[root_index][0].clone())
 }
 
 // lagrange_polys method from caulk: https://github.com/caulk-crypto/caulk/tree/8210b51fb8a9eef4335505d1695c44ddc7bf8170/src/multi/setup.rs#L300
@@ -416,7 +436,6 @@ mod tests {
             assert_eq!(pow_i(i, &betas), not_betas[i]);
         }
     }
-
 
     #[test]
     fn test_eval_f() {

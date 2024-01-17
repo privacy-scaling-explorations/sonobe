@@ -8,12 +8,13 @@ use ark_std::{One, Zero};
 use core::marker::PhantomData;
 
 use super::{
-    circuits::{AugmentedFCircuit, ChallengeGadget, FCircuit, CF2},
+    circuits::{AugmentedFCircuit, ChallengeGadget, CF2},
     cyclefold::{CycleFoldChallengeGadget, CycleFoldCircuit},
 };
 use super::{nifs::NIFS, traits::NovaR1CS, CommittedInstance, Witness};
 use crate::ccs::r1cs::R1CS;
-use crate::frontend::arkworks::{extract_r1cs, extract_w_x}; // TODO once Frontend trait is ready, use that
+use crate::ccs::r1cs::{extract_r1cs, extract_w_x};
+use crate::frontend::FCircuit;
 use crate::pedersen::{Params as PedersenParams, Pedersen};
 use crate::Error;
 
@@ -33,23 +34,31 @@ where
     _gc1: PhantomData<GC1>,
     _c2: PhantomData<C2>,
     _gc2: PhantomData<GC2>,
-    r1cs: R1CS<C1::ScalarField>,
-    cf_r1cs: R1CS<C2::ScalarField>, // Notice that this is a different set of R1CS constraints than the 'r1cs'. This is the R1CS of the CycleFoldCircuit
-    poseidon_config: PoseidonConfig<C1::ScalarField>,
-    pedersen_params: PedersenParams<C1>, // PedersenParams over C1
-    cf_pedersen_params: PedersenParams<C2>, // CycleFold PedersenParams, over C2
-    F: FC,                               // F circuit
-    i: C1::ScalarField,
-    z_0: Vec<C1::ScalarField>,
-    z_i: Vec<C1::ScalarField>,
-    w_i: Witness<C1>,
-    u_i: CommittedInstance<C1>,
-    W_i: Witness<C1>,
-    U_i: CommittedInstance<C1>,
+    /// R1CS of the Augmented Function circuit
+    pub r1cs: R1CS<C1::ScalarField>,
+    /// R1CS of the CycleFold circuit
+    pub cf_r1cs: R1CS<C2::ScalarField>,
+    pub poseidon_config: PoseidonConfig<C1::ScalarField>,
+    /// PedersenParams over C1
+    pub pedersen_params: PedersenParams<C1>,
+    /// CycleFold PedersenParams, over C2
+    pub cf_pedersen_params: PedersenParams<C2>,
+    /// F circuit, the circuit that is being folded
+    pub F: FC,
+    pub i: C1::ScalarField,
+    /// initial state
+    pub z_0: Vec<C1::ScalarField>,
+    /// current i-th state
+    pub z_i: Vec<C1::ScalarField>,
+    /// Nova instances
+    pub w_i: Witness<C1>,
+    pub u_i: CommittedInstance<C1>,
+    pub W_i: Witness<C1>,
+    pub U_i: CommittedInstance<C1>,
 
-    // cyclefold running instance
-    cf_W_i: Witness<C2>,
-    cf_U_i: CommittedInstance<C2>,
+    /// CycleFold running instance
+    pub cf_W_i: Witness<C2>,
+    pub cf_U_i: CommittedInstance<C2>,
 }
 
 impl<C1, GC1, C2, GC2, FC> IVC<C1, GC1, C2, GC2, FC>
@@ -130,7 +139,7 @@ where
         let augmented_F_circuit: AugmentedFCircuit<C1, C2, GC2, FC>;
         let cf_circuit: CycleFoldCircuit<C1, GC1>;
 
-        let z_i1 = self.F.step_native(self.z_i.clone());
+        let z_i1 = self.F.step_native(self.z_i.clone())?;
 
         // compute T and cmT for AugmentedFCircuit
         let (T, cmT) = self.compute_cmT()?;
@@ -389,7 +398,7 @@ mod tests {
     use ark_pallas::{constraints::GVar, Fr, Projective};
     use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
 
-    use crate::folding::nova::circuits::tests::TestFCircuit;
+    use crate::frontend::tests::CubicFCircuit;
     use crate::transcript::poseidon::tests::poseidon_test_config;
 
     #[test]
@@ -397,10 +406,10 @@ mod tests {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_test_config::<Fr>();
 
-        let F_circuit = TestFCircuit::<Fr>::new();
+        let F_circuit = CubicFCircuit::<Fr>::new(());
         let z_0 = vec![Fr::from(3_u32)];
 
-        let mut ivc = IVC::<Projective, GVar, Projective2, GVar2, TestFCircuit<Fr>>::new(
+        let mut ivc = IVC::<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>>::new(
             &mut rng,
             poseidon_config,
             F_circuit,

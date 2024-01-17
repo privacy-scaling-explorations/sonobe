@@ -2,6 +2,7 @@ use ark_ff::PrimeField;
 
 use crate::utils::vec::*;
 use crate::Error;
+use ark_relations::r1cs::ConstraintSystem;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct R1CS<F: PrimeField> {
@@ -71,10 +72,53 @@ impl<F: PrimeField> RelaxedR1CS<F> {
     }
 }
 
+/// extracts arkworks ConstraintSystem matrices into crate::utils::vec::SparseMatrix format as R1CS
+/// struct.
+pub fn extract_r1cs<F: PrimeField>(cs: &ConstraintSystem<F>) -> R1CS<F> {
+    let m = cs.to_matrices().unwrap();
+
+    let n_rows = cs.num_constraints;
+    let n_cols = cs.num_instance_variables + cs.num_witness_variables; // cs.num_instance_variables already counts the 1
+
+    let A = SparseMatrix::<F> {
+        n_rows,
+        n_cols,
+        coeffs: m.a,
+    };
+    let B = SparseMatrix::<F> {
+        n_rows,
+        n_cols,
+        coeffs: m.b,
+    };
+    let C = SparseMatrix::<F> {
+        n_rows,
+        n_cols,
+        coeffs: m.c,
+    };
+
+    R1CS::<F> {
+        l: cs.num_instance_variables - 1, // -1 to substract the first '1'
+        A,
+        B,
+        C,
+    }
+}
+
+/// extracts the witness and the public inputs from arkworks ConstraintSystem.
+pub fn extract_w_x<F: PrimeField>(cs: &ConstraintSystem<F>) -> (Vec<F>, Vec<F>) {
+    (
+        cs.witness_assignment.clone(),
+        // skip the first element which is '1'
+        cs.instance_assignment[1..].to_vec(),
+    )
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
     use crate::utils::vec::tests::{to_F_matrix, to_F_vec};
+
+    use ark_ff::PrimeField;
     use ark_pallas::Fr;
 
     pub fn get_test_r1cs<F: PrimeField>() -> R1CS<F> {

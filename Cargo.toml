@@ -18,7 +18,6 @@ thiserror = "1.0"
 rayon = "1.7.0"
 num-bigint = "0.4"
 color-eyre = "=0.6.2"
-derivative = { version = "2", features = [ "use_core" ] }
 
 # tmp imports for espresso's sumcheck
 espresso_subroutines = {git="https://github.com/EspressoSystems/hyperplonk", package="subroutines"}

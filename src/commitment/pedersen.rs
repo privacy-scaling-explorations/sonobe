@@ -5,9 +5,9 @@ use ark_relations::r1cs::SynthesisError;
 use ark_std::{rand::Rng, UniformRand};
 use core::marker::PhantomData;
 
-use crate::utils::vec::{vec_add, vec_scalar_mul};
-
+use super::CommitmentProver;
 use crate::transcript::Transcript;
+use crate::utils::vec::{vec_add, vec_scalar_mul};
 use crate::Error;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -39,11 +39,15 @@ impl<C: CurveGroup> Pedersen<C> {
         };
         params
     }
+}
 
-    pub fn commit(
-        params: &Params<C>,
-        v: &Vec<C::ScalarField>,
-        r: &C::ScalarField,
+impl<C: CurveGroup> CommitmentProver<'_, C> for Pedersen<C> {
+    type Params = Params<C>;
+    type Proof = Proof<C>;
+    fn commit(
+        params: &Self::Params,
+        v: &[C::ScalarField],
+        r: &C::ScalarField, // blinding factor
     ) -> Result<C, Error> {
         if params.generators.len() < v.len() {
             return Err(Error::PedersenParamsLen(params.generators.len(), v.len()));
@@ -53,21 +57,13 @@ impl<C: CurveGroup> Pedersen<C> {
         Ok(params.h.mul(r) + C::msm_unchecked(&params.generators[..v.len()], v))
     }
 
-    // pub fn prove(
-    //     params: &Params<C>,
-    //     transcript: &mut impl Transcript<C>, // TODO rm
-    //     cm: &C, // TODO rm
-    //     v: &Vec<C::ScalarField>,
-    //     // TODO potser afegir challenge? o pedersen no n'usa?
-    //     r: &C::ScalarField, // TODO es el blinding factor? comprovar
-    // ) -> Result<Proof<C>, Error> {
-    pub fn prove(
+    fn prove(
         params: &Params<C>,
         transcript: &mut impl Transcript<C>,
         cm: &C,
-        v: &Vec<C::ScalarField>,
-        r: &C::ScalarField,
-    ) -> Result<Proof<C>, Error> {
+        v: &[C::ScalarField],
+        r: &C::ScalarField, // blinding factor
+    ) -> Result<Self::Proof, Error> {
         if params.generators.len() < v.len() {
             return Err(Error::PedersenParamsLen(params.generators.len(), v.len()));
         }
@@ -88,9 +84,11 @@ impl<C: CurveGroup> Pedersen<C> {
         // r_u = e⋅r + r_1
         let r_u = e * r + r1;
 
-        Ok(Proof::<C> { R, u, r_u })
+        Ok(Self::Proof { R, u, r_u })
     }
+}
 
+impl<C: CurveGroup> Pedersen<C> {
     pub fn verify(
         params: &Params<C>,
         transcript: &mut impl Transcript<C>,
@@ -110,7 +108,7 @@ impl<C: CurveGroup> Pedersen<C> {
         transcript.absorb_point(&proof.R)?;
         let e = transcript.get_challenge();
 
-        // check that: R + cm == h⋅r_u + <g, u>
+        // check that: R + cm⋅e == h⋅r_u + <g, u>
         let lhs = proof.R + cm.mul(e);
         // use msm_unchecked because we already ensured at the if that lengths match
         let rhs = params.h.mul(proof.r_u)

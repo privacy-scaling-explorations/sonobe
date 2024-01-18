@@ -20,10 +20,10 @@ use ark_poly_commit::kzg10::{UniversalParams, VerifierKey, KZG10};
 use ark_std::{borrow::Cow, fmt::Debug};
 use ark_std::{ops::Mul, rand::Rng};
 use core::marker::PhantomData;
-use derivative::Derivative;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-// use super::CommitmentScheme;
+use super::CommitmentProver;
+use crate::transcript::Transcript;
 use crate::Error;
 
 /// Powers defines the same struct as in ark_poly_commit::kzg10::Powers, but instead of depending
@@ -36,14 +36,7 @@ pub struct Powers<'a, C: CurveGroup> {
     pub powers_of_gamma_g: Cow<'a, [C::Affine]>,
 }
 
-#[derive(Derivative)]
-#[derivative(
-    // Default(bound = ""),
-    // Hash(bound = ""),
-    Clone(bound = ""),
-    Debug(bound = ""),
-    PartialEq
-)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct KZGParams<'a, P: Pairing> {
     universal_params: UniversalParams<P>,
     powers: Powers<'a, P::G1>,
@@ -59,6 +52,13 @@ impl<'a, P: Pairing> KZGParams<'a, P> {
             prepared_beta_h: self.universal_params.prepared_beta_h.clone(),
         }
     }
+}
+
+// TODO WIP TMP maybe get rid of it
+pub trait CommitmentSetup<'a, P: Pairing> {
+    type Params: Debug;
+
+    fn setup<R: Rng>(rng: &mut R, len: usize) -> Self::Params;
 }
 
 pub struct KZGSetup<P: Pairing> {
@@ -80,8 +80,6 @@ where
             .collect();
         let powers = Powers::<P::G1> {
             powers_of_g: ark_std::borrow::Cow::Owned(powers_of_g),
-            // powers_of_gamma_g: ark_std::borrow::Cow::Owned(powers_of_gamma_g),
-            // powers_of_g: powers_of_g.clone(), // WIP
             powers_of_gamma_g: ark_std::borrow::Cow::Owned(powers_of_gamma_g),
         };
         KZGParams {
@@ -99,17 +97,18 @@ impl<'a, C> CommitmentProver<'a, C> for KZGProver<'a, C>
 where
     C: CurveGroup,
 {
-    // type Params = KZGParams<P>;
     type Params = Powers<'a, C>;
-    // type VerifierParams = Powers<P>; // WIP
-    type Proof = C;
-    // type UniPoly_F = DensePolynomial<C1::ScalarField>;
+    type Proof = (C, C::ScalarField); // (proof, evaluation)
 
     /// commit implements the CommitmentProver commit interface, adapting the implementation from
     /// https://github.com/arkworks-rs/poly-commit/tree/c724fa666e935bbba8db5a1421603bab542e15ab/poly-commit/src/kzg10/mod.rs#L178
     /// with the main difference being the remove of the randomness and blinding factors.
-    fn commit(params: &Self::Params, v: &Vec<C::ScalarField>) -> Result<C, Error> {
-        let polynomial = poly_from_vec(v)?;
+    fn commit(
+        params: &Self::Params,
+        v: &[C::ScalarField],
+        _blind: &C::ScalarField,
+    ) -> Result<C, Error> {
+        let polynomial = poly_from_vec(&v.to_vec())?;
         check_degree_is_too_large(polynomial.degree(), params.powers_of_g.len())?;
 
         let (num_leading_zeros, plain_coeffs) =
@@ -122,29 +121,38 @@ where
     }
     fn prove(
         params: &Self::Params,
-        v: &Vec<C::ScalarField>,
-        challenge: C::ScalarField,
+        transcript: &mut impl Transcript<C>,
+        cm: &C,
+        v: &[C::ScalarField],
+        _blind: &C::ScalarField,
     ) -> Result<Self::Proof, Error> {
-        let polynomial = poly_from_vec(v)?;
+        let polynomial = poly_from_vec(&v.to_vec())?;
         check_degree_is_too_large(polynomial.degree(), params.powers_of_g.len())?;
+
+        transcript.absorb_point(cm)?;
+        let challenge = transcript.get_challenge();
 
         let witness_poly = compute_witness_polynomial::<C::ScalarField>(&polynomial, challenge);
 
         let proof = open_with_witness_polynomial(params, challenge, &witness_poly)?;
-        Ok(proof)
+        Ok((proof, polynomial.evaluate(&challenge)))
     }
 }
+
 pub fn verify_single<P: Pairing>(
     vk: VerifierKey<P>,
+    transcript: &mut impl Transcript<P::G1>,
     cm: P::G1,
     proof: P::G1,
-    challenge: P::ScalarField,
-    y: P::ScalarField,
+    eval: P::ScalarField, // eval = y = p(z), where z=challenge
 ) -> Result<(), Error> {
-    let inner = cm - &vk.g.mul(y);
+    let inner = cm - vk.g.mul(eval);
     let lhs = P::pairing(inner, vk.h);
 
-    let inner = vk.beta_h.into_group() - &vk.h.mul(challenge);
+    transcript.absorb_point(&cm)?;
+    let challenge = transcript.get_challenge();
+
+    let inner = vk.beta_h.into_group() - vk.h.mul(challenge);
     let rhs = P::pairing(proof, inner);
 
     if lhs != rhs {
@@ -169,9 +177,9 @@ fn compute_witness_polynomial<F: PrimeField>(
 }
 /// method adapted from
 /// https://github.com/arkworks-rs/poly-commit/tree/c724fa666e935bbba8db5a1421603bab542e15ab/poly-commit/src/kzg10/mod.rs#L263
-fn open_with_witness_polynomial<'a, C: CurveGroup>(
+fn open_with_witness_polynomial<C: CurveGroup>(
     powers: &Powers<C>,
-    point: C::ScalarField, // TODO rm? only used in the randomness case
+    _point: C::ScalarField, // TODO rm? only used in the randomness case
     witness_polynomial: &DensePolynomial<C::ScalarField>,
 ) -> Result<C, Error> {
     check_degree_is_too_large(witness_polynomial.degree(), powers.powers_of_g.len())?;
@@ -215,53 +223,40 @@ fn skip_leading_zeros_and_convert_to_bigints<F: PrimeField, P: DenseUVPolynomial
     (num_leading_zeros, coeffs)
 }
 fn convert_to_bigints<F: PrimeField>(p: &[F]) -> Vec<F::BigInt> {
-    let coeffs = ark_std::cfg_iter!(p)
+    ark_std::cfg_iter!(p)
         .map(|s| s.into_bigint())
-        .collect::<Vec<_>>();
-    coeffs
-}
-
-pub trait CommitmentSetup<'a, P: Pairing> {
-    type Params: Debug;
-
-    fn setup<R: Rng>(rng: &mut R, len: usize) -> Self::Params;
-}
-pub trait CommitmentProver<'a, C: CurveGroup> {
-    type Params: Debug;
-    type Proof: Debug;
-
-    fn commit(params: &Self::Params, v: &Vec<C::ScalarField>) -> Result<C, Error>;
-    fn prove(
-        params: &Self::Params,
-        v: &Vec<C::ScalarField>,
-        challenge: C::ScalarField,
-    ) -> Result<Self::Proof, Error>;
+        .collect::<Vec<_>>()
 }
 
 #[cfg(test)]
 mod tests {
     use ark_bn254::{Bn254, Fr, G1Projective as G1};
-    use ark_std::test_rng;
-    use ark_std::UniformRand;
+    use ark_std::Zero;
+    use ark_std::{test_rng, UniformRand};
 
     use super::*;
+    use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
 
     #[test]
     fn test_kzg_commitment_scheme() {
         let rng = &mut test_rng();
+        let poseidon_config = poseidon_test_config::<Fr>();
+        let transcript_p = &mut PoseidonTranscript::<G1>::new(&poseidon_config);
+        let transcript_v = &mut PoseidonTranscript::<G1>::new(&poseidon_config);
 
-        let n = 100;
+        let n = 3;
         let params: KZGParams<Bn254> = KZGSetup::<Bn254>::setup(rng, n);
 
         let v: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(rng)).take(n).collect();
-        let cm = KZGProver::<G1>::commit(&params.powers, &v).unwrap();
-        let challenge = Fr::rand(rng);
+        let cm = KZGProver::<G1>::commit(&params.powers, &v, &Fr::zero()).unwrap();
+        // let challenge = Fr::rand(rng);
 
-        let poly_v = poly_from_vec(&v).unwrap();
-        let eval = poly_v.evaluate(&challenge);
-        let proof = KZGProver::<G1>::prove(&params.powers, &v, challenge).unwrap();
+        let (proof, eval) =
+            KZGProver::<G1>::prove(&params.powers, transcript_p, &cm, &v, &Fr::zero()).unwrap();
 
+        // let poly_v = poly_from_vec(&v).unwrap();
+        // let eval = poly_v.evaluate(&challenge);
         let vk = params.verifier_key();
-        verify_single::<Bn254>(vk, cm, proof, challenge, eval).unwrap();
+        verify_single::<Bn254>(vk, transcript_v, cm, proof, eval).unwrap();
     }
 }

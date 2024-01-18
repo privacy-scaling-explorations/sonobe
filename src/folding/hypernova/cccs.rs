@@ -9,7 +9,10 @@ use ark_std::{rand::Rng, UniformRand};
 
 use super::utils::compute_sum_Mz;
 use crate::ccs::CCS;
-use crate::commitment::pedersen::{Params as PedersenParams, Pedersen};
+use crate::commitment::{
+    pedersen::{Params as PedersenParams, Pedersen},
+    CommitmentProver,
+};
 use crate::utils::hypercube::BooleanHypercube;
 use crate::utils::mle::matrix_to_mle;
 use crate::utils::mle::vec_to_mle;

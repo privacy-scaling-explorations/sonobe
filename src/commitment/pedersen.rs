@@ -170,7 +170,7 @@ mod tests {
     fn test_pedersen_vector() {
         let mut rng = ark_std::test_rng();
 
-        const n: usize = 10;
+        let n: usize = 10;
         // setup params
         let params = Pedersen::<Projective>::new_params(&mut rng, n);
         let poseidon_config = poseidon_test_config::<Fr>();
@@ -193,7 +193,7 @@ mod tests {
     fn test_pedersen_circuit() {
         let mut rng = ark_std::test_rng();
 
-        const n: usize = 10;
+        let n: usize = 10;
         // setup params
         let params = Pedersen::<Projective>::new_params(&mut rng, n);
 

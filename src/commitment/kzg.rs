@@ -7,18 +7,18 @@
 /// Pairing but only to G1.
 /// For our case, we want the folding schemes prover to be agnostic to pairings, since in the
 /// non-ethereum cases we may use non-pairing-friendly curves with Pedersen commitments, so the
-/// trait & types that we use should not depend on the Pairing type for the prover. Thus, we
+/// trait & types that we use should not depend on the Pairing type for the prover. Therefore, we
 /// separate the CommitmentSchemeProver from the setup and verify phases, so the prover can be
 /// defined without depending on pairings.
-use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, VariableBaseMSM};
+use ark_ec::{pairing::Pairing, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_poly::{
     univariate::DensePolynomial, DenseUVPolynomial, EvaluationDomain, Evaluations,
     GeneralEvaluationDomain, Polynomial,
 };
 use ark_poly_commit::kzg10::{UniversalParams, VerifierKey, KZG10};
+use ark_std::rand::Rng;
 use ark_std::{borrow::Cow, fmt::Debug};
-use ark_std::{ops::Mul, rand::Rng};
 use core::marker::PhantomData;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
@@ -38,8 +38,8 @@ pub struct Powers<'a, C: CurveGroup> {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct KZGParams<'a, P: Pairing> {
-    universal_params: UniversalParams<P>,
-    powers: Powers<'a, P::G1>,
+    pub universal_params: UniversalParams<P>,
+    pub powers: Powers<'a, P::G1>,
 }
 impl<'a, P: Pairing> KZGParams<'a, P> {
     pub fn verifier_key(self) -> VerifierKey<P> {
@@ -54,23 +54,15 @@ impl<'a, P: Pairing> KZGParams<'a, P> {
     }
 }
 
-// TODO WIP TMP maybe get rid of it
-pub trait CommitmentSetup<'a, P: Pairing> {
-    type Params: Debug;
-
-    fn setup<R: Rng>(rng: &mut R, len: usize) -> Self::Params;
-}
-
 pub struct KZGSetup<P: Pairing> {
     _p: PhantomData<P>,
 }
 
-impl<'a, P> CommitmentSetup<'a, P> for KZGSetup<P>
+impl<'a, P> KZGSetup<P>
 where
     P: Pairing,
 {
-    type Params = KZGParams<'a, P>;
-    fn setup<R: Rng>(rng: &mut R, len: usize) -> Self::Params {
+    pub fn setup<R: Rng>(rng: &mut R, len: usize) -> KZGParams<'a, P> {
         let len = len.next_power_of_two();
         let universal_params = KZG10::<P, DensePolynomial<P::ScalarField>>::setup(len, false, rng)
             .expect("Setup failed");
@@ -89,6 +81,7 @@ where
     }
 }
 
+/// KZGProver implements the CommitmentProver trait for the KZG commitment scheme.
 pub struct KZGProver<'a, C: CurveGroup> {
     _a: PhantomData<&'a ()>,
     _c: PhantomData<C>,
@@ -98,11 +91,12 @@ where
     C: CurveGroup,
 {
     type Params = Powers<'a, C>;
-    type Proof = (C, C::ScalarField); // (proof, evaluation)
+    type Proof = (C::ScalarField, C); // (evaluation, proof)
 
     /// commit implements the CommitmentProver commit interface, adapting the implementation from
     /// https://github.com/arkworks-rs/poly-commit/tree/c724fa666e935bbba8db5a1421603bab542e15ab/poly-commit/src/kzg10/mod.rs#L178
-    /// with the main difference being the remove of the randomness and blinding factors.
+    /// with the main difference being the removal of the blinding factors and the no-dependancy to
+    /// the Pairing trait.
     fn commit(
         params: &Self::Params,
         v: &[C::ScalarField],
@@ -119,6 +113,11 @@ where
         );
         Ok(commitment)
     }
+
+    /// prove implements the CommitmentProver prove interface, adapting the implementation from
+    /// https://github.com/arkworks-rs/poly-commit/tree/c724fa666e935bbba8db5a1421603bab542e15ab/poly-commit/src/kzg10/mod.rs#L307
+    /// with the main difference being the removal of the blinding factors and the no-dependancy to
+    /// the Pairing trait.
     fn prove(
         params: &Self::Params,
         transcript: &mut impl Transcript<C>,
@@ -135,30 +134,8 @@ where
         let witness_poly = compute_witness_polynomial::<C::ScalarField>(&polynomial, challenge);
 
         let proof = open_with_witness_polynomial(params, challenge, &witness_poly)?;
-        Ok((proof, polynomial.evaluate(&challenge)))
+        Ok((polynomial.evaluate(&challenge), proof))
     }
-}
-
-pub fn verify_single<P: Pairing>(
-    vk: VerifierKey<P>,
-    transcript: &mut impl Transcript<P::G1>,
-    cm: P::G1,
-    proof: P::G1,
-    eval: P::ScalarField, // eval = y = p(z), where z=challenge
-) -> Result<(), Error> {
-    let inner = cm - vk.g.mul(eval);
-    let lhs = P::pairing(inner, vk.h);
-
-    transcript.absorb_point(&cm)?;
-    let challenge = transcript.get_challenge();
-
-    let inner = vk.beta_h.into_group() - vk.h.mul(challenge);
-    let rhs = P::pairing(proof, inner);
-
-    if lhs != rhs {
-        return Err(Error::CommitmentVerificationFail);
-    }
-    Ok(())
 }
 
 /// method adapted from
@@ -231,6 +208,7 @@ fn convert_to_bigints<F: PrimeField>(p: &[F]) -> Vec<F::BigInt> {
 #[cfg(test)]
 mod tests {
     use ark_bn254::{Bn254, Fr, G1Projective as G1};
+    use ark_poly_commit::kzg10::{Commitment as KZG10Commitment, Proof as KZG10Proof, KZG10};
     use ark_std::Zero;
     use ark_std::{test_rng, UniformRand};
 
@@ -249,14 +227,28 @@ mod tests {
 
         let v: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(rng)).take(n).collect();
         let cm = KZGProver::<G1>::commit(&params.powers, &v, &Fr::zero()).unwrap();
-        // let challenge = Fr::rand(rng);
 
-        let (proof, eval) =
+        let (eval, proof) =
             KZGProver::<G1>::prove(&params.powers, transcript_p, &cm, &v, &Fr::zero()).unwrap();
 
-        // let poly_v = poly_from_vec(&v).unwrap();
-        // let eval = poly_v.evaluate(&challenge);
+        // verify the proof:
         let vk = params.verifier_key();
-        verify_single::<Bn254>(vk, transcript_v, cm, proof, eval).unwrap();
+
+        // get evaluation challenge
+        transcript_v.absorb_point(&cm).unwrap();
+        let challenge = transcript_v.get_challenge();
+
+        // verify the KZG proof using arkworks method
+        assert!(KZG10::<Bn254, DensePolynomial<Fr>>::check(
+            &vk,
+            &KZG10Commitment(cm.into_affine()),
+            challenge,
+            eval,
+            &KZG10Proof::<Bn254> {
+                w: proof.into_affine(),
+                random_v: None,
+            },
+        )
+        .unwrap());
     }
 }

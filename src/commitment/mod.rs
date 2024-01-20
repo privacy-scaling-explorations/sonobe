@@ -8,7 +8,7 @@ pub mod kzg;
 pub mod pedersen;
 
 /// CommitmentProver defines the vector commitment scheme prover trait.
-pub trait CommitmentProver<'a, C: CurveGroup> {
+pub trait CommitmentProver<C: CurveGroup> {
     type Params: Debug;
     type Proof: Debug;
 
@@ -32,11 +32,13 @@ mod tests {
     use ark_bn254::{Bn254, Fr, G1Projective as G1};
     use ark_crypto_primitives::sponge::{poseidon::PoseidonConfig, Absorb};
     use ark_poly::univariate::DensePolynomial;
-    use ark_poly_commit::kzg10::{Commitment as KZG10Commitment, Proof as KZG10Proof, KZG10};
+    use ark_poly_commit::kzg10::{
+        Commitment as KZG10Commitment, Proof as KZG10Proof, VerifierKey, KZG10,
+    };
     use ark_std::Zero;
     use ark_std::{test_rng, UniformRand};
 
-    use super::kzg::{KZGParams, KZGProver, KZGSetup};
+    use super::kzg::{KZGProver, KZGSetup, ProverKey};
     use super::pedersen::Pedersen;
     use crate::transcript::{
         poseidon::{tests::poseidon_test_config, PoseidonTranscript},
@@ -45,7 +47,7 @@ mod tests {
 
     // Computes the commitment of the two vectors using the given CommitmentProver, then computes
     // their random linear combination, and returns it together with the proof of it.
-    fn commit_rlc_and_proof<'a, C: CurveGroup, CP: CommitmentProver<'a, C>>(
+    fn commit_rlc_and_proof<C: CurveGroup, CP: CommitmentProver<C>>(
         poseidon_config: &PoseidonConfig<C::ScalarField>,
         params: &CP::Params,
         r: C::ScalarField,
@@ -82,7 +84,8 @@ mod tests {
 
         // setup params for Pedersen & KZG
         let pedersen_params = Pedersen::<G1>::new_params(rng, n);
-        let kzg_params: KZGParams<Bn254> = KZGSetup::<Bn254>::setup(rng, n);
+        let (kzg_pk, kzg_vk): (ProverKey<G1>, VerifierKey<Bn254>) =
+            KZGSetup::<Bn254>::setup(rng, n);
 
         // Pedersen commit the two vectors and return their random linear combination and proof
         let (pedersen_cm, pedersen_proof) = commit_rlc_and_proof::<G1, Pedersen<G1>>(
@@ -95,14 +98,9 @@ mod tests {
         .unwrap();
 
         // KZG commit the two vectors and return their random linear combination and proof
-        let (kzg_cm, kzg_proof) = commit_rlc_and_proof::<G1, KZGProver<G1>>(
-            &poseidon_config,
-            &kzg_params.powers,
-            r,
-            v_1,
-            v_2,
-        )
-        .unwrap();
+        let (kzg_cm, kzg_proof) =
+            commit_rlc_and_proof::<G1, KZGProver<G1>>(&poseidon_config, &kzg_pk, r, v_1, v_2)
+                .unwrap();
 
         // verify Pedersen
         let transcript_v = &mut PoseidonTranscript::<G1>::new(&poseidon_config);
@@ -113,10 +111,9 @@ mod tests {
         let transcript_v = &mut PoseidonTranscript::<G1>::new(&poseidon_config);
         transcript_v.absorb_point(&kzg_cm).unwrap();
         let challenge = transcript_v.get_challenge();
-        let vk = kzg_params.verifier_key();
         // verify the KZG proof using arkworks method
         assert!(KZG10::<Bn254, DensePolynomial<Fr>>::check(
-            &vk,
+            &kzg_vk,
             &KZG10Commitment(kzg_cm.into_affine()),
             challenge,
             kzg_proof.0, // eval

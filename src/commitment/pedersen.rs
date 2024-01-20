@@ -41,7 +41,8 @@ impl<C: CurveGroup> Pedersen<C> {
     }
 }
 
-impl<C: CurveGroup> CommitmentProver<'_, C> for Pedersen<C> {
+// implement the CommitmentProver trait for Pedersen
+impl<C: CurveGroup> CommitmentProver<C> for Pedersen<C> {
     type Params = Params<C>;
     type Proof = Proof<C>;
     fn commit(

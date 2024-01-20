@@ -92,7 +92,8 @@ where
     <C as Group>::ScalarField: Absorb,
 {
     pub fn new(w: Vec<C::ScalarField>, e_len: usize) -> Self {
-        // note: at the current version, we set the blinding factors to 0 always.
+        // note: at the current version, we don't use the blinding factors and we set them to 0
+        // always.
         Self {
             E: vec![C::ScalarField::zero(); e_len],
             rE: C::ScalarField::zero(),

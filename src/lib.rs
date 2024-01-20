@@ -56,6 +56,8 @@ pub enum Error {
     OutOfBounds,
     #[error("Could not construct the Evaluation Domain")]
     NewDomainFail,
+    #[error("Feature '{0}' not supported yet")]
+    NotSupportedYet(String),
 
     #[error(transparent)]
     ProtoGalaxy(folding::protogalaxy::ProtoGalaxyError),

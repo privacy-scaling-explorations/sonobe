@@ -301,7 +301,6 @@ where
         self.z_i = z_i1.clone();
         self.w_i = Witness::<C1>::new(w_i1, self.r1cs.A.n_rows);
         self.u_i = self.w_i.commit(&self.pedersen_params, vec![u_i1_x])?;
-        // TODO WIP // self.u_i = self.w_i.commit_kzg(&self.pedersen_params, vec![u_i1_x])?;
         self.W_i = W_i1.clone();
         self.U_i = U_i1.clone();
 

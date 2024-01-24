@@ -47,22 +47,22 @@ mod tests {
 
     // Computes the commitment of the two vectors using the given CommitmentProver, then computes
     // their random linear combination, and returns it together with the proof of it.
-    fn commit_rlc_and_proof<C: CurveGroup, CP: CommitmentProver<C>>(
+    fn commit_rlc_and_prove<C: CurveGroup, CP: CommitmentProver<C>>(
         poseidon_config: &PoseidonConfig<C::ScalarField>,
         params: &CP::Params,
         r: C::ScalarField,
-        v_1: Vec<C::ScalarField>,
-        v_2: Vec<C::ScalarField>,
+        v_1: &[C::ScalarField],
+        v_2: &[C::ScalarField],
     ) -> Result<(C, CP::Proof), Error>
     where
         <C as ark_ec::Group>::ScalarField: Absorb,
     {
-        let cm_1 = CP::commit(params, &v_1, &C::ScalarField::zero())?;
-        let cm_2 = CP::commit(params, &v_2, &C::ScalarField::zero())?;
+        let cm_1 = CP::commit(params, v_1, &C::ScalarField::zero())?;
+        let cm_2 = CP::commit(params, v_2, &C::ScalarField::zero())?;
 
         // random linear combination of the commitment and the witness (vector v)
         let cm_3 = cm_1 + cm_2.mul(r);
-        let v_3: Vec<C::ScalarField> = v_1.iter().zip(&v_2).map(|(a, b)| *a + (r * b)).collect();
+        let v_3: Vec<C::ScalarField> = v_1.iter().zip(v_2).map(|(a, b)| *a + (r * b)).collect();
 
         let transcript = &mut PoseidonTranscript::<C>::new(poseidon_config);
         let proof = CP::prove(params, transcript, &cm_3, &v_3, &C::ScalarField::zero()).unwrap();
@@ -88,18 +88,18 @@ mod tests {
             KZGSetup::<Bn254>::setup(rng, n);
 
         // Pedersen commit the two vectors and return their random linear combination and proof
-        let (pedersen_cm, pedersen_proof) = commit_rlc_and_proof::<G1, Pedersen<G1>>(
+        let (pedersen_cm, pedersen_proof) = commit_rlc_and_prove::<G1, Pedersen<G1>>(
             &poseidon_config,
             &pedersen_params,
             r,
-            v_1.clone(),
-            v_2.clone(),
+            &v_1,
+            &v_2,
         )
         .unwrap();
 
         // KZG commit the two vectors and return their random linear combination and proof
         let (kzg_cm, kzg_proof) =
-            commit_rlc_and_proof::<G1, KZGProver<G1>>(&poseidon_config, &kzg_pk, r, v_1, v_2)
+            commit_rlc_and_prove::<G1, KZGProver<G1>>(&poseidon_config, &kzg_pk, r, &v_1, &v_2)
                 .unwrap();
 
         // verify Pedersen

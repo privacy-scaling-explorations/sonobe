@@ -13,8 +13,8 @@
 use ark_ec::{pairing::Pairing, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_poly::{
-    univariate::DensePolynomial, DenseUVPolynomial, EvaluationDomain, Evaluations,
-    GeneralEvaluationDomain, Polynomial,
+    univariate::{DenseOrSparsePolynomial, DensePolynomial},
+    DenseUVPolynomial, EvaluationDomain, Evaluations, GeneralEvaluationDomain, Polynomial,
 };
 use ark_poly_commit::kzg10::{VerifierKey, KZG10};
 use ark_std::rand::Rng;
@@ -94,7 +94,7 @@ where
         check_degree_is_too_large(polynomial.degree(), params.powers_of_g.len())?;
 
         let (num_leading_zeros, plain_coeffs) =
-            skip_leading_zeros_and_convert_to_bigints(&polynomial);
+            skip_first_zero_coeffs_and_convert_to_bigints(&polynomial);
         let commitment = <C as VariableBaseMSM>::msm_bigint(
             &params.powers_of_g[num_leading_zeros..],
             &plain_coeffs,
@@ -130,22 +130,28 @@ where
             -challenge,
             C::ScalarField::one(),
         ]);
-        let witness_poly: DensePolynomial<C::ScalarField> = &polynomial / &divisor;
+        let (witness_poly, remainder_poly) = DenseOrSparsePolynomial::from(&polynomial)
+            .divide_with_q_and_r(&DenseOrSparsePolynomial::from(&divisor))
+            // the panic inside `divide_with_q_and_r` should never be reached, since the divisor
+            // polynomial is constructed right before and is set to not be zero. And the `.unwrap`
+            // should not give an error.
+            .unwrap();
+        let evaluation = remainder_poly[0];
 
         check_degree_is_too_large(witness_poly.degree(), params.powers_of_g.len())?;
         let (num_leading_zeros, witness_coeffs) =
-            skip_leading_zeros_and_convert_to_bigints(&witness_poly);
+            skip_first_zero_coeffs_and_convert_to_bigints(&witness_poly);
         let proof = <C as VariableBaseMSM>::msm_bigint(
             &params.powers_of_g[num_leading_zeros..],
             &witness_coeffs,
         );
 
-        Ok((polynomial.evaluate(&challenge), proof))
+        Ok((evaluation, proof))
     }
 }
 
-/// returns the unique polynomial of degree=v.len().next_power_of_two(), which passes through all
-/// the given elements of v
+/// returns the interpolated polynomial of degree=v.len().next_power_of_two(), which passes through all
+/// the given elements of v.
 fn poly_from_vec<F: PrimeField>(v: Vec<F>) -> Result<DensePolynomial<F>, Error> {
     let D = GeneralEvaluationDomain::<F>::new(v.len()).ok_or(Error::NewDomainFail)?;
     Ok(Evaluations::from_vec_and_domain(v, D).interpolate())
@@ -166,7 +172,7 @@ fn check_degree_is_too_large(
     }
 }
 
-fn skip_leading_zeros_and_convert_to_bigints<F: PrimeField, P: DenseUVPolynomial<F>>(
+fn skip_first_zero_coeffs_and_convert_to_bigints<F: PrimeField, P: DenseUVPolynomial<F>>(
     p: &P,
 ) -> (usize, Vec<F::BigInt>) {
     let mut num_leading_zeros = 0;

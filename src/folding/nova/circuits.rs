@@ -470,12 +470,12 @@ pub mod tests {
     use tracing_subscriber::layer::SubscriberExt;
 
     use crate::ccs::r1cs::{extract_r1cs, extract_w_x};
+    use crate::commitment::pedersen::Pedersen;
     use crate::folding::nova::nifs::tests::prepare_simple_fold_inputs;
     use crate::folding::nova::{
         ivc::get_committed_instance_coordinates, nifs::NIFS, traits::NovaR1CS, Witness,
     };
     use crate::frontend::tests::CubicFCircuit;
-    use crate::pedersen::Pedersen;
     use crate::transcript::poseidon::tests::poseidon_test_config;
 
     #[test]

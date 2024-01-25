@@ -369,7 +369,7 @@ mod tests {
     use ark_std::UniformRand;
 
     use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z};
-    use crate::pedersen::Pedersen;
+    use crate::commitment::{pedersen::Pedersen, CommitmentProver};
     use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
 
     pub(crate) fn check_instance<C: CurveGroup>(

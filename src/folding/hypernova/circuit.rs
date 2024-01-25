@@ -157,11 +157,11 @@ mod tests {
             tests::{get_test_ccs, get_test_z},
             CCS,
         },
+        commitment::pedersen::Pedersen,
         folding::hypernova::utils::{
             compute_c_from_sigmas_and_thetas, compute_sigmas_and_thetas, sum_ci_mul_prod_thetaj,
             sum_muls_gamma_pows_eq_sigma,
         },
-        pedersen::Pedersen,
         utils::virtual_polynomial::eq_eval,
     };
     use ark_pallas::{Fr, Projective};

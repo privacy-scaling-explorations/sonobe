@@ -7,8 +7,11 @@ use ark_ec::{CurveGroup, Group};
 use ark_std::fmt::Debug;
 use ark_std::{One, Zero};
 
+use crate::commitment::{
+    pedersen::{Params as PedersenParams, Pedersen},
+    CommitmentProver,
+};
 use crate::folding::circuits::nonnative::point_to_nonnative_limbs;
-use crate::pedersen::{Params as PedersenParams, Pedersen};
 use crate::utils::vec::is_zero_vec;
 use crate::Error;
 
@@ -89,11 +92,13 @@ where
     <C as Group>::ScalarField: Absorb,
 {
     pub fn new(w: Vec<C::ScalarField>, e_len: usize) -> Self {
+        // note: at the current version, we don't use the blinding factors and we set them to 0
+        // always.
         Self {
             E: vec![C::ScalarField::zero(); e_len],
-            rE: C::ScalarField::zero(), // because we use C::zero() as cmE
+            rE: C::ScalarField::zero(),
             W: w,
-            rW: C::ScalarField::one(),
+            rW: C::ScalarField::zero(),
         }
     }
     pub fn commit(

@@ -199,7 +199,7 @@ pub mod tests {
     use ark_std::Zero;
 
     use crate::ccs::tests::{get_test_ccs, get_test_z};
-    use crate::pedersen::Pedersen;
+    use crate::commitment::pedersen::Pedersen;
     use crate::utils::multilinear_polynomial::tests::fix_last_variables;
     use crate::utils::virtual_polynomial::eq_eval;
 

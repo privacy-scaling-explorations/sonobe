@@ -14,8 +14,8 @@ use super::{
 use super::{nifs::NIFS, traits::NovaR1CS, CommittedInstance, Witness};
 use crate::ccs::r1cs::R1CS;
 use crate::ccs::r1cs::{extract_r1cs, extract_w_x};
+use crate::commitment::pedersen::{Params as PedersenParams, Pedersen};
 use crate::frontend::FCircuit;
-use crate::pedersen::{Params as PedersenParams, Pedersen};
 use crate::Error;
 
 #[cfg(test)]

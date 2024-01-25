@@ -213,7 +213,7 @@ where
         //////////////////////////////////////////////////////////////////////
         let mut g_over_bhc = C::ScalarField::zero();
         for x in BooleanHypercube::new(ccs.s) {
-            g_over_bhc += g.evaluate(&x).unwrap();
+            g_over_bhc += g.evaluate(&x)?;
         }
 
         // note: this is the sum of g(x) over the whole boolean hypercube
@@ -378,7 +378,7 @@ pub mod tests {
     use ark_std::test_rng;
     use ark_std::UniformRand;
 
-    use crate::pedersen::Pedersen;
+    use crate::commitment::pedersen::Pedersen;
     use ark_pallas::{Fr, Projective};
 
     #[test]

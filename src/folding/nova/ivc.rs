@@ -3,7 +3,6 @@ use ark_ec::{AffineRepr, CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
-use ark_std::rand::Rng;
 use ark_std::{One, Zero};
 use core::marker::PhantomData;
 
@@ -12,9 +11,8 @@ use super::{
     cyclefold::{CycleFoldChallengeGadget, CycleFoldCircuit},
 };
 use super::{nifs::NIFS, traits::NovaR1CS, CommittedInstance, Witness};
-use crate::ccs::r1cs::R1CS;
-use crate::ccs::r1cs::{extract_r1cs, extract_w_x};
-use crate::commitment::pedersen::{Params as PedersenParams, Pedersen};
+use crate::ccs::r1cs::{extract_r1cs, extract_w_x, R1CS};
+use crate::commitment::CommitmentProver;
 use crate::frontend::FCircuit;
 use crate::Error;
 
@@ -23,13 +21,15 @@ use super::cyclefold::CF_IO_LEN;
 
 /// Implements the Incremental Verifiable Computation described in sections 1.2 and 5 of
 /// [Nova](https://eprint.iacr.org/2021/370.pdf)
-pub struct IVC<C1, GC1, C2, GC2, FC>
+pub struct IVC<C1, GC1, C2, GC2, FC, CP1, CP2>
 where
     C1: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>>,
     C2: CurveGroup,
     GC2: CurveVar<C2, CF2<C2>>,
     FC: FCircuit<C1::ScalarField>,
+    CP1: CommitmentProver<C1>,
+    CP2: CommitmentProver<C2>,
 {
     _gc1: PhantomData<GC1>,
     _c2: PhantomData<C2>,
@@ -39,10 +39,10 @@ where
     /// R1CS of the CycleFold circuit
     pub cf_r1cs: R1CS<C2::ScalarField>,
     pub poseidon_config: PoseidonConfig<C1::ScalarField>,
-    /// PedersenParams over C1
-    pub pedersen_params: PedersenParams<C1>,
-    /// CycleFold PedersenParams, over C2
-    pub cf_pedersen_params: PedersenParams<C2>,
+    /// CommitmentProver::Params over C1
+    pub cm_params: CP1::Params,
+    /// CycleFold CommitmentProver::Params, over C2
+    pub cf_cm_params: CP2::Params,
     /// F circuit, the circuit that is being folded
     pub F: FC,
     pub i: C1::ScalarField,
@@ -61,13 +61,15 @@ where
     pub cf_U_i: CommittedInstance<C2>,
 }
 
-impl<C1, GC1, C2, GC2, FC> IVC<C1, GC1, C2, GC2, FC>
+impl<C1, GC1, C2, GC2, FC, CP1, CP2> IVC<C1, GC1, C2, GC2, FC, CP1, CP2>
 where
     C1: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>>,
     C2: CurveGroup,
     GC2: CurveVar<C2, CF2<C2>>,
     FC: FCircuit<C1::ScalarField>,
+    CP1: CommitmentProver<C1>,
+    CP2: CommitmentProver<C2>,
     <C1 as CurveGroup>::BaseField: PrimeField,
     <C2 as CurveGroup>::BaseField: PrimeField,
     <C1 as Group>::ScalarField: Absorb,
@@ -77,9 +79,10 @@ where
     for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     /// Initializes the IVC for the given parameters and initial state `z_0`.
-    pub fn new<R: Rng>(
-        rng: &mut R,
+    pub fn new(
         poseidon_config: PoseidonConfig<C1::ScalarField>,
+        cm_params: CP1::Params,
+        cf_cm_params: CP2::Params,
         F: FC,
         z_0: Vec<C1::ScalarField>,
     ) -> Result<Self, Error> {
@@ -100,11 +103,6 @@ where
         let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
         let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2);
 
-        // this will not be randomly generated in this method, and will come from above levels, so
-        // the same params can be loaded on multiple instances
-        let pedersen_params = Pedersen::<C1>::new_params(rng, r1cs.A.n_rows);
-        let cf_pedersen_params = Pedersen::<C2>::new_params(rng, cf_r1cs.A.n_rows);
-
         // setup the dummy instances
         let (w_dummy, u_dummy) = r1cs.dummy_instance();
         let (cf_w_dummy, cf_u_dummy) = cf_r1cs.dummy_instance();
@@ -118,8 +116,8 @@ where
             r1cs,
             cf_r1cs,
             poseidon_config,
-            pedersen_params,
-            cf_pedersen_params,
+            cm_params,
+            cf_cm_params,
             F,
             i: C1::ScalarField::zero(),
             z_0: z_0.clone(),
@@ -154,8 +152,9 @@ where
             .ok_or(Error::OutOfBounds)?;
 
         // fold Nova instances
-        let (W_i1, U_i1): (Witness<C1>, CommittedInstance<C1>) =
-            NIFS::<C1>::fold_instances(r_Fr, &self.w_i, &self.u_i, &self.W_i, &self.U_i, &T, cmT)?;
+        let (W_i1, U_i1): (Witness<C1>, CommittedInstance<C1>) = NIFS::<C1, CP1>::fold_instances(
+            r_Fr, &self.w_i, &self.u_i, &self.W_i, &self.U_i, &T, cmT,
+        )?;
 
         // folded instance output (public input, x)
         // u_{i+1}.x = H(i+1, z_0, z_{i+1}, U_{i+1})
@@ -188,7 +187,7 @@ where
             };
 
             #[cfg(test)]
-            NIFS::verify_folded_instance(r_Fr, &self.u_i, &self.U_i, &U_i1, &cmT)?;
+            NIFS::<C1, CP1>::verify_folded_instance(r_Fr, &self.u_i, &self.U_i, &U_i1, &cmT)?;
         } else {
             // CycleFold part:
             // get the vector used as public inputs 'x' in the CycleFold circuit
@@ -226,7 +225,7 @@ where
             // fold cyclefold instances
             let cf_w_i = Witness::<C2>::new(cf_w_i.clone(), self.cf_r1cs.A.n_rows);
             let cf_u_i: CommittedInstance<C2> =
-                cf_w_i.commit(&self.cf_pedersen_params, cf_x_i.clone())?;
+                cf_w_i.commit::<CP2>(&self.cf_cm_params, cf_x_i.clone())?;
 
             // compute T* and cmT* for CycleFoldCircuit
             let (cf_T, cf_cmT) = self.compute_cf_cmT(&cf_w_i, &cf_u_i)?;
@@ -240,7 +239,7 @@ where
             let cf_r_Fq = C1::BaseField::from_bigint(BigInteger::from_bits_le(&cf_r_bits))
                 .ok_or(Error::OutOfBounds)?;
 
-            let (cf_W_i1, cf_U_i1) = NIFS::<C2>::fold_instances(
+            let (cf_W_i1, cf_U_i1) = NIFS::<C2, CP2>::fold_instances(
                 cf_r_Fq,
                 &self.cf_W_i,
                 &self.cf_U_i,
@@ -300,7 +299,7 @@ where
         self.i += C1::ScalarField::one();
         self.z_i = z_i1.clone();
         self.w_i = Witness::<C1>::new(w_i1, self.r1cs.A.n_rows);
-        self.u_i = self.w_i.commit(&self.pedersen_params, vec![u_i1_x])?;
+        self.u_i = self.w_i.commit::<CP1>(&self.cm_params, vec![u_i1_x])?;
         self.W_i = W_i1.clone();
         self.U_i = U_i1.clone();
 
@@ -353,8 +352,8 @@ where
 
     // computes T and cmT for the AugmentedFCircuit
     fn compute_cmT(&self) -> Result<(Vec<C1::ScalarField>, C1), Error> {
-        NIFS::<C1>::compute_cmT(
-            &self.pedersen_params,
+        NIFS::<C1, CP1>::compute_cmT(
+            &self.cm_params,
             &self.r1cs,
             &self.w_i,
             &self.u_i,
@@ -368,8 +367,8 @@ where
         cf_w_i: &Witness<C2>,
         cf_u_i: &CommittedInstance<C2>,
     ) -> Result<(Vec<C2::ScalarField>, C2), Error> {
-        NIFS::<C2>::compute_cyclefold_cmT(
-            &self.cf_pedersen_params,
+        NIFS::<C2, CP2>::compute_cyclefold_cmT(
+            &self.cf_cm_params,
             &self.cf_r1cs,
             cf_w_i,
             cf_u_i,
@@ -393,13 +392,42 @@ pub(crate) fn get_committed_instance_coordinates<C: CurveGroup>(
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use ark_pallas::{constraints::GVar, Fr, Projective};
     use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
 
+    use crate::commitment::pedersen::Pedersen;
     use crate::frontend::tests::CubicFCircuit;
     use crate::transcript::poseidon::tests::poseidon_test_config;
+
+    /// helper method to get the r1cs from the circuit
+    pub fn get_r1cs<F: PrimeField>(
+        circuit: impl ConstraintSynthesizer<F>,
+    ) -> Result<R1CS<F>, Error> {
+        let cs = ConstraintSystem::<F>::new_ref();
+        circuit.generate_constraints(cs.clone())?;
+        cs.finalize();
+        let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
+        let r1cs = extract_r1cs::<F>(&cs);
+        Ok(r1cs)
+    }
+
+    /// helper method to get the pedersen params length for both the AugmentedFCircuit and the
+    /// CycleFold circuit
+    pub fn get_pedersen_params_len<FC: FCircuit<Fr>>(
+        poseidon_config: &PoseidonConfig<Fr>,
+        F_circuit: FC,
+    ) -> Result<(usize, usize), Error> {
+        let augmented_F_circuit = AugmentedFCircuit::<Projective, Projective2, GVar2, FC>::empty(
+            poseidon_config,
+            F_circuit,
+        );
+        let cf_circuit = CycleFoldCircuit::<Projective, GVar>::empty();
+        let r1cs = get_r1cs(augmented_F_circuit)?;
+        let cf_r1cs = get_r1cs(cf_circuit)?;
+        Ok((r1cs.A.n_rows, cf_r1cs.A.n_rows))
+    }
 
     #[test]
     fn test_ivc() {
@@ -409,9 +437,24 @@ mod tests {
         let F_circuit = CubicFCircuit::<Fr>::new(());
         let z_0 = vec![Fr::from(3_u32)];
 
-        let mut ivc = IVC::<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>>::new(
-            &mut rng,
+        let (pedersen_len, cf_pedersen_len) =
+            get_pedersen_params_len::<CubicFCircuit<Fr>>(&poseidon_config, F_circuit).unwrap();
+        // generate the Pedersen params
+        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, pedersen_len);
+        let cf_pedersen_params = Pedersen::<Projective2>::new_params(&mut rng, cf_pedersen_len);
+
+        let mut ivc = IVC::<
+            Projective,
+            GVar,
+            Projective2,
+            GVar2,
+            CubicFCircuit<Fr>,
+            Pedersen<Projective>,
+            Pedersen<Projective2>,
+        >::new(
             poseidon_config,
+            pedersen_params,
+            cf_pedersen_params,
             F_circuit,
             z_0.clone(),
         )

@@ -99,6 +99,18 @@ where
 
     fn prove_step(&mut self) -> Result<(), Error>;
 
+    // returns the state at the current step
+    fn state(&self) -> Vec<C1::ScalarField>;
+
+    // returns the instances at the current step
+    fn instances(
+        &self,
+    ) -> (
+        Self::CommittedInstanceWithWitness,
+        Self::CommittedInstanceWithWitness,
+        Self::CFCommittedInstanceWithWitness,
+    );
+
     fn verify(
         vp: Self::VerifierParam,
         z_0: Vec<C1::ScalarField>, // initial state

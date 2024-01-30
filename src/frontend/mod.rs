@@ -6,6 +6,7 @@ use ark_r1cs_std::fields::fp::FpVar;
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 use ark_std::fmt::Debug;
 
+// TODO better name (less close to paper notation but more close to devs)
 /// FCircuit defines the trait of the circuit of the F function, which is the one being folded (ie.
 /// inside the agmented F' function).
 pub trait FCircuit<F: PrimeField>: Clone + Copy + Debug {

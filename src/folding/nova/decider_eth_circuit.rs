@@ -451,8 +451,7 @@ pub mod tests {
     use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
 
     use crate::commitment::pedersen::Pedersen;
-    use crate::folding::nova::tests::get_test_pedersen_params;
-    use crate::folding::nova::{ProverParams, VerifierParams};
+    use crate::folding::nova::{get_pedersen_params_len, ProverParams, VerifierParams};
     use crate::frontend::tests::{CubicFCircuit, CustomFCircuit, WrapperCircuit};
     use crate::transcript::poseidon::tests::poseidon_test_config;
     use crate::FoldingScheme;
@@ -621,12 +620,14 @@ pub mod tests {
         let z_0 = vec![Fr::from(3_u32)];
 
         // get the CM & CF_CM len
-        let (pedersen_params, cf_pedersen_params) =
-            get_test_pedersen_params::<_, Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>>(
-                &mut rng,
+        let (cm_len, cf_cm_len) =
+            get_pedersen_params_len::<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>>(
                 &poseidon_config,
                 F_circuit,
-            );
+            )
+            .unwrap();
+        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, cm_len);
+        let cf_pedersen_params = Pedersen::<Projective2>::new_params(&mut rng, cf_cm_len);
 
         let prover_params =
             ProverParams::<Projective, Projective2, Pedersen<Projective>, Pedersen<Projective2>> {

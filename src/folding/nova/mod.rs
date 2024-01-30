@@ -229,8 +229,8 @@ where
         let augmented_F_circuit =
             AugmentedFCircuit::<C1, C2, GC2, FC>::empty(&prover_params.poseidon_config, *F_circuit);
         let cf_circuit = CycleFoldCircuit::<C1, GC1>::empty();
-        let r1cs = Self::get_r1cs(augmented_F_circuit)?;
-        let cf_r1cs = Self::get_r1cs(cf_circuit)?;
+        let r1cs = get_r1cs(augmented_F_circuit)?;
+        let cf_r1cs = get_r1cs(cf_circuit)?;
 
         let verifier_params = VerifierParams::<C1, C2> {
             poseidon_config: prover_params.poseidon_config.clone(),
@@ -470,6 +470,23 @@ where
         Ok(())
     }
 
+    fn state(&self) -> Vec<C1::ScalarField> {
+        self.z_i.clone()
+    }
+    fn instances(
+        &self,
+    ) -> (
+        Self::CommittedInstanceWithWitness,
+        Self::CommittedInstanceWithWitness,
+        Self::CFCommittedInstanceWithWitness,
+    ) {
+        (
+            (self.U_i.clone(), self.W_i.clone()),
+            (self.u_i.clone(), self.w_i.clone()),
+            (self.cf_U_i.clone(), self.cf_W_i.clone()),
+        )
+    }
+
     /// Implements IVC.V of Nova+CycleFold
     fn verify(
         vp: Self::VerifierParam,
@@ -553,36 +570,74 @@ where
             &self.cf_U_i,
         )
     }
+}
 
-    /// helper method to get the r1cs from the circuit
-    pub fn get_r1cs<F: PrimeField>(
-        circuit: impl ConstraintSynthesizer<F>,
-    ) -> Result<R1CS<F>, Error> {
-        let cs = ConstraintSystem::<F>::new_ref();
-        circuit.generate_constraints(cs.clone())?;
-        cs.finalize();
-        let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
-        let r1cs = extract_r1cs::<F>(&cs);
-        Ok(r1cs)
-    }
+/// helper method to get the r1cs from the circuit
+//TODO rename to `get_r1cs_from_cs`
+pub fn get_r1cs<F: PrimeField>(circuit: impl ConstraintSynthesizer<F>) -> Result<R1CS<F>, Error> {
+    let cs = ConstraintSystem::<F>::new_ref();
+    circuit.generate_constraints(cs.clone())?;
+    cs.finalize();
+    let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
+    let r1cs = extract_r1cs::<F>(&cs);
+    Ok(r1cs)
+}
 
-    /// helper method to get the pedersen params length for both the AugmentedFCircuit and the
-    /// CycleFold circuit
-    pub fn get_pedersen_params_len(
-        poseidon_config: &PoseidonConfig<C1::ScalarField>,
-        F_circuit: FC,
-    ) -> Result<(usize, usize), Error>
-    where
-        for<'a> &'a GC1: GroupOpsBounds<'a, C1, GC1>,
-        for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
-    {
-        let augmented_F_circuit =
-            AugmentedFCircuit::<C1, C2, GC2, FC>::empty(poseidon_config, F_circuit);
-        let cf_circuit = CycleFoldCircuit::<C1, GC1>::empty();
-        let r1cs = Self::get_r1cs(augmented_F_circuit)?;
-        let cf_r1cs = Self::get_r1cs(cf_circuit)?;
-        Ok((r1cs.A.n_rows, cf_r1cs.A.n_rows))
-    }
+/// helper method to get the pedersen params length for both the AugmentedFCircuit and the
+/// CycleFold circuit
+pub fn get_pedersen_params_len<C1, GC1, C2, GC2, FC>(
+    // TODO rm
+    poseidon_config: &PoseidonConfig<C1::ScalarField>,
+    F_circuit: FC,
+) -> Result<(usize, usize), Error>
+where
+    C1: CurveGroup,
+    GC1: CurveVar<C1, CF2<C1>>,
+    C2: CurveGroup,
+    GC2: CurveVar<C2, CF2<C2>>,
+    FC: FCircuit<C1::ScalarField>,
+    <C1 as CurveGroup>::BaseField: PrimeField,
+    <C2 as CurveGroup>::BaseField: PrimeField,
+    <C1 as Group>::ScalarField: Absorb,
+    <C2 as Group>::ScalarField: Absorb,
+    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    for<'a> &'a GC1: GroupOpsBounds<'a, C1, GC1>,
+    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
+{
+    let augmented_F_circuit =
+        AugmentedFCircuit::<C1, C2, GC2, FC>::empty(poseidon_config, F_circuit);
+    let cf_circuit = CycleFoldCircuit::<C1, GC1>::empty();
+    let r1cs = get_r1cs::<C1::ScalarField>(augmented_F_circuit)?;
+    let cf_r1cs = get_r1cs::<C2::ScalarField>(cf_circuit)?;
+    Ok((r1cs.A.n_rows, cf_r1cs.A.n_rows))
+}
+
+#[allow(clippy::type_complexity)]
+pub fn get_both_r1cs<C1, GC1, C2, GC2, FC>(
+    // TODO rename to get_r1cs
+    poseidon_config: &PoseidonConfig<C1::ScalarField>,
+    F_circuit: FC,
+) -> Result<(R1CS<C1::ScalarField>, R1CS<C2::ScalarField>), Error>
+where
+    C1: CurveGroup,
+    GC1: CurveVar<C1, CF2<C1>>,
+    C2: CurveGroup,
+    GC2: CurveVar<C2, CF2<C2>>,
+    FC: FCircuit<C1::ScalarField>,
+    <C1 as CurveGroup>::BaseField: PrimeField,
+    <C2 as CurveGroup>::BaseField: PrimeField,
+    <C1 as Group>::ScalarField: Absorb,
+    <C2 as Group>::ScalarField: Absorb,
+    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    for<'a> &'a GC1: GroupOpsBounds<'a, C1, GC1>,
+    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
+{
+    let augmented_F_circuit =
+        AugmentedFCircuit::<C1, C2, GC2, FC>::empty(poseidon_config, F_circuit);
+    let cf_circuit = CycleFoldCircuit::<C1, GC1>::empty();
+    let r1cs = get_r1cs::<C1::ScalarField>(augmented_F_circuit)?;
+    let cf_r1cs = get_r1cs::<C2::ScalarField>(cf_circuit)?;
+    Ok((r1cs, cf_r1cs))
 }
 
 pub(crate) fn get_committed_instance_coordinates<C: CurveGroup>(
@@ -602,47 +657,11 @@ pub(crate) fn get_committed_instance_coordinates<C: CurveGroup>(
 pub mod tests {
     use super::*;
     use ark_pallas::{constraints::GVar, Fr, Projective};
-    use ark_std::rand::Rng;
     use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
 
-    use crate::commitment::pedersen::{Params as PedersenParams, Pedersen};
+    use crate::commitment::pedersen::Pedersen;
     use crate::frontend::tests::CubicFCircuit;
     use crate::transcript::poseidon::tests::poseidon_test_config;
-
-    pub fn get_test_pedersen_params<R: Rng, C1, GC1, C2, GC2, FC>(
-        mut rng: R,
-        poseidon_config: &PoseidonConfig<C1::ScalarField>,
-        F_circuit: FC,
-    ) -> (PedersenParams<C1>, PedersenParams<C2>)
-    where
-        C1: CurveGroup,
-        GC1: CurveVar<C1, CF2<C1>>,
-        C2: CurveGroup,
-        GC2: CurveVar<C2, CF2<C2>>,
-        FC: FCircuit<C1::ScalarField>,
-        <C1 as CurveGroup>::BaseField: PrimeField,
-        <C2 as CurveGroup>::BaseField: PrimeField,
-        <C1 as Group>::ScalarField: Absorb,
-        <C2 as Group>::ScalarField: Absorb,
-        for<'a> &'a GC1: GroupOpsBounds<'a, C1, GC1>,
-        for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
-        C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    {
-        let augmented_F_circuit =
-            AugmentedFCircuit::<C1, C2, GC2, FC>::empty(poseidon_config, F_circuit);
-        let cf_circuit = CycleFoldCircuit::<C1, GC1>::empty();
-
-        let r1cs =
-            Nova::<C1, GC1, C2, GC2, FC, Pedersen<C1>, Pedersen<C2>>::get_r1cs(augmented_F_circuit)
-                .unwrap();
-        let cf_r1cs =
-            Nova::<C1, GC1, C2, GC2, FC, Pedersen<C1>, Pedersen<C2>>::get_r1cs(cf_circuit).unwrap();
-
-        // generate the Pedersen params
-        let pedersen_params = Pedersen::<C1>::new_params(&mut rng, r1cs.A.n_rows);
-        let cf_pedersen_params = Pedersen::<C2>::new_params(&mut rng, cf_r1cs.A.n_rows);
-        (pedersen_params, cf_pedersen_params)
-    }
 
     #[test]
     fn test_ivc() {
@@ -663,12 +682,14 @@ pub mod tests {
         let z_0 = vec![Fr::from(3_u32)];
 
         // get the CM & CF_CM len
-        let (pedersen_params, cf_pedersen_params) =
-            get_test_pedersen_params::<_, Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>>(
-                &mut rng,
+        let (cm_len, cf_cm_len) =
+            get_pedersen_params_len::<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>>(
                 &poseidon_config,
                 F_circuit,
-            );
+            )
+            .unwrap();
+        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, cm_len);
+        let cf_pedersen_params = Pedersen::<Projective2>::new_params(&mut rng, cf_cm_len);
 
         let prover_params =
             ProverParams::<Projective, Projective2, Pedersen<Projective>, Pedersen<Projective2>> {

@@ -20,6 +20,7 @@ color-eyre = "=0.6.2"
 
 # tmp imports for espresso's sumcheck
 espresso_subroutines = {git="https://github.com/EspressoSystems/hyperplonk", package="subroutines"}
+ark-poly-commit = "0.4.0"
 
 [dev-dependencies]
 ark-pallas = {version="0.4.0", features=["r1cs"]}

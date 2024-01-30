@@ -1,7 +1,6 @@
 use std::{fmt, fmt::Display};
 
-use ark_bn254::{Fq, Fr, G1Affine, G2Affine};
-use ark_groth16::{Proof, VerifyingKey};
+use ark_bn254::{Fq, G1Affine, G2Affine};
 use askama::Template;
 
 #[derive(Debug, Default)]
@@ -59,15 +58,70 @@ pub struct SolidityVerifier {
     pub gamma_abc_g1: Vec<G1Repr>,
 }
 
+#[derive(Debug, Default)]
+pub struct G1StringRepr([String; 2]);
+
+#[derive(Debug, Default)]
+pub struct G2StringRepr([String; 2], [String; 2]);
+
+#[derive(Template, Default)]
+#[template(path = "kzg_10_verifier.sol", ext = "sol")]
+pub struct KZG10Verifier {
+    pub g1: G1StringRepr,
+    pub g2: G2StringRepr,
+    pub vk: G2StringRepr,
+    pub g1_crs: Vec<G1StringRepr>,
+    pub g1_crs_len: usize,
+}
+
+impl KZG10Verifier {
+    pub fn new(g1: G1Affine, g2: G2Affine, vk: G2Affine, g1_crs: Vec<G1Affine>) -> Self {
+        let g1_string_repr = G1StringRepr([g1.x.to_string(), g1.y.to_string()]);
+        let g2_string_repr = G2StringRepr(
+            [g2.x.c0.to_string(), g2.x.c1.to_string()],
+            [g2.y.c0.to_string(), g2.y.c1.to_string()],
+        );
+        let vk_string_repr = G2StringRepr(
+            [vk.x.c0.to_string(), vk.x.c1.to_string()],
+            [vk.y.c0.to_string(), vk.y.c1.to_string()],
+        );
+        let g1_crs_len = g1_crs.len();
+        let g1_crs = g1_crs
+            .into_iter()
+            .map(|g1| G1StringRepr([g1.x.to_string(), g1.y.to_string()]))
+            .collect();
+        KZG10Verifier {
+            g1: g1_string_repr,
+            g2: g2_string_repr,
+            vk: vk_string_repr,
+            g1_crs,
+            g1_crs_len,
+        }
+    }
+}
+
 mod tests {
 
     use super::*;
+    use ark_std::UniformRand;
 
     #[test]
     fn something() {
         let mut template = SolidityVerifier::default();
         template.gamma_abc_len = 1;
         template.gamma_abc_g1.push(G1Repr::default());
+        let res = template.render().unwrap();
+        eprintln!("{:?}", res);
+    }
+
+    #[test]
+    fn test_kzg_10_verifier_template() {
+        let rng = &mut ark_std::test_rng();
+        let g1 = G1Affine::rand(rng);
+        let g2 = G2Affine::rand(rng);
+        let vk = G2Affine::rand(rng);
+        let g1_crs = (0..10).map(|_| G1Affine::rand(rng)).collect();
+        let template = KZG10Verifier::new(g1, g2, vk, g1_crs);
         let res = template.render().unwrap();
         eprintln!("{:?}", res);
     }

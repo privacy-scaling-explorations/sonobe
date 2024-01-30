@@ -65,6 +65,7 @@ where
 }
 
 /// KZGProver implements the CommitmentProver trait for the KZG commitment scheme.
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub struct KZGProver<'a, C: CurveGroup> {
     _a: PhantomData<&'a ()>,
     _c: PhantomData<C>,

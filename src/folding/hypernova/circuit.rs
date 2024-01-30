@@ -237,7 +237,7 @@ mod tests {
         // Initialize cs
         let cs = ConstraintSystem::<Fr>::new_ref();
         let vec_thetas = sigmas_thetas.1;
-        for (_, thetas) in vec_thetas.iter().enumerate() {
+        for thetas in vec_thetas.iter() {
             // sum c_i * prod theta_j
             let expected = sum_ci_mul_prod_thetaj(&ccs, thetas); // from `compute_c_from_sigmas_and_thetas`
             let mut prepared_thetas = Vec::new();

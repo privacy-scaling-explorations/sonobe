@@ -7,10 +7,7 @@ use ark_ec::{CurveGroup, Group};
 use ark_std::fmt::Debug;
 use ark_std::{One, Zero};
 
-use crate::commitment::{
-    pedersen::{Params as PedersenParams, Pedersen},
-    CommitmentProver,
-};
+use crate::commitment::CommitmentProver;
 use crate::folding::circuits::nonnative::point_to_nonnative_limbs;
 use crate::utils::vec::is_zero_vec;
 use crate::Error;
@@ -101,16 +98,16 @@ where
             rW: C::ScalarField::zero(),
         }
     }
-    pub fn commit(
+    pub fn commit<CP: CommitmentProver<C>>(
         &self,
-        params: &PedersenParams<C>,
+        params: &CP::Params,
         x: Vec<C::ScalarField>,
     ) -> Result<CommittedInstance<C>, Error> {
         let mut cmE = C::zero();
         if !is_zero_vec::<C::ScalarField>(&self.E) {
-            cmE = Pedersen::commit(params, &self.E, &self.rE)?;
+            cmE = CP::commit(params, &self.E, &self.rE)?;
         }
-        let cmW = Pedersen::commit(params, &self.W, &self.rW)?;
+        let cmW = CP::commit(params, &self.W, &self.rW)?;
         Ok(CommittedInstance {
             cmE,
             u: C::ScalarField::one(),

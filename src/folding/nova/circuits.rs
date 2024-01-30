@@ -503,7 +503,7 @@ pub mod tests {
     fn test_nifs_gadget() {
         let (_, _, _, _, ci1, _, ci2, _, ci3, _, cmT, _, r_Fr) = prepare_simple_fold_inputs();
 
-        let ci3_verifier = NIFS::<Projective>::verify(r_Fr, &ci1, &ci2, &cmT);
+        let ci3_verifier = NIFS::<Projective, Pedersen<Projective>>::verify(r_Fr, &ci1, &ci2, &cmT);
         assert_eq!(ci3_verifier, ci3);
 
         let cs = ConstraintSystem::<Fr>::new_ref();
@@ -721,7 +721,7 @@ pub mod tests {
 
                 // U_{i+1}
                 let T: Vec<Fr>;
-                (T, cmT) = NIFS::<Projective>::compute_cmT(
+                (T, cmT) = NIFS::<Projective, Pedersen<Projective>>::compute_cmT(
                     &pedersen_params,
                     &r1cs,
                     &w_i,
@@ -741,9 +741,10 @@ pub mod tests {
                 .unwrap();
                 let r_Fr = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
 
-                (W_i1, U_i1) =
-                    NIFS::<Projective>::fold_instances(r_Fr, &w_i, &u_i, &W_i, &U_i, &T, cmT)
-                        .unwrap();
+                (W_i1, U_i1) = NIFS::<Projective, Pedersen<Projective>>::fold_instances(
+                    r_Fr, &w_i, &u_i, &W_i, &U_i, &T, cmT,
+                )
+                .unwrap();
 
                 r1cs.check_relaxed_instance_relation(&W_i1, &U_i1).unwrap();
 
@@ -782,7 +783,7 @@ pub mod tests {
                     )
                     .unwrap();
                 let cf_r_Fq = Fq::from_bigint(BigInteger::from_bits_le(&cf_r_bits)).unwrap();
-                let (_, cf_U_i1) = NIFS::<Projective2>::fold_instances(
+                let (_, cf_U_i1) = NIFS::<Projective2, Pedersen<Projective2>>::fold_instances(
                     cf_r_Fq, &cf_W_i, &cf_U_i, &cf_w_i, &cf_u_i, &cf_T, cf_cmT,
                 )
                 .unwrap();
@@ -828,7 +829,9 @@ pub mod tests {
             // compute committed instances, w_{i+1}, u_{i+1}, which will be used as w_i, u_i, so we
             // assign them directly to w_i, u_i.
             w_i = Witness::<Projective>::new(w_i1.clone(), r1cs.A.n_rows);
-            u_i = w_i.commit(&pedersen_params, vec![u_i1_x]).unwrap();
+            u_i = w_i
+                .commit::<Pedersen<Projective>>(&pedersen_params, vec![u_i1_x])
+                .unwrap();
 
             r1cs.check_relaxed_instance_relation(&w_i, &u_i).unwrap();
             r1cs.check_relaxed_instance_relation(&W_i1, &U_i1).unwrap();

@@ -18,7 +18,7 @@ use ark_std::{One, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
 use crate::ccs::r1cs::R1CS;
-use crate::commitment::pedersen::Params as PedersenParams;
+use crate::commitment::{pedersen::Params as PedersenParams, CommitmentProver};
 use crate::folding::nova::{
     circuits::{CommittedInstanceVar, CF1, CF2},
     ivc::IVC,
@@ -179,17 +179,21 @@ where
 
 /// Circuit that implements the in-circuit checks needed for the onchain (Ethereum's EVM)
 /// verification.
-pub struct DeciderCircuit<C1, GC1, C2, GC2>
+pub struct DeciderCircuit<C1, GC1, C2, GC2, CP1, CP2>
 where
     C1: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>>,
     C2: CurveGroup,
     GC2: CurveVar<C2, CF2<C2>>,
+    CP1: CommitmentProver<C1>,
+    CP2: CommitmentProver<C2>,
 {
     _c1: PhantomData<C1>,
     _gc1: PhantomData<GC1>,
     _c2: PhantomData<C2>,
     _gc2: PhantomData<GC2>,
+    _cp1: PhantomData<CP1>,
+    _cp2: PhantomData<CP2>,
 
     /// E vector's length of the Nova instance witness
     pub E_len: usize,
@@ -199,7 +203,7 @@ where
     pub r1cs: R1CS<C1::ScalarField>,
     /// R1CS of the CycleFold circuit
     pub cf_r1cs: R1CS<C2::ScalarField>,
-    /// CycleFold PedersenParams, over C2
+    /// CycleFold PedersenParams over C2
     pub cf_pedersen_params: PedersenParams<C2>,
     pub poseidon_config: PoseidonConfig<CF1<C1>>,
     pub i: Option<CF1<C1>>,
@@ -216,25 +220,32 @@ where
     pub cf_U_i: Option<CommittedInstance<C2>>,
     pub cf_W_i: Option<Witness<C2>>,
 }
-impl<C1, GC1, C2, GC2> DeciderCircuit<C1, GC1, C2, GC2>
+impl<C1, GC1, C2, GC2, CP1, CP2> DeciderCircuit<C1, GC1, C2, GC2, CP1, CP2>
 where
     C1: CurveGroup,
     C2: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>>,
     GC2: CurveVar<C2, CF2<C2>>,
+    CP1: CommitmentProver<C1>,
+    // enforce that the CP2 is Pedersen commitment, since we're at Ethereum's EVM decider
+    CP2: CommitmentProver<C2, Params = PedersenParams<C2>>,
 {
-    pub fn from_ivc<FC: FCircuit<C1::ScalarField>>(ivc: IVC<C1, GC1, C2, GC2, FC>) -> Self {
+    pub fn from_ivc<FC: FCircuit<C1::ScalarField>>(
+        ivc: IVC<C1, GC1, C2, GC2, FC, CP1, CP2>,
+    ) -> Self {
         Self {
             _c1: PhantomData,
             _gc1: PhantomData,
             _c2: PhantomData,
             _gc2: PhantomData,
+            _cp1: PhantomData,
+            _cp2: PhantomData,
 
             E_len: ivc.W_i.E.len(),
             cf_E_len: ivc.cf_W_i.E.len(),
             r1cs: ivc.r1cs,
             cf_r1cs: ivc.cf_r1cs,
-            cf_pedersen_params: ivc.cf_pedersen_params,
+            cf_pedersen_params: ivc.cf_cm_params,
             poseidon_config: ivc.poseidon_config,
             i: Some(ivc.i),
             z_0: Some(ivc.z_0),
@@ -249,18 +260,21 @@ where
     }
 }
 
-impl<C1, GC1, C2, GC2> ConstraintSynthesizer<CF1<C1>> for DeciderCircuit<C1, GC1, C2, GC2>
+impl<C1, GC1, C2, GC2, CP1, CP2> ConstraintSynthesizer<CF1<C1>>
+    for DeciderCircuit<C1, GC1, C2, GC2, CP1, CP2>
 where
     C1: CurveGroup,
     C2: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>>,
     GC2: CurveVar<C2, CF2<C2>>,
+    CP1: CommitmentProver<C1>,
+    CP2: CommitmentProver<C2>,
     <C1 as CurveGroup>::BaseField: PrimeField,
     <C2 as CurveGroup>::BaseField: PrimeField,
     <C1 as Group>::ScalarField: Absorb,
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
+    for<'b> &'b GC2: GroupOpsBounds<'b, C2, GC2>,
 {
     fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
         let r1cs =
@@ -437,7 +451,8 @@ pub mod tests {
     use ark_relations::r1cs::ConstraintSystem;
     use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
 
-    use crate::folding::nova::ivc::IVC;
+    use crate::commitment::pedersen::Pedersen;
+    use crate::folding::nova::ivc::tests::get_pedersen_params_len;
     use crate::frontend::tests::{CubicFCircuit, CustomFCircuit, WrapperCircuit};
     use crate::transcript::poseidon::tests::poseidon_test_config;
 
@@ -604,10 +619,25 @@ pub mod tests {
         let F_circuit = CubicFCircuit::<Fr>::new(());
         let z_0 = vec![Fr::from(3_u32)];
 
+        let (pedersen_len, cf_pedersen_len) =
+            get_pedersen_params_len::<CubicFCircuit<Fr>>(&poseidon_config, F_circuit).unwrap();
+        // generate the Pedersen params
+        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, pedersen_len);
+        let cf_pedersen_params = Pedersen::<Projective2>::new_params(&mut rng, cf_pedersen_len);
+
         // generate an IVC and do a step of it
-        let mut ivc = IVC::<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>>::new(
-            &mut rng,
+        let mut ivc = IVC::<
+            Projective,
+            GVar,
+            Projective2,
+            GVar2,
+            CubicFCircuit<Fr>,
+            Pedersen<Projective>,
+            Pedersen<Projective2>,
+        >::new(
             poseidon_config,
+            pedersen_params,
+            cf_pedersen_params,
             F_circuit,
             z_0.clone(),
         )
@@ -616,7 +646,14 @@ pub mod tests {
         ivc.verify(z_0, 1).unwrap();
 
         // load the DeciderCircuit from the generated IVC
-        let decider_circuit = DeciderCircuit::<Projective, GVar, Projective2, GVar2>::from_ivc(ivc);
+        let decider_circuit = DeciderCircuit::<
+            Projective,
+            GVar,
+            Projective2,
+            GVar2,
+            Pedersen<Projective>,
+            Pedersen<Projective2>,
+        >::from_ivc(ivc);
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 

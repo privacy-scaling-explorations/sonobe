@@ -5,21 +5,19 @@ use std::marker::PhantomData;
 
 use super::{CommittedInstance, Witness};
 use crate::ccs::r1cs::R1CS;
-use crate::commitment::{
-    pedersen::{Params as PedersenParams, Pedersen, Proof as PedersenProof},
-    CommitmentProver,
-};
+use crate::commitment::CommitmentProver;
 use crate::transcript::Transcript;
 use crate::utils::vec::*;
 use crate::Error;
 
 /// Implements the Non-Interactive Folding Scheme described in section 4 of
 /// [Nova](https://eprint.iacr.org/2021/370.pdf)
-pub struct NIFS<C: CurveGroup> {
-    _phantom: PhantomData<C>,
+pub struct NIFS<C: CurveGroup, CP: CommitmentProver<C>> {
+    _c: PhantomData<C>,
+    _cp: PhantomData<CP>,
 }
 
-impl<C: CurveGroup> NIFS<C>
+impl<C: CurveGroup, CP: CommitmentProver<C>> NIFS<C, CP>
 where
     <C as Group>::ScalarField: Absorb,
 {
@@ -92,7 +90,7 @@ where
 
     /// compute_cmT is part of the NIFS.P logic
     pub fn compute_cmT(
-        pedersen_params: &PedersenParams<C>,
+        cm_prover_params: &CP::Params,
         r1cs: &R1CS<C::ScalarField>,
         w1: &Witness<C>,
         ci1: &CommittedInstance<C>,
@@ -105,11 +103,11 @@ where
         // compute cross terms
         let T = Self::compute_T(r1cs, ci1.u, ci2.u, &z1, &z2)?;
         // use r_T=1 since we don't need hiding property for cm(T)
-        let cmT = Pedersen::commit(pedersen_params, &T, &C::ScalarField::one())?;
+        let cmT = CP::commit(cm_prover_params, &T, &C::ScalarField::one())?;
         Ok((T, cmT))
     }
     pub fn compute_cyclefold_cmT(
-        pedersen_params: &PedersenParams<C>,
+        cm_prover_params: &CP::Params,
         r1cs: &R1CS<C::ScalarField>, // R1CS over C2.Fr=C1.Fq (here C=C2)
         w1: &Witness<C>,
         ci1: &CommittedInstance<C>,
@@ -125,7 +123,7 @@ where
         // compute cross terms
         let T = Self::compute_T(r1cs, ci1.u, ci2.u, &z1, &z2)?;
         // use r_T=1 since we don't need hiding property for cm(T)
-        let cmT = Pedersen::commit(pedersen_params, &T, &C::ScalarField::one())?;
+        let cmT = CP::commit(cm_prover_params, &T, &C::ScalarField::one())?;
         Ok((T, cmT))
     }
 
@@ -143,10 +141,10 @@ where
     ) -> Result<(Witness<C>, CommittedInstance<C>), Error> {
         // fold witness
         // use r_T=1 since we don't need hiding property for cm(T)
-        let w3 = NIFS::<C>::fold_witness(r, w1, w2, T, C::ScalarField::one())?;
+        let w3 = NIFS::<C, CP>::fold_witness(r, w1, w2, T, C::ScalarField::one())?;
 
         // fold committed instancs
-        let ci3 = NIFS::<C>::fold_committed_instance(r, ci1, ci2, &cmT);
+        let ci3 = NIFS::<C, CP>::fold_committed_instance(r, ci1, ci2, &cmT);
 
         Ok((w3, ci3))
     }
@@ -160,7 +158,7 @@ where
         ci2: &CommittedInstance<C>,
         cmT: &C,
     ) -> CommittedInstance<C> {
-        NIFS::<C>::fold_committed_instance(r, ci1, ci2, cmT)
+        NIFS::<C, CP>::fold_committed_instance(r, ci1, ci2, cmT)
     }
 
     /// Verify commited folded instance (ci) relations. Notice that this method does not open the
@@ -184,50 +182,35 @@ where
         Ok(())
     }
 
-    pub fn open_commitments(
+    pub fn prove_commitments(
         tr: &mut impl Transcript<C>,
-        pedersen_params: &PedersenParams<C>,
+        cm_prover_params: &CP::Params,
         w: &Witness<C>,
         ci: &CommittedInstance<C>,
         T: Vec<C::ScalarField>,
         cmT: &C,
-    ) -> Result<[PedersenProof<C>; 3], Error> {
-        let cmE_proof = Pedersen::prove(pedersen_params, tr, &ci.cmE, &w.E, &w.rE)?;
-        let cmW_proof = Pedersen::prove(pedersen_params, tr, &ci.cmW, &w.W, &w.rW)?;
-        let cmT_proof = Pedersen::prove(pedersen_params, tr, cmT, &T, &C::ScalarField::one())?; // cm(T) is committed with rT=1
+    ) -> Result<[CP::Proof; 3], Error> {
+        let cmE_proof = CP::prove(cm_prover_params, tr, &ci.cmE, &w.E, &w.rE)?;
+        let cmW_proof = CP::prove(cm_prover_params, tr, &ci.cmW, &w.W, &w.rW)?;
+        let cmT_proof = CP::prove(cm_prover_params, tr, cmT, &T, &C::ScalarField::one())?; // cm(T) is committed with rT=1
         Ok([cmE_proof, cmW_proof, cmT_proof])
-    }
-    pub fn verify_commitments(
-        tr: &mut impl Transcript<C>,
-        pedersen_params: &PedersenParams<C>,
-        ci: CommittedInstance<C>,
-        cmT: C,
-        cm_proofs: [PedersenProof<C>; 3],
-    ) -> Result<(), Error> {
-        if cm_proofs.len() != 3 {
-            // cm_proofs should have length 3: [cmE_proof, cmW_proof, cmT_proof]
-            return Err(Error::NotExpectedLength(cm_proofs.len(), 3));
-        }
-        Pedersen::verify(pedersen_params, tr, ci.cmE, cm_proofs[0].clone())?;
-        Pedersen::verify(pedersen_params, tr, ci.cmW, cm_proofs[1].clone())?;
-        Pedersen::verify(pedersen_params, tr, cmT, cm_proofs[2].clone())?;
-        Ok(())
     }
 }
 
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use ark_crypto_primitives::sponge::poseidon::PoseidonConfig;
     use ark_ff::{BigInteger, PrimeField};
     use ark_pallas::{Fr, Projective};
     use ark_std::{ops::Mul, UniformRand, Zero};
 
     use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z};
+    use crate::commitment::pedersen::{Params as PedersenParams, Pedersen};
     use crate::folding::nova::circuits::ChallengeGadget;
     use crate::folding::nova::traits::NovaR1CS;
     use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
     use crate::utils::vec::vec_scalar_mul;
-    use ark_crypto_primitives::sponge::poseidon::PoseidonConfig;
 
     #[allow(clippy::type_complexity)]
     pub(crate) fn prepare_simple_fold_inputs() -> (
@@ -258,12 +241,23 @@ pub mod tests {
         let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, r1cs.A.n_cols);
 
         // compute committed instances
-        let ci1 = w1.commit(&pedersen_params, x1.clone()).unwrap();
-        let ci2 = w2.commit(&pedersen_params, x2.clone()).unwrap();
+        let ci1 = w1
+            .commit::<Pedersen<Projective>>(&pedersen_params, x1.clone())
+            .unwrap();
+        let ci2 = w2
+            .commit::<Pedersen<Projective>>(&pedersen_params, x2.clone())
+            .unwrap();
 
         // NIFS.P
-        let (T, cmT) =
-            NIFS::<Projective>::compute_cmT(&pedersen_params, &r1cs, &w1, &ci1, &w2, &ci2).unwrap();
+        let (T, cmT) = NIFS::<Projective, Pedersen<Projective>>::compute_cmT(
+            &pedersen_params,
+            &r1cs,
+            &w1,
+            &ci1,
+            &w2,
+            &ci2,
+        )
+        .unwrap();
 
         let poseidon_config = poseidon_test_config::<Fr>();
 
@@ -276,8 +270,10 @@ pub mod tests {
         .unwrap();
         let r_Fr = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
 
-        let (w3, ci3) =
-            NIFS::<Projective>::fold_instances(r_Fr, &w1, &ci1, &w2, &ci2, &T, cmT).unwrap();
+        let (w3, ci3) = NIFS::<Projective, Pedersen<Projective>>::fold_instances(
+            r_Fr, &w1, &ci1, &w2, &ci2, &T, cmT,
+        )
+        .unwrap();
 
         (
             pedersen_params,
@@ -309,7 +305,7 @@ pub mod tests {
         // dummy instance, witness and public inputs zeroes
         let w_dummy = Witness::<Projective>::new(vec![Fr::zero(); w1.len()], r1cs.A.n_rows);
         let mut u_dummy = w_dummy
-            .commit(&pedersen_params, vec![Fr::zero(); x1.len()])
+            .commit::<Pedersen<Projective>>(&pedersen_params, vec![Fr::zero(); x1.len()])
             .unwrap();
         u_dummy.u = Fr::zero();
 
@@ -322,11 +318,19 @@ pub mod tests {
 
         let r_Fr = Fr::from(3_u32);
 
-        let (T, cmT) =
-            NIFS::<Projective>::compute_cmT(&pedersen_params, &r1cs, &w_i, &u_i, &W_i, &U_i)
-                .unwrap();
-        let (W_i1, U_i1) =
-            NIFS::<Projective>::fold_instances(r_Fr, &w_i, &u_i, &W_i, &U_i, &T, cmT).unwrap();
+        let (T, cmT) = NIFS::<Projective, Pedersen<Projective>>::compute_cmT(
+            &pedersen_params,
+            &r1cs,
+            &w_i,
+            &u_i,
+            &W_i,
+            &U_i,
+        )
+        .unwrap();
+        let (W_i1, U_i1) = NIFS::<Projective, Pedersen<Projective>>::fold_instances(
+            r_Fr, &w_i, &u_i, &W_i, &U_i, &T, cmT,
+        )
+        .unwrap();
         r1cs.check_relaxed_instance_relation(&W_i1, &U_i1).unwrap();
     }
 
@@ -337,7 +341,7 @@ pub mod tests {
             prepare_simple_fold_inputs();
 
         // NIFS.V
-        let ci3_v = NIFS::<Projective>::verify(r, &ci1, &ci2, &cmT);
+        let ci3_v = NIFS::<Projective, Pedersen<Projective>>::verify(r, &ci1, &ci2, &cmT);
         assert_eq!(ci3_v, ci3);
 
         // check that relations hold for the 2 inputted instances and the folded one
@@ -347,7 +351,9 @@ pub mod tests {
 
         // check that folded commitments from folded instance (ci) are equal to folding the
         // use folded rE, rW to commit w3
-        let ci3_expected = w3.commit(&pedersen_params, ci3.x.clone()).unwrap();
+        let ci3_expected = w3
+            .commit::<Pedersen<Projective>>(&pedersen_params, ci3.x.clone())
+            .unwrap();
         assert_eq!(ci3_expected.cmE, ci3.cmE);
         assert_eq!(ci3_expected.cmW, ci3.cmW);
 
@@ -356,15 +362,16 @@ pub mod tests {
         assert_eq!(w3.E, vec_scalar_mul(&T, &r));
 
         // NIFS.Verify_Folded_Instance:
-        NIFS::<Projective>::verify_folded_instance(r, &ci1, &ci2, &ci3, &cmT).unwrap();
+        NIFS::<Projective, Pedersen<Projective>>::verify_folded_instance(r, &ci1, &ci2, &ci3, &cmT)
+            .unwrap();
 
         // init Prover's transcript
         let mut transcript_p = PoseidonTranscript::<Projective>::new(&poseidon_config);
         // init Verifier's transcript
         let mut transcript_v = PoseidonTranscript::<Projective>::new(&poseidon_config);
 
-        // check openings of ci3.cmE, ci3.cmW and cmT
-        let cm_proofs = NIFS::<Projective>::open_commitments(
+        // prove the ci3.cmE, ci3.cmW, cmT commitments
+        let cm_proofs = NIFS::<Projective, Pedersen<Projective>>::prove_commitments(
             &mut transcript_p,
             &pedersen_params,
             &w3,
@@ -374,12 +381,27 @@ pub mod tests {
         )
         .unwrap();
 
-        NIFS::<Projective>::verify_commitments(
-            &mut transcript_v,
+        // verify the ci3.cmE, ci3.cmW, cmT commitments
+        assert_eq!(cm_proofs.len(), 3);
+        Pedersen::<Projective>::verify(
             &pedersen_params,
-            ci3,
+            &mut transcript_v,
+            ci3.cmE,
+            cm_proofs[0].clone(),
+        )
+        .unwrap();
+        Pedersen::<Projective>::verify(
+            &pedersen_params,
+            &mut transcript_v,
+            ci3.cmW,
+            cm_proofs[1].clone(),
+        )
+        .unwrap();
+        Pedersen::<Projective>::verify(
+            &pedersen_params,
+            &mut transcript_v,
             cmT,
-            cm_proofs,
+            cm_proofs[2].clone(),
         )
         .unwrap();
     }
@@ -395,8 +417,9 @@ pub mod tests {
 
         // prepare the running instance
         let mut running_instance_w = Witness::<Projective>::new(w.clone(), r1cs.A.n_rows);
-        let mut running_committed_instance =
-            running_instance_w.commit(&pedersen_params, x).unwrap();
+        let mut running_committed_instance = running_instance_w
+            .commit::<Pedersen<Projective>>(&pedersen_params, x)
+            .unwrap();
 
         r1cs.check_relaxed_instance_relation(&running_instance_w, &running_committed_instance)
             .unwrap();
@@ -407,8 +430,9 @@ pub mod tests {
             let incomming_instance_z = get_test_z(i + 4);
             let (w, x) = r1cs.split_z(&incomming_instance_z);
             let incomming_instance_w = Witness::<Projective>::new(w.clone(), r1cs.A.n_rows);
-            let incomming_committed_instance =
-                incomming_instance_w.commit(&pedersen_params, x).unwrap();
+            let incomming_committed_instance = incomming_instance_w
+                .commit::<Pedersen<Projective>>(&pedersen_params, x)
+                .unwrap();
             r1cs.check_relaxed_instance_relation(
                 &incomming_instance_w,
                 &incomming_committed_instance,
@@ -418,7 +442,7 @@ pub mod tests {
             let r = Fr::rand(&mut rng); // folding challenge would come from the RO
 
             // NIFS.P
-            let (T, cmT) = NIFS::<Projective>::compute_cmT(
+            let (T, cmT) = NIFS::<Projective, Pedersen<Projective>>::compute_cmT(
                 &pedersen_params,
                 &r1cs,
                 &running_instance_w,
@@ -427,7 +451,7 @@ pub mod tests {
                 &incomming_committed_instance,
             )
             .unwrap();
-            let (folded_w, _) = NIFS::<Projective>::fold_instances(
+            let (folded_w, _) = NIFS::<Projective, Pedersen<Projective>>::fold_instances(
                 r,
                 &running_instance_w,
                 &running_committed_instance,
@@ -439,7 +463,7 @@ pub mod tests {
             .unwrap();
 
             // NIFS.V
-            let folded_committed_instance = NIFS::<Projective>::verify(
+            let folded_committed_instance = NIFS::<Projective, Pedersen<Projective>>::verify(
                 r,
                 &running_committed_instance,
                 &incomming_committed_instance,

@@ -1,8 +1,8 @@
-use std::{fmt, fmt::Display};
-
+use ark_bn254::Bn254;
 use ark_bn254::{Fq, Fr, G1Affine, G2Affine};
 use ark_groth16::{Proof, VerifyingKey};
 use askama::Template;
+use std::{fmt, fmt::Display};
 
 #[derive(Debug, Default)]
 pub struct FqWrapper(pub Fq);
@@ -26,7 +26,7 @@ fn g2_to_fq_repr(g2: G2Affine) -> G2Repr {
 
 impl Display for FqWrapper {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:#?}", self.0)
+        write!(f, "{}", self.0 .0.to_string())
     }
 }
 
@@ -59,16 +59,50 @@ pub struct SolidityVerifier {
     pub gamma_abc_g1: Vec<G1Repr>,
 }
 
+impl From<VerifyingKey<Bn254>> for SolidityVerifier {
+    fn from(value: VerifyingKey<Bn254>) -> Self {
+        Self {
+            vkey_alpha_g1: g1_to_fq_repr(value.alpha_g1),
+            vkey_beta_g2: g2_to_fq_repr(value.beta_g2),
+            vkey_gamma_g2: g2_to_fq_repr(value.gamma_g2),
+            vkey_delta_g2: g2_to_fq_repr(value.delta_g2),
+            gamma_abc_len: value.gamma_abc_g1.len(),
+            gamma_abc_g1: value
+                .gamma_abc_g1
+                .iter()
+                .copied()
+                .map(|f| g1_to_fq_repr(f))
+                .collect(),
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
+    use super::*;
+    use ark_serialize::CanonicalDeserialize;
+    use std::fs::File;
+
+    fn load_test_data() -> (VerifyingKey<Bn254>, Proof<Bn254>, Fr) {
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+
+        let file = File::open(format!("{}/assets/G16_test_vk_data", manifest_dir)).unwrap();
+        let vk = VerifyingKey::<Bn254>::deserialize_compressed(&file).unwrap();
+
+        let file = File::open(format!("{}/assets/G16_test_proof_data", manifest_dir)).unwrap();
+        let proof = Proof::<Bn254>::deserialize_compressed(&file).unwrap();
+
+        (vk, proof, Fr::from(35u64))
+    }
 
     use super::*;
 
     #[test]
     fn something() {
-        let mut template = SolidityVerifier::default();
-        template.gamma_abc_len = 1;
-        template.gamma_abc_g1.push(G1Repr::default());
+        let (vk, proof, pi) = load_test_data();
+        let template = SolidityVerifier::from(vk);
+
         let res = template.render().unwrap();
-        eprintln!("{:?}", res);
+        eprintln!("{}", res);
     }
 }

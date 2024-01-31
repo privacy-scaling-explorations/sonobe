@@ -453,7 +453,7 @@ pub mod tests {
     use crate::commitment::pedersen::Pedersen;
     use crate::folding::nova::{get_pedersen_params_len, ProverParams, VerifierParams};
     use crate::frontend::tests::{CubicFCircuit, CustomFCircuit, WrapperCircuit};
-    use crate::transcript::poseidon::tests::poseidon_test_config;
+    use crate::transcript::poseidon::poseidon_test_config;
     use crate::FoldingScheme;
 
     use crate::ccs::r1cs::{extract_r1cs, extract_w_x};

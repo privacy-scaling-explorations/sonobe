@@ -373,7 +373,7 @@ where
 pub mod tests {
     use super::*;
     use crate::ccs::tests::{get_test_ccs, get_test_z};
-    use crate::transcript::poseidon::tests::poseidon_test_config;
+    use crate::transcript::poseidon::poseidon_test_config;
     use crate::transcript::poseidon::PoseidonTranscript;
     use ark_std::test_rng;
     use ark_std::UniformRand;

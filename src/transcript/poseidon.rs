@@ -115,42 +115,40 @@ impl<F: PrimeField> TranscriptVar<F> for PoseidonTranscriptVar<F> {
     }
 }
 
+/// WARNING the method poseidon_test_config is for tests only
+pub fn poseidon_test_config<F: PrimeField>() -> PoseidonConfig<F> {
+    let full_rounds = 8;
+    let partial_rounds = 31;
+    let alpha = 5;
+    let rate = 2;
+
+    let (ark, mds) = ark_crypto_primitives::sponge::poseidon::find_poseidon_ark_and_mds::<F>(
+        F::MODULUS_BIT_SIZE as u64,
+        rate,
+        full_rounds,
+        partial_rounds,
+        0,
+    );
+
+    PoseidonConfig::new(
+        full_rounds as usize,
+        partial_rounds as usize,
+        alpha,
+        mds,
+        ark,
+        rate,
+        1,
+    )
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use ark_crypto_primitives::sponge::poseidon::find_poseidon_ark_and_mds;
     use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
     use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, groups::CurveVar, R1CSVar};
     use ark_relations::r1cs::ConstraintSystem;
     use ark_vesta::Projective as E2Projective;
     use std::ops::Mul;
-
-    /// WARNING the method poseidon_test_config is for tests only
-    #[cfg(test)]
-    pub fn poseidon_test_config<F: PrimeField>() -> PoseidonConfig<F> {
-        let full_rounds = 8;
-        let partial_rounds = 31;
-        let alpha = 5;
-        let rate = 2;
-
-        let (ark, mds) = find_poseidon_ark_and_mds::<F>(
-            F::MODULUS_BIT_SIZE as u64,
-            rate,
-            full_rounds,
-            partial_rounds,
-            0,
-        );
-
-        PoseidonConfig::new(
-            full_rounds as usize,
-            partial_rounds as usize,
-            alpha,
-            mds,
-            ark,
-            rate,
-            1,
-        )
-    }
 
     #[test]
     fn test_transcript_and_transcriptvar_get_challenge() {

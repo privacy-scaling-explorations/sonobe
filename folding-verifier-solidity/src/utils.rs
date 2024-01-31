@@ -8,6 +8,7 @@ use std::{
 };
 
 use ark_bn254::{Fq, G1Affine, G2Affine};
+use ark_ff::PrimeField;
 use askama::Template;
 
 #[derive(Debug, Default)]
@@ -121,7 +122,23 @@ mod tests {
 
     use super::*;
     use crate::evm::test::Evm;
-    use ark_std::UniformRand;
+    use ark_bn254::{Bn254, Fr, G1Projective as G1};
+    use ark_poly_commit::kzg10::{
+        Commitment as KZG10Commitment, Proof as KZG10Proof, VerifierKey, KZG10,
+    };
+    use ark_std::{test_rng, UniformRand, Zero};
+    use folding_schemes::{
+        commitment::{
+            kzg::{KZGProver, KZGSetup, ProverKey},
+            CommitmentProver,
+        },
+        transcript::{
+            poseidon::{tests::poseidon_test_config, PoseidonTranscript},
+            Transcript,
+        },
+    };
+
+    // use transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
 
     #[test]
     fn something() {
@@ -145,8 +162,24 @@ mod tests {
         let kzg_verifier_bytecode = crate::evm::test::compile_solidity(&res);
         let mut evm = Evm::default();
         let kzg_verifier_address = evm.create(kzg_verifier_bytecode);
-        println!("kzg verifier address: {:?}", kzg_verifier_address);
         let verifier_runtime_code_size = evm.code_size(kzg_verifier_address);
+    }
+
+    #[test]
+    fn test_kzg_verifier_accepts_valid_proofs() {
+        let rng = &mut test_rng();
+        let poseidon_config = poseidon_test_config::<Fr>();
+        let transcript_p = &mut PoseidonTranscript::<G1>::new(&poseidon_config);
+        let transcript_v = &mut PoseidonTranscript::<G1>::new(&poseidon_config);
+
+        let n = 10;
+        let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(rng, n);
+
+        let v: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(rng)).take(n).collect();
+        let cm = KZGProver::<G1>::commit(&pk, &v, &Fr::zero()).unwrap();
+
+        let (eval, proof) =
+            KZGProver::<G1>::prove(&pk, transcript_p, &cm, &v, &Fr::zero()).unwrap();
     }
 
     #[test]

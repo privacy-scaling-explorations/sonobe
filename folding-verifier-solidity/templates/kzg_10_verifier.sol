@@ -1,13 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-/**
- * @author  Privacy and Scaling Explorations team - pse.dev
- * @dev     Contains utility functions for ops in BN254; in G_1 mostly.
- * @notice  Inspired from https://github.com/weijiekoh/libkzg/tree/master.
- * We update the pragma version, remove type wrappers, use uints instead of type wrappers, perform changes on arg types
- */
-library BN254 {
+contract KZG10 {
+
     // prime of field F_p over which y^2 = x^3 + 3 is defined
     uint256 public constant BN254_PRIME_FIELD =
         21888242871839275222246405745257275088696311157297823662689037894645226208583;
@@ -106,9 +101,6 @@ library BN254 {
 
         return out[0] != 0;
     }
-}
-
-contract KZG10 {
 
     uint256[2] G_1 = [
             {{ g1.0[0] }},
@@ -178,12 +170,12 @@ contract KZG10 {
         //                        |_   rhs_pairing  _|
         //
         uint256[2] memory rhs_pairing =
-            BN254.add(BN254.mulScalar(BN254.negate(pi), x), BN254.add(BN254.negate(c), BN254.mulScalar(G_1, y)));
-        return BN254.pairing(pi, VK, rhs_pairing, G_2);
+            add(mulScalar(negate(pi), x), add(negate(c), mulScalar(G_1, y)));
+        return pairing(pi, VK, rhs_pairing, G_2);
     }
 
     function evalPolyAt(uint256[] memory _coefficients, uint256 _index) public pure returns (uint256) {
-        uint256 m = BN254.BN254_SCALAR_FIELD;
+        uint256 m = BN254_SCALAR_FIELD;
         uint256 result = 0;
         uint256 powerOfX = 1;
 
@@ -217,8 +209,8 @@ contract KZG10 {
         uint256[2] memory z_commit;
         uint256[2] memory l_commit;
         for (uint256 i = 0; i < x_vals.length; i++) {
-            z_commit = BN254.add(z_commit, BN254.mulScalar(G1_CRS[i], z_coeffs[i])); // update commitment to z(x)
-            l_commit = BN254.add(l_commit, BN254.mulScalar(G1_CRS[i], l_coeffs[i])); // update commitment to l(x)
+            z_commit = add(z_commit, mulScalar(G1_CRS[i], z_coeffs[i])); // update commitment to z(x)
+            l_commit = add(l_commit, mulScalar(G1_CRS[i], l_coeffs[i])); // update commitment to l(x)
 
             uint256 eval_z = evalPolyAt(z_coeffs, x_vals[i]);
             uint256 eval_l = evalPolyAt(l_coeffs, x_vals[i]);
@@ -227,7 +219,7 @@ contract KZG10 {
             require(eval_l == y_vals[i], "checkAndCommitAuxPolys: wrong lagrange poly");
         }
         // z(x) has len(x_vals) + 1 coeffs, we add to the commmitment the last coeff of z(x)
-        z_commit = BN254.add(z_commit, BN254.mulScalar(G1_CRS[z_coeffs.length - 1], z_coeffs[z_coeffs.length - 1]));
+        z_commit = add(z_commit, mulScalar(G1_CRS[z_coeffs.length - 1], z_coeffs[z_coeffs.length - 1]));
 
         return (z_commit, l_commit);
     }
@@ -264,7 +256,7 @@ contract KZG10 {
         //
         (uint256[2] memory z_commit, uint256[2] memory l_commit) =
             checkAndCommitAuxPolys(z_coeffs, l_coeffs, x_vals, y_vals);
-        uint256[2] memory neg_commit = BN254.negate(c);
-        return BN254.pairing(z_commit, pi, BN254.add(l_commit, neg_commit), G_2);
+        uint256[2] memory neg_commit = negate(c);
+        return pairing(z_commit, pi, add(l_commit, neg_commit), G_2);
     }
 }

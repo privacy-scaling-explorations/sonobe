@@ -12,6 +12,8 @@ ark-groth16 = "0.4"
 askama = { version = "0.12.0", features = ["config"], default-features = false }
 ark-bn254 = "0.4.0"
 revm = "3.5.0"
+ark-poly-commit = "0.4.0"
+folding-schemes = { path = "../folding-schemes/" }
 
 [dev-dependencies]
 tracing = { version = "0.1", default-features = false, features = [ "attributes" ] }

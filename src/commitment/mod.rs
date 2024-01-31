@@ -41,7 +41,7 @@ mod tests {
     use super::kzg::{KZGProver, KZGSetup, ProverKey};
     use super::pedersen::Pedersen;
     use crate::transcript::{
-        poseidon::{tests::poseidon_test_config, PoseidonTranscript},
+        poseidon::{poseidon_test_config, PoseidonTranscript},
         Transcript,
     };
 

@@ -654,7 +654,7 @@ pub mod tests {
 
     use crate::commitment::pedersen::Pedersen;
     use crate::frontend::tests::CubicFCircuit;
-    use crate::transcript::poseidon::tests::poseidon_test_config;
+    use crate::transcript::poseidon::poseidon_test_config;
 
     #[test]
     fn test_ivc() {

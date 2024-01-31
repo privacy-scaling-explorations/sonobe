@@ -165,7 +165,7 @@ mod tests {
     use ark_std::UniformRand;
 
     use super::*;
-    use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
+    use crate::transcript::poseidon::{poseidon_test_config, PoseidonTranscript};
 
     #[test]
     fn test_pedersen_vector() {

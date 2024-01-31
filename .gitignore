@@ -3,3 +3,5 @@ Cargo.lock
 # Circom generated files
 /src/frontend/circom/test_folder/test_circuit.r1cs
 /src/frontend/circom/test_folder/test_circuit_js/
+
+folding-verifier-solidity/generated

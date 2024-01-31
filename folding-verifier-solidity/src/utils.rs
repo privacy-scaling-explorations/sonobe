@@ -1,4 +1,11 @@
-use std::{fmt, fmt::Display};
+use std::{
+    fmt,
+    fmt::Display,
+    fs::{create_dir_all, File},
+    io::{self, Write},
+    process::{Command, Stdio},
+    str,
+};
 
 use ark_bn254::{Fq, G1Affine, G2Affine};
 use askama::Template;
@@ -100,9 +107,20 @@ impl KZG10Verifier {
     }
 }
 
+// from: https://github.com/privacy-scaling-explorations/halo2-solidity-verifier/blob/85cb77b171ce3ee493628007c7a1cfae2ea878e6/examples/separately.rs#L56
+fn save_solidity(name: impl AsRef<str>, solidity: &str) {
+    const DIR_GENERATED: &str = "./generated";
+    create_dir_all(DIR_GENERATED).unwrap();
+    File::create(format!("{DIR_GENERATED}/{}", name.as_ref()))
+        .unwrap()
+        .write_all(solidity.as_bytes())
+        .unwrap();
+}
+
 mod tests {
 
     use super::*;
+    use crate::evm::test::Evm;
     use ark_std::UniformRand;
 
     #[test]
@@ -112,6 +130,23 @@ mod tests {
         template.gamma_abc_g1.push(G1Repr::default());
         let res = template.render().unwrap();
         eprintln!("{:?}", res);
+    }
+
+    #[test]
+    fn test_kzg_verifier_compiles() {
+        let rng = &mut ark_std::test_rng();
+        let g1 = G1Affine::rand(rng);
+        let g2 = G2Affine::rand(rng);
+        let vk = G2Affine::rand(rng);
+        let g1_crs = (0..10).map(|_| G1Affine::rand(rng)).collect();
+        let template = KZG10Verifier::new(g1, g2, vk, g1_crs);
+        let res = template.render().unwrap();
+        save_solidity("kzg_10_verifier.sol", &res);
+        let kzg_verifier_bytecode = crate::evm::test::compile_solidity(&res);
+        let mut evm = Evm::default();
+        let kzg_verifier_address = evm.create(kzg_verifier_bytecode);
+        println!("kzg verifier address: {:?}", kzg_verifier_address);
+        let verifier_runtime_code_size = evm.code_size(kzg_verifier_address);
     }
 
     #[test]

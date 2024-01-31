@@ -21,7 +21,7 @@ use ark_pallas::{constraints::GVar, Fr, Projective};
 use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
 
 use folding_schemes::commitment::pedersen::Pedersen;
-use folding_schemes::folding::nova::{get_both_r1cs, Nova, ProverParams, VerifierParams};
+use folding_schemes::folding::nova::{get_r1cs, Nova, ProverParams, VerifierParams};
 use folding_schemes::frontend::FCircuit;
 use folding_schemes::{Error, FoldingScheme};
 
@@ -103,6 +103,8 @@ pub mod tests {
     }
 }
 
+// this method computes the Prover & Verifier parameters for the example. For a real world use case
+// those parameters should be generated carefuly (both the PoseidonConfig and the PedersenParams)
 #[allow(clippy::type_complexity)]
 fn nova_setup<FC: FCircuit<Fr>>(
     F_circuit: FC,
@@ -115,8 +117,7 @@ fn nova_setup<FC: FCircuit<Fr>>(
 
     // get the CM & CF_CM len
     let (r1cs, cf_r1cs) =
-        get_both_r1cs::<Projective, GVar, Projective2, GVar2, FC>(&poseidon_config, F_circuit)
-            .unwrap();
+        get_r1cs::<Projective, GVar, Projective2, GVar2, FC>(&poseidon_config, F_circuit).unwrap();
     let cm_len = r1cs.A.n_rows;
     let cf_cm_len = cf_r1cs.A.n_rows;
 
@@ -137,7 +138,7 @@ fn nova_setup<FC: FCircuit<Fr>>(
     (prover_params, verifier_params)
 }
 
-/// cargo run --release --example simple
+/// cargo run --release --example fold_sha256
 fn main() {
     let num_steps = 10;
     let initial_state = vec![Fr::from(1_u32)];

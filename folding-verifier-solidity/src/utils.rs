@@ -1,3 +1,11 @@
+use ark_crypto_primitives::sponge::{
+    constraints::CryptographicSpongeVar,
+    poseidon::{
+        constraints::PoseidonSpongeVar, find_poseidon_ark_and_mds, PoseidonConfig, PoseidonSponge,
+    },
+    Absorb, CryptographicSponge,
+};
+
 use std::{
     fmt,
     fmt::Display,
@@ -132,10 +140,7 @@ mod tests {
             kzg::{KZGProver, KZGSetup, ProverKey},
             CommitmentProver,
         },
-        transcript::{
-            poseidon::{tests::poseidon_test_config, PoseidonTranscript},
-            Transcript,
-        },
+        transcript::{poseidon::PoseidonTranscript, Transcript},
     };
 
     // use transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
@@ -174,12 +179,23 @@ mod tests {
 
         let n = 10;
         let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(rng, n);
-
         let v: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(rng)).take(n).collect();
         let cm = KZGProver::<G1>::commit(&pk, &v, &Fr::zero()).unwrap();
-
         let (eval, proof) =
             KZGProver::<G1>::prove(&pk, transcript_p, &cm, &v, &Fr::zero()).unwrap();
+
+        let crs = pk
+            .powers_of_g
+            .iter()
+            .map(|tau_g| *tau_g)
+            .collect::<Vec<_>>();
+        let g1 = G1Affine::rand(rng);
+        let g2 = G2Affine::rand(rng);
+        let vk = G2Affine::rand(rng);
+        // let g1_crs = (0..10).map(|_| G1Affine::rand(rng)).collect();
+        let template = KZG10Verifier::new(g1, g2, vk, crs);
+        let res = template.render().unwrap();
+        println!("{:?}", res);
     }
 
     #[test]

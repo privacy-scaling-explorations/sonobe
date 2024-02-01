@@ -1,23 +1,6 @@
-use ark_crypto_primitives::sponge::{
-    constraints::CryptographicSpongeVar,
-    poseidon::{
-        constraints::PoseidonSpongeVar, find_poseidon_ark_and_mds, PoseidonConfig, PoseidonSponge,
-    },
-    Absorb, CryptographicSponge,
-};
-
-use std::{
-    fmt,
-    fmt::Display,
-    fs::{create_dir_all, File},
-    io::{self, Write},
-    process::{Command, Stdio},
-    str,
-};
-
 use ark_bn254::{Fq, G1Affine, G2Affine};
-use ark_ff::PrimeField;
 use askama::Template;
+use std::{fmt, fmt::Display};
 
 #[derive(Debug, Default)]
 pub struct FqWrapper(pub Fq);
@@ -116,34 +99,45 @@ impl KZG10Verifier {
     }
 }
 
-// from: https://github.com/privacy-scaling-explorations/halo2-solidity-verifier/blob/85cb77b171ce3ee493628007c7a1cfae2ea878e6/examples/separately.rs#L56
-fn save_solidity(name: impl AsRef<str>, solidity: &str) {
-    const DIR_GENERATED: &str = "./generated";
-    create_dir_all(DIR_GENERATED).unwrap();
-    File::create(format!("{DIR_GENERATED}/{}", name.as_ref()))
-        .unwrap()
-        .write_all(solidity.as_bytes())
-        .unwrap();
-}
-
+#[cfg(test)]
 mod tests {
+
+    use std::{
+        fs::{create_dir_all, File},
+        io::Write,
+    };
 
     use super::*;
     use crate::evm::test::Evm;
     use ark_bn254::{Bn254, Fr, G1Projective as G1};
-    use ark_poly_commit::kzg10::{
-        Commitment as KZG10Commitment, Proof as KZG10Proof, VerifierKey, KZG10,
-    };
+    use ark_ec::{AffineRepr, CurveGroup};
+    use ark_ff::{BigInteger, PrimeField};
+    use ark_poly_commit::kzg10::VerifierKey;
     use ark_std::{test_rng, UniformRand, Zero};
     use folding_schemes::{
         commitment::{
             kzg::{KZGProver, KZGSetup, ProverKey},
             CommitmentProver,
         },
-        transcript::{poseidon::PoseidonTranscript, Transcript},
+        transcript::{
+            poseidon::{poseidon_test_config, PoseidonTranscript},
+            Transcript,
+        },
     };
+    use itertools::chain;
 
-    // use transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
+    // from: https://github.com/privacy-scaling-explorations/halo2-solidity-verifier/blob/85cb77b171ce3ee493628007c7a1cfae2ea878e6/examples/separately.rs#L56
+    pub fn save_solidity(name: impl AsRef<str>, solidity: &str) {
+        const DIR_GENERATED: &str = "./generated";
+        create_dir_all(DIR_GENERATED).unwrap();
+        File::create(format!("{DIR_GENERATED}/{}", name.as_ref()))
+            .unwrap()
+            .write_all(solidity.as_bytes())
+            .unwrap();
+    }
+
+    // pub const FN_KZG10_BATCH_CHECK: [u8; 4] = [0xfe, 0x41, 0x5e, 0xbc];
+    pub const FN_KZG10_CHECK: [u8; 4] = [0x9e, 0x78, 0xcc, 0xf7];
 
     #[test]
     fn something() {
@@ -166,8 +160,7 @@ mod tests {
         save_solidity("kzg_10_verifier.sol", &res);
         let kzg_verifier_bytecode = crate::evm::test::compile_solidity(&res);
         let mut evm = Evm::default();
-        let kzg_verifier_address = evm.create(kzg_verifier_bytecode);
-        let verifier_runtime_code_size = evm.code_size(kzg_verifier_address);
+        _ = evm.create(kzg_verifier_bytecode);
     }
 
     #[test]
@@ -189,13 +182,41 @@ mod tests {
             .iter()
             .map(|tau_g| *tau_g)
             .collect::<Vec<_>>();
-        let g1 = G1Affine::rand(rng);
-        let g2 = G2Affine::rand(rng);
-        let vk = G2Affine::rand(rng);
-        // let g1_crs = (0..10).map(|_| G1Affine::rand(rng)).collect();
-        let template = KZG10Verifier::new(g1, g2, vk, crs);
+
+        let template = KZG10Verifier::new(crs[0], vk.h, vk.beta_h, crs);
         let res = template.render().unwrap();
-        println!("{:?}", res);
+        let kzg_verifier_bytecode = crate::evm::test::compile_solidity(&res);
+        let mut evm = Evm::default();
+        let verifier_address = evm.create(kzg_verifier_bytecode);
+
+        let (cm_affine, proof_affine) = (cm.into_affine(), proof.into_affine());
+        let (x_comm, y_comm) = cm_affine.xy().unwrap();
+        let (x_proof, y_proof) = proof_affine.xy().unwrap();
+        let y = eval.into_bigint().to_bytes_be();
+
+        transcript_v.absorb_point(&cm).unwrap();
+        let x = transcript_v.get_challenge();
+
+        let x = x.into_bigint().to_bytes_be();
+        let mut calldata: Vec<u8> = chain![
+            FN_KZG10_CHECK,
+            x_comm.into_bigint().to_bytes_be(),
+            y_comm.into_bigint().to_bytes_be(),
+            x_proof.into_bigint().to_bytes_be(),
+            y_proof.into_bigint().to_bytes_be(),
+            x.clone(),
+            y,
+        ]
+        .collect();
+
+        let (_, output) = evm.call(verifier_address, calldata.clone());
+        assert_eq!(*output.last().unwrap(), 1);
+
+        // change calldata to make it invalid
+        let last_calldata_element = calldata.last_mut().unwrap();
+        *last_calldata_element = 0;
+        let (_, output) = evm.call(verifier_address, calldata);
+        assert_eq!(*output.last().unwrap(), 0);
     }
 
     #[test]

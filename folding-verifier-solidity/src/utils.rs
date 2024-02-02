@@ -26,7 +26,7 @@ fn g2_to_fq_repr(g2: G2Affine) -> G2Repr {
 
 impl Display for FqWrapper {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0 .0.to_string())
+        write!(f, "{}", self.0.to_string())
     }
 }
 
@@ -80,8 +80,17 @@ impl From<VerifyingKey<Bn254>> for SolidityVerifier {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_serialize::CanonicalDeserialize;
-    use std::fs::File;
+    use crate::evm::*;
+    use ark_ec::AffineRepr;
+    use ark_ff::{BigInteger, PrimeField};
+    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Write};
+    use hex::encode;
+    use revm::primitives::U256;
+    use std::{
+        fs::File,
+        io,
+        process::{Command, Stdio},
+    };
 
     fn load_test_data() -> (VerifyingKey<Bn254>, Proof<Bn254>, Fr) {
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
@@ -95,14 +104,84 @@ mod tests {
         (vk, proof, Fr::from(35u64))
     }
 
-    use super::*;
+    /// Compile given Solidity `code` into deployment bytecode.
+    pub fn compile_solidity(code: &str) -> Vec<u8> {
+        let mut cmd = match Command::new("solc")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .arg("--bin")
+            .arg("-")
+            .spawn()
+        {
+            Ok(cmd) => cmd,
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {
+                panic!("Command 'solc' not found");
+            }
+            Err(err) => {
+                panic!("Failed to spawn cmd with command 'solc':\n{err}");
+            }
+        };
+
+        cmd.stdin
+            .take()
+            .unwrap()
+            .write_all(code.as_bytes())
+            .unwrap();
+        let output = cmd.wait_with_output().unwrap().stdout;
+        let binary = *split_by_ascii_whitespace(&output).last().unwrap();
+        hex::decode(binary).unwrap()
+    }
+
+    fn split_by_ascii_whitespace(bytes: &[u8]) -> Vec<&[u8]> {
+        let mut split = Vec::new();
+        let mut start = None;
+        for (idx, byte) in bytes.iter().enumerate() {
+            if byte.is_ascii_whitespace() {
+                if let Some(start) = start.take() {
+                    split.push(&bytes[start..idx]);
+                }
+            } else if start.is_none() {
+                start = Some(idx);
+            }
+        }
+        split
+    }
 
     #[test]
     fn something() {
         let (vk, proof, pi) = load_test_data();
         let template = SolidityVerifier::from(vk);
 
+        println!("{}", template);
+
         let res = template.render().unwrap();
-        eprintln!("{}", res);
+        // let bytecode = compile_solidity(&res);
+
+        // let mut evm = Evm::default();
+        // let verifier_address = evm.create(bytecode);
+        // let verifier_runtime_code_size = evm.code_size(verifier_address);
+
+        let mut calldata = vec![];
+        pi.serialize_uncompressed(&mut calldata).unwrap();
+        proof.serialize_uncompressed(&mut calldata).unwrap();
+        println!("A coord X {}", proof.a.x().unwrap().into_bigint());
+        println!("A coord Y {}", proof.a.y().unwrap().into_bigint());
+        println!("B X c0 {}", proof.b.x().unwrap().c0.into_bigint());
+        println!("{}", proof.b.x().unwrap().c1.into_bigint());
+        println!("{}", proof.b.y().unwrap().c0.into_bigint());
+        println!("{}", proof.b.y().unwrap().c1.into_bigint());
+        println!("C coord X {}", proof.c.x().unwrap().into_bigint());
+        println!("C coord Y {}", proof.c.y().unwrap().into_bigint());
+
+        println!("{:?}", hex::encode(calldata));
+
+        /*
+        [12789841443114878786012274900958960562863291377603298588996397612743214270533, 8371334585386453528714380627543265152075449166138960668073923127915708302918]
+        [[12522206255038260967553106003273653153059437125460434909321001278476478563099, 7102572973382534269970250325141231327406282500396145387860750610050816584321], [11959723456754807302055526676718525325852240128103399509369713681715451048557, 16100176535437748320172804270898298046286395181881469074804264499369100517575]]
+        [7966130069787952207190650262573736474574320231144059824022215179523642128059, 5008468717564049131407964336167989927527065952193350248286730060342196401539]
+        [2300000000000000000000000000000000000000000000000000000000000000]
+         */
+
+        //[12789841443114878786012274900958960562863291377603298588996397612743214270533, 8371334585386453528714380627543265152075449166138960668073923127915708302918], [[12522206255038260967553106003273653153059437125460434909321001278476478563099, 7102572973382534269970250325141231327406282500396145387860750610050816584321], [11959723456754807302055526676718525325852240128103399509369713681715451048557, 16100176535437748320172804270898298046286395181881469074804264499369100517575]], [7966130069787952207190650262573736474574320231144059824022215179523642128059, 5008468717564049131407964336167989927527065952193350248286730060342196401539], [2300000000000000000000000000000000000000000000000000000000000000]
     }
 }

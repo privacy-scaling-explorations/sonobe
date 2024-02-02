@@ -203,10 +203,10 @@ contract Verifier {
         );
         vk.IC = new Pairing.G1Point[]({{ gamma_abc_len }});
         {% for (i, point) in gamma_abc_g1.iter().enumerate() %}
-         vk.IC[i] = Pairing.G1Point( 
+         vk.IC[{{i}}] = Pairing.G1Point( 
             {{ point.0[0] }},
             {{ point.0[1] }}
-        };    
+        );    
         {% endfor %}    
     }
     function verify(uint[] memory input, Proof memory proof) internal view returns (uint) {

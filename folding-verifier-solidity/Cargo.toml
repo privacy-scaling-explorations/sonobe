@@ -16,6 +16,8 @@ ark-bn254 = "0.4.0"
 tracing = { version = "0.1", default-features = false, features = [ "attributes" ] }
 tracing-subscriber = { version = "0.2" }
 ark-serialize = "0.4"
+revm = { version = "3.5",  default-features = false }
+hex = "0.4"
 
 [features]
 default = ["parallel"]

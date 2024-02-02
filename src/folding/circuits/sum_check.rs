@@ -176,7 +176,7 @@ mod tests {
     use crate::{
         folding::circuits::sum_check::{IOPProofVar, VPAuxInfoVar},
         transcript::{
-            poseidon::{tests::poseidon_test_config, PoseidonTranscript, PoseidonTranscriptVar},
+            poseidon::{poseidon_test_config, PoseidonTranscript, PoseidonTranscriptVar},
             Transcript, TranscriptVar,
         },
         utils::{

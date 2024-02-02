@@ -65,6 +65,7 @@ where
 }
 
 /// KZGProver implements the CommitmentProver trait for the KZG commitment scheme.
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub struct KZGProver<'a, C: CurveGroup> {
     _a: PhantomData<&'a ()>,
     _c: PhantomData<C>,
@@ -196,7 +197,7 @@ mod tests {
     use ark_std::{test_rng, UniformRand};
 
     use super::*;
-    use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
+    use crate::transcript::poseidon::{poseidon_test_config, PoseidonTranscript};
 
     #[test]
     fn test_kzg_commitment_scheme() {

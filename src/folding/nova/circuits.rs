@@ -473,10 +473,10 @@ pub mod tests {
     use crate::commitment::pedersen::Pedersen;
     use crate::folding::nova::nifs::tests::prepare_simple_fold_inputs;
     use crate::folding::nova::{
-        ivc::get_committed_instance_coordinates, nifs::NIFS, traits::NovaR1CS, Witness,
+        get_committed_instance_coordinates, nifs::NIFS, traits::NovaR1CS, Witness,
     };
     use crate::frontend::tests::CubicFCircuit;
-    use crate::transcript::poseidon::tests::poseidon_test_config;
+    use crate::transcript::poseidon::poseidon_test_config;
 
     #[test]
     fn test_committed_instance_var() {

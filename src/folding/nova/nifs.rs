@@ -209,7 +209,7 @@ pub mod tests {
     use crate::commitment::pedersen::{Params as PedersenParams, Pedersen};
     use crate::folding::nova::circuits::ChallengeGadget;
     use crate::folding::nova::traits::NovaR1CS;
-    use crate::transcript::poseidon::{tests::poseidon_test_config, PoseidonTranscript};
+    use crate::transcript::poseidon::{poseidon_test_config, PoseidonTranscript};
     use crate::utils::vec::vec_scalar_mul;
 
     #[allow(clippy::type_complexity)]

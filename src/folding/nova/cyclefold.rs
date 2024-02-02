@@ -402,7 +402,7 @@ pub mod tests {
     use ark_std::UniformRand;
 
     use crate::folding::nova::nifs::tests::prepare_simple_fold_inputs;
-    use crate::transcript::poseidon::tests::poseidon_test_config;
+    use crate::transcript::poseidon::poseidon_test_config;
 
     #[test]
     fn test_committed_instance_cyclefold_var() {

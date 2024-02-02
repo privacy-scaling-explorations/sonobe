@@ -211,7 +211,7 @@ pub mod tests {
     use ark_poly::MultilinearExtension;
     use ark_std::test_rng;
 
-    use crate::transcript::poseidon::tests::poseidon_test_config;
+    use crate::transcript::poseidon::poseidon_test_config;
     use crate::transcript::poseidon::PoseidonTranscript;
     use crate::transcript::Transcript;
     use crate::utils::sum_check::SumCheck;

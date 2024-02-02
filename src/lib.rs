@@ -1,10 +1,14 @@
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
+#![allow(non_camel_case_types)]
+#![allow(clippy::upper_case_acronyms)]
 
 use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_std::{fmt::Debug, rand::RngCore};
 use thiserror::Error;
+
+use crate::frontend::FCircuit;
 
 pub mod transcript;
 use transcript::Transcript;
@@ -69,38 +73,53 @@ pub enum Error {
 /// - C2 is the auxiliary curve, which we use for the commitments, whose BaseField (for point
 /// coordinates) are in the C1::ScalarField.
 /// In other words, C1.Fq == C2.Fr, and C1.Fr == C2.Fq.
-pub trait FoldingScheme<C1: CurveGroup, C2: CurveGroup>: Clone + Debug
+pub trait FoldingScheme<C1: CurveGroup, C2: CurveGroup, FC>: Clone + Debug
 where
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     C2::BaseField: PrimeField,
+    FC: FCircuit<C1::ScalarField>,
 {
     type PreprocessorParam: Debug;
     type ProverParam: Debug;
     type VerifierParam: Debug;
     type Witness: Debug;
     type CommittedInstanceWithWitness: Debug;
+    type CFCommittedInstanceWithWitness: Debug; // CycleFold CommittedInstance & Witness
     type CommittedInstance: Clone + Debug;
 
     fn preprocess(
         prep_param: &Self::PreprocessorParam,
     ) -> Result<(Self::ProverParam, Self::VerifierParam), Error>;
 
-    fn init_accumulator(
+    fn init(
         pp: &Self::ProverParam,
-    ) -> Result<Self::CommittedInstanceWithWitness, Error>;
+        step_circuit: FC,
+        z_0: Vec<C1::ScalarField>, // initial state
+    ) -> Result<Self, Error>;
 
-    fn prove(
-        pp: &Self::ProverParam,
-        running_instance: &mut Self::CommittedInstanceWithWitness,
-        incomming_instances: &[Self::Witness],
-        transcript: &mut impl Transcript<C1>,
-    ) -> Result<(), Error>;
+    fn prove_step(&mut self) -> Result<(), Error>;
+
+    // returns the state at the current step
+    fn state(&self) -> Vec<C1::ScalarField>;
+
+    // returns the instances at the current step
+    fn instances(
+        &self,
+    ) -> (
+        Self::CommittedInstanceWithWitness,
+        Self::CommittedInstanceWithWitness,
+        Self::CFCommittedInstanceWithWitness,
+    );
 
     fn verify(
-        vp: &Self::VerifierParam,
-        running_instance: &mut Self::CommittedInstance,
-        incomming_instances: &[Self::CommittedInstance],
-        transcript: &mut impl Transcript<C1>,
+        vp: Self::VerifierParam,
+        z_0: Vec<C1::ScalarField>, // initial state
+        z_i: Vec<C1::ScalarField>, // last state
+        // number of steps between the initial state and the last state
+        num_steps: C1::ScalarField,
+        running_instance: Self::CommittedInstanceWithWitness,
+        incomming_instance: Self::CommittedInstanceWithWitness,
+        cyclefold_instance: Self::CFCommittedInstanceWithWitness,
     ) -> Result<(), Error>;
 }
 

@@ -8,9 +8,9 @@ pub mod kzg;
 pub mod pedersen;
 
 /// CommitmentProver defines the vector commitment scheme prover trait.
-pub trait CommitmentProver<C: CurveGroup> {
-    type Params: Debug;
-    type Proof: Debug;
+pub trait CommitmentProver<C: CurveGroup>: Clone + Debug {
+    type Params: Clone + Debug;
+    type Proof: Clone + Debug;
 
     fn commit(
         params: &Self::Params,
@@ -41,7 +41,7 @@ mod tests {
     use super::kzg::{KZGProver, KZGSetup, ProverKey};
     use super::pedersen::Pedersen;
     use crate::transcript::{
-        poseidon::{tests::poseidon_test_config, PoseidonTranscript},
+        poseidon::{poseidon_test_config, PoseidonTranscript},
         Transcript,
     };
 

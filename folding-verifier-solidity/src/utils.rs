@@ -82,7 +82,7 @@ mod tests {
     use super::*;
     use crate::evm::*;
     use ark_ec::AffineRepr;
-    use ark_ff::{BigInteger, PrimeField};
+    use ark_ff::{BigInt, BigInteger, PrimeField};
     use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Write};
     use hex::encode;
     use revm::primitives::U256;
@@ -151,10 +151,8 @@ mod tests {
     fn something() {
         let (vk, proof, pi) = load_test_data();
         let template = SolidityVerifier::from(vk);
-
-        println!("{}", template);
-
         let res = template.render().unwrap();
+        println!("{}", res);
         // let bytecode = compile_solidity(&res);
 
         // let mut evm = Evm::default();
@@ -164,23 +162,31 @@ mod tests {
         let mut calldata = vec![];
         pi.serialize_uncompressed(&mut calldata).unwrap();
         proof.serialize_uncompressed(&mut calldata).unwrap();
-        println!("A coord X {}", proof.a.x().unwrap().into_bigint());
-        println!("A coord Y {}", proof.a.y().unwrap().into_bigint());
-        println!("B X c0 {}", proof.b.x().unwrap().c0.into_bigint());
-        println!("{}", proof.b.x().unwrap().c1.into_bigint());
-        println!("{}", proof.b.y().unwrap().c0.into_bigint());
-        println!("{}", proof.b.y().unwrap().c1.into_bigint());
-        println!("C coord X {}", proof.c.x().unwrap().into_bigint());
-        println!("C coord Y {}", proof.c.y().unwrap().into_bigint());
+        println!(
+            "A coord X {}",
+            proof.a.x().unwrap().into_bigint().to_string()
+        );
+        println!(
+            "A coord Y {}",
+            proof.a.y().unwrap().into_bigint().to_string()
+        );
+        println!(
+            "B X c0 {}",
+            proof.b.x().unwrap().c0.into_bigint().to_string()
+        );
+        println!("{}", proof.b.x().unwrap().c1.into_bigint().to_string());
+        println!("{}", proof.b.y().unwrap().c0.into_bigint().to_string());
+        println!("{}", proof.b.y().unwrap().c1.into_bigint().to_string());
+        println!(
+            "C coord X {}",
+            proof.c.x().unwrap().into_bigint().to_string()
+        );
+        println!(
+            "C coord Y {}",
+            proof.c.y().unwrap().into_bigint().to_string()
+        );
 
-        println!("{:?}", hex::encode(calldata));
-
-        /*
-        [12789841443114878786012274900958960562863291377603298588996397612743214270533, 8371334585386453528714380627543265152075449166138960668073923127915708302918]
-        [[12522206255038260967553106003273653153059437125460434909321001278476478563099, 7102572973382534269970250325141231327406282500396145387860750610050816584321], [11959723456754807302055526676718525325852240128103399509369713681715451048557, 16100176535437748320172804270898298046286395181881469074804264499369100517575]]
-        [7966130069787952207190650262573736474574320231144059824022215179523642128059, 5008468717564049131407964336167989927527065952193350248286730060342196401539]
-        [2300000000000000000000000000000000000000000000000000000000000000]
-         */
+        //println!("{}", hex::encode(calldata));
 
         //[12789841443114878786012274900958960562863291377603298588996397612743214270533, 8371334585386453528714380627543265152075449166138960668073923127915708302918], [[12522206255038260967553106003273653153059437125460434909321001278476478563099, 7102572973382534269970250325141231327406282500396145387860750610050816584321], [11959723456754807302055526676718525325852240128103399509369713681715451048557, 16100176535437748320172804270898298046286395181881469074804264499369100517575]], [7966130069787952207190650262573736474574320231144059824022215179523642128059, 5008468717564049131407964336167989927527065952193350248286730060342196401539], [2300000000000000000000000000000000000000000000000000000000000000]
     }

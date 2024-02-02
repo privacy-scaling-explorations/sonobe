@@ -178,6 +178,7 @@ where
 
 /// Circuit that implements the in-circuit checks needed for the onchain (Ethereum's EVM)
 /// verification.
+#[derive(Clone, Debug)]
 pub struct DeciderEthCircuit<C1, GC1, C2, GC2, CP1, CP2>
 where
     C1: CurveGroup,
@@ -281,13 +282,12 @@ where
                 Ok(self.r1cs.clone())
             })?;
 
-        let i = FpVar::<CF1<C1>>::new_witness(cs.clone(), || {
-            Ok(self.i.unwrap_or_else(CF1::<C1>::zero))
-        })?;
-        let z_0 = Vec::<FpVar<CF1<C1>>>::new_witness(cs.clone(), || {
+        let i =
+            FpVar::<CF1<C1>>::new_input(cs.clone(), || Ok(self.i.unwrap_or_else(CF1::<C1>::zero)))?;
+        let z_0 = Vec::<FpVar<CF1<C1>>>::new_input(cs.clone(), || {
             Ok(self.z_0.unwrap_or(vec![CF1::<C1>::zero()]))
         })?;
-        let z_i = Vec::<FpVar<CF1<C1>>>::new_witness(cs.clone(), || {
+        let z_i = Vec::<FpVar<CF1<C1>>>::new_input(cs.clone(), || {
             Ok(self.z_i.unwrap_or(vec![CF1::<C1>::zero()]))
         })?;
 
@@ -303,7 +303,7 @@ where
         let w_i = WitnessVar::<C1>::new_witness(cs.clone(), || {
             Ok(self.w_i.unwrap_or(w_dummy_native.clone()))
         })?;
-        let U_i = CommittedInstanceVar::<C1>::new_witness(cs.clone(), || {
+        let U_i = CommittedInstanceVar::<C1>::new_input(cs.clone(), || {
             Ok(self.U_i.unwrap_or(u_dummy_native.clone()))
         })?;
         let W_i = WitnessVar::<C1>::new_witness(cs.clone(), || {
@@ -367,7 +367,7 @@ where
         #[cfg(not(test))]
         {
             // imports here instead of at the top of the file, so we avoid having multiple
-            // `#[cfg(not(test))]
+            // `#[cfg(not(test))]`
             use crate::commitment::pedersen::PedersenGadget;
             use crate::folding::nova::cyclefold::{CycleFoldCommittedInstanceVar, CF_IO_LEN};
             use ark_r1cs_std::ToBitsGadget;

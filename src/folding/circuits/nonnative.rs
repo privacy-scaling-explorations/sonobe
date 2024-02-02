@@ -54,11 +54,25 @@ where
     }
 }
 
-/// point_to_nonnative_limbs is used to compute (outside the circuit) the limbs representation of a
-/// point that matches the one used in-circuit.
+/// wrapper on top of point_to_nonnative_limbs_custom_opt which always uses
+/// OptimizationType::Weight.
 #[allow(clippy::type_complexity)]
 pub fn point_to_nonnative_limbs<C: CurveGroup>(
     p: C,
+) -> Result<(Vec<C::ScalarField>, Vec<C::ScalarField>), SynthesisError>
+where
+    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
+{
+    point_to_nonnative_limbs_custom_opt(p, OptimizationType::Weight)
+}
+
+/// point_to_nonnative_limbs_custom_opt is used to compute (outside the circuit) the limbs
+/// representation of a point that matches the one used in-circuit, and in particular this method
+/// allows to specify which OptimizationType to use.
+#[allow(clippy::type_complexity)]
+pub fn point_to_nonnative_limbs_custom_opt<C: CurveGroup>(
+    p: C,
+    optimization_type: OptimizationType,
 ) -> Result<(Vec<C::ScalarField>, Vec<C::ScalarField>), SynthesisError>
 where
     <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
@@ -68,12 +82,12 @@ where
         let x =
             AllocatedNonNativeFieldVar::<C::BaseField, C::ScalarField>::get_limbs_representations(
                 &C::BaseField::zero(),
-                OptimizationType::Weight,
+                optimization_type,
             )?;
         let y =
             AllocatedNonNativeFieldVar::<C::BaseField, C::ScalarField>::get_limbs_representations(
                 &C::BaseField::one(),
-                OptimizationType::Weight,
+                optimization_type,
             )?;
         return Ok((x, y));
     }
@@ -81,11 +95,11 @@ where
     let (x, y) = affine.xy().unwrap();
     let x = AllocatedNonNativeFieldVar::<C::BaseField, C::ScalarField>::get_limbs_representations(
         x,
-        OptimizationType::Weight,
+        optimization_type,
     )?;
     let y = AllocatedNonNativeFieldVar::<C::BaseField, C::ScalarField>::get_limbs_representations(
         y,
-        OptimizationType::Weight,
+        optimization_type,
     )?;
     Ok((x, y))
 }
@@ -94,16 +108,24 @@ where
 mod tests {
     use super::*;
     use ark_pallas::{Fr, Projective};
-    use ark_r1cs_std::alloc::AllocVar;
+    use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
     use ark_relations::r1cs::ConstraintSystem;
-    use ark_std::Zero;
+    use ark_std::{UniformRand, Zero};
 
     #[test]
-    fn test_alloc_nonnativeaffinevar_zero() {
+    fn test_alloc_nonnativeaffinevar() {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         // dealing with the 'zero' point should not panic when doing the unwrap
         let p = Projective::zero();
         NonNativeAffineVar::<Fr>::new_witness(cs.clone(), || Ok(p)).unwrap();
+
+        // check that point_to_nonnative_limbs returns the expected values
+        let mut rng = ark_std::test_rng();
+        let p = Projective::rand(&mut rng);
+        let pVar = NonNativeAffineVar::<Fr>::new_witness(cs.clone(), || Ok(p)).unwrap();
+        let (x, y) = point_to_nonnative_limbs(p).unwrap();
+        assert_eq!(pVar.x.value().unwrap(), x);
+        assert_eq!(pVar.y.value().unwrap(), y);
     }
 }

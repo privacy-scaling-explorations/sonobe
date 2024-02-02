@@ -5,18 +5,18 @@
 
 use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
+use ark_std::rand::CryptoRng;
 use ark_std::{fmt::Debug, rand::RngCore};
 use thiserror::Error;
 
 use crate::frontend::FCircuit;
 
-pub mod transcript;
-use transcript::Transcript;
 pub mod ccs;
 pub mod commitment;
 pub mod constants;
 pub mod folding;
 pub mod frontend;
+pub mod transcript;
 pub mod utils;
 
 #[derive(Debug, Error)]
@@ -82,10 +82,8 @@ where
     type PreprocessorParam: Debug;
     type ProverParam: Debug;
     type VerifierParam: Debug;
-    type Witness: Debug;
     type CommittedInstanceWithWitness: Debug;
     type CFCommittedInstanceWithWitness: Debug; // CycleFold CommittedInstance & Witness
-    type CommittedInstance: Clone + Debug;
 
     fn preprocess(
         prep_param: &Self::PreprocessorParam,
@@ -123,26 +121,36 @@ where
     ) -> Result<(), Error>;
 }
 
-pub trait Decider<C: CurveGroup>: Clone + Debug {
-    type PreprocessorParam: Debug;
-    type ProverParam: Debug;
-    type VerifierParam: Debug;
-    type FreshInstance: Debug;
+pub trait Decider<
+    C1: CurveGroup,
+    C2: CurveGroup,
+    FC: FCircuit<C1::ScalarField>,
+    FS: FoldingScheme<C1, C2, FC>,
+> where
+    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2::BaseField: PrimeField,
+{
+    type ProverParam: Clone;
+    type Proof: Clone;
+    type VerifierParam;
     type PublicInput: Debug;
     type CommittedInstanceWithWitness: Debug;
     type CommittedInstance: Clone + Debug;
 
     fn prove(
         pp: &Self::ProverParam,
-        running_instance: &Self::CommittedInstanceWithWitness,
-        transcript: &mut impl Transcript<C>,
-        rng: impl RngCore,
-    ) -> Result<(), Error>;
+        rng: impl RngCore + CryptoRng,
+        folding_scheme: FS,
+    ) -> Result<Self::Proof, Error>;
 
     fn verify(
         vp: &Self::VerifierParam,
+        i: C1::ScalarField,
+        z_0: Vec<C1::ScalarField>,
+        z_i: Vec<C1::ScalarField>,
         running_instance: &Self::CommittedInstance,
-        transcript: &mut impl Transcript<C>,
-        rng: impl RngCore,
-    ) -> Result<(), Error>;
+        proof: Self::Proof,
+        // returns `Result<bool, Error>` to differentiate between an error occurred while performing
+        // the verification steps, and the verification logic of the scheme not passing.
+    ) -> Result<bool, Error>;
 }

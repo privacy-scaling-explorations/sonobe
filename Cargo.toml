@@ -12,6 +12,7 @@ ark-crypto-primitives = { version = "^0.4.0", default-features = false, features
 ark-poly-commit = "^0.4.0"
 ark-relations = { version = "^0.4.0", default-features = false }
 ark-r1cs-std = { default-features = false } # use latest version from the patch
+ark-snark = { version = "^0.4.0"}
 ark-serialize = "^0.4.0"
 ark-circom = { git = "https://github.com/gakonst/ark-circom.git" }
 thiserror = "1.0"
@@ -26,17 +27,17 @@ espresso_subroutines = {git="https://github.com/EspressoSystems/hyperplonk", pac
 ark-pallas = {version="0.4.0", features=["r1cs"]}
 ark-vesta = {version="0.4.0", features=["r1cs"]}
 ark-bn254 = "0.4.0"
+ark-mnt4-298 = {version="0.4.0", features=["r1cs"]}
+ark-mnt6-298 = {version="0.4.0", features=["r1cs"]}
+ark-groth16 = { version = "^0.4.0" }
+rand = "0.8.5"
 tracing = { version = "0.1", default-features = false, features = [ "attributes" ] }
 tracing-subscriber = { version = "0.2" }
 
 [features]
 default = ["parallel"]
 
-parallel = [ 
-    "ark-std/parallel", 
-    "ark-ff/parallel",  
-    "ark-poly/parallel", 
-    ]
+parallel = []
 
 # The following patch is to use a version of ark-r1cs-std compatible with
 # v0.4.0 but that includes a cherry-picked commit from after v0.4.0 which fixes

@@ -26,7 +26,7 @@ pub(crate) mod test {
     ///
     /// # Panics
     /// Panics if executable `solc` can not be found, or compilation fails.
-    pub fn compile_solidity(solidity: impl AsRef<[u8]>) -> Vec<u8> {
+    pub fn compile_solidity(solidity: impl AsRef<[u8]>, contract_name: &str) -> Vec<u8> {
         let mut process = match Command::new("solc")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -52,7 +52,7 @@ pub(crate) mod test {
             .unwrap();
         let output = process.wait_with_output().unwrap();
         let stdout = str::from_utf8(&output.stdout).unwrap();
-        if let Some(binary) = find_binary(stdout) {
+        if let Some(binary) = find_binary(stdout, contract_name) {
             binary
         } else {
             panic!(
@@ -62,9 +62,14 @@ pub(crate) mod test {
         }
     }
 
-    fn find_binary(stdout: &str) -> Option<Vec<u8>> {
-        let start = stdout.find("Binary:")? + 8;
-        Some(hex::decode(&stdout[start..stdout.len() - 1]).unwrap())
+    /// Find binary from `stdout` with given `contract_name`.
+    /// `contract_name` is provided since `solc` may compile multiple contracts or libraries.
+    /// hence, we need to find the correct binary.
+    fn find_binary(stdout: &str, contract_name: &str) -> Option<Vec<u8>> {
+        let start_contract = stdout.find(contract_name)?;
+        let stdout_contract = &stdout[start_contract..];
+        let start = stdout_contract.find("Binary:")? + 8;
+        Some(hex::decode(&stdout_contract[start..stdout_contract.len() - 1]).unwrap())
     }
 
     /// Evm runner.

@@ -7,14 +7,13 @@ mod tests {
     use ark_bn254::{Bn254, Fr, G1Projective as G1};
     use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
     use ark_ec::{AffineRepr, CurveGroup};
-    use ark_ff::{BigInteger, PrimeField};
-    use ark_groth16::{Groth16, Proof, VerifyingKey};
+    use ark_ff::{BigInt, BigInteger, PrimeField};
+    use ark_groth16::Groth16;
     use ark_poly_commit::kzg10::VerifierKey;
     use ark_r1cs_std::alloc::AllocVar;
     use ark_r1cs_std::eq::EqGadget;
     use ark_r1cs_std::fields::fp::FpVar;
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     use ark_std::rand::{RngCore, SeedableRng};
     use ark_std::Zero;
     use ark_std::{test_rng, UniformRand};
@@ -30,35 +29,24 @@ mod tests {
         },
     };
     use itertools::chain;
-    use std::fs::File;
     use std::marker::PhantomData;
 
+    // Function signatures for proof verification on kzg10 and groth16 contracts
     pub const FUNCTION_SIGNATURE_KZG10_CHECK: [u8; 4] = [0x9e, 0x78, 0xcc, 0xf7];
     pub const FUNCTION_SIGNATURE_GROTH16_VERIFY_PROOF: [u8; 4] = [0x43, 0x75, 0x3b, 0x4d];
-
-    fn load_test_data() -> (VerifyingKey<Bn254>, Proof<Bn254>, Fr) {
-        let manifest_dir = env!("CARGO_MANIFEST_DIR");
-
-        let file = File::open(format!("{}/assets/G16_test_vk_data", manifest_dir)).unwrap();
-        let vk = VerifyingKey::<Bn254>::deserialize_compressed(&file).unwrap();
-
-        let file = File::open(format!("{}/assets/G16_test_proof_data", manifest_dir)).unwrap();
-        let proof = Proof::<Bn254>::deserialize_compressed(&file).unwrap();
-
-        (vk, proof, Fr::from(35u64))
-    }
 
     struct TestAddCircuit<F: PrimeField> {
         _f: PhantomData<F>,
         pub x: u8,
         pub y: u8,
+        pub z: u8,
     }
 
     impl<F: PrimeField> ConstraintSynthesizer<F> for TestAddCircuit<F> {
         fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> Result<(), SynthesisError> {
             let x = FpVar::<F>::new_witness(cs.clone(), || Ok(F::from(self.x)))?;
             let y = FpVar::<F>::new_witness(cs.clone(), || Ok(F::from(self.y)))?;
-            let z = FpVar::<F>::new_input(cs.clone(), || Ok(F::from(self.y)))?;
+            let z = FpVar::<F>::new_input(cs.clone(), || Ok(F::from(self.z)))?;
             let comp_z = x.clone() + y.clone();
             comp_z.enforce_equal(&z)?;
             Ok(())
@@ -67,23 +55,31 @@ mod tests {
 
     #[test]
     fn test_groth16_verifier_template_renders() {
-        let (vk, proof, pi) = load_test_data();
-        let template = SolidityVerifier::from(vk);
-        let res = template.render().unwrap();
-        let mut calldata = vec![];
-        pi.serialize_uncompressed(&mut calldata).unwrap();
-        proof.serialize_uncompressed(&mut calldata).unwrap();
-    }
-
-    #[test]
-    fn test_groth16_verifier_template_compiles() {
         let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
-        let (x, y) = (21, 21);
+        let (x, y, z) = (21, 21, 42);
         let (_, vk) = {
             let c = TestAddCircuit::<Fr> {
                 _f: PhantomData,
                 x: x.clone(),
                 y: y.clone(),
+                z: z.clone(),
+            };
+            Groth16::<Bn254>::setup(c, &mut rng).unwrap()
+        };
+        let template = SolidityVerifier::from(vk);
+        _ = template.render().unwrap();
+    }
+
+    #[test]
+    fn test_groth16_verifier_template_compiles() {
+        let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
+        let (x, y, z) = (21, 21, 42);
+        let (_, vk) = {
+            let c = TestAddCircuit::<Fr> {
+                _f: PhantomData,
+                x: x.clone(),
+                y: y.clone(),
+                z: z.clone(),
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
@@ -97,12 +93,13 @@ mod tests {
     #[test]
     fn test_groth16_verifier_accepts_and_rejects_proofs() {
         let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
-        let (x, y) = (21, 21);
+        let (x, y, z) = (21, 21, 42);
         let (pk, vk) = {
             let c = TestAddCircuit::<Fr> {
                 _f: PhantomData,
                 x: x.clone(),
                 y: y.clone(),
+                z: z.clone(),
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
@@ -110,10 +107,38 @@ mod tests {
             _f: PhantomData,
             x,
             y,
+            z,
         };
-        let pvk = Groth16::<Bn254>::process_vk(&vk).unwrap();
         let proof = Groth16::<Bn254>::prove(&pk, c, &mut rng).unwrap();
-        let template = SolidityVerifier::from(vk);
+        let res = SolidityVerifier::from(vk).render().unwrap();
+        save_solidity("groth16_verifier.sol", &res);
+        let groth16_verifier_bytecode = crate::evm::test::compile_solidity(&res, "Verifier");
+        let mut evm = Evm::default();
+        let verifier_address = evm.create(groth16_verifier_bytecode);
+        let (a_x, a_y) = proof.a.xy().unwrap();
+        let (b_x, b_y) = proof.b.xy().unwrap();
+        let (c_x, c_y) = proof.c.xy().unwrap();
+        let mut calldata: Vec<u8> = chain![
+            FUNCTION_SIGNATURE_GROTH16_VERIFY_PROOF,
+            a_x.into_bigint().to_bytes_be(),
+            a_y.into_bigint().to_bytes_be(),
+            b_x.c0.into_bigint().to_bytes_be(),
+            b_x.c1.into_bigint().to_bytes_be(),
+            b_y.c0.into_bigint().to_bytes_be(),
+            b_y.c1.into_bigint().to_bytes_be(),
+            c_x.into_bigint().to_bytes_be(),
+            c_y.into_bigint().to_bytes_be(),
+            BigInt::from(Fr::from(z)).to_bytes_be(),
+        ]
+        .collect();
+        let (_, output) = evm.call(verifier_address, calldata.clone());
+        assert_eq!(*output.last().unwrap(), 1);
+
+        // change calldata to make it invalid
+        let last_calldata_element = calldata.last_mut().unwrap();
+        *last_calldata_element = 0;
+        let (_, output) = evm.call(verifier_address, calldata);
+        assert_eq!(*output.last().unwrap(), 0);
     }
 
     #[test]

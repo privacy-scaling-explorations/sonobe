@@ -67,6 +67,7 @@ mod tests {
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
         let template = SolidityVerifier::from(vk);
+        save_solidity("groth16_verifier.sol", &template.render().unwrap());
         _ = template.render().unwrap();
     }
 
@@ -122,10 +123,10 @@ mod tests {
             FUNCTION_SIGNATURE_GROTH16_VERIFY_PROOF,
             a_x.into_bigint().to_bytes_be(),
             a_y.into_bigint().to_bytes_be(),
-            b_x.c0.into_bigint().to_bytes_be(),
             b_x.c1.into_bigint().to_bytes_be(),
-            b_y.c0.into_bigint().to_bytes_be(),
+            b_x.c0.into_bigint().to_bytes_be(),
             b_y.c1.into_bigint().to_bytes_be(),
+            b_y.c0.into_bigint().to_bytes_be(),
             c_x.into_bigint().to_bytes_be(),
             c_y.into_bigint().to_bytes_be(),
             BigInt::from(Fr::from(z)).to_bytes_be(),

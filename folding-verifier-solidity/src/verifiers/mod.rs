@@ -5,11 +5,20 @@ mod tests {
     use crate::evm::test::{save_solidity, Evm};
     use crate::verifiers::templates::{KZG10Verifier, SolidityVerifier};
     use ark_bn254::{Bn254, Fr, G1Projective as G1};
+    use ark_crypto_primitives::crh::sha256::constraints::{Sha256Gadget, UnitVar};
+    use ark_crypto_primitives::crh::sha256::Sha256;
+    use ark_crypto_primitives::crh::{CRHScheme, CRHSchemeGadget};
+    use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
     use ark_ec::{AffineRepr, CurveGroup};
     use ark_ff::{BigInteger, PrimeField};
-    use ark_groth16::{Proof, VerifyingKey};
+    use ark_groth16::{Groth16, Proof, VerifyingKey};
     use ark_poly_commit::kzg10::VerifierKey;
+    use ark_r1cs_std::alloc::AllocVar;
+    use ark_r1cs_std::eq::EqGadget;
+    use ark_r1cs_std::uint8::UInt8;
+    use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
     use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+    use ark_std::rand::{RngCore, SeedableRng};
     use ark_std::Zero;
     use ark_std::{test_rng, UniformRand};
     use askama::Template;
@@ -25,8 +34,10 @@ mod tests {
     };
     use itertools::chain;
     use std::fs::File;
+    use std::marker::PhantomData;
 
     pub const FUNCTION_SIGNATURE_KZG10_CHECK: [u8; 4] = [0x9e, 0x78, 0xcc, 0xf7];
+    pub const FUNCTION_SIGNATURE_GROTH16_VERIFY_PROOF: [u8; 4] = [0x43, 0x75, 0x3b, 0x4d];
 
     fn load_test_data() -> (VerifyingKey<Bn254>, Proof<Bn254>, Fr) {
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
@@ -40,6 +51,23 @@ mod tests {
         (vk, proof, Fr::from(35u64))
     }
 
+    struct Sha256TestCircuit<F: PrimeField> {
+        _f: PhantomData<F>,
+        pub x: Vec<u8>,
+        pub y: Vec<u8>,
+    }
+
+    impl<F: PrimeField> ConstraintSynthesizer<F> for Sha256TestCircuit<F> {
+        fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> Result<(), SynthesisError> {
+            let x = Vec::<UInt8<F>>::new_witness(cs.clone(), || Ok(self.x))?;
+            let y = Vec::<UInt8<F>>::new_input(cs.clone(), || Ok(self.y))?;
+            let unitVar = UnitVar::default();
+            let comp_y = <Sha256Gadget<F> as CRHSchemeGadget<Sha256, F>>::evaluate(&unitVar, &x)?;
+            comp_y.0.enforce_equal(&y)?;
+            Ok(())
+        }
+    }
+
     #[test]
     fn test_groth16_verifier_template_renders() {
         let (vk, proof, pi) = load_test_data();
@@ -51,10 +79,47 @@ mod tests {
     }
 
     #[test]
-    fn test_groth16_verifier_template_compiles() {}
+    fn test_groth16_verifier_template_compiles() {
+        let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
+        let x = Fr::from(5_u32).into_bigint().to_bytes_le();
+        let y = <Sha256 as CRHScheme>::evaluate(&(), x.clone()).unwrap();
+        let (_, vk) = {
+            let c = Sha256TestCircuit::<Fr> {
+                _f: PhantomData,
+                x: x.clone(),
+                y: y.clone(),
+            };
+            Groth16::<Bn254>::setup(c, &mut rng).unwrap()
+        };
+        let res = SolidityVerifier::from(vk).render().unwrap();
+        save_solidity("groth16_verifier.sol", &res);
+        let groth16_verifier_bytecode = crate::evm::test::compile_solidity(&res, "Verifier");
+        let mut evm = Evm::default();
+        _ = evm.create(groth16_verifier_bytecode);
+    }
 
     #[test]
-    fn test_groth16_verifier_accepts_and_rejects_proofs() {}
+    fn test_groth16_verifier_accepts_and_rejects_proofs() {
+        let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
+        let x = Fr::from(5_u32).into_bigint().to_bytes_le();
+        let y = <Sha256 as CRHScheme>::evaluate(&(), x.clone()).unwrap();
+        let (pk, vk) = {
+            let c = Sha256TestCircuit::<Fr> {
+                _f: PhantomData,
+                x: x.clone(),
+                y: y.clone(),
+            };
+            Groth16::<Bn254>::setup(c, &mut rng).unwrap()
+        };
+        let c = Sha256TestCircuit::<Fr> {
+            _f: PhantomData,
+            x,
+            y,
+        };
+        let pvk = Groth16::<Bn254>::process_vk(&vk).unwrap();
+        let proof = Groth16::<Bn254>::prove(&pk, c, &mut rng).unwrap();
+        let template = SolidityVerifier::from(vk);
+    }
 
     #[test]
     fn test_kzg_verifier_template_renders() {
@@ -73,8 +138,8 @@ mod tests {
         let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(rng, n);
         let template = KZG10Verifier::from(&pk, &vk);
         let res = template.render().unwrap();
-        save_solidity("kzg_10_verifier.sol", &res);
-        let kzg_verifier_bytecode = crate::evm::test::compile_solidity(&res);
+        save_solidity("kzg10_verifier.sol", &res);
+        let kzg_verifier_bytecode = crate::evm::test::compile_solidity(&res, "KZG10");
         let mut evm = Evm::default();
         _ = evm.create(kzg_verifier_bytecode);
     }
@@ -94,7 +159,7 @@ mod tests {
             KZGProver::<G1>::prove(&pk, transcript_p, &cm, &v, &Fr::zero()).unwrap();
         let template = KZG10Verifier::from(&pk, &vk);
         let res = template.render().unwrap();
-        let kzg_verifier_bytecode = crate::evm::test::compile_solidity(&res);
+        let kzg_verifier_bytecode = crate::evm::test::compile_solidity(&res, "KZG10");
         let mut evm = Evm::default();
         let verifier_address = evm.create(kzg_verifier_bytecode);
 

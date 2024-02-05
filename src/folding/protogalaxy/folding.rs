@@ -330,25 +330,15 @@ fn calc_f_from_btree<F: PrimeField>(
     let mut layers: Vec<Vec<SparsePolynomial<F>>> = Vec::new();
     let leaves: Vec<SparsePolynomial<F>> = fw
         .iter()
-        .enumerate()
-        .map(|e| SparsePolynomial::<F>::from_coefficients_slice(&[(0, *e.1)]))
+        .copied()
+        .map(|e| SparsePolynomial::<F>::from_coefficients_slice(&[(0, e)]))
         .collect();
     layers.push(leaves.to_vec());
     let mut currentNodes = leaves.clone();
     while currentNodes.len() > 1 {
         let index = layers.len();
-        let limit: usize = (2 * currentNodes.len())
-            - 2usize.pow(
-                (currentNodes.len() & (currentNodes.len() - 1))
-                    .try_into()
-                    .unwrap(),
-            );
         layers.push(vec![]);
         for (i, ni) in currentNodes.iter().enumerate().step_by(2) {
-            if i >= limit {
-                layers[index] = currentNodes[0..limit].to_vec();
-                break;
-            }
             let left = ni.clone();
             let right = SparsePolynomial::<F>::from_coefficients_vec(vec![
                 (0, betas[layers.len() - 2]),

@@ -10,7 +10,6 @@ use ark_std::log2;
 use ark_std::{cfg_into_iter, Zero};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::marker::PhantomData;
-use std::ops::Add;
 
 use super::traits::ProtoGalaxyTranscript;
 use super::utils::{all_powers, betas_star, exponential_powers};
@@ -92,13 +91,8 @@ where
         let f_w = eval_f(r1cs, &w.w)?;
 
         // F(X)
-        let mut F_X: SparsePolynomial<C::ScalarField> = SparsePolynomial::zero();
-        for (i, f_w_i) in f_w.iter().enumerate() {
-            let lhs = pow_i_over_x::<C::ScalarField>(i, &instance.betas, &deltas)?;
-            let curr = &lhs * *f_w_i;
-            F_X = F_X.add(curr);
-        }
-
+        let F_X: SparsePolynomial<C::ScalarField> =
+            calc_f_from_btree(&f_w, &instance.betas, &deltas).expect("Error calculating F[x]");
         let F_X_dense = DensePolynomial::from(F_X.clone());
         transcript.absorb_vec(&F_X_dense.coeffs);
 
@@ -310,34 +304,54 @@ fn pow_i<F: PrimeField>(i: usize, betas: &Vec<F>) -> F {
     r
 }
 
-// Pending optimization: instead of this approach use Claim 4.4 from the paper.
-fn pow_i_over_x<F: PrimeField>(
-    i: usize,
-    betas: &Vec<F>,
-    deltas: &Vec<F>,
+/// calculates F[x] using the optimized binary-tree technique
+/// described in Claim 4.4
+/// of [Protogalaxy](https://eprint.iacr.org/2023/1106.pdf)
+fn calc_f_from_btree<F: PrimeField>(
+    fw: &[F],
+    betas: &[F],
+    deltas: &[F],
 ) -> Result<SparsePolynomial<F>, Error> {
-    if betas.len() != deltas.len() {
-        return Err(Error::NotSameLength(
-            "betas.len()".to_string(),
-            betas.len(),
-            "deltas.len()".to_string(),
-            deltas.len(),
-        ));
+    let fw_len = fw.len();
+    let betas_len = betas.len();
+    let deltas_len = deltas.len();
+
+    // ensure our binary tree is full
+    if !fw_len.is_power_of_two() {
+        return Err(Error::ProtoGalaxy(ProtoGalaxyError::BTreeNotFull(fw_len)));
     }
 
-    let n = 2_u64.pow(betas.len() as u32);
-    let b = bit_decompose(i as u64, n as usize);
+    if betas_len != deltas_len {
+        return Err(Error::ProtoGalaxy(ProtoGalaxyError::WrongLenBetas(
+            betas_len, deltas_len,
+        )));
+    }
 
-    let mut r: SparsePolynomial<F> =
-        SparsePolynomial::<F>::from_coefficients_vec(vec![(0, F::one())]); // start with r(x) = 1
-    for (j, beta_j) in betas.iter().enumerate() {
-        if b[j] {
-            let curr: SparsePolynomial<F> =
-                SparsePolynomial::<F>::from_coefficients_vec(vec![(0, *beta_j), (1, deltas[j])]);
-            r = r.mul(&curr);
+    let mut layers: Vec<Vec<SparsePolynomial<F>>> = Vec::new();
+    let leaves: Vec<SparsePolynomial<F>> = fw
+        .iter()
+        .copied()
+        .map(|e| SparsePolynomial::<F>::from_coefficients_slice(&[(0, e)]))
+        .collect();
+    layers.push(leaves.to_vec());
+    let mut currentNodes = leaves.clone();
+    while currentNodes.len() > 1 {
+        let index = layers.len();
+        layers.push(vec![]);
+        for (i, ni) in currentNodes.iter().enumerate().step_by(2) {
+            let left = ni.clone();
+            let right = SparsePolynomial::<F>::from_coefficients_vec(vec![
+                (0, betas[layers.len() - 2]),
+                (1, deltas[layers.len() - 2]),
+            ])
+            .mul(&currentNodes[i + 1]);
+
+            layers[index].push(left + right);
         }
+        currentNodes = layers[index].clone();
     }
-    Ok(r)
+    let root_index = layers.len() - 1;
+    Ok(layers[root_index][0].clone())
 }
 
 // lagrange_polys method from caulk: https://github.com/caulk-crypto/caulk/tree/8210b51fb8a9eef4335505d1695c44ddc7bf8170/src/multi/setup.rs#L300
@@ -410,29 +424,6 @@ mod tests {
         #[allow(clippy::needless_range_loop)]
         for i in 0..n {
             assert_eq!(pow_i(i, &betas), not_betas[i]);
-        }
-    }
-
-    #[test]
-    fn test_pow_i_over_x() {
-        let mut rng = ark_std::test_rng();
-        let t = 3;
-        let n = 8;
-        let beta = Fr::rand(&mut rng);
-        let delta = Fr::rand(&mut rng);
-        let betas = exponential_powers(beta, t);
-        let deltas = exponential_powers(delta, t);
-
-        // compute b + X*d, with X=rand
-        let x = Fr::rand(&mut rng);
-        let bxd = vec_add(&betas, &vec_scalar_mul(&deltas, &x)).unwrap();
-
-        // assert that computing pow_over_x of betas,deltas, is equivalent to first computing the
-        // vector [betas+X*deltas] and then computing pow_i over it
-        for i in 0..n {
-            let pow_i1 = pow_i_over_x(i, &betas, &deltas).unwrap();
-            let pow_i2 = pow_i(i, &bxd);
-            assert_eq!(pow_i1.evaluate(&x), pow_i2);
         }
     }
 

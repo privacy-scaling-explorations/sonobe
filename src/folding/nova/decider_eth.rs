@@ -17,7 +17,7 @@ use crate::Error;
 use crate::{Decider as DeciderTrait, FoldingScheme};
 use ark_r1cs_std::fields::nonnative::params::OptimizationType;
 
-/// onchain decider, for ethereum use cases
+/// Onchain Decider, for ethereum use cases
 #[derive(Clone, Debug)]
 pub struct Decider<C1, GC1, C2, GC2, FC, CP1, CP2, S, FS> {
     _c1: PhantomData<C1>,

@@ -37,7 +37,14 @@ tracing-subscriber = { version = "0.2" }
 [features]
 default = ["parallel"]
 
-parallel = []
+parallel = [ 
+    "ark-std/parallel", 
+    "ark-ff/parallel",  
+    "ark-ec/parallel",  
+    "ark-poly/parallel", 
+    "ark-crypto-primitives/parallel",  
+    "ark-r1cs-std/parallel",  
+    ]
 
 # The following patch is to use a version of ark-r1cs-std compatible with
 # v0.4.0 but that includes a cherry-picked commit from after v0.4.0 which fixes

@@ -54,8 +54,8 @@ where
     }
 }
 
-/// wrapper on top of point_to_nonnative_limbs_custom_opt which always uses
-/// OptimizationType::Weight.
+/// Wrapper on top of [`point_to_nonnative_limbs_custom_opt`] which always uses
+/// [`OptimizationType::Weight`].
 #[allow(clippy::type_complexity)]
 pub fn point_to_nonnative_limbs<C: CurveGroup>(
     p: C,
@@ -66,9 +66,9 @@ where
     point_to_nonnative_limbs_custom_opt(p, OptimizationType::Weight)
 }
 
-/// point_to_nonnative_limbs_custom_opt is used to compute (outside the circuit) the limbs
-/// representation of a point that matches the one used in-circuit, and in particular this method
-/// allows to specify which OptimizationType to use.
+/// Used to compute (outside the circuit) the limbs representation of a point that matches the one
+/// used in-circuit, and in particular this method allows to specify which [`OptimizationType`] to
+/// use.
 #[allow(clippy::type_complexity)]
 pub fn point_to_nonnative_limbs_custom_opt<C: CurveGroup>(
     p: C,

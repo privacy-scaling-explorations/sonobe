@@ -6,10 +6,21 @@ pub(crate) mod test {
     };
     use std::{
         fmt::{self, Debug, Formatter},
+        fs::{create_dir_all, File},
         io::{self, Write},
         process::{Command, Stdio},
         str,
     };
+
+    // from: https://github.com/privacy-scaling-explorations/halo2-solidity-verifier/blob/85cb77b171ce3ee493628007c7a1cfae2ea878e6/examples/separately.rs#L56
+    pub fn save_solidity(name: impl AsRef<str>, solidity: &str) {
+        const DIR_GENERATED: &str = "./generated";
+        create_dir_all(DIR_GENERATED).unwrap();
+        File::create(format!("{DIR_GENERATED}/{}", name.as_ref()))
+            .unwrap()
+            .write_all(solidity.as_bytes())
+            .unwrap();
+    }
 
     /// Compile solidity with `--via-ir` flag, then return creation bytecode.
     ///

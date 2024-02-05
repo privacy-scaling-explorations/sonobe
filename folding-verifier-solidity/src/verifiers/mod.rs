@@ -5,9 +5,6 @@ mod tests {
     use crate::evm::test::{save_solidity, Evm};
     use crate::verifiers::templates::{KZG10Verifier, SolidityVerifier};
     use ark_bn254::{Bn254, Fr, G1Projective as G1};
-    use ark_crypto_primitives::crh::sha256::constraints::{Sha256Gadget, UnitVar};
-    use ark_crypto_primitives::crh::sha256::Sha256;
-    use ark_crypto_primitives::crh::{CRHScheme, CRHSchemeGadget};
     use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
     use ark_ec::{AffineRepr, CurveGroup};
     use ark_ff::{BigInteger, PrimeField};
@@ -15,7 +12,7 @@ mod tests {
     use ark_poly_commit::kzg10::VerifierKey;
     use ark_r1cs_std::alloc::AllocVar;
     use ark_r1cs_std::eq::EqGadget;
-    use ark_r1cs_std::uint8::UInt8;
+    use ark_r1cs_std::fields::fp::FpVar;
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
     use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     use ark_std::rand::{RngCore, SeedableRng};
@@ -51,19 +48,19 @@ mod tests {
         (vk, proof, Fr::from(35u64))
     }
 
-    struct Sha256TestCircuit<F: PrimeField> {
+    struct TestAddCircuit<F: PrimeField> {
         _f: PhantomData<F>,
-        pub x: Vec<u8>,
-        pub y: Vec<u8>,
+        pub x: u8,
+        pub y: u8,
     }
 
-    impl<F: PrimeField> ConstraintSynthesizer<F> for Sha256TestCircuit<F> {
+    impl<F: PrimeField> ConstraintSynthesizer<F> for TestAddCircuit<F> {
         fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> Result<(), SynthesisError> {
-            let x = Vec::<UInt8<F>>::new_witness(cs.clone(), || Ok(self.x))?;
-            let y = Vec::<UInt8<F>>::new_input(cs.clone(), || Ok(self.y))?;
-            let unitVar = UnitVar::default();
-            let comp_y = <Sha256Gadget<F> as CRHSchemeGadget<Sha256, F>>::evaluate(&unitVar, &x)?;
-            comp_y.0.enforce_equal(&y)?;
+            let x = FpVar::<F>::new_witness(cs.clone(), || Ok(F::from(self.x)))?;
+            let y = FpVar::<F>::new_witness(cs.clone(), || Ok(F::from(self.y)))?;
+            let z = FpVar::<F>::new_input(cs.clone(), || Ok(F::from(self.y)))?;
+            let comp_z = x.clone() + y.clone();
+            comp_z.enforce_equal(&z)?;
             Ok(())
         }
     }
@@ -81,10 +78,9 @@ mod tests {
     #[test]
     fn test_groth16_verifier_template_compiles() {
         let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
-        let x = Fr::from(5_u32).into_bigint().to_bytes_le();
-        let y = <Sha256 as CRHScheme>::evaluate(&(), x.clone()).unwrap();
+        let (x, y) = (21, 21);
         let (_, vk) = {
-            let c = Sha256TestCircuit::<Fr> {
+            let c = TestAddCircuit::<Fr> {
                 _f: PhantomData,
                 x: x.clone(),
                 y: y.clone(),
@@ -101,17 +97,16 @@ mod tests {
     #[test]
     fn test_groth16_verifier_accepts_and_rejects_proofs() {
         let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
-        let x = Fr::from(5_u32).into_bigint().to_bytes_le();
-        let y = <Sha256 as CRHScheme>::evaluate(&(), x.clone()).unwrap();
+        let (x, y) = (21, 21);
         let (pk, vk) = {
-            let c = Sha256TestCircuit::<Fr> {
+            let c = TestAddCircuit::<Fr> {
                 _f: PhantomData,
                 x: x.clone(),
                 y: y.clone(),
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
-        let c = Sha256TestCircuit::<Fr> {
+        let c = TestAddCircuit::<Fr> {
             _f: PhantomData,
             x,
             y,

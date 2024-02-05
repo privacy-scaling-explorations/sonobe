@@ -9,7 +9,7 @@ use askama::Template;
 use folding_schemes::commitment::kzg::ProverKey;
 
 #[derive(Template, Default)]
-#[template(path = "groth_16_verifier.sol", ext = "sol")]
+#[template(path = "groth16_verifier.sol", ext = "sol")]
 pub struct SolidityVerifier {
     /// The `alpha * G`, where `G` is the generator of `G1`.
     pub vkey_alpha_g1: G1Repr,
@@ -44,7 +44,7 @@ impl From<VerifyingKey<Bn254>> for SolidityVerifier {
 }
 
 #[derive(Template, Default)]
-#[template(path = "kzg_10_verifier.sol", ext = "sol")]
+#[template(path = "kzg10_verifier.sol", ext = "sol")]
 pub struct KZG10Verifier {
     /// The generator of `G1`.
     pub g1: G1Repr,

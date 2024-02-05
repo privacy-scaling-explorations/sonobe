@@ -2,8 +2,10 @@
 
 members = [
     "folding-schemes",
-    "folding-schemes-solidity"
+    "folding-schemes-solidity",
+    "solidity-verifier"
 ]
+resolver = "2"
 
 # The following patch is to use a version of ark-r1cs-std compatible with
 # v0.4.0 but that includes a cherry-picked commit from after v0.4.0 which fixes

@@ -35,6 +35,10 @@ mod tests {
     pub const FUNCTION_SIGNATURE_KZG10_CHECK: [u8; 4] = [0x9e, 0x78, 0xcc, 0xf7];
     pub const FUNCTION_SIGNATURE_GROTH16_VERIFY_PROOF: [u8; 4] = [0x43, 0x75, 0x3b, 0x4d];
 
+    // Pragma statements for verifiers
+    pub const PRAGMA_GROTH16_VERIFIER: &str = "pragma solidity >=0.7.0 <0.9.0;"; // from snarkjs
+    pub const PRAGMA_KZG10_VERIFIER: &str = "pragma solidity >=0.8.1 <=0.8.4;";
+
     struct TestAddCircuit<F: PrimeField> {
         _f: PhantomData<F>,
         pub x: u8,
@@ -54,7 +58,7 @@ mod tests {
     }
 
     #[test]
-    fn test_decider_template_renders() {
+    fn test_groth16_kzg10_decider_template_renders() {
         let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
         let (x, y, z) = (21, 21, 42);
         let (_, vk) = {
@@ -66,14 +70,41 @@ mod tests {
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
-        let groth16_template = Groth16Verifier::from(vk);
+        let groth16_template = Groth16Verifier::from(vk, None);
         let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(&mut rng, 5);
-        let kzg10_template = KZG10Verifier::from(&pk, &vk);
+        let kzg10_template = KZG10Verifier::from(&pk, &vk, None, None);
         let decider_template = super::templates::Groth16KZG10DeciderVerifier {
             groth16_verifier: groth16_template,
             kzg10_verifier: kzg10_template,
         };
         save_solidity("decider.sol", &decider_template.render().unwrap());
+    }
+
+    #[test]
+    fn test_groth16_kzg10_decider_template_compiles() {
+        let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
+        let (x, y, z) = (21, 21, 42);
+        let (_, vk) = {
+            let c = TestAddCircuit::<Fr> {
+                _f: PhantomData,
+                x: x.clone(),
+                y: y.clone(),
+                z: z.clone(),
+            };
+            Groth16::<Bn254>::setup(c, &mut rng).unwrap()
+        };
+        // we dont specify any pragma values for both verifiers, the pragma from the decider takes over
+        let groth16_template = Groth16Verifier::from(vk, None);
+        let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(&mut rng, 5);
+        let kzg10_template = KZG10Verifier::from(&pk, &vk, None, None);
+        let decider_template = super::templates::Groth16KZG10DeciderVerifier {
+            groth16_verifier: groth16_template,
+            kzg10_verifier: kzg10_template,
+        };
+        let decider_verifier_bytecode =
+            crate::evm::test::compile_solidity(&decider_template.render().unwrap(), "NovaDecider");
+        let mut evm = Evm::default();
+        _ = evm.create(decider_verifier_bytecode);
     }
 
     #[test]
@@ -89,7 +120,7 @@ mod tests {
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
-        let template = Groth16Verifier::from(vk);
+        let template = Groth16Verifier::from(vk, Some(PRAGMA_GROTH16_VERIFIER.to_string()));
         save_solidity("groth16_verifier.sol", &template.render().unwrap());
         _ = template.render().unwrap();
     }
@@ -107,7 +138,9 @@ mod tests {
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
-        let res = Groth16Verifier::from(vk).render().unwrap();
+        let res = Groth16Verifier::from(vk, Some(PRAGMA_GROTH16_VERIFIER.to_string()))
+            .render()
+            .unwrap();
         save_solidity("groth16_verifier.sol", &res);
         let groth16_verifier_bytecode = crate::evm::test::compile_solidity(&res, "Verifier");
         let mut evm = Evm::default();
@@ -134,7 +167,9 @@ mod tests {
             z,
         };
         let proof = Groth16::<Bn254>::prove(&pk, c, &mut rng).unwrap();
-        let res = Groth16Verifier::from(vk).render().unwrap();
+        let res = Groth16Verifier::from(vk, Some(PRAGMA_GROTH16_VERIFIER.to_string()))
+            .render()
+            .unwrap();
         save_solidity("groth16_verifier.sol", &res);
         let groth16_verifier_bytecode = crate::evm::test::compile_solidity(&res, "Verifier");
         let mut evm = Evm::default();
@@ -170,7 +205,7 @@ mod tests {
         let rng = &mut test_rng();
         let n = 10;
         let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(rng, n);
-        let template = KZG10Verifier::from(&pk, &vk);
+        let template = KZG10Verifier::from(&pk, &vk, Some(PRAGMA_KZG10_VERIFIER.to_string()), None);
         let res = template.render().unwrap();
         assert!(res.contains(&vk.g.x.to_string()));
     }
@@ -180,7 +215,7 @@ mod tests {
         let rng = &mut test_rng();
         let n = 10;
         let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(rng, n);
-        let template = KZG10Verifier::from(&pk, &vk);
+        let template = KZG10Verifier::from(&pk, &vk, Some(PRAGMA_KZG10_VERIFIER.to_string()), None);
         let res = template.render().unwrap();
         save_solidity("kzg10_verifier.sol", &res);
         let kzg_verifier_bytecode = crate::evm::test::compile_solidity(&res, "KZG10");
@@ -201,7 +236,7 @@ mod tests {
         let cm = KZGProver::<G1>::commit(&pk, &v, &Fr::zero()).unwrap();
         let (eval, proof) =
             KZGProver::<G1>::prove(&pk, transcript_p, &cm, &v, &Fr::zero()).unwrap();
-        let template = KZG10Verifier::from(&pk, &vk);
+        let template = KZG10Verifier::from(&pk, &vk, Some(PRAGMA_KZG10_VERIFIER.to_string()), None);
         let res = template.render().unwrap();
         let kzg_verifier_bytecode = crate::evm::test::compile_solidity(&res, "KZG10");
         let mut evm = Evm::default();

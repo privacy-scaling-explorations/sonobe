@@ -10,7 +10,7 @@ use folding_schemes::commitment::kzg::ProverKey;
 
 #[derive(Template, Default)]
 #[template(path = "groth16_verifier.askama.sol", ext = "sol")]
-pub struct SolidityVerifier {
+pub struct Groth16Verifier {
     /// The `alpha * G`, where `G` is the generator of `G1`.
     pub vkey_alpha_g1: G1Repr,
     /// The `alpha * H`, where `H` is the generator of `G2`.
@@ -25,7 +25,7 @@ pub struct SolidityVerifier {
     pub gamma_abc_g1: Vec<G1Repr>,
 }
 
-impl From<VerifyingKey<Bn254>> for SolidityVerifier {
+impl From<VerifyingKey<Bn254>> for Groth16Verifier {
     fn from(value: VerifyingKey<Bn254>) -> Self {
         Self {
             vkey_alpha_g1: g1_to_fq_repr(value.alpha_g1),
@@ -79,3 +79,10 @@ impl KZG10Verifier {
         }
     }
 }
+
+// #[derive(Template)]
+// #[template(path = "kzg10_groth16_decider_verifier.askama.sol", ext = "sol")]
+// pub struct Groth16KZG10DeciderVerifier {
+// groth16_verifier: Groth16Verifier,
+// kzg10_verifier: KZG10Verifier,
+// }

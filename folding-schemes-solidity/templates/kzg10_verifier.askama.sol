@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-contract KZG10 {
+contract KZG10Verifier {
 
     // prime of field F_p over which y^2 = x^3 + 3 is defined
     uint256 public constant BN254_PRIME_FIELD =

@@ -3,7 +3,7 @@ pub mod templates;
 #[cfg(test)]
 mod tests {
     use crate::evm::test::{save_solidity, Evm};
-    use crate::verifiers::templates::{KZG10Verifier, SolidityVerifier};
+    use crate::verifiers::templates::{Groth16Verifier, KZG10Verifier};
     use ark_bn254::{Bn254, Fr, G1Projective as G1};
     use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
     use ark_ec::{AffineRepr, CurveGroup};
@@ -66,7 +66,7 @@ mod tests {
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
-        let template = SolidityVerifier::from(vk);
+        let template = Groth16Verifier::from(vk);
         save_solidity("groth16_verifier.sol", &template.render().unwrap());
         _ = template.render().unwrap();
     }
@@ -84,7 +84,7 @@ mod tests {
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
-        let res = SolidityVerifier::from(vk).render().unwrap();
+        let res = Groth16Verifier::from(vk).render().unwrap();
         save_solidity("groth16_verifier.sol", &res);
         let groth16_verifier_bytecode = crate::evm::test::compile_solidity(&res, "Verifier");
         let mut evm = Evm::default();
@@ -111,7 +111,7 @@ mod tests {
             z,
         };
         let proof = Groth16::<Bn254>::prove(&pk, c, &mut rng).unwrap();
-        let res = SolidityVerifier::from(vk).render().unwrap();
+        let res = Groth16Verifier::from(vk).render().unwrap();
         save_solidity("groth16_verifier.sol", &res);
         let groth16_verifier_bytecode = crate::evm::test::compile_solidity(&res, "Verifier");
         let mut evm = Evm::default();

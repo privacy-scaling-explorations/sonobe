@@ -4,4 +4,5 @@ Cargo.lock
 /src/frontend/circom/test_folder/test_circuit.r1cs
 /src/frontend/circom/test_folder/test_circuit_js/
 
-folding-verifier-solidity/generated
+# generated contracts at test time
+folding-schemes-solidity/generated

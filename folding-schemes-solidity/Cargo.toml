@@ -1,5 +1,5 @@
 [package]
-name = "folding-verifier-solidity"
+name = "folding-schemes-solidity"
 version = "0.1.0"
 edition = "2021"
 

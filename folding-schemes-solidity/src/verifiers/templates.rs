@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use crate::utils::encoding::{g1_to_fq_repr, g2_to_fq_repr};
 /// Solidity templates for the verifier contracts.
 /// We use askama for templating and define which variables are required for each template.
@@ -80,9 +82,17 @@ impl KZG10Verifier {
     }
 }
 
-// #[derive(Template)]
-// #[template(path = "kzg10_groth16_decider_verifier.askama.sol", ext = "sol")]
-// pub struct Groth16KZG10DeciderVerifier {
-// groth16_verifier: Groth16Verifier,
-// kzg10_verifier: KZG10Verifier,
-// }
+#[derive(Template)]
+#[template(path = "kzg10_groth16_decider_verifier.askama.sol", ext = "sol")]
+pub struct Groth16KZG10DeciderVerifier {
+    pub groth16_verifier: Groth16Verifier,
+    pub kzg10_verifier: KZG10Verifier,
+}
+
+impl<'a> Deref for Groth16KZG10DeciderVerifier {
+    type Target = Groth16Verifier;
+
+    fn deref(&self) -> &Self::Target {
+        &self.groth16_verifier
+    }
+}

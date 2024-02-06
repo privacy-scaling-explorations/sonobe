@@ -54,6 +54,29 @@ mod tests {
     }
 
     #[test]
+    fn test_decider_template_renders() {
+        let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
+        let (x, y, z) = (21, 21, 42);
+        let (_, vk) = {
+            let c = TestAddCircuit::<Fr> {
+                _f: PhantomData,
+                x: x.clone(),
+                y: y.clone(),
+                z: z.clone(),
+            };
+            Groth16::<Bn254>::setup(c, &mut rng).unwrap()
+        };
+        let groth16_template = Groth16Verifier::from(vk);
+        let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(&mut rng, 5);
+        let kzg10_template = KZG10Verifier::from(&pk, &vk);
+        let decider_template = super::templates::Groth16KZG10DeciderVerifier {
+            groth16_verifier: groth16_template,
+            kzg10_verifier: kzg10_template,
+        };
+        save_solidity("decider.sol", &decider_template.render().unwrap());
+    }
+
+    #[test]
     fn test_groth16_verifier_template_renders() {
         let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
         let (x, y, z) = (21, 21, 42);

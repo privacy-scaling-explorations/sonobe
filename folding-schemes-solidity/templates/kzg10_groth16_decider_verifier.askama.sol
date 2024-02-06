@@ -1,5 +1,4 @@
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.4;
 
 {{ groth16_verifier }}
 
@@ -12,7 +11,8 @@ pragma solidity ^0.8.19;
  */
 contract NovaDecider is Groth16Verifier, KZG10Verifier {
     function verifyProof(uint[2] calldata _pA, uint[2][2] calldata _pB, uint[2] calldata _pC, uint[{{ gamma_abc_len - 1 }}] calldata _pubSignals, uint256[2] calldata c, uint256[2] calldata pi, uint256 x, uint256 y) public view returns (bool) {
-        require(Groth16Verifier.verifyProof(_pA, _pB, _pC, _pubSignals) == 1, "Groth16 verification failed");
-        require(KZG10Verifier.check(c, pi, x, y) == 1, "KZG10 verification failed");
+        require(super.verifyProof(_pA, _pB, _pC, _pubSignals) == true, "Groth16 verification failed");
+        require(super.check(c, pi, x, y) == true, "KZG10 verification failed");
+        return true;
     }   
 }

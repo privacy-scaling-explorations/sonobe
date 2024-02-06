@@ -1,5 +1,6 @@
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+{{ sdpx }}
+
+{{ pragma_version }}
 
 contract KZG10Verifier {
 
@@ -150,7 +151,7 @@ contract KZG10Verifier {
      * @return  result Indicates if KZG proof is correct.
      */
     function check(uint256[2] calldata c, uint256[2] calldata pi, uint256 x, uint256 y)
-        external
+        public
         view
         returns (bool result)
     {
@@ -242,7 +243,7 @@ contract KZG10Verifier {
         uint256[] calldata y_vals,
         uint256[] calldata l_coeffs,
         uint256[] calldata z_coeffs
-    ) external view returns (bool result) {
+    ) public view returns (bool result) {
         //
         // we want to:
         //      1. avoid gas intensive ops in G2

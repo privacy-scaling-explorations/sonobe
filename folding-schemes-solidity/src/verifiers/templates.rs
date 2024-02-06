@@ -13,6 +13,10 @@ use folding_schemes::commitment::kzg::ProverKey;
 #[derive(Template, Default)]
 #[template(path = "groth16_verifier.askama.sol", ext = "sol")]
 pub struct Groth16Verifier {
+    /// SPDX-License-Identifier
+    pub sdpx: String,
+    /// The `pragma` statement.
+    pub pragma_version: String,
     /// The `alpha * G`, where `G` is the generator of `G1`.
     pub vkey_alpha_g1: G1Repr,
     /// The `alpha * H`, where `H` is the generator of `G2`.
@@ -27,9 +31,13 @@ pub struct Groth16Verifier {
     pub gamma_abc_g1: Vec<G1Repr>,
 }
 
-impl From<VerifyingKey<Bn254>> for Groth16Verifier {
-    fn from(value: VerifyingKey<Bn254>) -> Self {
+impl Groth16Verifier {
+    pub fn from(value: VerifyingKey<Bn254>, pragma: Option<String>) -> Self {
+        let pragma_version = pragma.unwrap_or_else(|| "".to_string());
+        let sdpx = "// SPDX-License-Identifier: GPL-3.0".to_string();
         Self {
+            pragma_version,
+            sdpx,
             vkey_alpha_g1: g1_to_fq_repr(value.alpha_g1),
             vkey_beta_g2: g2_to_fq_repr(value.beta_g2),
             vkey_gamma_g2: g2_to_fq_repr(value.gamma_g2),
@@ -48,6 +56,10 @@ impl From<VerifyingKey<Bn254>> for Groth16Verifier {
 #[derive(Template, Default)]
 #[template(path = "kzg10_verifier.askama.sol", ext = "sol")]
 pub struct KZG10Verifier {
+    /// SPDX-License-Identifier
+    pub sdpx: String,
+    /// The `pragma` statement.
+    pub pragma_version: String,
     /// The generator of `G1`.
     pub g1: G1Repr,
     /// The generator of `G2`.
@@ -61,7 +73,12 @@ pub struct KZG10Verifier {
 }
 
 impl KZG10Verifier {
-    pub fn from(pk: &ProverKey<G1Projective>, vk: &VerifierKey<Bn254>) -> KZG10Verifier {
+    pub fn from(
+        pk: &ProverKey<G1Projective>,
+        vk: &VerifierKey<Bn254>,
+        pragma: Option<String>,
+        sdpx: Option<String>,
+    ) -> KZG10Verifier {
         let g1_string_repr = g1_to_fq_repr(vk.g);
         let g2_string_repr = g2_to_fq_repr(vk.h);
         let vk_string_repr = g2_to_fq_repr(vk.beta_h);
@@ -72,7 +89,11 @@ impl KZG10Verifier {
             .into_iter()
             .map(|g1| g1_to_fq_repr(*g1))
             .collect();
+        let sdpx = sdpx.unwrap_or_else(|| "".to_string());
+        let pragma_version = pragma.unwrap_or_else(|| "".to_string());
         KZG10Verifier {
+            sdpx,
+            pragma_version,
             g1: g1_string_repr,
             g2: g2_string_repr,
             vk: vk_string_repr,

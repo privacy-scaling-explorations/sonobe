@@ -1,3 +1,4 @@
+#[cfg(test)]
 pub(crate) mod test {
     pub use revm;
     use revm::{

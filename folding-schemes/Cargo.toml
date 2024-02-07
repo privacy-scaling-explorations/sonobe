@@ -9,6 +9,7 @@ ark-ff = "^0.4.0"
 ark-poly = "^0.4.0"
 ark-std = "^0.4.0"
 ark-crypto-primitives = { version = "^0.4.0", default-features = false, features = ["r1cs", "sponge", "crh"] }
+ark-poly-commit = "^0.4.0"
 ark-relations = { version = "^0.4.0", default-features = false }
 ark-r1cs-std = { default-features = false } # use latest version from the patch
 ark-serialize = "^0.4.0"
@@ -20,7 +21,6 @@ color-eyre = "=0.6.2"
 
 # tmp imports for espresso's sumcheck
 espresso_subroutines = {git="https://github.com/EspressoSystems/hyperplonk", package="subroutines"}
-ark-poly-commit = "0.4.0"
 
 [dev-dependencies]
 ark-pallas = {version="0.4.0", features=["r1cs"]}
@@ -38,4 +38,11 @@ parallel = [
     "ark-poly/parallel", 
     ]
 
+# The following patch is to use a version of ark-r1cs-std compatible with
+# v0.4.0 but that includes a cherry-picked commit from after v0.4.0 which fixes
+# the in-circuit scalar multiplication of the zero point. The commit is from
+# https://github.com/arkworks-rs/r1cs-std/pull/124, without including other
+# changes done between v0.4.0 and this fix which would break compatibility.
+[patch.crates-io]
+ark-r1cs-std = { git = "https://github.com/arnaucube/ark-r1cs-std-cherry-picked/" }
 

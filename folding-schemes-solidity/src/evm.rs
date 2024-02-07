@@ -104,6 +104,7 @@ pub(crate) mod test {
         ///
         /// # Panics
         /// Panics if given address doesn't have bytecode.
+        #[allow(dead_code)]
         pub fn code_size(&mut self, address: Address) -> usize {
             self.evm.db.as_ref().unwrap().accounts[&address]
                 .info

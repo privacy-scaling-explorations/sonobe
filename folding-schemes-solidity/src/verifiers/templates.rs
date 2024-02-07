@@ -4,11 +4,11 @@ use crate::utils::encoding::{g1_to_fq_repr, g2_to_fq_repr};
 /// Solidity templates for the verifier contracts.
 /// We use askama for templating and define which variables are required for each template.
 use crate::utils::encoding::{G1Repr, G2Repr};
-use ark_bn254::{Bn254, G1Affine, G1Projective};
+use ark_bn254::{Bn254, G1Affine};
 use ark_groth16::VerifyingKey;
 use ark_poly_commit::kzg10::VerifierKey;
 use askama::Template;
-use folding_schemes::commitment::kzg::ProverKey;
+
 
 #[derive(Template, Default)]
 #[template(path = "groth16_verifier.askama.sol", ext = "sol")]
@@ -33,7 +33,7 @@ pub struct Groth16Verifier {
 
 impl Groth16Verifier {
     pub fn from(value: VerifyingKey<Bn254>, pragma: Option<String>) -> Self {
-        let pragma_version = pragma.unwrap_or_else(|| "".to_string());
+        let pragma_version = pragma.unwrap_or_default();
         let sdpx = "// SPDX-License-Identifier: GPL-3.0".to_string();
         Self {
             pragma_version,
@@ -47,7 +47,7 @@ impl Groth16Verifier {
                 .gamma_abc_g1
                 .iter()
                 .copied()
-                .map(|f| g1_to_fq_repr(f))
+                .map(g1_to_fq_repr)
                 .collect(),
         }
     }
@@ -83,9 +83,9 @@ impl KZG10Verifier {
         let g2_string_repr = g2_to_fq_repr(vk.h);
         let vk_string_repr = g2_to_fq_repr(vk.beta_h);
         let g1_crs_len = crs.len();
-        let g1_crs = crs.into_iter().map(|g1| g1_to_fq_repr(*g1)).collect();
-        let sdpx = sdpx.unwrap_or_else(|| "".to_string());
-        let pragma_version = pragma.unwrap_or_else(|| "".to_string());
+        let g1_crs = crs.iter().map(|g1| g1_to_fq_repr(*g1)).collect();
+        let sdpx = sdpx.unwrap_or_default();
+        let pragma_version = pragma.unwrap_or_default();
         KZG10Verifier {
             sdpx,
             pragma_version,

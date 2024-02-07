@@ -64,9 +64,9 @@ mod tests {
         let (_, vk) = {
             let c = TestAddCircuit::<Fr> {
                 _f: PhantomData,
-                x: x.clone(),
-                y: y.clone(),
-                z: z.clone(),
+                x: x,
+                y: y,
+                z: z,
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
@@ -87,9 +87,9 @@ mod tests {
         let (_, vk) = {
             let c = TestAddCircuit::<Fr> {
                 _f: PhantomData,
-                x: x.clone(),
-                y: y.clone(),
-                z: z.clone(),
+                x: x,
+                y: y,
+                z: z,
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
@@ -102,7 +102,7 @@ mod tests {
             kzg10_verifier: kzg10_template,
         };
         let decider_verifier_bytecode =
-            crate::evm::test::compile_solidity(&decider_template.render().unwrap(), "NovaDecider");
+            crate::evm::test::compile_solidity(decider_template.render().unwrap(), "NovaDecider");
         let mut evm = Evm::default();
         _ = evm.create(decider_verifier_bytecode);
     }
@@ -114,9 +114,9 @@ mod tests {
         let (_, vk) = {
             let c = TestAddCircuit::<Fr> {
                 _f: PhantomData,
-                x: x.clone(),
-                y: y.clone(),
-                z: z.clone(),
+                x: x,
+                y: y,
+                z: z,
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
@@ -132,9 +132,9 @@ mod tests {
         let (_, vk) = {
             let c = TestAddCircuit::<Fr> {
                 _f: PhantomData,
-                x: x.clone(),
-                y: y.clone(),
-                z: z.clone(),
+                x: x,
+                y: y,
+                z: z,
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
@@ -154,9 +154,9 @@ mod tests {
         let (pk, vk) = {
             let c = TestAddCircuit::<Fr> {
                 _f: PhantomData,
-                x: x.clone(),
-                y: y.clone(),
-                z: z.clone(),
+                x: x,
+                y: y,
+                z: z,
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
@@ -253,7 +253,7 @@ mod tests {
             None,
         );
         let res = template.render().unwrap();
-        let kzg_verifier_bytecode = crate::evm::test::compile_solidity(&res, "KZG10");
+        let kzg_verifier_bytecode = crate::evm::test::compile_solidity(res, "KZG10");
         let mut evm = Evm::default();
         let verifier_address = evm.create(kzg_verifier_bytecode);
 

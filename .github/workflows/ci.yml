@@ -56,7 +56,7 @@ jobs:
           chmod +x $HOME/bin/circom
           echo "$HOME/bin" >> $GITHUB_PATH
       - name: Execute compile.sh to generate .r1cs and .wasm from .circom
-        run: bash ./src/frontend/circom/test_folder/compile.sh
+        run: bash ./folding-schemes/src/frontend/circom/test_folder/compile.sh
       - name: Build
         # This build will be reused by nextest,
         # and also checks (--all-targets) that benches don't bit-rot

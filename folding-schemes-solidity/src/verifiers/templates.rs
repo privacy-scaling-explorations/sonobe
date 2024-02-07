@@ -4,7 +4,7 @@ use crate::utils::encoding::{g1_to_fq_repr, g2_to_fq_repr};
 /// Solidity templates for the verifier contracts.
 /// We use askama for templating and define which variables are required for each template.
 use crate::utils::encoding::{G1Repr, G2Repr};
-use ark_bn254::{Bn254, G1Projective};
+use ark_bn254::{Bn254, G1Affine, G1Projective};
 use ark_groth16::VerifyingKey;
 use ark_poly_commit::kzg10::VerifierKey;
 use askama::Template;
@@ -74,21 +74,16 @@ pub struct KZG10Verifier {
 
 impl KZG10Verifier {
     pub fn from(
-        pk: &ProverKey<G1Projective>,
         vk: &VerifierKey<Bn254>,
+        crs: &[G1Affine],
         pragma: Option<String>,
         sdpx: Option<String>,
     ) -> KZG10Verifier {
         let g1_string_repr = g1_to_fq_repr(vk.g);
         let g2_string_repr = g2_to_fq_repr(vk.h);
         let vk_string_repr = g2_to_fq_repr(vk.beta_h);
-        let g1_crs_len = pk.powers_of_g.len();
-
-        let g1_crs = pk
-            .powers_of_g
-            .into_iter()
-            .map(|g1| g1_to_fq_repr(*g1))
-            .collect();
+        let g1_crs_len = crs.len();
+        let g1_crs = crs.into_iter().map(|g1| g1_to_fq_repr(*g1)).collect();
         let sdpx = sdpx.unwrap_or_else(|| "".to_string());
         let pragma_version = pragma.unwrap_or_else(|| "".to_string());
         KZG10Verifier {

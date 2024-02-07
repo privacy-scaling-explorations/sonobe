@@ -9,7 +9,6 @@ use ark_groth16::VerifyingKey;
 use ark_poly_commit::kzg10::VerifierKey;
 use askama::Template;
 
-
 #[derive(Template, Default)]
 #[template(path = "groth16_verifier.askama.sol", ext = "sol")]
 pub struct Groth16Verifier {

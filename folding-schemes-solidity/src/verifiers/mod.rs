@@ -64,9 +64,9 @@ mod tests {
         let (_, vk) = {
             let c = TestAddCircuit::<Fr> {
                 _f: PhantomData,
-                x: x,
-                y: y,
-                z: z,
+                x,
+                y,
+                z,
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
@@ -87,9 +87,9 @@ mod tests {
         let (_, vk) = {
             let c = TestAddCircuit::<Fr> {
                 _f: PhantomData,
-                x: x,
-                y: y,
-                z: z,
+                x,
+                y,
+                z,
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
@@ -114,9 +114,9 @@ mod tests {
         let (_, vk) = {
             let c = TestAddCircuit::<Fr> {
                 _f: PhantomData,
-                x: x,
-                y: y,
-                z: z,
+                x,
+                y,
+                z,
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
@@ -132,9 +132,9 @@ mod tests {
         let (_, vk) = {
             let c = TestAddCircuit::<Fr> {
                 _f: PhantomData,
-                x: x,
-                y: y,
-                z: z,
+                x,
+                y,
+                z,
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
@@ -154,9 +154,9 @@ mod tests {
         let (pk, vk) = {
             let c = TestAddCircuit::<Fr> {
                 _f: PhantomData,
-                x: x,
-                y: y,
-                z: z,
+                x,
+                y,
+                z,
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };

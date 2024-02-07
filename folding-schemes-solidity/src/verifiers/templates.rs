@@ -104,7 +104,7 @@ pub struct Groth16KZG10DeciderVerifier {
     pub kzg10_verifier: KZG10Verifier,
 }
 
-impl<'a> Deref for Groth16KZG10DeciderVerifier {
+impl Deref for Groth16KZG10DeciderVerifier {
     type Target = Groth16Verifier;
 
     fn deref(&self) -> &Self::Target {

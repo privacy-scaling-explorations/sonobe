@@ -141,7 +141,6 @@ mod tests {
         let res = Groth16Verifier::from(vk, Some(PRAGMA_GROTH16_VERIFIER.to_string()))
             .render()
             .unwrap();
-        save_solidity("groth16_verifier.sol", &res);
         let groth16_verifier_bytecode = crate::evm::test::compile_solidity(&res, "Verifier");
         let mut evm = Evm::default();
         _ = evm.create(groth16_verifier_bytecode);
@@ -227,7 +226,6 @@ mod tests {
             None,
         );
         let res = template.render().unwrap();
-        save_solidity("kzg10_verifier.sol", &res);
         let kzg_verifier_bytecode = crate::evm::test::compile_solidity(&res, "KZG10");
         let mut evm = Evm::default();
         _ = evm.create(kzg_verifier_bytecode);

@@ -2,7 +2,10 @@
 /*
     Copyright 2021 0KIMS association.
 
-    This file is generated with [snarkJS](https://github.com/iden3/snarkjs).
+    * `folding-schemes-solidity` added comment
+        This file is a template built out of [snarkJS](https://github.com/iden3/snarkjs) groth16 verifier.
+        See the original ejs template [here](https://github.com/iden3/snarkjs/blob/master/templates/verifier_groth16.sol.ejs)
+    *
 
     snarkJS is a free software: you can redistribute it and/or modify it
     under the terms of the GNU General Public License as published by

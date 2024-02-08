@@ -23,7 +23,7 @@ contract KZG10Verifier {
         input[2] = s;
         bool success;
         assembly {
-            success := staticcall(sub(gas(), 2000), 7, input, 0x80, r, 0x60)
+            success := staticcall(sub(gas(), 2000), 7, input, 0x60, r, 0x40)
             switch success
             case 0 { invalid() }
         }
@@ -52,7 +52,7 @@ contract KZG10Verifier {
         bool success;
         uint256[4] memory input = [p1[0], p1[1], p2[0], p2[1]];
         assembly {
-            success := staticcall(sub(gas(), 2000), 6, input, 0xc0, r, 0x60)
+            success := staticcall(sub(gas(), 2000), 6, input, 0x80, r, 0x40)
             switch success
             case 0 { invalid() }
         }
@@ -100,7 +100,7 @@ contract KZG10Verifier {
 
         require(success, "bn254: pairing failed");
 
-        return out[0] != 0;
+        return out[0] == 1;
     }
 
     uint256[2] G_1 = [

@@ -1,4 +1,5 @@
-/// Implements the scheme described in [Nova](https://eprint.iacr.org/2021/370.pdf)
+/// Implements the scheme described in [Nova](https://eprint.iacr.org/2021/370.pdf) and
+/// [CycleFold](https://eprint.iacr.org/2023/1192.pdf).
 use ark_crypto_primitives::{
     crh::{poseidon::CRH, CRHScheme},
     sponge::{poseidon::PoseidonConfig, Absorb},
@@ -22,6 +23,7 @@ use crate::FoldingScheme;
 
 pub mod circuits;
 pub mod cyclefold;
+pub mod decider_eth;
 pub mod decider_eth_circuit;
 pub mod nifs;
 pub mod traits;
@@ -216,10 +218,8 @@ where
     type PreprocessorParam = (Self::ProverParam, FC);
     type ProverParam = ProverParams<C1, C2, CP1, CP2>;
     type VerifierParam = VerifierParams<C1, C2>;
-    type Witness = Witness<C1>;
     type CommittedInstanceWithWitness = (CommittedInstance<C1>, Witness<C1>);
     type CFCommittedInstanceWithWitness = (CommittedInstance<C2>, Witness<C2>);
-    type CommittedInstance = CommittedInstance<C1>;
 
     fn preprocess(
         prep_param: &Self::PreprocessorParam,

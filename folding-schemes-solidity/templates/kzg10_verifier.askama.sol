@@ -5,10 +5,14 @@
 /**
  * @author  Privacy and Scaling Explorations team - pse.dev
  * @dev     Contains utility functions for ops in BN254; in G_1 mostly.
- * @notice  Inspired from https://github.com/weijiekoh/libkzg/tree/master.
- * We template the pragma version, remove type wrappers and use uints instead, perform changes on arg types
- * We update some of the `require` statements and use the bn254 scalar field instead of checking for overflow on the babyjub prime
- * Finally, in batch checking, we compute auxiliary polynomials and their commitments at the same time.
+ * @notice  Forked from https://github.com/weijiekoh/libkzg/tree/master.
+ * Among others, a few of the changes we did on this fork were:
+ * - Templating the pragma version
+ * - Removing type wrappers and use uints instead
+ * - Performing changes on arg types
+ * - Update some of the `require` statements 
+ * - Use the bn254 scalar field instead of checking for overflow on the babyjub prime
+ * - In batch checking, we compute auxiliary polynomials and their commitments at the same time.
  */
 contract KZG10Verifier {
 

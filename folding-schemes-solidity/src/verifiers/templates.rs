@@ -31,7 +31,6 @@ pub struct Groth16Verifier {
 }
 
 impl Groth16Verifier {
-    #[allow(dead_code)]
     pub fn from(value: VerifyingKey<Bn254>, pragma: Option<String>) -> Self {
         let pragma_version = pragma.unwrap_or_default();
         let sdpx = "// SPDX-License-Identifier: GPL-3.0".to_string();
@@ -73,7 +72,6 @@ pub struct KZG10Verifier {
 }
 
 impl KZG10Verifier {
-    #[allow(dead_code)]
     pub fn from(
         vk: &VerifierKey<Bn254>,
         crs: &[G1Affine],

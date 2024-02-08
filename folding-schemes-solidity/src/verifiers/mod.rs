@@ -2,7 +2,7 @@ pub mod templates;
 
 #[cfg(test)]
 mod tests {
-    use crate::evm::test::{save_solidity, Evm};
+    use crate::evm::{compile_solidity, save_solidity, Evm};
     use crate::verifiers::templates::{Groth16Verifier, KZG10Verifier};
     use ark_bn254::{Bn254, Fr, G1Projective as G1};
     use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
@@ -102,7 +102,7 @@ mod tests {
             kzg10_verifier: kzg10_template,
         };
         let decider_verifier_bytecode =
-            crate::evm::test::compile_solidity(decider_template.render().unwrap(), "NovaDecider");
+            compile_solidity(decider_template.render().unwrap(), "NovaDecider");
         let mut evm = Evm::default();
         _ = evm.create(decider_verifier_bytecode);
     }
@@ -141,7 +141,7 @@ mod tests {
         let res = Groth16Verifier::from(vk, Some(PRAGMA_GROTH16_VERIFIER.to_string()))
             .render()
             .unwrap();
-        let groth16_verifier_bytecode = crate::evm::test::compile_solidity(res, "Verifier");
+        let groth16_verifier_bytecode = compile_solidity(res, "Verifier");
         let mut evm = Evm::default();
         _ = evm.create(groth16_verifier_bytecode);
     }
@@ -170,7 +170,7 @@ mod tests {
             .render()
             .unwrap();
         save_solidity("groth16_verifier.sol", &res);
-        let groth16_verifier_bytecode = crate::evm::test::compile_solidity(&res, "Verifier");
+        let groth16_verifier_bytecode = compile_solidity(&res, "Verifier");
         let mut evm = Evm::default();
         let verifier_address = evm.create(groth16_verifier_bytecode);
         let (a_x, a_y) = proof.a.xy().unwrap();
@@ -226,7 +226,7 @@ mod tests {
             None,
         );
         let res = template.render().unwrap();
-        let kzg_verifier_bytecode = crate::evm::test::compile_solidity(res, "KZG10");
+        let kzg_verifier_bytecode = compile_solidity(res, "KZG10");
         let mut evm = Evm::default();
         _ = evm.create(kzg_verifier_bytecode);
     }
@@ -251,7 +251,7 @@ mod tests {
             None,
         );
         let res = template.render().unwrap();
-        let kzg_verifier_bytecode = crate::evm::test::compile_solidity(res, "KZG10");
+        let kzg_verifier_bytecode = compile_solidity(res, "KZG10");
         let mut evm = Evm::default();
         let verifier_address = evm.create(kzg_verifier_bytecode);
 

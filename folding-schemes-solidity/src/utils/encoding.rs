@@ -20,7 +20,6 @@ impl Display for G1Repr {
     }
 }
 
-#[allow(dead_code)]
 /// Converts a G1 element to a representation that can be used in Solidity templates.
 pub fn g1_to_fq_repr(g1: G1Affine) -> G1Repr {
     G1Repr([FqWrapper(g1.x), FqWrapper(g1.y)])
@@ -35,7 +34,6 @@ impl Display for G2Repr {
     }
 }
 
-#[allow(dead_code)]
 /// Converts a G2 element to a representation that can be used in Solidity templates.
 pub fn g2_to_fq_repr(g2: G2Affine) -> G2Repr {
     G2Repr([

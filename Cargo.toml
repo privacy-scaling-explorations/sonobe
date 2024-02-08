@@ -1,6 +1,14 @@
 [workspace]
-
+resolver = "1"
 members = [
     "folding-schemes",
     "folding-schemes-solidity"
 ]
+
+# The following patch is to use a version of ark-r1cs-std compatible with
+# v0.4.0 but that includes a cherry-picked commit from after v0.4.0 which fixes
+# the in-circuit scalar multiplication of the zero point. The commit is from
+# https://github.com/arkworks-rs/r1cs-std/pull/124, without including other
+# changes done between v0.4.0 and this fix which would break compatibility.
+[patch.crates-io]
+ark-r1cs-std = { git = "https://github.com/arnaucube/ark-r1cs-std-cherry-picked/" }

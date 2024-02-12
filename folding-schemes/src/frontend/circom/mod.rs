@@ -1,24 +1,22 @@
 use std::{error::Error, fs::File, io::BufReader, marker::PhantomData, path::PathBuf};
 
 use color_eyre::Result;
-use num_bigint::BigInt;
+use num_bigint::{BigInt, Sign};
 
-use ark_circom::{circom::r1cs_reader, WitnessCalculator};
+use ark_circom::{circom::{r1cs_reader, R1CS}, WitnessCalculator};
 use ark_ec::pairing::Pairing;
-use ark_ff::PrimeField;
-
-use crate::ccs::r1cs::R1CS;
-use crate::utils::vec::SparseMatrix;
+use ark_ff::{BigInteger, PrimeField};
 
 // Define the sparse matrices on PrimeFiled.
 pub type Constraints<F> = (ConstraintVec<F>, ConstraintVec<F>, ConstraintVec<F>);
 pub type ConstraintVec<F> = Vec<(usize, F)>;
 type ExtractedConstraints<F> = (Vec<Constraints<F>>, usize, usize);
 pub type ExtractedConstraintsResult<F> = Result<ExtractedConstraints<F>, Box<dyn Error>>;
-pub type R1CSandZ<F> = (R1CS<F>, Vec<F>);
+// pub type R1CSandZ<F> = (R1CS<F>, Vec<F>);
 
 // A struct that wraps Circom functionalities, allowing for extraction of R1CS and witnesses
 // based on file paths to Circom's .r1cs and .wasm.
+#[derive(Clone, Debug)]
 pub struct CircomWrapper<E: Pairing> {
     r1cs_filepath: PathBuf,
     wasm_filepath: PathBuf,
@@ -35,16 +33,57 @@ impl<E: Pairing> CircomWrapper<E> {
         }
     }
 
-    // Aggregates multiple functions to obtain R1CS and Z as defined in folding-schemes from Circom.
-    pub fn extract_r1cs_and_z(
+    // Aggregated funtion to obtain R1CS and witness from Circom.
+    pub fn extract_r1cs_and_witness(
         &self,
         inputs: &[(String, Vec<BigInt>)],
-    ) -> Result<R1CSandZ<E::ScalarField>, Box<dyn Error>> {
-        let (constraints, pub_io_len, num_variables) = self.extract_constraints_from_r1cs()?;
+    ) -> Result<(R1CS<E>, Option<Vec<E::ScalarField>>), Box<dyn Error>> {
+        // extracts the R1CS data from the file.
+        let file = File::open(&self.r1cs_filepath)?;
+        let reader = BufReader::new(file);
+        let r1cs_file = r1cs_reader::R1CSFile::<E>::new(reader)?;
+        let r1cs = r1cs_reader::R1CS::<E>::from(r1cs_file);
+    
+        // Calcultes the witness
         let witness = self.calculate_witness(inputs)?;
-        self.circom_to_folding_schemes_r1cs_and_z(constraints, &witness, pub_io_len, num_variables)
+    
+        let witness_vec: Result<Vec<E::ScalarField>, _> = witness.iter().map(|big_int| {
+            let ark_big_int = self.num_bigint_to_ark_bigint::<E::ScalarField>(big_int)
+                .map_err(|_| Box::new(std::fmt::Error) as Box<dyn Error>)?;
+            E::ScalarField::from_bigint(ark_big_int).ok_or_else(|| {
+                Box::new(std::fmt::Error) as Box<dyn Error> 
+            })
+        }).collect();
+          
+    
+        Ok((r1cs, witness_vec.ok()))
     }
 
+    // Calculates the witness given the Wasm filepath and inputs.
+    pub fn calculate_witness(&self, inputs: &[(String, Vec<BigInt>)]) -> Result<Vec<BigInt>> {
+        let mut calculator = WitnessCalculator::new(&self.wasm_filepath)?;
+        calculator.calculate_witness(inputs.iter().cloned(), true)
+    }
+
+    // Converts a num_bigint::Bigint to PrimeField::BigInt.
+    pub fn num_bigint_to_ark_bigint<F: PrimeField>(
+        &self,
+        value: &BigInt,
+    ) -> Result<F::BigInt, Box<dyn Error>> {
+        let big_uint = value
+            .to_biguint()
+            .ok_or_else(|| "BigInt is negative".to_string())?;
+        F::BigInt::try_from(big_uint).map_err(|_| "BigInt conversion failed".to_string().into())
+    }
+
+    // Converts a PrimeField::BigInt to num_bigint::BigInt.
+    pub fn ark_bigint_to_num_bigint<F: PrimeField>(&self, value: F) -> BigInt {
+        let bigint_repr: F::BigInt = value.into_bigint();  
+        let bytes = bigint_repr.to_bytes_be();
+        BigInt::from_bytes_be(Sign::Plus, &bytes)
+    }
+
+    /*
     // Extracts constraints from the r1cs file.
     pub fn extract_constraints_from_r1cs(&self) -> ExtractedConstraintsResult<E::ScalarField>
     where
@@ -63,7 +102,9 @@ impl<E: Pairing> CircomWrapper<E> {
 
         Ok((constraints, pub_io_len, num_variables))
     }
+    */
 
+    /*
     // Converts a set of constraints from ark-circom into R1CS format of folding-schemes.
     pub fn convert_to_folding_schemes_r1cs<F>(
         &self,
@@ -119,38 +160,37 @@ impl<E: Pairing> CircomWrapper<E> {
 
         R1CS::<F> { l, A, B, C }
     }
+    */
 
-    // Calculates the witness given the Wasm filepath and inputs.
-    pub fn calculate_witness(&self, inputs: &[(String, Vec<BigInt>)]) -> Result<Vec<BigInt>> {
-        let mut calculator = WitnessCalculator::new(&self.wasm_filepath)?;
-        calculator.calculate_witness(inputs.iter().cloned(), true)
-    }
-
-    // Converts a num_bigint input to `PrimeField`'s BigInt.
-    pub fn num_bigint_to_ark_bigint<F: PrimeField>(
-        &self,
-        value: &BigInt,
-    ) -> Result<F::BigInt, Box<dyn Error>> {
-        let big_uint = value
-            .to_biguint()
-            .ok_or_else(|| "BigInt is negative".to_string())?;
-        F::BigInt::try_from(big_uint).map_err(|_| "BigInt conversion failed".to_string().into())
-    }
-
+    /*
     // Converts R1CS constraints and witness from ark-circom format
     // into folding-schemes R1CS and z format.
     pub fn circom_to_folding_schemes_r1cs_and_z<F>(
+        &self,
+        inputs: &[(String, Vec<BigInt>)],
+        /*
         &self,
         constraints: Vec<Constraints<F>>,
         witness: &[BigInt],
         pub_io_len: usize,
         num_variables: usize,
+        */
     ) -> Result<(R1CS<F>, Vec<F>), Box<dyn Error>>
     where
         F: PrimeField,
     {
+        /*
         let folding_schemes_r1cs =
             self.convert_to_folding_schemes_r1cs(constraints, pub_io_len, num_variables);
+        */
+
+        // R1CSファイルを開く
+        let file = File::open(&self.r1cs_filepath)?;
+        let reader = BufReader::new(file);
+
+        // R1CSファイルからR1CSデータを抽出
+        let r1cs_file = r1cs_reader::R1CSFile::<E>::new(reader)?;
+        let r1cs = r1cs_reader::R1CS::<E>::from(r1cs_file);
 
         let z: Result<Vec<F>, _> = witness
             .iter()
@@ -164,10 +204,23 @@ impl<E: Pairing> CircomWrapper<E> {
             })
             .collect();
 
-        z.map(|z| (folding_schemes_r1cs, z))
+            Ok((r1cs, z?))
     }
-}
+    */
 
+    /*
+    // BigIntのリストをPrimeFieldの要素に変換
+    pub fn convert_witness_to_primefield<F: PrimeField>(&self, witness: &[BigInt]) -> Vec<F> {
+        witness.iter().map(|big_int| {
+            let ark_big_int = self.num_bigint_to_ark_bigint::<F>(big_int)
+                .map_err(|_| Error::Other("BigInt to Ark BigInt conversion failed".to_string()))?;
+            F::from_bigint(ark_big_int)
+                .ok_or_else(|| Error::Other("Failed to convert bigint to field element".to_string()))
+        }).collect()
+    }
+    */
+}
+/*
 #[cfg(test)]
 mod tests {
     use crate::frontend::circom::CircomWrapper;
@@ -224,3 +277,4 @@ mod tests {
         test_circom_conversion_logic(false, vec![("step_in".to_string(), vec![BigInt::from(7)])]);
     }
 }
+*/

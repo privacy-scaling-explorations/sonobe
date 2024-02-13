@@ -184,11 +184,9 @@ impl<E: Pairing> CircomWrapper<E> {
             self.convert_to_folding_schemes_r1cs(constraints, pub_io_len, num_variables);
         */
 
-        // R1CSファイルを開く
         let file = File::open(&self.r1cs_filepath)?;
         let reader = BufReader::new(file);
 
-        // R1CSファイルからR1CSデータを抽出
         let r1cs_file = r1cs_reader::R1CSFile::<E>::new(reader)?;
         let r1cs = r1cs_reader::R1CS::<E>::from(r1cs_file);
 
@@ -209,7 +207,6 @@ impl<E: Pairing> CircomWrapper<E> {
     */
 
     /*
-    // BigIntのリストをPrimeFieldの要素に変換
     pub fn convert_witness_to_primefield<F: PrimeField>(&self, witness: &[BigInt]) -> Vec<F> {
         witness.iter().map(|big_int| {
             let ark_big_int = self.num_bigint_to_ark_bigint::<F>(big_int)

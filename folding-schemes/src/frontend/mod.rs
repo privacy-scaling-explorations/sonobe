@@ -53,31 +53,31 @@ pub trait FCircuit<F: PrimeField>: Clone + Debug {
 #[derive(Clone, Debug)]
 pub struct CircomtoFCircuit<E: Pairing> {
     circom_wrapper: CircomWrapper<E>,
-    z_i: Vec<E::ScalarField>
+    // z_i: Vec<E::ScalarField>
 }
 
 impl<E: Pairing> FCircuit<E::ScalarField> for CircomtoFCircuit<E> {
     type Params = (PathBuf, PathBuf, Vec<E::ScalarField>);
 
     fn new(params: Self::Params) -> Self {
-        let (r1cs_filepath, wasm_filepath, z_i) = params;
+        let (r1cs_filepath, wasm_filepath, _z_i) = params;
         let circom_wrapper = CircomWrapper::new(r1cs_filepath, wasm_filepath);
-        Self { circom_wrapper, z_i }
+        Self { circom_wrapper}
     }
 
     fn step_native(self, z_i: Vec<E::ScalarField>) -> Result<Vec<E::ScalarField>, Error> {
-        // PrimeField::Bigintをnum_bigint::BigInt
+        // Convert PrimeField::Bigint to num_bigint::BigInt
         let input_as_bigint = z_i.iter().map(|val| {
             self.circom_wrapper.ark_bigint_to_num_bigint(*val)
         }).collect::<Vec<BigInt>>();
 
-        // Circomの計算を実行
+        // Compute witness
         let (_, witness) = self.circom_wrapper.extract_r1cs_and_witness(&[
             ("input_variable".to_string(), input_as_bigint)
         ]).map_err(|e| Error::Other(format!("Circom computation failed: {}", e)))?;  
 
         match witness {
-            Some(witness_vec) => Ok(witness_vec),
+            Some(z_i) => Ok(z_i),
             None => Err(Error::Other("Witness data was not found".to_string())),
         }
     }
@@ -89,15 +89,15 @@ impl<E: Pairing> FCircuit<E::ScalarField> for CircomtoFCircuit<E> {
     ) -> Result<Vec<FpVar<E::ScalarField>>, SynthesisError> {
         let mut big_int_inputs = Vec::new();
         for fp_var in z_i.iter() {
-            // FpVarからPrimeField
+            // Convert from FpVar to PrimeField
             let prime_field_value = fp_var.value()?;
-            // PrimeFieldの要素をbigint::BigIntに変換
+            // Convert from PrimeField to bigint::BigInt
             let big_int = self.circom_wrapper.ark_bigint_to_num_bigint(prime_field_value);
             big_int_inputs.push(("input_variable".to_string(), vec![big_int]));
         }
         // let dummy_inputs = vec![("input_variable".to_string(), vec![BigInt::from(0)])];
     
-        // Circomの処理
+        // Processing of Circom
         let (r1cs, witness) = self.circom_wrapper.extract_r1cs_and_witness(&big_int_inputs)
             .map_err(|e| {
                 println!("Error extracting R1CS and witness: {}", e);
@@ -106,15 +106,14 @@ impl<E: Pairing> FCircuit<E::ScalarField> for CircomtoFCircuit<E> {
     
         let witness = witness.clone().ok_or(SynthesisError::AssignmentMissing)?;
     
-        // CircomCircuitの制約を生成
+        // CircomCircuit constraints
         let circom_circuit = CircomCircuit { r1cs, witness: Some(witness.clone()) };
         circom_circuit.generate_constraints(cs.clone())?;
         assert!(cs.is_satisfied().unwrap());
     
-        // witnessをFpVarに変換してz_iに格納
         z_i.clear();
         for &w in &witness {
-            // ScalarFieldからFpVarへの変換
+            // Convert from ScalarField to FpVar
             let witness_var = FpVar::<E::ScalarField>::new_witness(cs.clone(), || Ok(w)).unwrap();
             z_i.push(witness_var);
         }

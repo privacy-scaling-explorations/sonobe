@@ -141,7 +141,15 @@ where
     <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
     for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
 {
-    pub fn commit(
+    pub fn commit(g: Vec<GC>, v: Vec<Vec<Boolean<CF<C>>>>) -> Result<GC, SynthesisError> {
+        let mut res = GC::zero();
+        for (i, v_i) in v.iter().enumerate() {
+            res += g[i].scalar_mul_le(v_i.iter())?;
+        }
+        Ok(res)
+    }
+    // commits with blinding factor 'r'
+    pub fn commit_with_blind(
         h: GC,
         g: Vec<GC>,
         v: Vec<Vec<Boolean<CF<C>>>>,
@@ -223,7 +231,8 @@ mod tests {
         let expected_cmVar = GVar::new_witness(cs.clone(), || Ok(cm)).unwrap();
 
         // use the gadget
-        let cmVar = PedersenGadget::<Projective, GVar>::commit(hVar, gVar, vVar, rVar).unwrap();
+        let cmVar =
+            PedersenGadget::<Projective, GVar>::commit_with_blind(hVar, gVar, vVar, rVar).unwrap();
         cmVar.enforce_equal(&expected_cmVar).unwrap();
     }
 }

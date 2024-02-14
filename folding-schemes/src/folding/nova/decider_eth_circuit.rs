@@ -404,15 +404,19 @@ where
                 .map(|W_i| W_i.to_bits_le().unwrap())
                 .collect();
 
-            let computed_cmE = PedersenGadget::<C2, GC2>::commit(
+            let computed_cmE = PedersenGadget::<C2, GC2>::commit_with_blind(
                 H.clone(),
                 G.clone(),
                 cf_W_i_E_bits,
                 cf_W_i.rE.to_bits_le()?,
             )?;
             cf_U_i.cmE.enforce_equal(&computed_cmE)?;
-            let computed_cmW =
-                PedersenGadget::<C2, GC2>::commit(H, G, cf_W_i_W_bits, cf_W_i.rW.to_bits_le()?)?;
+            let computed_cmW = PedersenGadget::<C2, GC2>::commit_with_blind(
+                H,
+                G,
+                cf_W_i_W_bits,
+                cf_W_i.rW.to_bits_le()?,
+            )?;
             cf_U_i.cmW.enforce_equal(&computed_cmW)?;
 
             // 6. check RelaxedR1CS of cf_U_i

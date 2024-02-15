@@ -125,6 +125,7 @@ impl<E: Pairing> FCircuit<E::ScalarField> for CircomtoFCircuit<E> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use ark_bn254::Bn254;
     use ark_pallas::Fr;
     use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget};
     use ark_relations::r1cs::{
@@ -264,5 +265,29 @@ pub mod tests {
         };
         wrapper_circuit.generate_constraints(cs.clone()).unwrap();
         assert_eq!(cs.num_constraints(), n_constraints);
+    }
+
+    #[test]
+    fn test_circomto_fcircuit_generate_step_constraints() {
+        let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/test_circuit.r1cs");
+        let wasm_path = PathBuf::from("./src/frontend/circom/test_folder/test_circuit_js/test_circuit.wasm");
+        
+        let z_i = vec![Fr::from(1u32)];
+
+        /// [Issue: Incompatibility of Pairing and Pallas]
+        /// We have to avoid Bn254(Pairing) because we want to use Pallas.
+        /// However, original ark-circom is defined on the Pairing.
+        let circom_fcircuit = CircomtoFCircuit::<Bn254>::new((r1cs_path, wasm_path, z_i));
+
+        let wrapper_circuit = WrapperCircuit {
+            FC: circom_fcircuit,
+            z_i: Some(z_i.clone()),
+            z_i1: Some(vec![Fr::from(35u32)]),
+        };
+
+        let cs = ConstraintSystem::<Fr>::new_ref();
+
+        wrapper_circuit.generate_constraints(cs.clone()).unwrap();
+        assert!(cs.is_satisfied().unwrap(), "Constraint system is not satisfied");
     }
 }

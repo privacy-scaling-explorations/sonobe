@@ -1,13 +1,12 @@
 pragma circom 2.0.3;
 
 template Example () {
-    signal input step_in;
-    signal output step_out;   
+    signal input ivc_input[1];
+    signal output ivc_output[1];   
     signal temp;
     
-    temp <== step_in * step_in;
-    step_out <== temp * step_in + step_in + 5;
-    step_out === 35; 
+    temp <== ivc_input[0] * ivc_input[0];
+    ivc_output[0] <== temp * ivc_input[0] + ivc_input[0] + 5;
 }
 
 component main = Example();

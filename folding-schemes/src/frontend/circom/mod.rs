@@ -82,196 +82,43 @@ impl<E: Pairing> CircomWrapper<E> {
         let bytes = bigint_repr.to_bytes_be();
         BigInt::from_bytes_be(Sign::Plus, &bytes)
     }
-
-    /*
-    // Extracts constraints from the r1cs file.
-    pub fn extract_constraints_from_r1cs(&self) -> ExtractedConstraintsResult<E::ScalarField>
-    where
-        E: Pairing,
-    {
-        // Opens the .r1cs file and create a reader.
-        let file = File::open(&self.r1cs_filepath)?;
-        let reader = BufReader::new(file);
-
-        // Reads the R1CS file and extract the constraints directly.
-        let r1cs_file = r1cs_reader::R1CSFile::<E>::new(reader)?;
-        let pub_io_len = (r1cs_file.header.n_pub_in + r1cs_file.header.n_pub_out) as usize;
-        let r1cs = r1cs_reader::R1CS::<E>::from(r1cs_file);
-        let num_variables = r1cs.num_variables;
-        let constraints: Vec<Constraints<E::ScalarField>> = r1cs.constraints;
-
-        Ok((constraints, pub_io_len, num_variables))
-    }
-    */
-
-    /*
-    // Converts a set of constraints from ark-circom into R1CS format of folding-schemes.
-    pub fn convert_to_folding_schemes_r1cs<F>(
-        &self,
-        constraints: Vec<Constraints<F>>,
-        pub_io_len: usize,
-        num_variables: usize,
-    ) -> R1CS<F>
-    where
-        F: PrimeField,
-    {
-        let mut a_matrix: Vec<Vec<(F, usize)>> = Vec::new();
-        let mut b_matrix: Vec<Vec<(F, usize)>> = Vec::new();
-        let mut c_matrix: Vec<Vec<(F, usize)>> = Vec::new();
-
-        let n_rows = constraints.len();
-
-        for (ai, bi, ci) in constraints {
-            a_matrix.push(
-                ai.into_iter()
-                    .map(|(index, scalar)| (scalar, index))
-                    .collect(),
-            );
-            b_matrix.push(
-                bi.into_iter()
-                    .map(|(index, scalar)| (scalar, index))
-                    .collect(),
-            );
-            c_matrix.push(
-                ci.into_iter()
-                    .map(|(index, scalar)| (scalar, index))
-                    .collect(),
-            );
-        }
-
-        let l = pub_io_len;
-        let n_cols = num_variables;
-
-        let A = SparseMatrix {
-            n_rows,
-            n_cols,
-            coeffs: a_matrix,
-        };
-        let B = SparseMatrix {
-            n_rows,
-            n_cols,
-            coeffs: b_matrix,
-        };
-        let C = SparseMatrix {
-            n_rows,
-            n_cols,
-            coeffs: c_matrix,
-        };
-
-        R1CS::<F> { l, A, B, C }
-    }
-    */
-
-    /*
-    // Converts R1CS constraints and witness from ark-circom format
-    // into folding-schemes R1CS and z format.
-    pub fn circom_to_folding_schemes_r1cs_and_z<F>(
-        &self,
-        inputs: &[(String, Vec<BigInt>)],
-        /*
-        &self,
-        constraints: Vec<Constraints<F>>,
-        witness: &[BigInt],
-        pub_io_len: usize,
-        num_variables: usize,
-        */
-    ) -> Result<(R1CS<F>, Vec<F>), Box<dyn Error>>
-    where
-        F: PrimeField,
-    {
-        /*
-        let folding_schemes_r1cs =
-            self.convert_to_folding_schemes_r1cs(constraints, pub_io_len, num_variables);
-        */
-
-        let file = File::open(&self.r1cs_filepath)?;
-        let reader = BufReader::new(file);
-
-        let r1cs_file = r1cs_reader::R1CSFile::<E>::new(reader)?;
-        let r1cs = r1cs_reader::R1CS::<E>::from(r1cs_file);
-
-        let z: Result<Vec<F>, _> = witness
-            .iter()
-            .map(|big_int| {
-                let ark_big_int = self.num_bigint_to_ark_bigint::<F>(big_int)?;
-                F::from_bigint(ark_big_int).ok_or_else(|| {
-                    "Failed to convert bigint to field element"
-                        .to_string()
-                        .into()
-                })
-            })
-            .collect();
-
-            Ok((r1cs, z?))
-    }
-    */
-
-    /*
-    pub fn convert_witness_to_primefield<F: PrimeField>(&self, witness: &[BigInt]) -> Vec<F> {
-        witness.iter().map(|big_int| {
-            let ark_big_int = self.num_bigint_to_ark_bigint::<F>(big_int)
-                .map_err(|_| Error::Other("BigInt to Ark BigInt conversion failed".to_string()))?;
-            F::from_bigint(ark_big_int)
-                .ok_or_else(|| Error::Other("Failed to convert bigint to field element".to_string()))
-        }).collect()
-    }
-    */
 }
-/*
+
 #[cfg(test)]
 mod tests {
-    use crate::frontend::circom::CircomWrapper;
-    use ark_bn254::Bn254;
-    use num_bigint::BigInt;
-    use std::env;
+    use super::*;
+    use ark_bn254::{Bn254, Fr};
+    use std::path::PathBuf;
+    use ark_relations::r1cs::{ConstraintSystem, ConstraintSynthesizer};
+    use ark_circom::CircomCircuit;
+    use std::fs;
 
-    /*
-    test_circuit represents 35 = x^3 + x + 5 in test_folder/test_circuit.circom.
-    In the test_circom_conversion_success function, x is assigned the value 3, which satisfies the R1CS correctly.
-    In the test_circom_conversion_failure function, x is assigned the value 6, which doesn't satisfy the R1CS.
-    */
+    #[test]
+    fn test_circom_circuit_satisfiability() {
 
-    /*
-    To generate .r1cs and .wasm files, run the below command in the terminal.
-    bash ./src/frontend/circom/test_folder/compile.sh
-    */
+        let cs = ConstraintSystem::<Fr>::new_ref();
 
-    fn test_circom_conversion_logic(expect_success: bool, inputs: Vec<(String, Vec<BigInt>)>) {
-        let current_dir = env::current_dir().unwrap();
-        let base_path = current_dir.join("src/frontend/circom/test_folder");
+        // bash folding-schemes/src/frontend/circom/test_folder/compile.sh
 
-        let r1cs_filepath = base_path.join("test_circuit.r1cs");
-        let wasm_filepath = base_path.join("test_circuit_js/test_circuit.wasm");
+        let r1cs_filepath = PathBuf::from("./src/frontend/circom/test_folder/test_circuit.r1cs");
+        let wasm_filepath = PathBuf::from("./src/frontend/circom/test_folder/test_circuit_js/test_circuit.wasm");
 
-        assert!(r1cs_filepath.exists());
-        assert!(wasm_filepath.exists());
+        assert!(fs::metadata(&r1cs_filepath).is_ok(), "R1CS file does not exist: {:?}", r1cs_filepath);
+        assert!(fs::metadata(&wasm_filepath).is_ok(), "WASM file does not exist: {:?}", wasm_filepath);
 
         let circom_wrapper = CircomWrapper::<Bn254>::new(r1cs_filepath, wasm_filepath);
 
-        let (r1cs, z) = circom_wrapper
-            .extract_r1cs_and_z(&inputs)
-            .expect("Error processing input");
+        let inputs = vec![("ivc_input".to_string(), vec![BigInt::from(3)])];
 
-        // Checks the relationship of R1CS.
-        let check_result = std::panic::catch_unwind(|| {
-            r1cs.check_relation(&z).unwrap();
-        });
+        let (r1cs, witness_option) = circom_wrapper.extract_r1cs_and_witness(&inputs)
+            .expect("Error extracting R1CS and witness");
 
-        match (expect_success, check_result) {
-            (true, Ok(_)) => {}
-            (false, Err(_)) => {}
-            (true, Err(_)) => panic!("Expected success but got a failure."),
-            (false, Ok(_)) => panic!("Expected a failure but got success."),
-        }
-    }
+        let witness = witness_option.expect("Witness is missing");
 
-    #[test]
-    fn test_circom_conversion() {
-        // expect it to pass for correct inputs.
-        test_circom_conversion_logic(true, vec![("step_in".to_string(), vec![BigInt::from(3)])]);
+        let circom_circuit = CircomCircuit::<Bn254> { r1cs, witness: Some(witness) };
+        circom_circuit.generate_constraints(cs.clone())
+            .expect("Error generating constraints");
 
-        // expect it to fail for incorrect inputs.
-        test_circom_conversion_logic(false, vec![("step_in".to_string(), vec![BigInt::from(7)])]);
+        assert!(cs.is_satisfied().unwrap(), "Constraint system is not satisfied");
     }
 }
-*/

@@ -1,6 +1,6 @@
 use ark_ec::CurveGroup;
 use ark_ff::Field;
-use ark_r1cs_std::{boolean::Boolean, groups::GroupOpsBounds, prelude::CurveVar};
+use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar};
 use ark_relations::r1cs::SynthesisError;
 use ark_std::{rand::Rng, UniformRand};
 use core::marker::PhantomData;
@@ -133,41 +133,8 @@ where
     _gc: PhantomData<GC>,
 }
 
-impl<C, GC> PedersenGadget<C, GC>
-where
-    C: CurveGroup,
-    GC: CurveVar<C, CF<C>>,
-
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
-{
-    pub fn commit(
-        h: GC,
-        g: Vec<GC>,
-        v: Vec<Vec<Boolean<CF<C>>>>,
-        r: Vec<Boolean<CF<C>>>,
-    ) -> Result<GC, SynthesisError> {
-        let mut res = GC::zero();
-        res += h.scalar_mul_le(r.iter())?;
-        for (i, v_i) in v.iter().enumerate() {
-            res += g[i].scalar_mul_le(v_i.iter())?;
-        }
-        Ok(res)
-    }
-}
-
-pub struct PedersenGadget2<C, GC>
-where
-    C: CurveGroup,
-    GC: CurveVar<C, CF<C>>,
-{
-    _cf: PhantomData<CF<C>>,
-    _c: PhantomData<C>,
-    _gc: PhantomData<GC>,
-}
-
 use ark_r1cs_std::{fields::nonnative::NonNativeFieldVar, ToBitsGadget};
-impl<C, GC> PedersenGadget2<C, GC>
+impl<C, GC> PedersenGadget<C, GC>
 where
     C: CurveGroup,
     GC: CurveVar<C, CF<C>>,
@@ -192,9 +159,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use ark_ff::{BigInteger, PrimeField};
     use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
-    use ark_r1cs_std::{alloc::AllocVar, bits::boolean::Boolean, eq::EqGadget};
+    use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget};
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::UniformRand;
 
@@ -241,44 +207,6 @@ mod tests {
         // circuit
         let cs = ConstraintSystem::<Fq>::new_ref();
 
-        let v_bits: Vec<Vec<bool>> = v.iter().map(|val| val.into_bigint().to_bits_le()).collect();
-        let r_bits: Vec<bool> = r.into_bigint().to_bits_le();
-
-        // prepare inputs
-        let vVar: Vec<Vec<Boolean<Fq>>> = v_bits
-            .iter()
-            .map(|val_bits| {
-                Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(val_bits.clone())).unwrap()
-            })
-            .collect();
-
-        let rVar = Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(r_bits)).unwrap();
-        let gVar = Vec::<GVar>::new_witness(cs.clone(), || Ok(params.generators)).unwrap();
-        let hVar = GVar::new_witness(cs.clone(), || Ok(params.h)).unwrap();
-        let expected_cmVar = GVar::new_witness(cs.clone(), || Ok(cm)).unwrap();
-
-        // use the gadget
-        let cmVar = PedersenGadget::<Projective, GVar>::commit(hVar, gVar, vVar, rVar).unwrap();
-        cmVar.enforce_equal(&expected_cmVar).unwrap();
-        dbg!(cs.num_constraints());
-    }
-    #[test]
-    fn test_pedersen_circuit2() {
-        let mut rng = ark_std::test_rng();
-
-        let n: usize = 16;
-        // setup params
-        let params = Pedersen::<Projective>::new_params(&mut rng, n);
-
-        let v: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(&mut rng))
-            .take(n)
-            .collect();
-        let r: Fr = Fr::rand(&mut rng);
-        let cm = Pedersen::<Projective>::commit(&params, &v, &r).unwrap();
-
-        // circuit
-        let cs = ConstraintSystem::<Fq>::new_ref();
-
         // prepare inputs
         let vVar = Vec::<NonNativeFieldVar<Fr, Fq>>::new_witness(cs.clone(), || Ok(v)).unwrap();
         let rVar = NonNativeFieldVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(r)).unwrap();
@@ -287,7 +215,7 @@ mod tests {
         let expected_cmVar = GVar::new_witness(cs.clone(), || Ok(cm)).unwrap();
 
         // use the gadget
-        let cmVar = PedersenGadget2::<Projective, GVar>::commit(hVar, gVar, vVar, rVar).unwrap();
+        let cmVar = PedersenGadget::<Projective, GVar>::commit(hVar, gVar, vVar, rVar).unwrap();
         cmVar.enforce_equal(&expected_cmVar).unwrap();
         dbg!(cs.num_constraints());
     }

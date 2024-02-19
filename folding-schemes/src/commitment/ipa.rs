@@ -1,15 +1,16 @@
+/// IPA implements the modified Inner Product Argument described in
+/// [Halo](https://eprint.iacr.org/2019/1021.pdf).
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
-    fields::{fp::FpVar, nonnative::NonNativeFieldVar, FieldVar},
+    fields::{nonnative::NonNativeFieldVar, FieldVar},
     groups::GroupOpsBounds,
     prelude::CurveVar,
     ToBitsGadget,
 };
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
-use ark_std::{UniformRand, Zero};
+use ark_relations::r1cs::{Namespace, SynthesisError};
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::pedersen::Params as PedersenParams;
@@ -18,9 +19,6 @@ use crate::Error;
 
 pub struct IPA<C: CurveGroup> {
     _c: PhantomData<C>,
-    d: u64,
-    H: C,
-    Gs: Vec<C>,
 }
 
 pub struct Proof<C: CurveGroup> {
@@ -32,21 +30,6 @@ pub struct Proof<C: CurveGroup> {
 }
 
 impl<C: CurveGroup> IPA<C> {
-    // pub fn new(params: &PedersenParams<C>, d: u32) -> Self {
-    //     let mut rng = ark_std::rand::thread_rng();
-    //
-    //     let mut gs: Vec<C> = Vec::new();
-    //     for _ in 0..d {
-    //         gs.push(C::rand(&mut rng));
-    //     }
-    //
-    //     IPA {
-    //         d,
-    //         H: C::rand(&mut rng),
-    //         Gs: gs,
-    //     }
-    // }
-
     pub fn commit(
         params: &PedersenParams<C>,
         a: &[C::ScalarField],
@@ -63,14 +46,15 @@ impl<C: CurveGroup> IPA<C> {
     pub fn prove(
         params: &PedersenParams<C>,
         a: &[C::ScalarField],
-        // b: &[C::ScalarField],
         x: &C::ScalarField,
         u: &[C::ScalarField],
         U: &C,
         l: &Vec<C::ScalarField>, // blinding factor
         r: &Vec<C::ScalarField>, // blinding factor
     ) -> Result<Proof<C>, Error> {
-        // TODO 'a' must be a power of two
+        if !a.len().is_power_of_two() {
+            return Err(Error::NotPowerOfTwo("a".to_string(), a.len()));
+        }
         let d = a.len();
         let k = (f64::from(d as u32).log2()) as usize;
 
@@ -85,7 +69,6 @@ impl<C: CurveGroup> IPA<C> {
         }
 
         let mut a = a.to_owned();
-        // let mut b = b.to_owned();
         let mut b = powers_of(*x, d);
         let mut G = params.generators.clone();
 
@@ -143,12 +126,13 @@ impl<C: CurveGroup> IPA<C> {
 
         Ok(Proof {
             a: a[0],
-            l: l.clone(), // TODO rm clone
+            l: l.clone(),
             r: r.clone(),
             L,
             R,
         })
     }
+
     pub fn verify(
         params: &PedersenParams<C>,
         x: &C::ScalarField, // evaluation point
@@ -170,7 +154,6 @@ impl<C: CurveGroup> IPA<C> {
         let bs = powers_of(*x, d);
         let b = inner_prod(&s, &bs)?;
         if params.generators.len() < s.len() {
-            // TODO check if maybe use msm (no-unchecked) and avoid this if
             return Err(Error::PedersenParamsLen(params.generators.len(), s.len()));
         }
         let G = C::msm_unchecked(&params.generators, &s);
@@ -243,7 +226,6 @@ fn build_s_gadget<F: PrimeField, CF: PrimeField>(
     s
 }
 
-// TODO next 3 are WIP
 fn inner_prod<F: PrimeField>(a: &[F], b: &[F]) -> Result<F, Error> {
     if a.len() != b.len() {
         return Err(Error::NotSameLength(
@@ -259,19 +241,21 @@ fn inner_prod<F: PrimeField>(a: &[F], b: &[F]) -> Result<F, Error> {
     }
     Ok(c)
 }
+
+// a.len()=b.len() is assumed, a and b come from other operations which generate them of size K in
+// IPAGadget::verify
 fn inner_prod_gadget<F: PrimeField, CF: PrimeField>(
     a: &[NonNativeFieldVar<F, CF>],
     b: &[NonNativeFieldVar<F, CF>],
 ) -> NonNativeFieldVar<F, CF> {
-    // TODO check length a.len()==b.len() in the higher level circuit
     let mut c: NonNativeFieldVar<F, CF> = NonNativeFieldVar::<F, CF>::zero();
     for i in 0..a.len() {
         c += a[i].clone() * b[i].clone();
     }
     c
 }
+
 fn powers_of<F: PrimeField>(x: F, d: usize) -> Vec<F> {
-    // TODO do the efficient way
     let mut c: Vec<F> = vec![F::zero(); d];
     c[0] = x;
     for i in 1..d {
@@ -279,11 +263,11 @@ fn powers_of<F: PrimeField>(x: F, d: usize) -> Vec<F> {
     }
     c
 }
+
 fn powers_of_gadget<F: PrimeField, CF: PrimeField>(
     x: NonNativeFieldVar<F, CF>,
     d: usize,
 ) -> Vec<NonNativeFieldVar<F, CF>> {
-    // TODO do the efficient way
     let mut c: Vec<NonNativeFieldVar<F, CF>> = vec![NonNativeFieldVar::<F, CF>::zero(); d];
     c[0] = x.clone();
     for i in 1..d {
@@ -350,7 +334,10 @@ where
     <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
     for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
 {
-    pub fn verify<const K: usize>(
+    /// verify the IPA opening proof, K=log2(d), where d is the degree of the committed polynomial,
+    /// and BLIND indicates if the commitment uses blinding factors, if not, there are some
+    /// constraints saved.
+    pub fn verify<const K: usize, const BLIND: bool>(
         g: &Vec<GC>,                                  // parms.generators
         h: &GC,                                       // parms.h
         x: &NonNativeFieldVar<C::ScalarField, CF<C>>, // evaluation point
@@ -358,53 +345,57 @@ where
         P: &GC,                                       // commitment
         p: &ProofVar<C, GC>,
         r: &NonNativeFieldVar<C::ScalarField, CF<C>>, // blinding factor
-        u: &[NonNativeFieldVar<C::ScalarField, CF<C>>], // challenges
+        u: &[NonNativeFieldVar<C::ScalarField, CF<C>>; K], // challenges
         U: &GC,                                       // challenge
     ) -> Result<Boolean<CF<C>>, SynthesisError> {
-        // let k = (f64::from(d as u32).log2()) as usize;
-
-        // let P_ = P + U.scalar_mul_le(v.iter())?;
-        let P_ = P + U.scalar_mul_le(v.to_bits_le()?.iter())?; // TODO v.bits as input
+        let P_ = P + U.scalar_mul_le(v.to_bits_le()?.iter())?;
         let mut q_0 = P_;
         let mut r = r.clone();
 
         // compute b & G from s
         let s = build_s_gadget(u, K);
-        // let s: Vec<NonNativeFieldVar<C::ScalarField, CF<C>>> = vec![v.clone(); K];
         // b = <s, b_vec> = <s, [1, x, x^2, ..., x^K-1]>
         let b_vec = powers_of_gadget(x.clone(), K);
         let b = inner_prod_gadget(&s, &b_vec);
-        // TODO generators.len() < s.len()
+        // ensure that generators.len() === s.len():
+        if g.len() < K {
+            return Err(SynthesisError::Unsatisfiable);
+        }
 
         // msm: G=<G, s>
         let mut G = GC::zero();
         for (i, s_i) in s.iter().enumerate() {
-            G += g[i].scalar_mul_le(s_i.to_bits_le()?.iter())?; // TODO s bits as input
+            G += g[i].scalar_mul_le(s_i.to_bits_le()?.iter())?;
         }
 
         for j in 0..u.len() {
             let uj2 = u[j].square()?;
-            // let uj_inv2 = u[j].inverse().unwrap().square()?;
-            let uj_inv2 = u[j].square()?.inverse()?;
+            let uj_inv2 = u[j].inverse().unwrap().square()?;
 
             q_0 = q_0
                 + p.L[j].scalar_mul_le(uj2.to_bits_le()?.iter())?
                 + p.R[j].scalar_mul_le(uj_inv2.to_bits_le()?.iter())?;
-            r = r + &p.l[j] * &uj2 + &p.r[j] * &uj_inv2;
+            if BLIND {
+                r = r + &p.l[j] * &uj2 + &p.r[j] * &uj_inv2;
+            }
         }
 
-        let q_1 = G.scalar_mul_le(p.a.to_bits_le()?.iter())?
-            + h.scalar_mul_le(r.to_bits_le()?.iter())?
-            + U.scalar_mul_le((p.a.clone() * b).to_bits_le()?.iter())?;
+        let q_1;
+        if BLIND {
+            q_1 = G.scalar_mul_le(p.a.to_bits_le()?.iter())?
+                + h.scalar_mul_le(r.to_bits_le()?.iter())?
+                + U.scalar_mul_le((p.a.clone() * b).to_bits_le()?.iter())?;
+        } else {
+            q_1 = G.scalar_mul_le(p.a.to_bits_le()?.iter())?
+                + U.scalar_mul_le((p.a.clone() * b).to_bits_le()?.iter())?;
+        }
         // q_0 == q_1
         Ok(q_0.is_eq(&q_1)?)
-        // Ok(Boolean::TRUE)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use ark_ff::BigInteger;
     use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
     use ark_r1cs_std::{alloc::AllocVar, bits::boolean::Boolean, eq::EqGadget};
     use ark_relations::r1cs::ConstraintSystem;
@@ -418,10 +409,11 @@ mod tests {
     fn test_ipa() {
         let mut rng = ark_std::test_rng();
 
-        let d: usize = 16;
-        let k = (f64::from(d as u32).log2()) as usize;
+        const k: usize = 4;
+        const d: usize = 2_u64.pow(k as u32) as usize;
+
         // setup params
-        let params = Pedersen::<Projective>::new_params(&mut rng, d); // TODO move to IPA::new_params
+        let params = Pedersen::<Projective>::new_params(&mut rng, d);
 
         // let poseidon_config = poseidon_test_config::<Fr>();
         // // init Prover's transcript
@@ -443,7 +435,7 @@ mod tests {
             .take(k)
             .collect();
 
-        // random challenges
+        // random challenges from transcript
         let u: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(&mut rng))
             .take(k)
             .collect();
@@ -465,8 +457,6 @@ mod tests {
     fn test_ipa_gadget() {
         let mut rng = ark_std::test_rng();
 
-        // const d: usize = 16;
-        // const k = (f64::from(d as u32).log2()) as usize;
         const k: usize = 4;
         const d: usize = 2_u64.pow(k as u32) as usize;
 
@@ -517,10 +507,11 @@ mod tests {
         let proofVar = ProofVar::<Projective, GVar>::new_witness(cs.clone(), || Ok(proof)).unwrap();
         let r_blindVar =
             NonNativeFieldVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(r_blind)).unwrap();
-        let uVar = Vec::<NonNativeFieldVar<Fr, Fq>>::new_witness(cs.clone(), || Ok(u)).unwrap();
+        let uVar_vec = Vec::<NonNativeFieldVar<Fr, Fq>>::new_witness(cs.clone(), || Ok(u)).unwrap();
+        let uVar: [NonNativeFieldVar<Fr, Fq>; k] = uVar_vec.try_into().unwrap();
         let UVar = GVar::new_witness(cs.clone(), || Ok(U)).unwrap();
 
-        let v = IPAGadget::<Projective, GVar>::verify::<k>(
+        let v = IPAGadget::<Projective, GVar>::verify::<k, false>(
             &gVar,
             &hVar,
             &xVar,

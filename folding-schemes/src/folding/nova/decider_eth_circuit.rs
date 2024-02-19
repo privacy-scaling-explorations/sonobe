@@ -370,13 +370,6 @@ where
             // `#[cfg(not(test))]`
             use crate::commitment::pedersen::PedersenGadget;
             use crate::folding::nova::cyclefold::{CycleFoldCommittedInstanceVar, CF_IO_LEN};
-            use ark_r1cs_std::ToBitsGadget;
-
-            let cf_r1cs = R1CSVar::<
-                C1::BaseField,
-                CF1<C1>,
-                NonNativeFieldVar<C1::BaseField, CF1<C1>>,
-            >::new_witness(cs.clone(), || Ok(self.cf_r1cs.clone()))?;
 
             let cf_u_dummy_native = CommittedInstance::<C2>::dummy(CF_IO_LEN);
             let w_dummy_native = Witness::<C2>::new(
@@ -393,27 +386,23 @@ where
             // 5. check Pedersen commitments of cf_U_i.{cmE, cmW}
             let H = GC2::new_constant(cs.clone(), self.cf_pedersen_params.h)?;
             let G = Vec::<GC2>::new_constant(cs.clone(), self.cf_pedersen_params.generators)?;
-            let cf_W_i_E_bits: Vec<Vec<Boolean<CF1<C1>>>> = cf_W_i
-                .E
-                .iter()
-                .map(|E_i| E_i.to_bits_le().unwrap())
-                .collect();
-            let cf_W_i_W_bits: Vec<Vec<Boolean<CF1<C1>>>> = cf_W_i
-                .W
-                .iter()
-                .map(|W_i| W_i.to_bits_le().unwrap())
-                .collect();
 
             let computed_cmE = PedersenGadget::<C2, GC2>::commit(
                 H.clone(),
                 G.clone(),
-                cf_W_i_E_bits,
-                cf_W_i.rE.to_bits_le()?,
+                cf_W_i.E.clone(),
+                cf_W_i.rE,
             )?;
             cf_U_i.cmE.enforce_equal(&computed_cmE)?;
             let computed_cmW =
-                PedersenGadget::<C2, GC2>::commit(H, G, cf_W_i_W_bits, cf_W_i.rW.to_bits_le()?)?;
+                PedersenGadget::<C2, GC2>::commit(H, G, cf_W_i.W.clone(), cf_W_i.rW)?;
             cf_U_i.cmW.enforce_equal(&computed_cmW)?;
+
+            let cf_r1cs = R1CSVar::<
+                C1::BaseField,
+                CF1<C1>,
+                NonNativeFieldVar<C1::BaseField, CF1<C1>>,
+            >::new_witness(cs.clone(), || Ok(self.cf_r1cs.clone()))?;
 
             // 6. check RelaxedR1CS of cf_U_i
             let cf_z_U: Vec<NonNativeFieldVar<C2::ScalarField, CF1<C1>>> =

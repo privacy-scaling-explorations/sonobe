@@ -1,5 +1,4 @@
 [workspace]
-resolver = "1"
 members = [
     "folding-schemes",
     "folding-schemes-solidity",

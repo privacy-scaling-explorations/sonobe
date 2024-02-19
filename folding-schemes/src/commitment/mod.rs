@@ -4,6 +4,7 @@ use ark_std::fmt::Debug;
 use crate::transcript::Transcript;
 use crate::Error;
 
+pub mod ipa;
 pub mod kzg;
 pub mod pedersen;
 

@@ -156,6 +156,40 @@ where
     }
 }
 
+pub struct PedersenGadget2<C, GC>
+where
+    C: CurveGroup,
+    GC: CurveVar<C, CF<C>>,
+{
+    _cf: PhantomData<CF<C>>,
+    _c: PhantomData<C>,
+    _gc: PhantomData<GC>,
+}
+
+use ark_r1cs_std::{fields::nonnative::NonNativeFieldVar, ToBitsGadget};
+impl<C, GC> PedersenGadget2<C, GC>
+where
+    C: CurveGroup,
+    GC: CurveVar<C, CF<C>>,
+
+    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
+    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
+{
+    pub fn commit(
+        h: GC,
+        g: Vec<GC>,
+        v: Vec<NonNativeFieldVar<C::ScalarField, CF<C>>>,
+        r: NonNativeFieldVar<C::ScalarField, CF<C>>,
+    ) -> Result<GC, SynthesisError> {
+        let mut res = GC::zero();
+        res += h.scalar_mul_le(r.to_bits_le()?.iter())?;
+        for (i, v_i) in v.iter().enumerate() {
+            res += g[i].scalar_mul_le(v_i.to_bits_le()?.iter())?;
+        }
+        Ok(res)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use ark_ff::{BigInteger, PrimeField};
@@ -194,7 +228,7 @@ mod tests {
     fn test_pedersen_circuit() {
         let mut rng = ark_std::test_rng();
 
-        let n: usize = 10;
+        let n: usize = 16;
         // setup params
         let params = Pedersen::<Projective>::new_params(&mut rng, n);
 
@@ -217,6 +251,7 @@ mod tests {
                 Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(val_bits.clone())).unwrap()
             })
             .collect();
+
         let rVar = Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(r_bits)).unwrap();
         let gVar = Vec::<GVar>::new_witness(cs.clone(), || Ok(params.generators)).unwrap();
         let hVar = GVar::new_witness(cs.clone(), || Ok(params.h)).unwrap();
@@ -225,5 +260,35 @@ mod tests {
         // use the gadget
         let cmVar = PedersenGadget::<Projective, GVar>::commit(hVar, gVar, vVar, rVar).unwrap();
         cmVar.enforce_equal(&expected_cmVar).unwrap();
+        dbg!(cs.num_constraints());
+    }
+    #[test]
+    fn test_pedersen_circuit2() {
+        let mut rng = ark_std::test_rng();
+
+        let n: usize = 16;
+        // setup params
+        let params = Pedersen::<Projective>::new_params(&mut rng, n);
+
+        let v: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(&mut rng))
+            .take(n)
+            .collect();
+        let r: Fr = Fr::rand(&mut rng);
+        let cm = Pedersen::<Projective>::commit(&params, &v, &r).unwrap();
+
+        // circuit
+        let cs = ConstraintSystem::<Fq>::new_ref();
+
+        // prepare inputs
+        let vVar = Vec::<NonNativeFieldVar<Fr, Fq>>::new_witness(cs.clone(), || Ok(v)).unwrap();
+        let rVar = NonNativeFieldVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(r)).unwrap();
+        let gVar = Vec::<GVar>::new_witness(cs.clone(), || Ok(params.generators)).unwrap();
+        let hVar = GVar::new_witness(cs.clone(), || Ok(params.h)).unwrap();
+        let expected_cmVar = GVar::new_witness(cs.clone(), || Ok(cm)).unwrap();
+
+        // use the gadget
+        let cmVar = PedersenGadget2::<Projective, GVar>::commit(hVar, gVar, vVar, rVar).unwrap();
+        cmVar.enforce_equal(&expected_cmVar).unwrap();
+        dbg!(cs.num_constraints());
     }
 }

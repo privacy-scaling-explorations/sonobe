@@ -1,11 +1,16 @@
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::{
-    boolean::Boolean, fields::fp::FpVar, groups::GroupOpsBounds, prelude::CurveVar,
+    alloc::{AllocVar, AllocationMode},
+    boolean::Boolean,
+    fields::{fp::FpVar, nonnative::NonNativeFieldVar, FieldVar},
+    groups::GroupOpsBounds,
+    prelude::CurveVar,
+    ToBitsGadget,
 };
-use ark_relations::r1cs::SynthesisError;
+use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
 use ark_std::{UniformRand, Zero};
-use core::marker::PhantomData;
+use core::{borrow::Borrow, marker::PhantomData};
 
 use super::pedersen::Params as PedersenParams;
 use crate::utils::vec::{vec_add, vec_scalar_mul};
@@ -72,14 +77,6 @@ impl<C: CurveGroup> IPA<C> {
         if params.generators.len() < a.len() {
             return Err(Error::PedersenParamsLen(params.generators.len(), a.len()));
         }
-        // if a.len() != b.len() {
-        //     return Err(Error::NotSameLength(
-        //         "a".to_string(),
-        //         a.len(),
-        //         "b".to_string(),
-        //         b.len(),
-        //     ));
-        // }
         if l.len() != k {
             return Err(Error::NotExpectedLength(l.len(), k));
         }
@@ -178,7 +175,6 @@ impl<C: CurveGroup> IPA<C> {
         }
         let G = C::msm_unchecked(&params.generators, &s);
 
-        #[allow(clippy::needless_range_loop)]
         for j in 0..u.len() {
             let uj2 = u[j].square();
             let uj_inv2 = u[j].inverse().unwrap().square();
@@ -222,6 +218,30 @@ fn build_s<F: PrimeField>(u: &[F], d: usize) -> Vec<F> {
     }
     s
 }
+fn build_s_gadget<F: PrimeField, CF: PrimeField>(
+    u: &[NonNativeFieldVar<F, CF>],
+    d: usize,
+) -> Vec<NonNativeFieldVar<F, CF>> {
+    let k = (f64::from(d as u32).log2()) as usize;
+    let mut s: Vec<NonNativeFieldVar<F, CF>> = vec![NonNativeFieldVar::<F, CF>::one(); d];
+    let mut t = d;
+    for j in (0..k).rev() {
+        t /= 2;
+        let mut c = 0;
+        for i in 0..d {
+            if c < t {
+                s[i] *= u[j].inverse().unwrap();
+            } else {
+                s[i] *= u[j].clone();
+            }
+            c += 1;
+            if c >= t * 2 {
+                c = 0;
+            }
+        }
+    }
+    s
+}
 
 // TODO next 3 are WIP
 fn inner_prod<F: PrimeField>(a: &[F], b: &[F]) -> Result<F, Error> {
@@ -239,6 +259,17 @@ fn inner_prod<F: PrimeField>(a: &[F], b: &[F]) -> Result<F, Error> {
     }
     Ok(c)
 }
+fn inner_prod_gadget<F: PrimeField, CF: PrimeField>(
+    a: &[NonNativeFieldVar<F, CF>],
+    b: &[NonNativeFieldVar<F, CF>],
+) -> NonNativeFieldVar<F, CF> {
+    // TODO check length a.len()==b.len() in the higher level circuit
+    let mut c: NonNativeFieldVar<F, CF> = NonNativeFieldVar::<F, CF>::zero();
+    for i in 0..a.len() {
+        c += a[i].clone() * b[i].clone();
+    }
+    c
+}
 fn powers_of<F: PrimeField>(x: F, d: usize) -> Vec<F> {
     // TODO do the efficient way
     let mut c: Vec<F> = vec![F::zero(); d];
@@ -248,9 +279,132 @@ fn powers_of<F: PrimeField>(x: F, d: usize) -> Vec<F> {
     }
     c
 }
+fn powers_of_gadget<F: PrimeField, CF: PrimeField>(
+    x: NonNativeFieldVar<F, CF>,
+    d: usize,
+) -> Vec<NonNativeFieldVar<F, CF>> {
+    // TODO do the efficient way
+    let mut c: Vec<NonNativeFieldVar<F, CF>> = vec![NonNativeFieldVar::<F, CF>::zero(); d];
+    c[0] = x.clone();
+    for i in 1..d {
+        c[i] = c[i - 1].clone() * x.clone();
+    }
+    c
+}
+
+pub type CF<C> = <<C as CurveGroup>::BaseField as Field>::BasePrimeField;
+
+pub struct ProofVar<C: CurveGroup, GC: CurveVar<C, CF<C>>> {
+    a: NonNativeFieldVar<C::ScalarField, CF<C>>,
+    l: Vec<NonNativeFieldVar<C::ScalarField, CF<C>>>,
+    r: Vec<NonNativeFieldVar<C::ScalarField, CF<C>>>,
+    L: Vec<GC>,
+    R: Vec<GC>,
+}
+impl<C, GC> AllocVar<Proof<C>, CF<C>> for ProofVar<C, GC>
+where
+    C: CurveGroup,
+    GC: CurveVar<C, CF<C>>,
+    <C as ark_ec::CurveGroup>::BaseField: PrimeField,
+{
+    fn new_variable<T: Borrow<Proof<C>>>(
+        cs: impl Into<Namespace<CF<C>>>,
+        f: impl FnOnce() -> Result<T, SynthesisError>,
+        mode: AllocationMode,
+    ) -> Result<Self, SynthesisError> {
+        f().and_then(|val| {
+            let cs = cs.into();
+
+            let a = NonNativeFieldVar::<C::ScalarField, CF<C>>::new_variable(
+                cs.clone(),
+                || Ok(val.borrow().a),
+                mode,
+            )?;
+            let l: Vec<NonNativeFieldVar<C::ScalarField, CF<C>>> =
+                Vec::new_variable(cs.clone(), || Ok(val.borrow().l.clone()), mode)?;
+            let r: Vec<NonNativeFieldVar<C::ScalarField, CF<C>>> =
+                Vec::new_variable(cs.clone(), || Ok(val.borrow().r.clone()), mode)?;
+            let L: Vec<GC> = Vec::new_variable(cs.clone(), || Ok(val.borrow().L.clone()), mode)?;
+            let R: Vec<GC> = Vec::new_variable(cs.clone(), || Ok(val.borrow().R.clone()), mode)?;
+
+            Ok(Self { a, l, r, L, R })
+        })
+    }
+}
+
+pub struct IPAGadget<C, GC>
+where
+    C: CurveGroup,
+    GC: CurveVar<C, CF<C>>,
+{
+    _cf: PhantomData<CF<C>>,
+    _c: PhantomData<C>,
+    _gc: PhantomData<GC>,
+}
+
+impl<C, GC> IPAGadget<C, GC>
+where
+    C: CurveGroup,
+    GC: CurveVar<C, CF<C>>,
+
+    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
+    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
+{
+    pub fn verify<const K: usize>(
+        g: &Vec<GC>,                                  // parms.generators
+        h: &GC,                                       // parms.h
+        x: &NonNativeFieldVar<C::ScalarField, CF<C>>, // evaluation point
+        v: &NonNativeFieldVar<C::ScalarField, CF<C>>, // value at evaluation point
+        P: &GC,                                       // commitment
+        p: &ProofVar<C, GC>,
+        r: &NonNativeFieldVar<C::ScalarField, CF<C>>, // blinding factor
+        u: &[NonNativeFieldVar<C::ScalarField, CF<C>>], // challenges
+        U: &GC,                                       // challenge
+    ) -> Result<Boolean<CF<C>>, SynthesisError> {
+        // let k = (f64::from(d as u32).log2()) as usize;
+
+        // let P_ = P + U.scalar_mul_le(v.iter())?;
+        let P_ = P + U.scalar_mul_le(v.to_bits_le()?.iter())?; // TODO v.bits as input
+        let mut q_0 = P_;
+        let mut r = r.clone();
+
+        // compute b & G from s
+        let s = build_s_gadget(u, K);
+        // let s: Vec<NonNativeFieldVar<C::ScalarField, CF<C>>> = vec![v.clone(); K];
+        // b = <s, b_vec> = <s, [1, x, x^2, ..., x^K-1]>
+        let b_vec = powers_of_gadget(x.clone(), K);
+        let b = inner_prod_gadget(&s, &b_vec);
+        // TODO generators.len() < s.len()
+
+        // msm: G=<G, s>
+        let mut G = GC::zero();
+        for (i, s_i) in s.iter().enumerate() {
+            G += g[i].scalar_mul_le(s_i.to_bits_le()?.iter())?; // TODO s bits as input
+        }
+
+        for j in 0..u.len() {
+            let uj2 = u[j].square()?;
+            // let uj_inv2 = u[j].inverse().unwrap().square()?;
+            let uj_inv2 = u[j].square()?.inverse()?;
+
+            q_0 = q_0
+                + p.L[j].scalar_mul_le(uj2.to_bits_le()?.iter())?
+                + p.R[j].scalar_mul_le(uj_inv2.to_bits_le()?.iter())?;
+            r = r + &p.l[j] * &uj2 + &p.r[j] * &uj_inv2;
+        }
+
+        let q_1 = G.scalar_mul_le(p.a.to_bits_le()?.iter())?
+            + h.scalar_mul_le(r.to_bits_le()?.iter())?
+            + U.scalar_mul_le((p.a.clone() * b).to_bits_le()?.iter())?;
+        // q_0 == q_1
+        Ok(q_0.is_eq(&q_1)?)
+        // Ok(Boolean::TRUE)
+    }
+}
 
 #[cfg(test)]
 mod tests {
+    use ark_ff::BigInteger;
     use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
     use ark_r1cs_std::{alloc::AllocVar, bits::boolean::Boolean, eq::EqGadget};
     use ark_relations::r1cs::ConstraintSystem;
@@ -305,5 +459,80 @@ mod tests {
         assert!(
             IPA::<Projective>::verify(&params, &x, &v, &cm, &proof, &r_blind, &u, &U, d).unwrap()
         );
+    }
+
+    #[test]
+    fn test_ipa_gadget() {
+        let mut rng = ark_std::test_rng();
+
+        // const d: usize = 16;
+        // const k = (f64::from(d as u32).log2()) as usize;
+        const k: usize = 4;
+        const d: usize = 2_u64.pow(k as u32) as usize;
+
+        // setup params
+        let params = Pedersen::<Projective>::new_params(&mut rng, d); // TODO move to IPA::new_params
+
+        let a: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(&mut rng))
+            .take(d)
+            .collect();
+        let r_blind: Fr = Fr::rand(&mut rng);
+        let cm = IPA::<Projective>::commit(&params, &a, &r_blind).unwrap();
+
+        // blinding factors
+        let l: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(&mut rng))
+            .take(k)
+            .collect();
+        let r: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(&mut rng))
+            .take(k)
+            .collect();
+
+        // random challenges
+        let u: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(&mut rng))
+            .take(k)
+            .collect();
+        let U = Projective::rand(&mut rng);
+
+        // evaluation point
+        let x = Fr::rand(&mut rng);
+
+        let proof = IPA::<Projective>::prove(&params, &a, &x, &u, &U, &l, &r).unwrap();
+
+        let b = powers_of(x, d); // WIP
+        let v = inner_prod(&a, &b).unwrap(); // WIP
+        assert!(
+            IPA::<Projective>::verify(&params, &x, &v, &cm, &proof, &r_blind, &u, &U, d).unwrap()
+        );
+        dbg!(u.len());
+
+        // circuit
+        let cs = ConstraintSystem::<Fq>::new_ref();
+
+        // prepare inputs
+        let gVar = Vec::<GVar>::new_constant(cs.clone(), params.generators).unwrap();
+        let hVar = GVar::new_constant(cs.clone(), params.h).unwrap();
+        let xVar = NonNativeFieldVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(x)).unwrap();
+        let vVar = NonNativeFieldVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(v)).unwrap();
+        let cmVar = GVar::new_witness(cs.clone(), || Ok(cm)).unwrap();
+        let proofVar = ProofVar::<Projective, GVar>::new_witness(cs.clone(), || Ok(proof)).unwrap();
+        let r_blindVar =
+            NonNativeFieldVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(r_blind)).unwrap();
+        let uVar = Vec::<NonNativeFieldVar<Fr, Fq>>::new_witness(cs.clone(), || Ok(u)).unwrap();
+        let UVar = GVar::new_witness(cs.clone(), || Ok(U)).unwrap();
+
+        let v = IPAGadget::<Projective, GVar>::verify::<k>(
+            &gVar,
+            &hVar,
+            &xVar,
+            &vVar,
+            &cmVar,
+            &proofVar,
+            &r_blindVar,
+            &uVar,
+            &UVar,
+        )
+        .unwrap();
+        v.enforce_equal(&Boolean::TRUE).unwrap();
+        dbg!(cs.num_constraints());
     }
 }

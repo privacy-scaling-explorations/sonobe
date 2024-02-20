@@ -6,13 +6,14 @@ use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
+    eq::EqGadget,
     fields::{nonnative::NonNativeFieldVar, FieldVar},
     groups::GroupOpsBounds,
     prelude::CurveVar,
     ToBitsGadget,
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
-use ark_std::{rand::Rng, UniformRand};
+use ark_std::{rand::Rng, One, UniformRand, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::pedersen::Params as PedersenParams;
@@ -31,6 +32,7 @@ pub struct Proof<C: CurveGroup> {
     r: Vec<C::ScalarField>,
     L: Vec<C>,
     R: Vec<C>,
+    u_invs: Vec<C::ScalarField>, // {u_i^-1} \forall k
 }
 
 impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
@@ -87,6 +89,7 @@ impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
         let mut L: Vec<C> = vec![C::zero(); k];
         let mut R: Vec<C> = vec![C::zero(); k];
 
+        let mut u_invs: Vec<C::ScalarField> = vec![C::ScalarField::zero(); k];
         for j in (0..k).rev() {
             let m = a.len() / 2;
             let a_lo = a[..m].to_vec();
@@ -110,6 +113,7 @@ impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
 
             let uj = u[j];
             let uj_inv = u[j].inverse().unwrap();
+            u_invs[j] = uj_inv.clone();
 
             // a_hi * uj^-1 + a_lo * uj
             a = vec_add(&vec_scalar_mul(&a_lo, &uj), &vec_scalar_mul(&a_hi, &uj_inv))?;
@@ -147,6 +151,7 @@ impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
             r: r.clone(),
             L,
             R,
+            u_invs,
         })
     }
 
@@ -174,8 +179,15 @@ impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
         let mut q_0 = P;
         let mut r = *r;
 
+        // check correctnes of the u_invs delegated to the prover
+        for j in 0..k {
+            if u[j].clone() * p.u_invs[j].clone() != C::ScalarField::one() {
+                return Err(Error::CommitmentVerificationFail);
+            }
+        }
+
         // compute b & G from s
-        let s = build_s(&u, k);
+        let s = build_s(&u, &p.u_invs, k);
         // b = <s, b_vec> = <s, [1, x, x^2, ..., x^d-1]>
         let b = s_b_inner(&u, x)?;
         if params.generators.len() < k {
@@ -215,13 +227,7 @@ impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
 // )
 // naively would take k * d = k * 2^k time, with the current approach taking advantadge of the
 // symmetric nature of s, it takes k * d/2 = k * (2^k)/2 = k * 2^{k-1} time.
-fn build_s<F: PrimeField>(u: &[F], k: usize) -> Vec<F> {
-    // compute inverses
-    let mut inv: Vec<F> = vec![F::one(); k];
-    for j in 0..k {
-        inv[j] = u[j].inverse().unwrap(); // TODO rm unwrap
-    }
-
+fn build_s<F: PrimeField>(u: &[F], u_invs: &[F], k: usize) -> Vec<F> {
     let d: usize = 2_u64.pow(k as u32) as usize;
     let mut s: Vec<F> = vec![F::one(); d];
     for i in 0..d / 2 {
@@ -230,7 +236,7 @@ fn build_s<F: PrimeField>(u: &[F], k: usize) -> Vec<F> {
             if i_bits[j] {
                 s[i] *= u[j].clone();
             } else {
-                s[i] *= inv[j].clone();
+                s[i] *= u_invs[j].clone();
             }
         }
 
@@ -241,14 +247,10 @@ fn build_s<F: PrimeField>(u: &[F], k: usize) -> Vec<F> {
 }
 fn build_s_gadget<F: PrimeField, CF: PrimeField>(
     u: &[NonNativeFieldVar<F, CF>],
+    // u_invs are assumed have their correctness checked in higher levels of logic
+    u_invs: &[NonNativeFieldVar<F, CF>],
     k: usize,
-) -> Vec<NonNativeFieldVar<F, CF>> {
-    // compute inverses
-    let mut inv: Vec<NonNativeFieldVar<F, CF>> = vec![NonNativeFieldVar::one(); k];
-    for j in 0..k {
-        inv[j] = u[j].inverse().unwrap(); // TODO rm unwrap
-    }
-
+) -> Result<Vec<NonNativeFieldVar<F, CF>>, SynthesisError> {
     let d: usize = 2_u64.pow(k as u32) as usize;
     let mut s: Vec<NonNativeFieldVar<F, CF>> = vec![NonNativeFieldVar::one(); d];
     for i in 0..d / 2 {
@@ -257,14 +259,14 @@ fn build_s_gadget<F: PrimeField, CF: PrimeField>(
             if i_bits[j] {
                 s[i] *= u[j].clone();
             } else {
-                s[i] *= inv[j].clone();
+                s[i] *= u_invs[j].clone();
             }
         }
 
         // now place the inverse to the other side
         s[d - 1 - i] = s[i].inverse().unwrap();
     }
-    s
+    Ok(s)
 }
 
 fn inner_prod<F: PrimeField>(a: &[F], b: &[F]) -> Result<F, Error> {
@@ -329,6 +331,7 @@ pub struct ProofVar<C: CurveGroup, GC: CurveVar<C, CF<C>>> {
     r: Vec<NonNativeFieldVar<C::ScalarField, CF<C>>>,
     L: Vec<GC>,
     R: Vec<GC>,
+    u_invs: Vec<NonNativeFieldVar<C::ScalarField, CF<C>>>,
 }
 impl<C, GC> AllocVar<Proof<C>, CF<C>> for ProofVar<C, GC>
 where
@@ -355,8 +358,17 @@ where
                 Vec::new_variable(cs.clone(), || Ok(val.borrow().r.clone()), mode)?;
             let L: Vec<GC> = Vec::new_variable(cs.clone(), || Ok(val.borrow().L.clone()), mode)?;
             let R: Vec<GC> = Vec::new_variable(cs.clone(), || Ok(val.borrow().R.clone()), mode)?;
+            let u_invs: Vec<NonNativeFieldVar<C::ScalarField, CF<C>>> =
+                Vec::new_variable(cs.clone(), || Ok(val.borrow().u_invs.clone()), mode)?;
 
-            Ok(Self { a, l, r, L, R })
+            Ok(Self {
+                a,
+                l,
+                r,
+                L,
+                R,
+                u_invs,
+            })
         })
     }
 }
@@ -403,9 +415,14 @@ where
         let mut q_0 = P_;
         let mut r = r.clone();
 
+        // check correctnes of the u_invs delegated to the prover
+        for j in 0..K {
+            (u[j].clone() * p.u_invs[j].clone()).enforce_equal(&NonNativeFieldVar::one())?;
+        }
+
         // compute b & G from s
         // let d: usize = 2_u64.pow(K as u32) as usize;
-        let s = build_s_gadget(u, K);
+        let s = build_s_gadget(u, &p.u_invs, K)?;
         // b = <s, b_vec> = <s, [1, x, x^2, ..., x^K-1]>
         let b = s_b_inner_gadget(u, x)?;
         // ensure that generators.len() === s.len():
@@ -421,7 +438,8 @@ where
 
         for j in 0..u.len() {
             let uj2 = u[j].square()?;
-            let uj_inv2 = u[j].inverse().unwrap().square()?; // TODO rm unwraps
+            // let uj_inv2 = u[j].inverse().unwrap().square()?; // TODO rm unwraps
+            let uj_inv2 = p.u_invs[j].square()?;
 
             q_0 = q_0
                 + p.L[j].scalar_mul_le(uj2.to_bits_le()?.iter())?

@@ -70,10 +70,10 @@ mod tests {
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
-        let groth16_template = Groth16Verifier::from(vk, None);
+        let groth16_template = Groth16Verifier::new(vk, None);
         let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(&mut rng, 5);
-        let kzg10_template = KZG10Verifier::from(&vk, &pk.powers_of_g[..5], None, None);
-        let decider_template = super::templates::Groth16KZG10DeciderVerifier {
+        let kzg10_template = KZG10Verifier::new(vk, pk.powers_of_g[..5].to_vec(), None, None);
+        let decider_template = super::templates::NovaCyclefoldDecider {
             groth16_verifier: groth16_template,
             kzg10_verifier: kzg10_template,
         };
@@ -94,10 +94,10 @@ mod tests {
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
         // we dont specify any pragma values for both verifiers, the pragma from the decider takes over
-        let groth16_template = Groth16Verifier::from(vk, None);
+        let groth16_template = Groth16Verifier::new(vk, None);
         let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(&mut rng, 5);
-        let kzg10_template = KZG10Verifier::from(&vk, &pk.powers_of_g[..5], None, None);
-        let decider_template = super::templates::Groth16KZG10DeciderVerifier {
+        let kzg10_template = KZG10Verifier::new(vk, pk.powers_of_g[..5].to_vec(), None, None);
+        let decider_template = super::templates::NovaCyclefoldDecider {
             groth16_verifier: groth16_template,
             kzg10_verifier: kzg10_template,
         };
@@ -120,7 +120,7 @@ mod tests {
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
-        let template = Groth16Verifier::from(vk, Some(PRAGMA_GROTH16_VERIFIER.to_string()));
+        let template = Groth16Verifier::new(vk, Some(PRAGMA_GROTH16_VERIFIER.to_string()));
         save_solidity("groth16_verifier.sol", &template.render().unwrap());
         _ = template.render().unwrap();
     }
@@ -138,7 +138,7 @@ mod tests {
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
-        let res = Groth16Verifier::from(vk, Some(PRAGMA_GROTH16_VERIFIER.to_string()))
+        let res = Groth16Verifier::new(vk, Some(PRAGMA_GROTH16_VERIFIER.to_string()))
             .render()
             .unwrap();
         let groth16_verifier_bytecode = compile_solidity(res, "Verifier");
@@ -166,7 +166,7 @@ mod tests {
             z,
         };
         let proof = Groth16::<Bn254>::prove(&pk, c, &mut rng).unwrap();
-        let res = Groth16Verifier::from(vk, Some(PRAGMA_GROTH16_VERIFIER.to_string()))
+        let res = Groth16Verifier::new(vk, Some(PRAGMA_GROTH16_VERIFIER.to_string()))
             .render()
             .unwrap();
         save_solidity("groth16_verifier.sol", &res);
@@ -204,13 +204,16 @@ mod tests {
         let rng = &mut test_rng();
         let n = 10;
         let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(rng, n);
-        let template = KZG10Verifier::from(
-            &vk,
-            &pk.powers_of_g[..5],
+        let template = KZG10Verifier::new(
+            vk.clone(),
+            pk.powers_of_g[..5].to_vec(),
             Some(PRAGMA_KZG10_VERIFIER.to_string()),
             None,
         );
         let res = template.render().unwrap();
+
+        // TODO: Unsure what this is testing. If we want to test correct rendering,
+        // we should first check that it COMPLETELLY renders to what we expect.
         assert!(res.contains(&vk.g.x.to_string()));
     }
 
@@ -219,9 +222,9 @@ mod tests {
         let rng = &mut test_rng();
         let n = 10;
         let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(rng, n);
-        let template = KZG10Verifier::from(
-            &vk,
-            &pk.powers_of_g[..5],
+        let template = KZG10Verifier::new(
+            vk,
+            pk.powers_of_g[..5].to_vec(),
             Some(PRAGMA_KZG10_VERIFIER.to_string()),
             None,
         );

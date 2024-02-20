@@ -3,7 +3,7 @@ use ark_bn254::Bn254;
 use ark_groth16::VerifyingKey;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Write};
 use askama::Template;
-use folding_verifier_solidity::SolidityVerifier;
+use folding_schemes_solidity::Groth16Verifier;
 use log::warn;
 use settings::Cli;
 use std::{fs, io};
@@ -44,7 +44,7 @@ fn main() {
                 .expect(&format!("Can't find key at {:?}", &g16_vkey_path));
             create_or_open_then_write(
                 &out_path,
-                &SolidityVerifier::from(g16_vkey)
+                &Groth16Verifier::new(g16_vkey, None)
                     .render()
                     .unwrap()
                     .as_bytes(),

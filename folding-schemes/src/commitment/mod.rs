@@ -9,8 +9,9 @@ pub mod ipa;
 pub mod kzg;
 pub mod pedersen;
 
-/// CommitmentProver defines the vector commitment scheme prover trait.
-pub trait CommitmentProver<C: CurveGroup, const BLIND: bool = false>: Clone + Debug {
+/// CommitmentProver defines the vector commitment scheme prover trait. Where `H` indicates if to
+/// use the commitment in hiding mode or not.
+pub trait CommitmentProver<C: CurveGroup, const H: bool = false>: Clone + Debug {
     type Params: Clone + Debug;
     type Proof: Clone + Debug;
 

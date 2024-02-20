@@ -243,7 +243,7 @@ mod tests {
         let v: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(rng)).take(n).collect();
         let cm = KZGProver::<G1>::commit(&pk, &v, &Fr::zero()).unwrap();
         let (eval, proof) =
-            KZGProver::<G1>::prove(&pk, transcript_p, &cm, &v, &Fr::zero()).unwrap();
+            KZGProver::<G1>::prove(&pk, transcript_p, &cm, &v, &Fr::zero(), None).unwrap();
         let template = KZG10Verifier::from(
             &vk,
             &pk.powers_of_g[..5],

@@ -34,9 +34,10 @@ use crate::utils::espresso::virtual_polynomial::bit_decompose;
 use crate::utils::vec::{vec_add, vec_scalar_mul};
 use crate::Error;
 
-/// IPA implements the Inner Product Argument protocol.
+/// IPA implements the Inner Product Argument protocol. The `H` parameter indicates if to use the
+/// commitment in hiding mode or not.
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct IPA<C: CurveGroup, const BLIND: bool> {
+pub struct IPA<C: CurveGroup, const H: bool> {
     _c: PhantomData<C>,
 }
 
@@ -50,7 +51,7 @@ pub struct Proof<C: CurveGroup> {
     u_invs: Vec<C::ScalarField>, // {u_i^-1} \forall k
 }
 
-impl<C: CurveGroup, const BLIND: bool> IPA<C, BLIND> {
+impl<C: CurveGroup, const H: bool> IPA<C, H> {
     pub fn new_params<R: Rng>(rng: &mut R, max: usize) -> PedersenParams<C> {
         let generators: Vec<C::Affine> = std::iter::repeat_with(|| C::Affine::rand(rng))
             .take(max.next_power_of_two())
@@ -62,7 +63,8 @@ impl<C: CurveGroup, const BLIND: bool> IPA<C, BLIND> {
     }
 }
 
-impl<C: CurveGroup, const BLIND: bool> CommitmentProver<C, BLIND> for IPA<C, BLIND> {
+// Implement the CommitmentProver trait for IPA
+impl<C: CurveGroup, const H: bool> CommitmentProver<C, H> for IPA<C, H> {
     type Params = PedersenParams<C>;
     type Proof = Proof<C>;
     fn commit(
@@ -75,7 +77,7 @@ impl<C: CurveGroup, const BLIND: bool> CommitmentProver<C, BLIND> for IPA<C, BLI
         }
         // h⋅r + <g, a>
         // use msm_unchecked because we already ensured at the if that lengths match
-        if !BLIND {
+        if !H {
             return Ok(C::msm_unchecked(&params.generators[..a.len()], a));
         }
         Ok(params.h.mul(r) + C::msm_unchecked(&params.generators[..a.len()], a))
@@ -101,7 +103,7 @@ impl<C: CurveGroup, const BLIND: bool> CommitmentProver<C, BLIND> for IPA<C, BLI
         // blinding factors
         let l: Vec<C::ScalarField>;
         let r: Vec<C::ScalarField>;
-        if BLIND {
+        if H {
             let rng = rng.ok_or(Error::MissingRandomness)?;
             l = std::iter::repeat_with(|| C::ScalarField::rand(rng))
                 .take(k)
@@ -137,7 +139,7 @@ impl<C: CurveGroup, const BLIND: bool> CommitmentProver<C, BLIND> for IPA<C, BLI
             let G_lo = G[..m].to_vec();
             let G_hi = G[m..].to_vec();
 
-            if BLIND {
+            if H {
                 L[j] = C::msm_unchecked(&G_hi, &a_lo)
                     + params.h.mul(l[j])
                     + U.mul(inner_prod(&a_lo, &b_hi)?);
@@ -200,7 +202,7 @@ impl<C: CurveGroup, const BLIND: bool> CommitmentProver<C, BLIND> for IPA<C, BLI
     }
 }
 
-impl<C: CurveGroup, const BLIND: bool> IPA<C, BLIND> {
+impl<C: CurveGroup, const H: bool> IPA<C, H> {
     #[allow(clippy::too_many_arguments)]
     pub fn verify(
         params: &PedersenParams<C>,
@@ -212,10 +214,10 @@ impl<C: CurveGroup, const BLIND: bool> IPA<C, BLIND> {
         r: &C::ScalarField, // blinding factor
         k: usize,           // k = log2(d), where d is the degree of the committed polynomial
     ) -> Result<bool, Error> {
-        if !BLIND && (!p.l.is_empty() || !p.r.is_empty()) {
+        if !H && (!p.l.is_empty() || !p.r.is_empty()) {
             return Err(Error::CommitmentVerificationFail);
         }
-        if BLIND && (p.l.len() != k || p.r.len() != k) {
+        if H && (p.l.len() != k || p.r.len() != k) {
             return Err(Error::CommitmentVerificationFail);
         }
         if p.L.len() != k || p.R.len() != k || p.u_invs.len() != k {
@@ -260,12 +262,12 @@ impl<C: CurveGroup, const BLIND: bool> IPA<C, BLIND> {
             let uj_inv2 = p.u_invs[j].square();
 
             q_0 = q_0 + p.L[j].mul(uj2) + p.R[j].mul(uj_inv2);
-            if BLIND {
+            if H {
                 r = r + p.l[j] * uj2 + p.r[j] * uj_inv2;
             }
         }
 
-        let q_1 = if BLIND {
+        let q_1 = if H {
             G.mul(p.a) + params.h.mul(r) + U.mul(p.a * b)
         } else {
             G.mul(p.a) + U.mul(p.a * b)
@@ -434,7 +436,10 @@ where
     }
 }
 
-pub struct IPAGadget<C, GC, const BLIND: bool = false>
+/// IPAGadget implements the circuit that verifies an IPA Proof. The `H` parameter indicates if to
+/// use the commitment in hiding mode or not, reducing a bit the number of constraints needed in
+/// the later case.
+pub struct IPAGadget<C, GC, const H: bool = false>
 where
     C: CurveGroup,
     GC: CurveVar<C, CF<C>>,
@@ -444,7 +449,7 @@ where
     _gc: PhantomData<GC>,
 }
 
-impl<C, GC, const BLIND: bool> IPAGadget<C, GC, BLIND>
+impl<C, GC, const H: bool> IPAGadget<C, GC, H>
 where
     C: CurveGroup,
     GC: CurveVar<C, CF<C>>,
@@ -453,8 +458,8 @@ where
     for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
 {
     /// verify the IPA opening proof, K=log2(d), where d is the degree of the committed polynomial,
-    /// and BLIND indicates if the commitment uses blinding factors, if not, there are some
-    /// constraints saved.
+    /// and H indicates if the commitment is in hiding mode and thus uses blinding factors, if
+    /// not, there are some constraints saved.
     #[allow(clippy::too_many_arguments)]
     pub fn verify<const K: usize>(
         g: &Vec<GC>,                                  // parms.generators
@@ -503,12 +508,12 @@ where
             q_0 = q_0
                 + p.L[j].scalar_mul_le(uj2.to_bits_le()?.iter())?
                 + p.R[j].scalar_mul_le(uj_inv2.to_bits_le()?.iter())?;
-            if BLIND {
+            if H {
                 r = r + &p.l[j] * &uj2 + &p.r[j] * &uj_inv2;
             }
         }
 
-        let q_1 = if BLIND {
+        let q_1 = if H {
             G.scalar_mul_le(p.a.to_bits_le()?.iter())?
                 + h.scalar_mul_le(r.to_bits_le()?.iter())?
                 + U.scalar_mul_le((p.a.clone() * b).to_bits_le()?.iter())?
@@ -538,14 +543,14 @@ mod tests {
         test_ipa_opt::<false>();
         test_ipa_opt::<true>();
     }
-    fn test_ipa_opt<const blind: bool>() {
+    fn test_ipa_opt<const hiding: bool>() {
         let mut rng = ark_std::test_rng();
 
         const k: usize = 4;
         const d: usize = 2_u64.pow(k as u32) as usize;
 
         // setup params
-        let params = IPA::<Projective, blind>::new_params(&mut rng, d);
+        let params = IPA::<Projective, hiding>::new_params(&mut rng, d);
 
         let poseidon_config = poseidon_test_config::<Fr>();
         // init Prover's transcript
@@ -557,12 +562,12 @@ mod tests {
             .take(d)
             .collect();
         let r_blind: Fr = Fr::rand(&mut rng);
-        let cm = IPA::<Projective, blind>::commit(&params, &a, &r_blind).unwrap();
+        let cm = IPA::<Projective, hiding>::commit(&params, &a, &r_blind).unwrap();
 
         // evaluation point
         let x = Fr::rand(&mut rng);
 
-        let proof = IPA::<Projective, blind>::prove(
+        let proof = IPA::<Projective, hiding>::prove(
             &params,
             &mut transcript_p,
             &cm,
@@ -574,7 +579,7 @@ mod tests {
 
         let b = powers_of(x, d); // WIP
         let v = inner_prod(&a, &b).unwrap(); // WIP
-        assert!(IPA::<Projective, blind>::verify(
+        assert!(IPA::<Projective, hiding>::verify(
             &params,
             &mut transcript_v,
             &x,
@@ -592,14 +597,14 @@ mod tests {
         test_ipa_gadget_opt::<false>();
         test_ipa_gadget_opt::<true>();
     }
-    fn test_ipa_gadget_opt<const blind: bool>() {
+    fn test_ipa_gadget_opt<const hiding: bool>() {
         let mut rng = ark_std::test_rng();
 
         const k: usize = 4;
         const d: usize = 2_u64.pow(k as u32) as usize;
 
         // setup params
-        let params = IPA::<Projective, blind>::new_params(&mut rng, d);
+        let params = IPA::<Projective, hiding>::new_params(&mut rng, d);
 
         let poseidon_config = poseidon_test_config::<Fr>();
         // init Prover's transcript
@@ -612,12 +617,12 @@ mod tests {
             .collect();
         a.extend(vec![Fr::zero(); d / 2]);
         let r_blind: Fr = Fr::rand(&mut rng);
-        let cm = IPA::<Projective, blind>::commit(&params, &a, &r_blind).unwrap();
+        let cm = IPA::<Projective, hiding>::commit(&params, &a, &r_blind).unwrap();
 
         // evaluation point
         let x = Fr::rand(&mut rng);
 
-        let proof = IPA::<Projective, blind>::prove(
+        let proof = IPA::<Projective, hiding>::prove(
             &params,
             &mut transcript_p,
             &cm,
@@ -629,7 +634,7 @@ mod tests {
 
         let b = powers_of(x, d); // WIP
         let v = inner_prod(&a, &b).unwrap(); // WIP
-        assert!(IPA::<Projective, blind>::verify(
+        assert!(IPA::<Projective, hiding>::verify(
             &params,
             &mut transcript_v,
             &x,
@@ -668,7 +673,7 @@ mod tests {
         let uVar: [NonNativeFieldVar<Fr, Fq>; k] = uVar_vec.try_into().unwrap();
         let UVar = GVar::new_witness(cs.clone(), || Ok(U)).unwrap();
 
-        let v = IPAGadget::<Projective, GVar, blind>::verify::<k>(
+        let v = IPAGadget::<Projective, GVar, hiding>::verify::<k>(
             // &mut transcriptVar,
             &gVar,
             &hVar,

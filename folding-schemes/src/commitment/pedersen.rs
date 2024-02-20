@@ -28,11 +28,11 @@ pub struct Params<C: CurveGroup> {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct Pedersen<C: CurveGroup, const BLIND: bool = false> {
+pub struct Pedersen<C: CurveGroup, const H: bool = false> {
     _c: PhantomData<C>,
 }
 
-impl<C: CurveGroup, const BLIND: bool> Pedersen<C, BLIND> {
+impl<C: CurveGroup, const H: bool> Pedersen<C, H> {
     pub fn new_params<R: Rng>(rng: &mut R, max: usize) -> Params<C> {
         let generators: Vec<C::Affine> = std::iter::repeat_with(|| C::Affine::rand(rng))
             .take(max.next_power_of_two())
@@ -45,7 +45,7 @@ impl<C: CurveGroup, const BLIND: bool> Pedersen<C, BLIND> {
 }
 
 // implement the CommitmentProver trait for Pedersen
-impl<C: CurveGroup, const BLIND: bool> CommitmentProver<C, BLIND> for Pedersen<C, BLIND> {
+impl<C: CurveGroup, const H: bool> CommitmentProver<C, H> for Pedersen<C, H> {
     type Params = Params<C>;
     type Proof = Proof<C>;
     fn commit(
@@ -58,7 +58,7 @@ impl<C: CurveGroup, const BLIND: bool> CommitmentProver<C, BLIND> for Pedersen<C
         }
         // h⋅r + <g, v>
         // use msm_unchecked because we already ensured at the if that lengths match
-        if !BLIND {
+        if !H {
             return Ok(C::msm_unchecked(&params.generators[..v.len()], v));
         }
         Ok(params.h.mul(r) + C::msm_unchecked(&params.generators[..v.len()], v))
@@ -83,7 +83,7 @@ impl<C: CurveGroup, const BLIND: bool> CommitmentProver<C, BLIND> for Pedersen<C
         // R = h⋅r_1 + <g, d>
         // use msm_unchecked because we already ensured at the if that lengths match
         let mut R: C = C::msm_unchecked(&params.generators[..d.len()], &d);
-        if BLIND {
+        if H {
             R += params.h.mul(r1);
         }
 
@@ -94,7 +94,7 @@ impl<C: CurveGroup, const BLIND: bool> CommitmentProver<C, BLIND> for Pedersen<C
         let u = vec_add(&vec_scalar_mul(v, &e), &d)?;
         // r_u = e⋅r + r_1
         let mut r_u = C::ScalarField::zero();
-        if BLIND {
+        if H {
             r_u = e * r + r1;
         }
 
@@ -102,7 +102,7 @@ impl<C: CurveGroup, const BLIND: bool> CommitmentProver<C, BLIND> for Pedersen<C
     }
 }
 
-impl<C: CurveGroup, const BLIND: bool> Pedersen<C, BLIND> {
+impl<C: CurveGroup, const H: bool> Pedersen<C, H> {
     pub fn verify(
         params: &Params<C>,
         transcript: &mut impl Transcript<C>,
@@ -126,7 +126,7 @@ impl<C: CurveGroup, const BLIND: bool> Pedersen<C, BLIND> {
         let lhs = proof.R + cm.mul(e);
         // use msm_unchecked because we already ensured at the if that lengths match
         let mut rhs = C::msm_unchecked(&params.generators[..proof.u.len()], &proof.u);
-        if BLIND {
+        if H {
             rhs += params.h.mul(proof.r_u);
         }
         if lhs != rhs {
@@ -138,7 +138,7 @@ impl<C: CurveGroup, const BLIND: bool> Pedersen<C, BLIND> {
 
 pub type CF<C> = <<C as CurveGroup>::BaseField as Field>::BasePrimeField;
 
-pub struct PedersenGadget<C, GC, const BLIND: bool = false>
+pub struct PedersenGadget<C, GC, const H: bool = false>
 where
     C: CurveGroup,
     GC: CurveVar<C, CF<C>>,
@@ -149,7 +149,7 @@ where
 }
 
 use ark_r1cs_std::{fields::nonnative::NonNativeFieldVar, ToBitsGadget};
-impl<C, GC, const BLIND: bool> PedersenGadget<C, GC, BLIND>
+impl<C, GC, const H: bool> PedersenGadget<C, GC, H>
 where
     C: CurveGroup,
     GC: CurveVar<C, CF<C>>,
@@ -164,7 +164,7 @@ where
         r: NonNativeFieldVar<C::ScalarField, CF<C>>,
     ) -> Result<GC, SynthesisError> {
         let mut res = GC::zero();
-        if BLIND {
+        if H {
             res += h.scalar_mul_le(r.to_bits_le()?.iter())?;
         }
         for (i, v_i) in v.iter().enumerate() {
@@ -213,7 +213,7 @@ mod tests {
         test_pedersen_circuit_opt::<false>();
         test_pedersen_circuit_opt::<true>();
     }
-    fn test_pedersen_circuit_opt<const blind: bool>() {
+    fn test_pedersen_circuit_opt<const hiding: bool>() {
         let mut rng = ark_std::test_rng();
 
         let n: usize = 16;

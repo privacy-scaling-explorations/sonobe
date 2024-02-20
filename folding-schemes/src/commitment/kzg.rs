@@ -66,11 +66,11 @@ where
 
 /// KZGProver implements the CommitmentProver trait for the KZG commitment scheme.
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
-pub struct KZGProver<'a, C: CurveGroup, const BLIND: bool = false> {
+pub struct KZGProver<'a, C: CurveGroup, const H: bool = false> {
     _a: PhantomData<&'a ()>,
     _c: PhantomData<C>,
 }
-impl<'a, C, const BLIND: bool> CommitmentProver<C, BLIND> for KZGProver<'a, C, BLIND>
+impl<'a, C, const H: bool> CommitmentProver<C, H> for KZGProver<'a, C, H>
 where
     C: CurveGroup,
 {
@@ -87,8 +87,8 @@ where
         v: &[C::ScalarField],
         _blind: &C::ScalarField,
     ) -> Result<C, Error> {
-        if !_blind.is_zero() || BLIND {
-            return Err(Error::NotSupportedYet("blinding".to_string()));
+        if !_blind.is_zero() || H {
+            return Err(Error::NotSupportedYet("hiding".to_string()));
         }
 
         let polynomial = poly_from_vec(v.to_vec())?;
@@ -115,8 +115,8 @@ where
         _blind: &C::ScalarField,
         _rng: Option<&mut dyn RngCore>,
     ) -> Result<Self::Proof, Error> {
-        if !_blind.is_zero() || BLIND {
-            return Err(Error::NotSupportedYet("blinding".to_string()));
+        if !_blind.is_zero() || H {
+            return Err(Error::NotSupportedYet("hiding".to_string()));
         }
 
         let polynomial = poly_from_vec(v.to_vec())?;

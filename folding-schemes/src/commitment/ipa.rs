@@ -1,6 +1,15 @@
 /// IPA implements the modified Inner Product Argument described in
 /// [Halo](https://eprint.iacr.org/2019/1021.pdf). The variable names used follow the paper
 /// notation in order to make it more readable.
+///
+/// The implementation does the following optimizations in order to reduce the amount of
+/// constraints in the circuit:
+/// i. <s, b> computation is done in log time following a modification of the equation 3 in section
+/// 3.2 from the paper.
+/// ii. s computation is done in k*(2^k)/2 instead of k*2^k by taking advantadge of the symmetric
+/// nature of s.
+/// iii. verifier delegates the computation of u_i^-1 to the prover, just checking that
+/// u_i*u_i^-1==1 in circuit.
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::{
@@ -22,6 +31,7 @@ use crate::utils::espresso::virtual_polynomial::bit_decompose;
 use crate::utils::vec::{vec_add, vec_scalar_mul};
 use crate::Error;
 
+// IPA implements the Inner Product Argument protocol.
 pub struct IPA<const BLIND: bool, C: CurveGroup> {
     _c: PhantomData<C>,
 }
@@ -36,6 +46,16 @@ pub struct Proof<C: CurveGroup> {
 }
 
 impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
+    pub fn new_params<R: Rng>(rng: &mut R, max: usize) -> PedersenParams<C> {
+        let generators: Vec<C::Affine> = std::iter::repeat_with(|| C::Affine::rand(rng))
+            .take(max.next_power_of_two())
+            .collect();
+        let params = PedersenParams::<C> {
+            h: C::rand(rng),
+            generators,
+        };
+        params
+    }
     pub fn commit(
         params: &PedersenParams<C>,
         a: &[C::ScalarField],
@@ -70,16 +90,24 @@ impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
             return Err(Error::PedersenParamsLen(params.generators.len(), a.len()));
         }
         // blinding factors
-        let l: Vec<C::ScalarField> = std::iter::repeat_with(|| C::ScalarField::rand(rng))
-            .take(k)
-            .collect();
-        let r: Vec<C::ScalarField> = std::iter::repeat_with(|| C::ScalarField::rand(rng))
-            .take(k)
-            .collect();
+        // let mut l: Vec<C::ScalarField> = vec![C::ScalarField::zero(); k];
+        // let mut r: Vec<C::ScalarField> = vec![C::ScalarField::zero(); k];
+        let l: Vec<C::ScalarField>; // = Vec::new();
+        let r: Vec<C::ScalarField>; // = Vec::new();
+        if BLIND {
+            l = std::iter::repeat_with(|| C::ScalarField::rand(rng))
+                .take(k)
+                .collect();
+            r = std::iter::repeat_with(|| C::ScalarField::rand(rng))
+                .take(k)
+                .collect();
+        } else {
+            l = vec![];
+            r = vec![];
+        }
 
-        transcript.absorb_point(&P)?; // TODO more absorbs
-        let u = transcript.get_challenges(k); // TODO first absorb L_j & R_j of each round for each u_j respectively
-        let s = transcript.get_challenge(); // TODO maybe nbits=constants::N_BITS_RO?
+        transcript.absorb_point(&P)?;
+        let s = transcript.get_challenge();
         let U = C::generator().mul(s);
 
         let mut a = a.to_owned();
@@ -89,6 +117,8 @@ impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
         let mut L: Vec<C> = vec![C::zero(); k];
         let mut R: Vec<C> = vec![C::zero(); k];
 
+        // u challenges
+        let mut u: Vec<C::ScalarField> = vec![C::ScalarField::zero(); k];
         let mut u_invs: Vec<C::ScalarField> = vec![C::ScalarField::zero(); k];
         for j in (0..k).rev() {
             let m = a.len() / 2;
@@ -110,9 +140,15 @@ impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
                 L[j] = C::msm_unchecked(&G_hi, &a_lo) + U.mul(inner_prod(&a_lo, &b_hi)?);
                 R[j] = C::msm_unchecked(&G_lo, &a_hi) + U.mul(inner_prod(&a_hi, &b_lo)?);
             }
+            // get challenge for the j-th round
+            transcript.absorb_point(&L[j])?;
+            transcript.absorb_point(&R[j])?;
+            u[j] = transcript.get_challenge();
 
             let uj = u[j];
-            let uj_inv = u[j].inverse().unwrap();
+            let uj_inv = u[j]
+                .inverse()
+                .ok_or(Error::Other("error on computing inverse".to_string()))?;
             u_invs[j] = uj_inv.clone();
 
             // a_hi * uj^-1 + a_lo * uj
@@ -163,16 +199,28 @@ impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
         P: &C,              // commitment
         p: &Proof<C>,
         r: &C::ScalarField, // blinding factor
-        // u: &[C::ScalarField], // challenges
-        // U: &C,                // challenge
-        k: usize, // k = log2(d), where d is the degree of the committed polynomial
+        k: usize,           // k = log2(d), where d is the degree of the committed polynomial
     ) -> Result<bool, Error> {
-        // TODO assert that if blind==false, proof.l,r should be 0
-        // TODO assert size of proof.L,R = k, proof.l,r=k
-        transcript.absorb_point(&P)?; // TODO more absorbs
-        let u = transcript.get_challenges(k); // TODO u_j must be set after each k round (in non interactive after absorbing all L_j and R_j)
-        let s = transcript.get_challenge(); // TODO maybe nbits=constants::N_BITS_RO?
+        if !BLIND && (p.l.len() != 0 || p.r.len() != 0) {
+            return Err(Error::CommitmentVerificationFail);
+        }
+        if BLIND && (p.l.len() != k || p.r.len() != k) {
+            return Err(Error::CommitmentVerificationFail);
+        }
+        if p.L.len() != k || p.R.len() != k || p.u_invs.len() != k {
+            return Err(Error::CommitmentVerificationFail);
+        }
+
+        // absorbs & get challenges
+        transcript.absorb_point(&P)?;
+        let s = transcript.get_challenge();
         let U = C::generator().mul(s);
+        let mut u: Vec<C::ScalarField> = vec![C::ScalarField::zero(); k];
+        for i in (0..k).rev() {
+            transcript.absorb_point(&p.L[i])?;
+            transcript.absorb_point(&p.R[i])?;
+            u[i] = transcript.get_challenge();
+        }
 
         let P = *P + U.mul(v);
 
@@ -187,18 +235,18 @@ impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
         }
 
         // compute b & G from s
-        let s = build_s(&u, &p.u_invs, k);
+        let s = build_s(&u, &p.u_invs, k)?;
         // b = <s, b_vec> = <s, [1, x, x^2, ..., x^d-1]>
         let b = s_b_inner(&u, x)?;
-        if params.generators.len() < k {
-            // TODO probably d here and in next line
-            return Err(Error::PedersenParamsLen(params.generators.len(), k));
+        let d: usize = 2_u64.pow(k as u32) as usize;
+        if params.generators.len() < d {
+            return Err(Error::PedersenParamsLen(params.generators.len(), d));
         }
         let G = C::msm_unchecked(&params.generators, &s);
 
-        for j in 0..u.len() {
+        for j in 0..k {
             let uj2 = u[j].square();
-            let uj_inv2 = u[j].inverse().unwrap().square();
+            let uj_inv2 = p.u_invs[j].square();
 
             q_0 = q_0 + p.L[j].mul(uj2) + p.R[j].mul(uj_inv2);
             if BLIND {
@@ -227,7 +275,7 @@ impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
 // )
 // naively would take k * d = k * 2^k time, with the current approach taking advantadge of the
 // symmetric nature of s, it takes k * d/2 = k * (2^k)/2 = k * 2^{k-1} time.
-fn build_s<F: PrimeField>(u: &[F], u_invs: &[F], k: usize) -> Vec<F> {
+fn build_s<F: PrimeField>(u: &[F], u_invs: &[F], k: usize) -> Result<Vec<F>, Error> {
     let d: usize = 2_u64.pow(k as u32) as usize;
     let mut s: Vec<F> = vec![F::one(); d];
     for i in 0..d / 2 {
@@ -240,14 +288,16 @@ fn build_s<F: PrimeField>(u: &[F], u_invs: &[F], k: usize) -> Vec<F> {
             }
         }
 
-        // now place the inverse to the other side
-        s[d - 1 - i] = s[i].inverse().unwrap();
+        // now place the inverse to the other side following the symmetric structure of s
+        s[d - 1 - i] = s[i]
+            .inverse()
+            .ok_or(Error::Other("error on computing inverse".to_string()))?;
     }
-    s
+    Ok(s)
 }
 fn build_s_gadget<F: PrimeField, CF: PrimeField>(
     u: &[NonNativeFieldVar<F, CF>],
-    // u_invs are assumed have their correctness checked in higher levels of logic
+    // u_invs are assumed have their correctness checked in higher levels of the circuit logic
     u_invs: &[NonNativeFieldVar<F, CF>],
     k: usize,
 ) -> Result<Vec<NonNativeFieldVar<F, CF>>, SynthesisError> {
@@ -264,7 +314,7 @@ fn build_s_gadget<F: PrimeField, CF: PrimeField>(
         }
 
         // now place the inverse to the other side
-        s[d - 1 - i] = s[i].inverse().unwrap();
+        s[d - 1 - i] = s[i].inverse()?;
     }
     Ok(s)
 }
@@ -292,7 +342,10 @@ fn s_b_inner<F: PrimeField>(u: &[F], x: &F) -> Result<F, Error> {
     let mut c: F = F::one();
     let mut x_2_i = x.clone(); // x_2_i is x^{2^i}, starting from x^{2^0}=x
     for i in 0..k {
-        c *= (u[i].clone() * x_2_i.clone()) + u[i].inverse().unwrap();
+        c *= (u[i].clone() * x_2_i.clone())
+            + u[i]
+                .inverse()
+                .ok_or(Error::Other("error on computing inverse".to_string()))?;
         x_2_i *= x_2_i.clone();
     }
     Ok(c * x.clone())
@@ -406,9 +459,9 @@ where
         u: &[NonNativeFieldVar<C::ScalarField, CF<C>>; K], // challenges
         U: &GC,                                       // challenge
     ) -> Result<Boolean<CF<C>>, SynthesisError> {
-        // transcript.absorb_point(&P)?; // TODO more absorbs
+        // transcript.absorb_point(&P)?;
         // let u = transcript.get_challenges(K)?;
-        // let s = transcript.get_challenge()?; // TODO take nbits=constants::N_BITS_RO?
+        // let s = transcript.get_challenge()?;
         // let U = GC::generator().scalar_mul_le(s.to_bits_le()?.iter());
 
         let P_ = P + U.scalar_mul_le(v.to_bits_le()?.iter())?;
@@ -436,10 +489,9 @@ where
             G += g[i].scalar_mul_le(s_i.to_bits_le()?.iter())?;
         }
 
-        for j in 0..u.len() {
+        for j in 0..K {
             let uj2 = u[j].square()?;
-            // let uj_inv2 = u[j].inverse().unwrap().square()?; // TODO rm unwraps
-            let uj_inv2 = p.u_invs[j].square()?;
+            let uj_inv2 = p.u_invs[j].square()?; // cheaper square than inversing the uj2
 
             q_0 = q_0
                 + p.L[j].scalar_mul_le(uj2.to_bits_le()?.iter())?
@@ -476,17 +528,19 @@ mod tests {
         poseidon_test_config, PoseidonTranscript, PoseidonTranscriptVar,
     };
 
-    // TODO abstract test to run with and without blinding factors
     #[test]
     fn test_ipa() {
+        test_ipa_opt::<false>();
+        test_ipa_opt::<true>();
+    }
+    fn test_ipa_opt<const blind: bool>() {
         let mut rng = ark_std::test_rng();
 
-        const blind: bool = false;
         const k: usize = 4;
         const d: usize = 2_u64.pow(k as u32) as usize;
 
         // setup params
-        let params = Pedersen::<Projective>::new_params(&mut rng, d);
+        let params = IPA::<blind, Projective>::new_params(&mut rng, d);
 
         let poseidon_config = poseidon_test_config::<Fr>();
         // init Prover's transcript
@@ -524,14 +578,17 @@ mod tests {
 
     #[test]
     fn test_ipa_gadget() {
+        test_ipa_gadget_opt::<false>();
+        test_ipa_gadget_opt::<true>();
+    }
+    fn test_ipa_gadget_opt<const blind: bool>() {
         let mut rng = ark_std::test_rng();
 
-        const blind: bool = false;
         const k: usize = 4;
         const d: usize = 2_u64.pow(k as u32) as usize;
 
         // setup params
-        let params = Pedersen::<Projective>::new_params(&mut rng, d); // TODO move to IPA::new_params
+        let params = IPA::<blind, Projective>::new_params(&mut rng, d);
 
         let poseidon_config = poseidon_test_config::<Fr>();
         // init Prover's transcript
@@ -542,7 +599,6 @@ mod tests {
         let mut a: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(&mut rng))
             .take(d / 2)
             .collect();
-        use ark_std::Zero;
         a.extend(vec![Fr::zero(); d / 2]);
         let r_blind: Fr = Fr::rand(&mut rng);
         let cm = IPA::<blind, Projective>::commit(&params, &a, &r_blind).unwrap();
@@ -571,17 +627,21 @@ mod tests {
         // circuit
         let cs = ConstraintSystem::<Fq>::new_ref();
 
-        // tmp
+        // TODO incircuit
         let mut transcript_v = PoseidonTranscript::<Projective>::new(&poseidon_config);
-        transcript_v.absorb_point(&cm).unwrap();
-        let u = transcript_v.get_challenges(k);
-        let s = transcript_v.get_challenge();
         use ark_ec::Group;
         use std::ops::Mul;
+        transcript_v.absorb_point(&cm).unwrap();
+        let s = transcript_v.get_challenge();
         let U = Projective::generator().mul(s);
+        let mut u: Vec<Fr> = vec![Fr::zero(); k];
+        for i in (0..k).rev() {
+            transcript_v.absorb_point(&proof.L[i]).unwrap();
+            transcript_v.absorb_point(&proof.R[i]).unwrap();
+            u[i] = transcript_v.get_challenge();
+        }
 
         // prepare inputs
-        // let poseidon_config = poseidon_test_config::<Fq>(); // TODO WIP
         // let mut transcriptVar = PoseidonTranscriptVar::<Fq>::new(cs.clone(), &poseidon_config);
         let gVar = Vec::<GVar>::new_constant(cs.clone(), params.generators).unwrap();
         let hVar = GVar::new_constant(cs.clone(), params.h).unwrap();
@@ -610,5 +670,6 @@ mod tests {
         .unwrap();
         v.enforce_equal(&Boolean::TRUE).unwrap();
         dbg!(cs.num_constraints());
+        assert!(cs.is_satisfied().unwrap());
     }
 }

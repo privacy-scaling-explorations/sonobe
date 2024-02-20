@@ -1,13 +1,13 @@
-use std::ops::Deref;
+//! Solidity templates for the verifier contracts.
+//! We use askama for templating and define which variables are required for each template.
 
 use crate::utils::encoding::{g1_to_fq_repr, g2_to_fq_repr};
-/// Solidity templates for the verifier contracts.
-/// We use askama for templating and define which variables are required for each template.
 use crate::utils::encoding::{G1Repr, G2Repr};
 use ark_bn254::{Bn254, G1Affine};
 use ark_groth16::VerifyingKey;
 use ark_poly_commit::kzg10::VerifierKey;
 use askama::Template;
+use std::ops::Deref;
 
 #[derive(Template, Default)]
 #[template(path = "groth16_verifier.askama.sol", ext = "sol")]
@@ -31,12 +31,11 @@ pub struct Groth16Verifier {
 }
 
 impl Groth16Verifier {
-    pub fn from(value: VerifyingKey<Bn254>, pragma: Option<String>) -> Self {
+    pub fn new(value: VerifyingKey<Bn254>, pragma: Option<String>) -> Self {
         let pragma_version = pragma.unwrap_or_default();
-        let sdpx = "// SPDX-License-Identifier: GPL-3.0".to_string();
         Self {
             pragma_version,
-            sdpx,
+            sdpx: "// SPDX-License-Identifier: GPL-3.0".to_string(),
             vkey_alpha_g1: g1_to_fq_repr(value.alpha_g1),
             vkey_beta_g2: g2_to_fq_repr(value.beta_g2),
             vkey_gamma_g2: g2_to_fq_repr(value.gamma_g2),
@@ -72,9 +71,9 @@ pub struct KZG10Verifier {
 }
 
 impl KZG10Verifier {
-    pub fn from(
-        vk: &VerifierKey<Bn254>,
-        crs: &[G1Affine],
+    pub fn new(
+        vk: VerifierKey<Bn254>,
+        crs: Vec<G1Affine>,
         pragma: Option<String>,
         sdpx: Option<String>,
     ) -> KZG10Verifier {
@@ -83,10 +82,10 @@ impl KZG10Verifier {
         let vk_string_repr = g2_to_fq_repr(vk.beta_h);
         let g1_crs_len = crs.len();
         let g1_crs = crs.iter().map(|g1| g1_to_fq_repr(*g1)).collect();
-        let sdpx = sdpx.unwrap_or_default();
+
         let pragma_version = pragma.unwrap_or_default();
         KZG10Verifier {
-            sdpx,
+            sdpx: sdpx.unwrap_or_default(),
             pragma_version,
             g1: g1_string_repr,
             g2: g2_string_repr,
@@ -98,13 +97,28 @@ impl KZG10Verifier {
 }
 
 #[derive(Template)]
-#[template(path = "kzg10_groth16_decider_verifier.askama.sol", ext = "sol")]
-pub struct Groth16KZG10DeciderVerifier {
+#[template(path = "nova_cyclefold_decider.askama.sol", ext = "sol")]
+pub struct NovaCyclefoldDecider {
     pub groth16_verifier: Groth16Verifier,
     pub kzg10_verifier: KZG10Verifier,
 }
 
-impl Deref for Groth16KZG10DeciderVerifier {
+// TODO: Create an enum to collect all params from CLI and pass it here instead of the tuple
+impl NovaCyclefoldDecider {
+    fn new(
+        vkey_g16: VerifyingKey<Bn254>,
+        vkey_kzg: VerifierKey<Bn254>,
+        crs_points: Vec<G1Affine>,
+        pragma: Option<String>,
+    ) -> Self {
+        Self {
+            groth16_verifier: Groth16Verifier::new(vkey_g16, pragma.clone()),
+            kzg10_verifier: KZG10Verifier::new(vkey_kzg, crs_points, pragma, None),
+        }
+    }
+}
+
+impl Deref for NovaCyclefoldDecider {
     type Target = Groth16Verifier;
 
     fn deref(&self) -> &Self::Target {

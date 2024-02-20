@@ -17,7 +17,7 @@ use ark_poly::{
     DenseUVPolynomial, EvaluationDomain, Evaluations, GeneralEvaluationDomain, Polynomial,
 };
 use ark_poly_commit::kzg10::{VerifierKey, KZG10};
-use ark_std::rand::Rng;
+use ark_std::rand::{Rng, RngCore};
 use ark_std::{borrow::Cow, fmt::Debug};
 use ark_std::{One, Zero};
 use core::marker::PhantomData;
@@ -66,11 +66,11 @@ where
 
 /// KZGProver implements the CommitmentProver trait for the KZG commitment scheme.
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
-pub struct KZGProver<'a, C: CurveGroup> {
+pub struct KZGProver<'a, C: CurveGroup, const BLIND: bool = false> {
     _a: PhantomData<&'a ()>,
     _c: PhantomData<C>,
 }
-impl<'a, C> CommitmentProver<C> for KZGProver<'a, C>
+impl<'a, C, const BLIND: bool> CommitmentProver<C, BLIND> for KZGProver<'a, C, BLIND>
 where
     C: CurveGroup,
 {
@@ -87,8 +87,8 @@ where
         v: &[C::ScalarField],
         _blind: &C::ScalarField,
     ) -> Result<C, Error> {
-        if !_blind.is_zero() {
-            return Err(Error::NotSupportedYet("blinding factors".to_string()));
+        if !_blind.is_zero() || BLIND {
+            return Err(Error::NotSupportedYet("blinding".to_string()));
         }
 
         let polynomial = poly_from_vec(v.to_vec())?;
@@ -113,9 +113,10 @@ where
         cm: &C,
         v: &[C::ScalarField],
         _blind: &C::ScalarField,
+        _rng: Option<&mut dyn RngCore>,
     ) -> Result<Self::Proof, Error> {
-        if !_blind.is_zero() {
-            return Err(Error::NotSupportedYet("blinding factors".to_string()));
+        if !_blind.is_zero() || BLIND {
+            return Err(Error::NotSupportedYet("blinding".to_string()));
         }
 
         let polynomial = poly_from_vec(v.to_vec())?;
@@ -213,7 +214,7 @@ mod tests {
         let cm = KZGProver::<G1>::commit(&pk, &v, &Fr::zero()).unwrap();
 
         let (eval, proof) =
-            KZGProver::<G1>::prove(&pk, transcript_p, &cm, &v, &Fr::zero()).unwrap();
+            KZGProver::<G1>::prove(&pk, transcript_p, &cm, &v, &Fr::zero(), None).unwrap();
 
         // verify the proof:
         // get evaluation challenge

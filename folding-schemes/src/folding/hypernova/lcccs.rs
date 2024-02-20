@@ -46,7 +46,7 @@ impl<C: CurveGroup> CCS<C> {
     ) -> Result<(LCCCS<C>, Witness<C::ScalarField>), Error> {
         let w: Vec<C::ScalarField> = z[(1 + self.l)..].to_vec();
         let r_w = C::ScalarField::rand(rng);
-        let C = Pedersen::commit(pedersen_params, &w, &r_w)?;
+        let C = Pedersen::<C>::commit(pedersen_params, &w, &r_w)?;
 
         let r_x: Vec<C::ScalarField> = (0..self.s).map(|_| C::ScalarField::rand(rng)).collect();
         let v = self.compute_v_j(z, &r_x);
@@ -96,8 +96,8 @@ impl<C: CurveGroup> LCCCS<C> {
         w: &Witness<C::ScalarField>,
     ) -> Result<(), Error> {
         // check that C is the commitment of w. Notice that this is not verifying a Pedersen
-        // opening, but checking that the commitment comes from committing to the witness.
-        if self.C != Pedersen::commit(pedersen_params, &w.w, &w.r_w)? {
+        // opening, but checking that the Commmitment comes from committing to the witness.
+        if self.C != Pedersen::<C>::commit(pedersen_params, &w.w, &w.r_w)? {
             return Err(Error::NotSatisfied);
         }
 

@@ -190,9 +190,9 @@ where
         T: Vec<C::ScalarField>,
         cmT: &C,
     ) -> Result<[CP::Proof; 3], Error> {
-        let cmE_proof = CP::prove(cm_prover_params, tr, &ci.cmE, &w.E, &w.rE)?;
-        let cmW_proof = CP::prove(cm_prover_params, tr, &ci.cmW, &w.W, &w.rW)?;
-        let cmT_proof = CP::prove(cm_prover_params, tr, cmT, &T, &C::ScalarField::one())?; // cm(T) is committed with rT=1
+        let cmE_proof = CP::prove(cm_prover_params, tr, &ci.cmE, &w.E, &w.rE, None)?;
+        let cmW_proof = CP::prove(cm_prover_params, tr, &ci.cmW, &w.W, &w.rW, None)?;
+        let cmT_proof = CP::prove(cm_prover_params, tr, cmT, &T, &C::ScalarField::one(), None)?; // cm(T) is committed with rT=1
         Ok([cmE_proof, cmW_proof, cmT_proof])
     }
 }

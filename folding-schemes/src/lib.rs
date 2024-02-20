@@ -46,6 +46,8 @@ pub enum Error {
     Empty,
     #[error("Pedersen parameters length is not sufficient (generators.len={0} < vector.len={1} unsatisfied)")]
     PedersenParamsLen(usize, usize),
+    #[error("Randomness for blinding not found")]
+    MissingRandomness,
     #[error("Commitment verification failed")]
     CommitmentVerificationFail,
     #[error("IVC verification failed")]

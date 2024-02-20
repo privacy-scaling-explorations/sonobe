@@ -1,5 +1,6 @@
 use ark_ec::CurveGroup;
 use ark_std::fmt::Debug;
+use ark_std::rand::RngCore;
 
 use crate::transcript::Transcript;
 use crate::Error;
@@ -9,7 +10,7 @@ pub mod kzg;
 pub mod pedersen;
 
 /// CommitmentProver defines the vector commitment scheme prover trait.
-pub trait CommitmentProver<C: CurveGroup>: Clone + Debug {
+pub trait CommitmentProver<C: CurveGroup, const BLIND: bool = false>: Clone + Debug {
     type Params: Clone + Debug;
     type Proof: Clone + Debug;
 
@@ -24,6 +25,7 @@ pub trait CommitmentProver<C: CurveGroup>: Clone + Debug {
         cm: &C,
         v: &[C::ScalarField],
         blind: &C::ScalarField,
+        rng: Option<&mut dyn RngCore>,
     ) -> Result<Self::Proof, Error>;
 }
 
@@ -66,7 +68,15 @@ mod tests {
         let v_3: Vec<C::ScalarField> = v_1.iter().zip(v_2).map(|(a, b)| *a + (r * b)).collect();
 
         let transcript = &mut PoseidonTranscript::<C>::new(poseidon_config);
-        let proof = CP::prove(params, transcript, &cm_3, &v_3, &C::ScalarField::zero()).unwrap();
+        let proof = CP::prove(
+            params,
+            transcript,
+            &cm_3,
+            &v_3,
+            &C::ScalarField::zero(),
+            None,
+        )
+        .unwrap();
 
         Ok((cm_3, proof))
     }

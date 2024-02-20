@@ -22,20 +22,25 @@ use ark_r1cs_std::{
     ToBitsGadget,
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
-use ark_std::{rand::Rng, One, UniformRand, Zero};
+use ark_std::{
+    rand::{Rng, RngCore},
+    One, UniformRand, Zero,
+};
 use core::{borrow::Borrow, marker::PhantomData};
 
-use super::pedersen::Params as PedersenParams;
-use crate::transcript::{Transcript, TranscriptVar};
+use super::{pedersen::Params as PedersenParams, CommitmentProver};
+use crate::transcript::Transcript;
 use crate::utils::espresso::virtual_polynomial::bit_decompose;
 use crate::utils::vec::{vec_add, vec_scalar_mul};
 use crate::Error;
 
-// IPA implements the Inner Product Argument protocol.
-pub struct IPA<const BLIND: bool, C: CurveGroup> {
+/// IPA implements the Inner Product Argument protocol.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct IPA<C: CurveGroup, const BLIND: bool> {
     _c: PhantomData<C>,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Proof<C: CurveGroup> {
     a: C::ScalarField,
     l: Vec<C::ScalarField>,
@@ -45,18 +50,22 @@ pub struct Proof<C: CurveGroup> {
     u_invs: Vec<C::ScalarField>, // {u_i^-1} \forall k
 }
 
-impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
+impl<C: CurveGroup, const BLIND: bool> IPA<C, BLIND> {
     pub fn new_params<R: Rng>(rng: &mut R, max: usize) -> PedersenParams<C> {
         let generators: Vec<C::Affine> = std::iter::repeat_with(|| C::Affine::rand(rng))
             .take(max.next_power_of_two())
             .collect();
-        let params = PedersenParams::<C> {
+        PedersenParams::<C> {
             h: C::rand(rng),
             generators,
-        };
-        params
+        }
     }
-    pub fn commit(
+}
+
+impl<C: CurveGroup, const BLIND: bool> CommitmentProver<C, BLIND> for IPA<C, BLIND> {
+    type Params = PedersenParams<C>;
+    type Proof = Proof<C>;
+    fn commit(
         params: &PedersenParams<C>,
         a: &[C::ScalarField],
         r: &C::ScalarField, // blinding factor
@@ -64,7 +73,7 @@ impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
         if params.generators.len() < a.len() {
             return Err(Error::PedersenParamsLen(params.generators.len(), a.len()));
         }
-        // h⋅r + <g, v>
+        // h⋅r + <g, a>
         // use msm_unchecked because we already ensured at the if that lengths match
         if !BLIND {
             return Ok(C::msm_unchecked(&params.generators[..a.len()], a));
@@ -72,14 +81,14 @@ impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
         Ok(params.h.mul(r) + C::msm_unchecked(&params.generators[..a.len()], a))
     }
 
-    pub fn prove<R: Rng>(
-        rng: &mut R,
-        params: &PedersenParams<C>,
+    fn prove(
+        params: &Self::Params,
         transcript: &mut impl Transcript<C>,
         P: &C, // commitment
         a: &[C::ScalarField],
         x: &C::ScalarField,
-    ) -> Result<Proof<C>, Error> {
+        rng: Option<&mut dyn RngCore>,
+    ) -> Result<Self::Proof, Error> {
         if !a.len().is_power_of_two() {
             return Err(Error::NotPowerOfTwo("a".to_string(), a.len()));
         }
@@ -90,11 +99,10 @@ impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
             return Err(Error::PedersenParamsLen(params.generators.len(), a.len()));
         }
         // blinding factors
-        // let mut l: Vec<C::ScalarField> = vec![C::ScalarField::zero(); k];
-        // let mut r: Vec<C::ScalarField> = vec![C::ScalarField::zero(); k];
-        let l: Vec<C::ScalarField>; // = Vec::new();
-        let r: Vec<C::ScalarField>; // = Vec::new();
+        let l: Vec<C::ScalarField>;
+        let r: Vec<C::ScalarField>;
         if BLIND {
+            let rng = rng.ok_or(Error::MissingRandomness)?;
             l = std::iter::repeat_with(|| C::ScalarField::rand(rng))
                 .take(k)
                 .collect();
@@ -106,7 +114,7 @@ impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
             r = vec![];
         }
 
-        transcript.absorb_point(&P)?;
+        transcript.absorb_point(P)?;
         let s = transcript.get_challenge();
         let U = C::generator().mul(s);
 
@@ -149,7 +157,7 @@ impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
             let uj_inv = u[j]
                 .inverse()
                 .ok_or(Error::Other("error on computing inverse".to_string()))?;
-            u_invs[j] = uj_inv.clone();
+            u_invs[j] = uj_inv;
 
             // a_hi * uj^-1 + a_lo * uj
             a = vec_add(&vec_scalar_mul(&a_lo, &uj), &vec_scalar_mul(&a_hi, &uj_inv))?;
@@ -181,7 +189,7 @@ impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
             return Err(Error::NotExpectedLength(G.len(), 1));
         }
 
-        Ok(Proof {
+        Ok(Self::Proof {
             a: a[0],
             l: l.clone(),
             r: r.clone(),
@@ -190,7 +198,10 @@ impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
             u_invs,
         })
     }
+}
 
+impl<C: CurveGroup, const BLIND: bool> IPA<C, BLIND> {
+    #[allow(clippy::too_many_arguments)]
     pub fn verify(
         params: &PedersenParams<C>,
         transcript: &mut impl Transcript<C>,
@@ -201,7 +212,7 @@ impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
         r: &C::ScalarField, // blinding factor
         k: usize,           // k = log2(d), where d is the degree of the committed polynomial
     ) -> Result<bool, Error> {
-        if !BLIND && (p.l.len() != 0 || p.r.len() != 0) {
+        if !BLIND && (!p.l.is_empty() || !p.r.is_empty()) {
             return Err(Error::CommitmentVerificationFail);
         }
         if BLIND && (p.l.len() != k || p.r.len() != k) {
@@ -212,7 +223,7 @@ impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
         }
 
         // absorbs & get challenges
-        transcript.absorb_point(&P)?;
+        transcript.absorb_point(P)?;
         let s = transcript.get_challenge();
         let U = C::generator().mul(s);
         let mut u: Vec<C::ScalarField> = vec![C::ScalarField::zero(); k];
@@ -228,8 +239,8 @@ impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
         let mut r = *r;
 
         // check correctnes of the u_invs delegated to the prover
-        for j in 0..k {
-            if u[j].clone() * p.u_invs[j].clone() != C::ScalarField::one() {
+        for (j, u_j) in u.iter().enumerate() {
+            if *u_j * p.u_invs[j] != C::ScalarField::one() {
                 return Err(Error::CommitmentVerificationFail);
             }
         }
@@ -244,8 +255,8 @@ impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
         }
         let G = C::msm_unchecked(&params.generators, &s);
 
-        for j in 0..k {
-            let uj2 = u[j].square();
+        for (j, u_j) in u.iter().enumerate() {
+            let uj2 = u_j.square();
             let uj_inv2 = p.u_invs[j].square();
 
             q_0 = q_0 + p.L[j].mul(uj2) + p.R[j].mul(uj_inv2);
@@ -254,12 +265,11 @@ impl<const BLIND: bool, C: CurveGroup> IPA<BLIND, C> {
             }
         }
 
-        let q_1;
-        if BLIND {
-            q_1 = G.mul(p.a) + params.h.mul(r) + U.mul(p.a * b);
+        let q_1 = if BLIND {
+            G.mul(p.a) + params.h.mul(r) + U.mul(p.a * b)
         } else {
-            q_1 = G.mul(p.a) + U.mul(p.a * b);
-        }
+            G.mul(p.a) + U.mul(p.a * b)
+        };
 
         Ok(q_0 == q_1)
     }
@@ -282,9 +292,9 @@ fn build_s<F: PrimeField>(u: &[F], u_invs: &[F], k: usize) -> Result<Vec<F>, Err
         let i_bits = bit_decompose(i as u64, k);
         for j in 0..k {
             if i_bits[j] {
-                s[i] *= u[j].clone();
+                s[i] *= u[j];
             } else {
-                s[i] *= u_invs[j].clone();
+                s[i] *= u_invs[j];
             }
         }
 
@@ -338,17 +348,16 @@ fn inner_prod<F: PrimeField>(a: &[F], b: &[F]) -> Result<F, Error> {
 // g(x, u_1, u_2, ..., u_k) = <s, b>, naively takes linear, but can compute in log time through
 // g(x, u_1, u_2, ..., u_k) = (\Prod u_i x^{2^i} + u_i^-1) * x
 fn s_b_inner<F: PrimeField>(u: &[F], x: &F) -> Result<F, Error> {
-    let k = u.len();
     let mut c: F = F::one();
-    let mut x_2_i = x.clone(); // x_2_i is x^{2^i}, starting from x^{2^0}=x
-    for i in 0..k {
-        c *= (u[i].clone() * x_2_i.clone())
-            + u[i]
+    let mut x_2_i = *x; // x_2_i is x^{2^i}, starting from x^{2^0}=x
+    for u_i in u.iter() {
+        c *= (*u_i * x_2_i)
+            + u_i
                 .inverse()
                 .ok_or(Error::Other("error on computing inverse".to_string()))?;
-        x_2_i *= x_2_i.clone();
+        x_2_i *= x_2_i;
     }
-    Ok(c * x.clone())
+    Ok(c * x)
 }
 
 // g(x, u_1, u_2, ..., u_k) = <s, b>, naively takes linear, but can compute in log time through
@@ -357,11 +366,10 @@ fn s_b_inner_gadget<F: PrimeField, CF: PrimeField>(
     u: &[NonNativeFieldVar<F, CF>],
     x: &NonNativeFieldVar<F, CF>,
 ) -> Result<NonNativeFieldVar<F, CF>, SynthesisError> {
-    let k = u.len();
     let mut c: NonNativeFieldVar<F, CF> = NonNativeFieldVar::<F, CF>::one();
     let mut x_2_i = x.clone(); // x_2_i is x^{2^i}, starting from x^{2^0}=x
-    for i in 0..k {
-        c *= u[i].clone() * x_2_i.clone() + u[i].inverse()?;
+    for u_i in u.iter() {
+        c *= u_i.clone() * x_2_i.clone() + u_i.inverse()?;
         x_2_i *= x_2_i.clone();
     }
     Ok(c * x.clone())
@@ -426,7 +434,7 @@ where
     }
 }
 
-pub struct IPAGadget<C, GC>
+pub struct IPAGadget<C, GC, const BLIND: bool = false>
 where
     C: CurveGroup,
     GC: CurveVar<C, CF<C>>,
@@ -436,7 +444,7 @@ where
     _gc: PhantomData<GC>,
 }
 
-impl<C, GC> IPAGadget<C, GC>
+impl<C, GC, const BLIND: bool> IPAGadget<C, GC, BLIND>
 where
     C: CurveGroup,
     GC: CurveVar<C, CF<C>>,
@@ -447,8 +455,8 @@ where
     /// verify the IPA opening proof, K=log2(d), where d is the degree of the committed polynomial,
     /// and BLIND indicates if the commitment uses blinding factors, if not, there are some
     /// constraints saved.
-    pub fn verify<const K: usize, const BLIND: bool>(
-        // transcript: &impl TranscriptVar<CF<C>>,
+    #[allow(clippy::too_many_arguments)]
+    pub fn verify<const K: usize>(
         g: &Vec<GC>,                                  // parms.generators
         h: &GC,                                       // parms.h
         x: &NonNativeFieldVar<C::ScalarField, CF<C>>, // evaluation point
@@ -459,18 +467,17 @@ where
         u: &[NonNativeFieldVar<C::ScalarField, CF<C>>; K], // challenges
         U: &GC,                                       // challenge
     ) -> Result<Boolean<CF<C>>, SynthesisError> {
-        // transcript.absorb_point(&P)?;
-        // let u = transcript.get_challenges(K)?;
-        // let s = transcript.get_challenge()?;
-        // let U = GC::generator().scalar_mul_le(s.to_bits_le()?.iter());
+        if p.L.len() != K || p.R.len() != K || p.u_invs.len() != K {
+            return Err(SynthesisError::Unsatisfiable);
+        }
 
         let P_ = P + U.scalar_mul_le(v.to_bits_le()?.iter())?;
         let mut q_0 = P_;
         let mut r = r.clone();
 
         // check correctnes of the u_invs delegated to the prover
-        for j in 0..K {
-            (u[j].clone() * p.u_invs[j].clone()).enforce_equal(&NonNativeFieldVar::one())?;
+        for (j, u_j) in u.iter().enumerate() {
+            (u_j.clone() * p.u_invs[j].clone()).enforce_equal(&NonNativeFieldVar::one())?;
         }
 
         // compute b & G from s
@@ -489,8 +496,8 @@ where
             G += g[i].scalar_mul_le(s_i.to_bits_le()?.iter())?;
         }
 
-        for j in 0..K {
-            let uj2 = u[j].square()?;
+        for (j, u_j) in u.iter().enumerate() {
+            let uj2 = u_j.square()?;
             let uj_inv2 = p.u_invs[j].square()?; // cheaper square than inversing the uj2
 
             q_0 = q_0
@@ -501,32 +508,30 @@ where
             }
         }
 
-        let q_1;
-        if BLIND {
-            q_1 = G.scalar_mul_le(p.a.to_bits_le()?.iter())?
+        let q_1 = if BLIND {
+            G.scalar_mul_le(p.a.to_bits_le()?.iter())?
                 + h.scalar_mul_le(r.to_bits_le()?.iter())?
-                + U.scalar_mul_le((p.a.clone() * b).to_bits_le()?.iter())?;
+                + U.scalar_mul_le((p.a.clone() * b).to_bits_le()?.iter())?
         } else {
-            q_1 = G.scalar_mul_le(p.a.to_bits_le()?.iter())?
-                + U.scalar_mul_le((p.a.clone() * b).to_bits_le()?.iter())?;
-        }
+            G.scalar_mul_le(p.a.to_bits_le()?.iter())?
+                + U.scalar_mul_le((p.a.clone() * b).to_bits_le()?.iter())?
+        };
         // q_0 == q_1
-        Ok(q_0.is_eq(&q_1)?)
+        q_0.is_eq(&q_1)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use ark_ec::Group;
     use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
     use ark_r1cs_std::{alloc::AllocVar, bits::boolean::Boolean, eq::EqGadget};
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::UniformRand;
+    use std::ops::Mul;
 
     use super::*;
-    use crate::commitment::pedersen::Pedersen;
-    use crate::transcript::poseidon::{
-        poseidon_test_config, PoseidonTranscript, PoseidonTranscriptVar,
-    };
+    use crate::transcript::poseidon::{poseidon_test_config, PoseidonTranscript};
 
     #[test]
     fn test_ipa() {
@@ -540,7 +545,7 @@ mod tests {
         const d: usize = 2_u64.pow(k as u32) as usize;
 
         // setup params
-        let params = IPA::<blind, Projective>::new_params(&mut rng, d);
+        let params = IPA::<Projective, blind>::new_params(&mut rng, d);
 
         let poseidon_config = poseidon_test_config::<Fr>();
         // init Prover's transcript
@@ -552,18 +557,24 @@ mod tests {
             .take(d)
             .collect();
         let r_blind: Fr = Fr::rand(&mut rng);
-        let cm = IPA::<blind, Projective>::commit(&params, &a, &r_blind).unwrap();
+        let cm = IPA::<Projective, blind>::commit(&params, &a, &r_blind).unwrap();
 
         // evaluation point
         let x = Fr::rand(&mut rng);
 
-        let proof =
-            IPA::<blind, Projective>::prove(&mut rng, &params, &mut transcript_p, &cm, &a, &x)
-                .unwrap();
+        let proof = IPA::<Projective, blind>::prove(
+            &params,
+            &mut transcript_p,
+            &cm,
+            &a,
+            &x,
+            Some(&mut rng),
+        )
+        .unwrap();
 
         let b = powers_of(x, d); // WIP
         let v = inner_prod(&a, &b).unwrap(); // WIP
-        assert!(IPA::<blind, Projective>::verify(
+        assert!(IPA::<Projective, blind>::verify(
             &params,
             &mut transcript_v,
             &x,
@@ -588,7 +599,7 @@ mod tests {
         const d: usize = 2_u64.pow(k as u32) as usize;
 
         // setup params
-        let params = IPA::<blind, Projective>::new_params(&mut rng, d);
+        let params = IPA::<Projective, blind>::new_params(&mut rng, d);
 
         let poseidon_config = poseidon_test_config::<Fr>();
         // init Prover's transcript
@@ -601,18 +612,24 @@ mod tests {
             .collect();
         a.extend(vec![Fr::zero(); d / 2]);
         let r_blind: Fr = Fr::rand(&mut rng);
-        let cm = IPA::<blind, Projective>::commit(&params, &a, &r_blind).unwrap();
+        let cm = IPA::<Projective, blind>::commit(&params, &a, &r_blind).unwrap();
 
         // evaluation point
         let x = Fr::rand(&mut rng);
 
-        let proof =
-            IPA::<blind, Projective>::prove(&mut rng, &params, &mut transcript_p, &cm, &a, &x)
-                .unwrap();
+        let proof = IPA::<Projective, blind>::prove(
+            &params,
+            &mut transcript_p,
+            &cm,
+            &a,
+            &x,
+            Some(&mut rng),
+        )
+        .unwrap();
 
         let b = powers_of(x, d); // WIP
         let v = inner_prod(&a, &b).unwrap(); // WIP
-        assert!(IPA::<blind, Projective>::verify(
+        assert!(IPA::<Projective, blind>::verify(
             &params,
             &mut transcript_v,
             &x,
@@ -627,10 +644,7 @@ mod tests {
         // circuit
         let cs = ConstraintSystem::<Fq>::new_ref();
 
-        // TODO incircuit
         let mut transcript_v = PoseidonTranscript::<Projective>::new(&poseidon_config);
-        use ark_ec::Group;
-        use std::ops::Mul;
         transcript_v.absorb_point(&cm).unwrap();
         let s = transcript_v.get_challenge();
         let U = Projective::generator().mul(s);
@@ -642,7 +656,6 @@ mod tests {
         }
 
         // prepare inputs
-        // let mut transcriptVar = PoseidonTranscriptVar::<Fq>::new(cs.clone(), &poseidon_config);
         let gVar = Vec::<GVar>::new_constant(cs.clone(), params.generators).unwrap();
         let hVar = GVar::new_constant(cs.clone(), params.h).unwrap();
         let xVar = NonNativeFieldVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(x)).unwrap();
@@ -655,7 +668,7 @@ mod tests {
         let uVar: [NonNativeFieldVar<Fr, Fq>; k] = uVar_vec.try_into().unwrap();
         let UVar = GVar::new_witness(cs.clone(), || Ok(U)).unwrap();
 
-        let v = IPAGadget::<Projective, GVar>::verify::<k, blind>(
+        let v = IPAGadget::<Projective, GVar, blind>::verify::<k>(
             // &mut transcriptVar,
             &gVar,
             &hVar,

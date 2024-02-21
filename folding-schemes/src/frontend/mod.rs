@@ -66,18 +66,18 @@ impl<E: Pairing> FCircuit<E::ScalarField> for CircomtoFCircuit<E> {
     }
 
     fn step_native(self, z_i: Vec<E::ScalarField>) -> Result<Vec<E::ScalarField>, Error> {
-        // Convert PrimeField::Bigint to num_bigint::BigInt
-        let input_as_bigint = z_i.iter().map(|val| {
+        // Convert from PrimeField::Bigint to num_bigint::BigInt
+        let input_num_bigint = z_i.iter().map(|val| {
             self.circom_wrapper.ark_bigint_to_num_bigint(*val)
         }).collect::<Vec<BigInt>>();
 
         // Compute witness
         let (_, witness) = self.circom_wrapper.extract_r1cs_and_witness(&[
-            ("input_variable".to_string(), input_as_bigint)
+            ("ivc_input".to_string(), input_num_bigint)
         ]).map_err(|e| Error::Other(format!("Circom computation failed: {}", e)))?;  
 
         match witness {
-            Some(z_i) => Ok(z_i),
+            Some(new_z_i) => Ok(new_z_i),
             None => Err(Error::Other("Witness data was not found".to_string())),
         }
     }
@@ -85,17 +85,20 @@ impl<E: Pairing> FCircuit<E::ScalarField> for CircomtoFCircuit<E> {
     fn generate_step_constraints(
         self,
         cs: ConstraintSystemRef<E::ScalarField>,
-        mut z_i: Vec<FpVar<E::ScalarField>>,
+        z_i: Vec<FpVar<E::ScalarField>>,
     ) -> Result<Vec<FpVar<E::ScalarField>>, SynthesisError> {
-        let mut big_int_inputs = Vec::new();
+
+        let mut input_values = Vec::new();
+        // Convert each FpVar to BigInt and add it to the input_values vector
         for fp_var in z_i.iter() {
-            // Convert from FpVar to PrimeField
-            let prime_field_value = fp_var.value()?;
-            // Convert from PrimeField to bigint::BigInt
-            let big_int = self.circom_wrapper.ark_bigint_to_num_bigint(prime_field_value);
-            big_int_inputs.push(("input_variable".to_string(), vec![big_int]));
+            // Convert from FpVar to PrimeField::Bigint
+            let prime_bigint = fp_var.value()?;
+            // Convert from PrimeField::Bigint to num_bigint::BigInt
+            let num_bigint = self.circom_wrapper.ark_bigint_to_num_bigint(prime_bigint);
+            input_values.push(num_bigint);
         }
-        // let dummy_inputs = vec![("input_variable".to_string(), vec![BigInt::from(0)])];
+
+        let big_int_inputs = vec![("ivc_input".to_string(), input_values)];
     
         // Processing of Circom
         let (r1cs, witness) = self.circom_wrapper.extract_r1cs_and_witness(&big_int_inputs)
@@ -111,14 +114,11 @@ impl<E: Pairing> FCircuit<E::ScalarField> for CircomtoFCircuit<E> {
         circom_circuit.generate_constraints(cs.clone())?;
         assert!(cs.is_satisfied().unwrap());
     
-        z_i.clear();
-        for &w in &witness {
-            // Convert from ScalarField to FpVar
-            let witness_var = FpVar::<E::ScalarField>::new_witness(cs.clone(), || Ok(w)).unwrap();
-            z_i.push(witness_var);
-        }
-
-        Ok(z_i)
+        let new_z_i = witness.iter().map(|w| {
+            FpVar::<E::ScalarField>::new_witness(cs.clone(), || Ok(*w))
+        }).collect::<Result<Vec<FpVar<E::ScalarField>>, SynthesisError>>()?;
+    
+        Ok(new_z_i)
     }    
 }
 
@@ -268,11 +268,11 @@ pub mod tests {
     }
 
     #[test]
-    fn test_circomto_fcircuit_generate_step_constraints() {
+    fn test_circomtofcircuit() {
         let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/test_circuit.r1cs");
         let wasm_path = PathBuf::from("./src/frontend/circom/test_folder/test_circuit_js/test_circuit.wasm");
         
-        let z_i = vec![Fr::from(1u32)];
+        let z_i = vec![Fr::from(3u32)];
 
         /// [Issue: Incompatibility of Pairing and Pallas]
         /// We have to avoid Bn254(Pairing) because we want to use Pallas.

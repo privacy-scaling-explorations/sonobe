@@ -3,11 +3,16 @@
 
 use crate::utils::encoding::{g1_to_fq_repr, g2_to_fq_repr};
 use crate::utils::encoding::{G1Repr, G2Repr};
+use crate::{Groth16Data, KzgData, NovaCyclefoldData};
 use ark_bn254::{Bn254, G1Affine};
 use ark_groth16::VerifyingKey;
 use ark_poly_commit::kzg10::VerifierKey;
 use askama::Template;
 use std::ops::Deref;
+
+// Pragma statements for verifiers
+pub(crate) const PRAGMA_GROTH16_VERIFIER: &str = "pragma solidity >=0.7.0 <0.9.0;"; // from snarkjs, avoid changing
+pub(crate) const PRAGMA_KZG10_VERIFIER: &str = "pragma solidity >=0.8.1 <=0.8.4;";
 
 #[derive(Template, Default)]
 #[template(path = "groth16_verifier.askama.sol", ext = "sol")]
@@ -30,9 +35,34 @@ pub struct Groth16Verifier {
     pub gamma_abc_g1: Vec<G1Repr>,
 }
 
+impl From<(&Groth16Data, &Option<String>)> for Groth16Verifier {
+    fn from(value: (&Groth16Data, &Option<String>)) -> Self {
+        Self {
+            pragma_version: value
+                .1
+                .clone()
+                .unwrap_or(PRAGMA_GROTH16_VERIFIER.to_string()),
+            sdpx: "// SPDX-License-Identifier: GPL-3.0".to_string(),
+            vkey_alpha_g1: g1_to_fq_repr(value.0 .0.alpha_g1),
+            vkey_beta_g2: g2_to_fq_repr(value.0 .0.beta_g2),
+            vkey_gamma_g2: g2_to_fq_repr(value.0 .0.gamma_g2),
+            vkey_delta_g2: g2_to_fq_repr(value.0 .0.delta_g2),
+            gamma_abc_len: value.0 .0.gamma_abc_g1.len(),
+            gamma_abc_g1: value
+                .0
+                 .0
+                .gamma_abc_g1
+                .iter()
+                .copied()
+                .map(g1_to_fq_repr)
+                .collect(),
+        }
+    }
+}
+
 impl Groth16Verifier {
     pub fn new(value: VerifyingKey<Bn254>, pragma: Option<String>) -> Self {
-        let pragma_version = pragma.unwrap_or_default();
+        let pragma_version = pragma.unwrap_or_else(|| PRAGMA_GROTH16_VERIFIER.to_string());
         Self {
             pragma_version,
             sdpx: "// SPDX-License-Identifier: GPL-3.0".to_string(),
@@ -70,6 +100,27 @@ pub struct KZG10Verifier {
     pub g1_crs: Vec<G1Repr>,
 }
 
+impl From<(&KzgData, &Option<String>)> for KZG10Verifier {
+    fn from(value: (&KzgData, &Option<String>)) -> Self {
+        Self {
+            pragma_version: value.1.clone().unwrap_or(PRAGMA_KZG10_VERIFIER.to_string()),
+            sdpx: "// SPDX-License-Identifier: GPL-3.0".to_string(),
+            g1: g1_to_fq_repr(value.0.vk.g),
+            g2: g2_to_fq_repr(value.0.vk.h),
+            vk: g2_to_fq_repr(value.0.vk.beta_h),
+            g1_crs_len: value.0.g1_crs_batch_points_len,
+            g1_crs: value
+                .0
+                .g1_crs_batch_points
+                .clone()
+                .unwrap_or_default()
+                .iter()
+                .map(|g1| g1_to_fq_repr(*g1))
+                .collect(),
+        }
+    }
+}
+
 impl KZG10Verifier {
     pub fn new(
         vk: VerifierKey<Bn254>,
@@ -103,7 +154,15 @@ pub struct NovaCyclefoldDecider {
     pub kzg10_verifier: KZG10Verifier,
 }
 
-// TODO: Create an enum to collect all params from CLI and pass it here instead of the tuple
+impl From<(&NovaCyclefoldData, &Option<String>)> for NovaCyclefoldDecider {
+    fn from(value: (&NovaCyclefoldData, &Option<String>)) -> Self {
+        Self {
+            groth16_verifier: Groth16Verifier::from((&value.0.g16_data, value.1)),
+            kzg10_verifier: KZG10Verifier::from((&value.0.kzg_data, value.1)),
+        }
+    }
+}
+
 impl NovaCyclefoldDecider {
     fn new(
         vkey_g16: VerifyingKey<Bn254>,

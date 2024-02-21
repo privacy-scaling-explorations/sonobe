@@ -16,7 +16,8 @@ pub trait FCircuit<F: PrimeField>: Clone + Copy + Debug {
     /// returns a new FCircuit instance
     fn new(params: Self::Params) -> Self;
 
-    /// returns the number of elements in the state of the FCircuit
+    /// returns the number of elements in the state of the FCircuit, which corresponds to the
+    /// FCircuit inputs.
     fn state_len(self) -> usize;
 
     /// computes the next state values in place, assigning z_{i+1} into z_i, and computing the new

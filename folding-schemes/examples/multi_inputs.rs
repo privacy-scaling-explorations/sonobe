@@ -26,10 +26,10 @@ use utils::nova_setup;
 /// In this example we set z_i and z_{i+1} to have five elements, and at each step we do different
 /// operations on each of them.
 #[derive(Clone, Copy, Debug)]
-pub struct MultipleAddFCircuit<F: PrimeField> {
+pub struct MultiInputsFCircuit<F: PrimeField> {
     _f: PhantomData<F>,
 }
-impl<F: PrimeField> FCircuit<F> for MultipleAddFCircuit<F> {
+impl<F: PrimeField> FCircuit<F> for MultiInputsFCircuit<F> {
     type Params = ();
 
     fn new(_params: Self::Params) -> Self {
@@ -70,19 +70,19 @@ impl<F: PrimeField> FCircuit<F> for MultipleAddFCircuit<F> {
     }
 }
 
-/// cargo test --example multiple-inputs
+/// cargo test --example multi_inputs
 #[cfg(test)]
 pub mod tests {
     use super::*;
     use ark_r1cs_std::alloc::AllocVar;
     use ark_relations::r1cs::ConstraintSystem;
 
-    // test to check that the MultipleAddFCircuit computes the same values inside and outside the circuit
+    // test to check that the MultiInputsFCircuit computes the same values inside and outside the circuit
     #[test]
     fn test_add_f_circuit() {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        let circuit = MultipleAddFCircuit::<Fr>::new(());
+        let circuit = MultiInputsFCircuit::<Fr>::new(());
         let z_i = vec![
             Fr::from(1_u32),
             Fr::from(1_u32),
@@ -101,7 +101,7 @@ pub mod tests {
     }
 }
 
-/// cargo run --release --example multiple_inputs
+/// cargo run --release --example multi_inputs
 fn main() {
     let num_steps = 10;
     let initial_state = vec![
@@ -112,10 +112,10 @@ fn main() {
         Fr::from(1_u32),
     ];
 
-    let F_circuit = MultipleAddFCircuit::<Fr>::new(());
+    let F_circuit = MultiInputsFCircuit::<Fr>::new(());
 
     println!("Prepare Nova ProverParams & VerifierParams");
-    let (prover_params, verifier_params) = nova_setup::<MultipleAddFCircuit<Fr>>(F_circuit);
+    let (prover_params, verifier_params) = nova_setup::<MultiInputsFCircuit<Fr>>(F_circuit);
 
     /// The idea here is that eventually we could replace the next line chunk that defines the
     /// `type NOVA = Nova<...>` by using another folding scheme that fulfills the `FoldingScheme`
@@ -125,7 +125,7 @@ fn main() {
         GVar,
         Projective2,
         GVar2,
-        MultipleAddFCircuit<Fr>,
+        MultiInputsFCircuit<Fr>,
         Pedersen<Projective>,
         Pedersen<Projective2>,
     >;

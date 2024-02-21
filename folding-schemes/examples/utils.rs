@@ -11,8 +11,9 @@ use folding_schemes::folding::nova::{get_r1cs, ProverParams, VerifierParams};
 use folding_schemes::frontend::FCircuit;
 use folding_schemes::transcript::poseidon::poseidon_test_config;
 
-// This method computes the Prover & Verifier parameters for the example. For a real world use case
-// those parameters should be generated carefuly (both the PoseidonConfig and the PedersenParams)
+// This method computes the Prover & Verifier parameters for the example.
+// Warning: this method is only for testing purposes. For a real world use case those parameters
+// should be generated carefuly (both the PoseidonConfig and the PedersenParams).
 #[allow(clippy::type_complexity)]
 pub(crate) fn nova_setup<FC: FCircuit<Fr>>(
     F_circuit: FC,

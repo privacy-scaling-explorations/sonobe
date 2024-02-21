@@ -1,21 +1,11 @@
 use ::clap::Parser;
-use ark_bn254::Bn254;
-use ark_groth16::VerifyingKey;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Write};
-use askama::Template;
-use folding_schemes_solidity::Groth16Verifier;
-use log::warn;
-use settings::Cli;
+use ark_serialize::Write;
+use folding_schemes_solidity::{Groth16Data, KzgData, ProtocolData};
+use settings::{Cli, Protocol};
+use std::path::Path;
 use std::{fs, io};
-use std::{fs::File, path::Path};
 
 mod settings;
-
-fn read_file<R: CanonicalDeserialize>(path: &Path) -> Result<R, io::Error> {
-    let bytes = std::fs::read(path)?;
-    R::deserialize_compressed(&bytes[..])
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("{:?}", e)))
-}
 
 fn create_or_open_then_write<T: AsRef<[u8]>>(path: &Path, content: &T) -> Result<(), io::Error> {
     let mut file = fs::OpenOptions::new().create(true).write(true).open(path)?;
@@ -31,26 +21,17 @@ fn main() {
         .filter_level(cli.verbosity.log_level_filter())
         .init();
 
-    warn!("Jello!");
-    let g16_vkey_path = cli.g16_vkey;
-
     let out_path = cli.out;
-    warn!("{:?}", &out_path);
+
     // Fetch the exact protocol for which we need to generate the Decider verifier contract.
     let protocol = cli.protocol;
-    match protocol {
-        settings::Protocol::NovaCyclefold => {
-            let g16_vkey = read_file::<VerifyingKey<Bn254>>(&g16_vkey_path)
-                .expect(&format!("Can't find key at {:?}", &g16_vkey_path));
-            create_or_open_then_write(
-                &out_path,
-                &Groth16Verifier::new(g16_vkey, None)
-                    .render()
-                    .unwrap()
-                    .as_bytes(),
-            )
-            .unwrap();
-        }
-        _ => unreachable!(),
-    }
+    // Fetch the protocol data passed by the user from the file.
+    let protocol_data = std::fs::read(cli.protocol_data).unwrap();
+
+    // Generate the Solidity Verifier contract for the selected protocol with the given data.
+    create_or_open_then_write(
+        &out_path,
+        &protocol.render(&protocol_data, cli.pragma).unwrap(),
+    )
+    .unwrap();
 }

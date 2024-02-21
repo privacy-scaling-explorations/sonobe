@@ -261,7 +261,7 @@ pub mod tests {
         /// [Issue: Incompatibility of Pairing and Pallas]
         /// We have to avoid Bn254(Pairing) because we want to use Pallas.
         /// However, original ark-circom is defined on the Pairing.
-        let circom_fcircuit = CircomtoFCircuit::<Bn254>::new((r1cs_path, wasm_path, z_i));
+        let circom_fcircuit = CircomtoFCircuit::<Pallas>::new((r1cs_path, wasm_path, z_i));
 
         let wrapper_circuit = WrapperCircuit {
             FC: circom_fcircuit,

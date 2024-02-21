@@ -1,9 +1,98 @@
+use ark_bn254::{g1::G1Affine, Bn254};
+use ark_groth16::VerifyingKey;
+use ark_poly_commit::kzg10::VerifierKey;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write};
+use askama::Template;
+
+use crate::{Groth16Verifier, KZG10Verifier, NovaCyclefoldDecider};
 pub mod templates;
+
+pub trait ProtocolData: CanonicalDeserialize + CanonicalSerialize {
+    const PROTOCOL_NAME: &'static str;
+
+    fn serialize_name<W: Write>(&self, writer: W) -> Result<(), SerializationError> {
+        Self::PROTOCOL_NAME
+            .as_bytes()
+            .serialize_uncompressed(writer)
+    }
+
+    fn serialize_protocol_data<W: Write + Copy>(
+        &self,
+        writer: W,
+    ) -> Result<(), SerializationError> {
+        self.serialize_name(writer)?;
+        self.serialize_compressed(writer)
+    }
+    fn deserialize_protocol_data<R: Read + Copy>(reader: R) -> Result<Self, SerializationError> {
+        let name: String = String::deserialize_compressed(reader)?;
+        let data = Self::deserialize_compressed(reader)?;
+
+        if name != Self::PROTOCOL_NAME.to_string() {
+            return Err(SerializationError::InvalidData);
+        }
+
+        Ok(data)
+    }
+
+    fn render_as_template(&self, pragma: &Option<String>) -> Vec<u8>;
+}
+
+// Ideally I would like to link this to the `Decider` trait in FoldingSchemes.
+// For now, this is the easiest as NovaCyclefold isn't clear target from where we can get all it's needed arguments.
+#[derive(CanonicalDeserialize, CanonicalSerialize, Clone)]
+pub struct Groth16Data(VerifyingKey<Bn254>);
+
+impl ProtocolData for Groth16Data {
+    const PROTOCOL_NAME: &'static str = "Groth16";
+
+    fn render_as_template(&self, pragma: &Option<String>) -> Vec<u8> {
+        Groth16Verifier::from((self, pragma))
+            .render()
+            .unwrap()
+            .into_bytes()
+    }
+}
+
+#[derive(CanonicalDeserialize, CanonicalSerialize, Clone)]
+pub struct KzgData {
+    vk: VerifierKey<Bn254>,
+    g1_crs_batch_points_len: usize,
+    g1_crs_batch_points: Option<Vec<G1Affine>>,
+}
+
+impl ProtocolData for KzgData {
+    const PROTOCOL_NAME: &'static str = "KZG";
+
+    fn render_as_template(&self, pragma: &Option<String>) -> Vec<u8> {
+        KZG10Verifier::from((self, pragma))
+            .render()
+            .unwrap()
+            .into_bytes()
+    }
+}
+
+#[derive(CanonicalDeserialize, CanonicalSerialize)]
+pub struct NovaCyclefoldData {
+    g16_data: Groth16Data,
+    kzg_data: KzgData,
+}
+
+impl ProtocolData for NovaCyclefoldData {
+    const PROTOCOL_NAME: &'static str = "NovaCyclefold";
+
+    fn render_as_template(&self, pragma: &Option<String>) -> Vec<u8> {
+        NovaCyclefoldDecider::from((self, pragma))
+            .render()
+            .unwrap()
+            .into_bytes()
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use crate::evm::{compile_solidity, save_solidity, Evm};
     use crate::verifiers::templates::{Groth16Verifier, KZG10Verifier};
+    use crate::{PRAGMA_GROTH16_VERIFIER, PRAGMA_KZG10_VERIFIER};
     use ark_bn254::{Bn254, Fr, G1Projective as G1};
     use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
     use ark_ec::{AffineRepr, CurveGroup};
@@ -34,10 +123,6 @@ mod tests {
     // Function signatures for proof verification on kzg10 and groth16 contracts
     pub const FUNCTION_SIGNATURE_KZG10_CHECK: [u8; 4] = [0x9e, 0x78, 0xcc, 0xf7];
     pub const FUNCTION_SIGNATURE_GROTH16_VERIFY_PROOF: [u8; 4] = [0x43, 0x75, 0x3b, 0x4d];
-
-    // Pragma statements for verifiers
-    pub const PRAGMA_GROTH16_VERIFIER: &str = "pragma solidity >=0.7.0 <0.9.0;"; // from snarkjs, avoid changing
-    pub const PRAGMA_KZG10_VERIFIER: &str = "pragma solidity >=0.8.1 <=0.8.4;";
 
     struct TestAddCircuit<F: PrimeField> {
         _f: PhantomData<F>,

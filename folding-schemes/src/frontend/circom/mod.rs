@@ -65,6 +65,7 @@ impl<E: Pairing> CircomWrapper<E> {
         calculator.calculate_witness(inputs.iter().cloned(), true)
     }
 
+    // This function 
     // Converts a num_bigint::Bigint to PrimeField::BigInt.
     pub fn num_bigint_to_ark_bigint<F: PrimeField>(
         &self,

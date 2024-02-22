@@ -51,7 +51,7 @@ impl From<(NovaCyclefoldData, &Option<String>)> for NovaCyclefoldDecider {
 }
 
 impl NovaCyclefoldDecider {
-    fn new(
+    pub(crate) fn new(
         vkey_g16: VerifyingKey<Bn254>,
         vkey_kzg: VerifierKey<Bn254>,
         crs_points: Vec<G1Affine>,

@@ -328,9 +328,9 @@ mod tests {
 
     #[test]
     fn test_kzg_verifier_compiles() {
-        let rng = &mut test_rng();
+        let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
         let n = 10;
-        let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(rng, n);
+        let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(&mut rng, n);
         let template = KZG10Verifier::new(
             vk,
             pk.powers_of_g[..5].to_vec(),
@@ -345,14 +345,16 @@ mod tests {
 
     #[test]
     fn test_kzg_verifier_accepts_and_rejects_proofs() {
-        let rng = &mut test_rng();
+        let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
         let poseidon_config = poseidon_test_config::<Fr>();
         let transcript_p = &mut PoseidonTranscript::<G1>::new(&poseidon_config);
         let transcript_v = &mut PoseidonTranscript::<G1>::new(&poseidon_config);
 
         let n = 10;
-        let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(rng, n);
-        let v: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(rng)).take(n).collect();
+        let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(&mut rng, n);
+        let v: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(&mut rng))
+            .take(n)
+            .collect();
         let cm = KZGProver::<G1>::commit(&pk, &v, &Fr::zero()).unwrap();
         let (eval, proof) =
             KZGProver::<G1>::prove(&pk, transcript_p, &cm, &v, &Fr::zero(), None).unwrap();
@@ -375,6 +377,121 @@ mod tests {
         transcript_v.absorb_point(&cm).unwrap();
         let x = transcript_v.get_challenge();
 
+        let x = x.into_bigint().to_bytes_be();
+        let mut calldata: Vec<u8> = chain![
+            FUNCTION_SIGNATURE_KZG10_CHECK,
+            x_comm.into_bigint().to_bytes_be(),
+            y_comm.into_bigint().to_bytes_be(),
+            x_proof.into_bigint().to_bytes_be(),
+            y_proof.into_bigint().to_bytes_be(),
+            x.clone(),
+            y,
+        ]
+        .collect();
+
+        let (_, output) = evm.call(verifier_address, calldata.clone());
+        assert_eq!(*output.last().unwrap(), 1);
+
+        // change calldata to make it invalid
+        let last_calldata_element = calldata.last_mut().unwrap();
+        *last_calldata_element = 0;
+        let (_, output) = evm.call(verifier_address, calldata);
+        assert_eq!(*output.last().unwrap(), 0);
+    }
+
+    #[test]
+    fn nova_cyclefold_verifier_compiles() {
+        let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
+        let n = 10;
+        let (pk, vk_kzg): (ProverKey<G1>, VerifierKey<Bn254>) =
+            KZGSetup::<Bn254>::setup(&mut rng, n);
+
+        let (x, y, z) = (21, 21, 42);
+        let (_, vk_g16) = {
+            let c = TestAddCircuit::<Fr> {
+                _f: PhantomData,
+                x,
+                y,
+                z,
+            };
+            Groth16::<Bn254>::setup(c, &mut rng).unwrap()
+        };
+
+        let template = NovaCyclefoldDecider::new(
+            vk_g16,
+            vk_kzg,
+            pk.powers_of_g[0..5].to_vec(),
+            Some(PRAGMA_KZG10_VERIFIER.to_string()),
+        );
+        let res = template.render().expect("Failed to render the template");
+        let nova_cyclefold_verifier_bytecode = compile_solidity(res, "NovaCyclefold");
+        let mut evm = Evm::default();
+        _ = evm.create(nova_cyclefold_verifier_bytecode);
+    }
+
+    #[test]
+    fn nova_cyclefold_verifier_accepts_and_rejects_proofs() {
+        let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
+
+        let (x, y, z) = (21, 21, 42);
+        let (pk_g16, vk_g16) = {
+            let c = TestAddCircuit::<Fr> {
+                _f: PhantomData,
+                x,
+                y,
+                z,
+            };
+            Groth16::<Bn254>::setup(c, &mut rng).unwrap()
+        };
+        let c = TestAddCircuit::<Fr> {
+            _f: PhantomData,
+            x,
+            y,
+            z,
+        };
+        let g16_proof = Groth16::<Bn254>::prove(&pk_g16, c, &mut rng).unwrap();
+        let g16_template = Groth16Verifier::new(vk_g16, Some(PRAGMA_GROTH16_VERIFIER.to_string()));
+
+        let poseidon_config = poseidon_test_config::<Fr>();
+        let transcript_p = &mut PoseidonTranscript::<G1>::new(&poseidon_config);
+        let transcript_v = &mut PoseidonTranscript::<G1>::new(&poseidon_config);
+
+        let n = 10;
+        let (pk_kzg, vk_kzg): (ProverKey<G1>, VerifierKey<Bn254>) =
+            KZGSetup::<Bn254>::setup(&mut rng, n);
+        let v: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(&mut rng))
+            .take(n)
+            .collect();
+        let cm = KZGProver::<G1>::commit(&pk_kzg, &v, &Fr::zero()).unwrap();
+        let (eval, proof) =
+            KZGProver::<G1>::prove(&pk_kzg, transcript_p, &cm, &v, &Fr::zero()).unwrap();
+        let kzg10_verifier = KZG10Verifier::new(
+            vk_kzg,
+            pk_kzg.powers_of_g[..5].to_vec(),
+            Some(PRAGMA_KZG10_VERIFIER.to_string()),
+            None,
+        );
+
+        let template = NovaCyclefoldDecider {
+            groth16_verifier: g16_template,
+            kzg10_verifier,
+        };
+        let res = template.render().expect("Failed to render the template");
+        let nova_cyclefold_verifier_bytecode = compile_solidity(res, "NovaCyclefold");
+
+        let mut evm = Evm::default();
+        let verifier_address = evm.create(nova_cyclefold_verifier_bytecode);
+
+        let (cm_affine, proof_affine) = (cm.into_affine(), proof.into_affine());
+        let (x_comm, y_comm) = cm_affine.xy().unwrap();
+        let (x_proof, y_proof) = proof_affine.xy().unwrap();
+        let y = eval.into_bigint().to_bytes_be();
+
+        transcript_v.absorb_point(&cm).unwrap();
+        let x = transcript_v.get_challenge();
+
+        /// XXX: Continue here! Extract fn signature and call the method.
+        /// Once this works, implement testing with CLI rendering.
         let x = x.into_bigint().to_bytes_be();
         let mut calldata: Vec<u8> = chain![
             FUNCTION_SIGNATURE_KZG10_CHECK,

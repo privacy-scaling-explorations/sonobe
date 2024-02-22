@@ -29,18 +29,16 @@ pub struct KZG10Verifier {
 
 impl From<(&KzgData, &Option<String>)> for KZG10Verifier {
     fn from(value: (&KzgData, &Option<String>)) -> Self {
+        let g1_crs_batch_points = value.0.g1_crs_batch_points.unwrap_or_default();
+
         Self {
             pragma_version: value.1.clone().unwrap_or(PRAGMA_KZG10_VERIFIER.to_string()),
             sdpx: "// SPDX-License-Identifier: GPL-3.0".to_string(),
             g1: g1_to_fq_repr(value.0.vk.g),
             g2: g2_to_fq_repr(value.0.vk.h),
             vk: g2_to_fq_repr(value.0.vk.beta_h),
-            g1_crs_len: value.0.g1_crs_batch_points_len,
-            g1_crs: value
-                .0
-                .g1_crs_batch_points
-                .clone()
-                .unwrap_or_default()
+            g1_crs_len: g1_crs_batch_points.len(),
+            g1_crs: g1_crs_batch_points
                 .iter()
                 .map(|g1| g1_to_fq_repr(*g1))
                 .collect(),
@@ -74,12 +72,13 @@ impl KZG10Verifier {
     }
 }
 
-#[derive(CanonicalDeserialize, CanonicalSerialize, Clone)]
+#[derive(CanonicalDeserialize, CanonicalSerialize, Clone, PartialEq, Debug)]
 pub struct KzgData {
     vk: VerifierKey<Bn254>,
-    g1_crs_batch_points_len: usize,
     g1_crs_batch_points: Option<Vec<G1Affine>>,
 }
+
+// impl From<(VerifierKey<Bn254>, )
 
 impl ProtocolData for KzgData {
     const PROTOCOL_NAME: &'static str = "KZG";

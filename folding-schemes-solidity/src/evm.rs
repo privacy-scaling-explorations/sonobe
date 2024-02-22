@@ -11,8 +11,9 @@ use std::{
     str,
 };
 
+#[cfg(test)]
 // from: https://github.com/privacy-scaling-explorations/halo2-solidity-verifier/blob/85cb77b171ce3ee493628007c7a1cfae2ea878e6/examples/separately.rs#L56
-pub fn save_solidity(name: impl AsRef<str>, solidity: &str) {
+pub(crate) fn save_solidity(name: impl AsRef<str>, solidity: &str) {
     const DIR_GENERATED: &str = "./generated";
     create_dir_all(DIR_GENERATED).unwrap();
     File::create(format!("{DIR_GENERATED}/{}", name.as_ref()))
@@ -21,11 +22,12 @@ pub fn save_solidity(name: impl AsRef<str>, solidity: &str) {
         .unwrap();
 }
 
+#[cfg(test)]
 /// Compile solidity with `--via-ir` flag, then return creation bytecode.
 ///
 /// # Panics
 /// Panics if executable `solc` can not be found, or compilation fails.
-pub fn compile_solidity(solidity: impl AsRef<[u8]>, contract_name: &str) -> Vec<u8> {
+pub(crate) fn compile_solidity(solidity: impl AsRef<[u8]>, contract_name: &str) -> Vec<u8> {
     let mut process = match Command::new("solc")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

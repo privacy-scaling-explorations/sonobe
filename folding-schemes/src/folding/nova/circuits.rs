@@ -310,10 +310,14 @@ where
             Ok(self.i.unwrap_or_else(CF1::<C1>::zero))
         })?;
         let z_0 = Vec::<FpVar<CF1<C1>>>::new_witness(cs.clone(), || {
-            Ok(self.z_0.unwrap_or(vec![CF1::<C1>::zero()]))
+            Ok(self
+                .z_0
+                .unwrap_or(vec![CF1::<C1>::zero(); self.F.state_len()]))
         })?;
         let z_i = Vec::<FpVar<CF1<C1>>>::new_witness(cs.clone(), || {
-            Ok(self.z_i.unwrap_or(vec![CF1::<C1>::zero()]))
+            Ok(self
+                .z_i
+                .unwrap_or(vec![CF1::<C1>::zero(); self.F.state_len()]))
         })?;
 
         let u_dummy_native = CommittedInstance::<C1>::dummy(1);

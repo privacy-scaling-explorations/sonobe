@@ -20,10 +20,11 @@ use ark_pallas::{constraints::GVar, Fr, Projective};
 use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
 
 use folding_schemes::commitment::pedersen::Pedersen;
-use folding_schemes::folding::nova::{get_r1cs, Nova, ProverParams, VerifierParams};
+use folding_schemes::folding::nova::Nova;
 use folding_schemes::frontend::FCircuit;
-use folding_schemes::transcript::poseidon::poseidon_test_config;
 use folding_schemes::{Error, FoldingScheme};
+mod utils;
+use utils::test_nova_setup;
 
 /// This is the circuit that we want to fold, it implements the FCircuit trait.
 /// The parameter z_i denotes the current state, and z_{i+1} denotes the next state which we get by
@@ -39,6 +40,9 @@ impl<F: PrimeField> FCircuit<F> for Sha256FCircuit<F> {
 
     fn new(_params: Self::Params) -> Self {
         Self { _f: PhantomData }
+    }
+    fn state_len(self) -> usize {
+        1
     }
 
     /// computes the next state values in place, assigning z_{i+1} into z_i, and computing the new
@@ -63,7 +67,7 @@ impl<F: PrimeField> FCircuit<F> for Sha256FCircuit<F> {
     }
 }
 
-/// cargo test --example simple
+/// cargo test --example sha256
 #[cfg(test)]
 pub mod tests {
     use super::*;
@@ -88,42 +92,7 @@ pub mod tests {
     }
 }
 
-// This method computes the Prover & Verifier parameters for the example. For a real world use case
-// those parameters should be generated carefuly (both the PoseidonConfig and the PedersenParams)
-#[allow(clippy::type_complexity)]
-fn nova_setup<FC: FCircuit<Fr>>(
-    F_circuit: FC,
-) -> (
-    ProverParams<Projective, Projective2, Pedersen<Projective>, Pedersen<Projective2>>,
-    VerifierParams<Projective, Projective2>,
-) {
-    let mut rng = ark_std::test_rng();
-    let poseidon_config = poseidon_test_config::<Fr>();
-
-    // get the CM & CF_CM len
-    let (r1cs, cf_r1cs) =
-        get_r1cs::<Projective, GVar, Projective2, GVar2, FC>(&poseidon_config, F_circuit).unwrap();
-    let cm_len = r1cs.A.n_rows;
-    let cf_cm_len = cf_r1cs.A.n_rows;
-
-    let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, cm_len);
-    let cf_pedersen_params = Pedersen::<Projective2>::new_params(&mut rng, cf_cm_len);
-
-    let prover_params =
-        ProverParams::<Projective, Projective2, Pedersen<Projective>, Pedersen<Projective2>> {
-            poseidon_config: poseidon_config.clone(),
-            cm_params: pedersen_params,
-            cf_cm_params: cf_pedersen_params,
-        };
-    let verifier_params = VerifierParams::<Projective, Projective2> {
-        poseidon_config: poseidon_config.clone(),
-        r1cs,
-        cf_r1cs,
-    };
-    (prover_params, verifier_params)
-}
-
-/// cargo run --release --example fold_sha256
+/// cargo run --release --example sha256
 fn main() {
     let num_steps = 10;
     let initial_state = vec![Fr::from(1_u32)];
@@ -131,7 +100,7 @@ fn main() {
     let F_circuit = Sha256FCircuit::<Fr>::new(());
 
     println!("Prepare Nova ProverParams & VerifierParams");
-    let (prover_params, verifier_params) = nova_setup::<Sha256FCircuit<Fr>>(F_circuit);
+    let (prover_params, verifier_params) = test_nova_setup::<Sha256FCircuit<Fr>>(F_circuit);
 
     /// The idea here is that eventually we could replace the next line chunk that defines the
     /// `type NOVA = Nova<...>` by using another folding scheme that fulfills the `FoldingScheme`

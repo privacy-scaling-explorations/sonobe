@@ -16,6 +16,10 @@ pub trait FCircuit<F: PrimeField>: Clone + Copy + Debug {
     /// returns a new FCircuit instance
     fn new(params: Self::Params) -> Self;
 
+    /// returns the number of elements in the state of the FCircuit, which corresponds to the
+    /// FCircuit inputs.
+    fn state_len(self) -> usize;
+
     /// computes the next state values in place, assigning z_{i+1} into z_i, and computing the new
     /// z_{i+1}
     fn step_native(
@@ -59,6 +63,9 @@ pub mod tests {
         fn new(_params: Self::Params) -> Self {
             Self { _f: PhantomData }
         }
+        fn state_len(self) -> usize {
+            1
+        }
         fn step_native(self, z_i: Vec<F>) -> Result<Vec<F>, Error> {
             Ok(vec![z_i[0] * z_i[0] * z_i[0] + z_i[0] + F::from(5_u32)])
         }
@@ -89,6 +96,9 @@ pub mod tests {
                 _f: PhantomData,
                 n_constraints: params,
             }
+        }
+        fn state_len(self) -> usize {
+            1
         }
         fn step_native(self, z_i: Vec<F>) -> Result<Vec<F>, Error> {
             let mut z_i1 = F::one();

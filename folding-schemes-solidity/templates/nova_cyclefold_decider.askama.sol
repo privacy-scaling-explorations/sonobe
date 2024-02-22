@@ -12,7 +12,7 @@ pragma solidity ^0.8.4;
  *          but for now, it's good enough for testing and benchmarking.
  */
 contract NovaDecider is Groth16Verifier, KZG10Verifier {
-    function verifyProof(uint[2] calldata _pA, uint[2][2] calldata _pB, uint[2] calldata _pC, uint[{{ gamma_abc_len - 1 }}] calldata _pubSignals, uint256[2] calldata c, uint256[2] calldata pi, uint256 x, uint256 y) public view returns (bool) {
+    function verifyProof(uint[2] calldata _pA, uint[2][2] calldata _pB, uint[2] calldata _pC, uint[{{ groth16_verifier.gamma_abc_len - 1 }}] calldata _pubSignals, uint256[2] calldata c, uint256[2] calldata pi, uint256 x, uint256 y) public view returns (bool) {
         require(super.verifyProof(_pA, _pB, _pC, _pubSignals) == true, "Groth16 verification failed");
         // for now, we do not relate the Groth16 and KZG10 proofs
         // this will done in the future, by computing challenge points from the groth16 proof's data

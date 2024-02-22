@@ -15,7 +15,7 @@ use folding_schemes::transcript::poseidon::poseidon_test_config;
 // Warning: this method is only for testing purposes. For a real world use case those parameters
 // should be generated carefuly (both the PoseidonConfig and the PedersenParams).
 #[allow(clippy::type_complexity)]
-pub(crate) fn nova_setup<FC: FCircuit<Fr>>(
+pub(crate) fn test_nova_setup<FC: FCircuit<Fr>>(
     F_circuit: FC,
 ) -> (
     ProverParams<Projective, Projective2, Pedersen<Projective>, Pedersen<Projective2>>,

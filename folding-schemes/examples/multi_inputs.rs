@@ -18,7 +18,7 @@ use folding_schemes::folding::nova::Nova;
 use folding_schemes::frontend::FCircuit;
 use folding_schemes::{Error, FoldingScheme};
 mod utils;
-use utils::nova_setup;
+use utils::test_nova_setup;
 
 /// This is the circuit that we want to fold, it implements the FCircuit trait. The parameter z_i
 /// denotes the current state which contains 5 elements, and z_{i+1} denotes the next state which
@@ -115,7 +115,7 @@ fn main() {
     let F_circuit = MultiInputsFCircuit::<Fr>::new(());
 
     println!("Prepare Nova ProverParams & VerifierParams");
-    let (prover_params, verifier_params) = nova_setup::<MultiInputsFCircuit<Fr>>(F_circuit);
+    let (prover_params, verifier_params) = test_nova_setup::<MultiInputsFCircuit<Fr>>(F_circuit);
 
     /// The idea here is that eventually we could replace the next line chunk that defines the
     /// `type NOVA = Nova<...>` by using another folding scheme that fulfills the `FoldingScheme`

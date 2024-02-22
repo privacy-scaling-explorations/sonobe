@@ -27,8 +27,8 @@ pub struct KZG10Verifier {
     pub g1_crs: Vec<G1Repr>,
 }
 
-impl From<(&KzgData, &Option<String>)> for KZG10Verifier {
-    fn from(value: (&KzgData, &Option<String>)) -> Self {
+impl From<(KzgData, &Option<String>)> for KZG10Verifier {
+    fn from(value: (KzgData, &Option<String>)) -> Self {
         let g1_crs_batch_points = value.0.g1_crs_batch_points.unwrap_or_default();
 
         Self {
@@ -78,12 +78,19 @@ pub struct KzgData {
     g1_crs_batch_points: Option<Vec<G1Affine>>,
 }
 
-// impl From<(VerifierKey<Bn254>, )
+impl From<(VerifierKey<Bn254>, Option<Vec<G1Affine>>)> for KzgData {
+    fn from(value: (VerifierKey<Bn254>, Option<Vec<G1Affine>>)) -> Self {
+        Self {
+            vk: value.0,
+            g1_crs_batch_points: value.1,
+        }
+    }
+}
 
 impl ProtocolData for KzgData {
     const PROTOCOL_NAME: &'static str = "KZG";
 
-    fn render_as_template(&self, pragma: &Option<String>) -> Vec<u8> {
+    fn render_as_template(self, pragma: &Option<String>) -> Vec<u8> {
         KZG10Verifier::from((self, pragma))
             .render()
             .unwrap()

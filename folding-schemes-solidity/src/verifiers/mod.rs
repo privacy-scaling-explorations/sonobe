@@ -18,16 +18,13 @@ pub use nova_cyclefold::{NovaCyclefoldData, NovaCyclefoldDecider};
 pub trait ProtocolData: CanonicalDeserialize + CanonicalSerialize {
     const PROTOCOL_NAME: &'static str;
 
-    fn serialize_name<W: Write>(&self, writer: W) -> Result<(), SerializationError> {
+    fn serialize_name<W: Write>(&self, writer: &mut W) -> Result<(), SerializationError> {
         Self::PROTOCOL_NAME
             .as_bytes()
             .serialize_uncompressed(writer)
     }
 
-    fn serialize_protocol_data<W: Write + Copy>(
-        &self,
-        writer: W,
-    ) -> Result<(), SerializationError> {
+    fn serialize_protocol_data<W: Write>(&self, writer: &mut W) -> Result<(), SerializationError> {
         self.serialize_name(writer)?;
         self.serialize_compressed(writer)
     }
@@ -42,13 +39,14 @@ pub trait ProtocolData: CanonicalDeserialize + CanonicalSerialize {
         Ok(data)
     }
 
-    fn render_as_template(&self, pragma: &Option<String>) -> Vec<u8>;
+    fn render_as_template(self, pragma: &Option<String>) -> Vec<u8>;
 }
 
 #[cfg(test)]
 mod tests {
     use super::{PRAGMA_GROTH16_VERIFIER, PRAGMA_KZG10_VERIFIER};
     use crate::evm::{compile_solidity, save_solidity, Evm};
+    use crate::{Groth16Data, KzgData, NovaCyclefoldData, ProtocolData};
     use ark_bn254::{Bn254, Fr, G1Projective as G1};
     use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
     use ark_ec::{AffineRepr, CurveGroup};
@@ -100,6 +98,72 @@ mod tests {
             comp_z.enforce_equal(&z)?;
             Ok(())
         }
+    }
+
+    #[test]
+    fn groth16_data_serde_roundtrip() {
+        let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
+        let (x, y, z) = (21, 21, 42);
+        let (_, vk) = {
+            let c = TestAddCircuit::<Fr> {
+                _f: PhantomData,
+                x,
+                y,
+                z,
+            };
+            Groth16::<Bn254>::setup(c, &mut rng).unwrap()
+        };
+
+        let g16_data = Groth16Data::from(vk);
+        let mut bytes = vec![];
+        g16_data.serialize_protocol_data(&mut bytes).unwrap();
+        let obtained_g16_data = Groth16Data::deserialize_protocol_data(bytes.as_slice()).unwrap();
+
+        assert_eq!(g16_data, obtained_g16_data)
+    }
+
+    #[test]
+    fn kzg_data_serde_roundtrip() {
+        let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
+        let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(&mut rng, 5);
+
+        let kzg_data = KzgData::from((vk, Some(pk.powers_of_g[0..3].to_vec())));
+        let mut bytes = vec![];
+        kzg_data.serialize_protocol_data(&mut bytes).unwrap();
+        let obtained_kzg_data = KzgData::deserialize_protocol_data(bytes.as_slice()).unwrap();
+
+        assert_eq!(kzg_data, obtained_kzg_data)
+    }
+
+    #[test]
+    fn nova_cyclefold_data_serde_roundtrip() {
+        let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
+        let (x, y, z) = (21, 21, 42);
+        let (_, vk) = {
+            let c = TestAddCircuit::<Fr> {
+                _f: PhantomData,
+                x,
+                y,
+                z,
+            };
+            Groth16::<Bn254>::setup(c, &mut rng).unwrap()
+        };
+
+        let g16_data = Groth16Data::from(vk);
+
+        let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(&mut rng, 5);
+
+        let kzg_data = KzgData::from((vk, Some(pk.powers_of_g[0..3].to_vec())));
+        let mut bytes = vec![];
+        let nova_cyclefold_data = NovaCyclefoldData::from((g16_data, kzg_data));
+
+        nova_cyclefold_data
+            .serialize_protocol_data(&mut bytes)
+            .unwrap();
+        let obtained_nova_cyclefold_data =
+            NovaCyclefoldData::deserialize_protocol_data(bytes.as_slice()).unwrap();
+
+        assert_eq!(nova_cyclefold_data, obtained_nova_cyclefold_data)
     }
 
     #[test]

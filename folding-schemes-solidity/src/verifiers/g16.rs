@@ -29,8 +29,8 @@ pub struct Groth16Verifier {
     pub gamma_abc_g1: Vec<G1Repr>,
 }
 
-impl From<(&Groth16Data, &Option<String>)> for Groth16Verifier {
-    fn from(value: (&Groth16Data, &Option<String>)) -> Self {
+impl From<(Groth16Data, &Option<String>)> for Groth16Verifier {
+    fn from(value: (Groth16Data, &Option<String>)) -> Self {
         Self {
             pragma_version: value
                 .1
@@ -77,13 +77,19 @@ impl Groth16Verifier {
 
 // Ideally I would like to link this to the `Decider` trait in FoldingSchemes.
 // For now, this is the easiest as NovaCyclefold isn't clear target from where we can get all it's needed arguments.
-#[derive(CanonicalDeserialize, CanonicalSerialize, Clone)]
+#[derive(CanonicalDeserialize, CanonicalSerialize, Clone, PartialEq, Debug)]
 pub struct Groth16Data(VerifyingKey<Bn254>);
+
+impl From<VerifyingKey<Bn254>> for Groth16Data {
+    fn from(value: VerifyingKey<Bn254>) -> Self {
+        Self(value)
+    }
+}
 
 impl ProtocolData for Groth16Data {
     const PROTOCOL_NAME: &'static str = "Groth16";
 
-    fn render_as_template(&self, pragma: &Option<String>) -> Vec<u8> {
+    fn render_as_template(self, pragma: &Option<String>) -> Vec<u8> {
         Groth16Verifier::from((self, pragma))
             .render()
             .unwrap()

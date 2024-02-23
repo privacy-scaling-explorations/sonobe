@@ -1,5 +1,3 @@
-pragma solidity ^0.8.4;
-
 {{ groth16_verifier }}
 
 {{ kzg10_verifier }}

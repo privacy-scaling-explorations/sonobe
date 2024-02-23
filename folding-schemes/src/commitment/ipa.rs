@@ -8,14 +8,11 @@
 /// 3.2 from the paper.
 /// ii. s computation is done in k*(2^k)/2 instead of k*2^k by taking advantadge of the symmetric
 /// nature of s.
-/// iii. verifier delegates the computation of u_i^-1 to the prover, just checking that
-/// u_i*u_i^-1==1 in circuit.
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
-    eq::EqGadget,
     fields::{nonnative::NonNativeFieldVar, FieldVar},
     groups::GroupOpsBounds,
     prelude::CurveVar,
@@ -24,7 +21,7 @@ use ark_r1cs_std::{
 use ark_relations::r1cs::{Namespace, SynthesisError};
 use ark_std::{
     rand::{Rng, RngCore},
-    One, UniformRand, Zero,
+    UniformRand, Zero,
 };
 use core::{borrow::Borrow, marker::PhantomData};
 
@@ -48,7 +45,6 @@ pub struct Proof<C: CurveGroup> {
     r: Vec<C::ScalarField>,
     L: Vec<C>,
     R: Vec<C>,
-    u_invs: Vec<C::ScalarField>, // {u_i^-1} \forall k
 }
 
 impl<C: CurveGroup, const H: bool> IPA<C, H> {
@@ -129,7 +125,6 @@ impl<C: CurveGroup, const H: bool> CommitmentProver<C, H> for IPA<C, H> {
 
         // u challenges
         let mut u: Vec<C::ScalarField> = vec![C::ScalarField::zero(); k];
-        let mut u_invs: Vec<C::ScalarField> = vec![C::ScalarField::zero(); k];
         for j in (0..k).rev() {
             let m = a.len() / 2;
             let a_lo = a[..m].to_vec();
@@ -159,7 +154,6 @@ impl<C: CurveGroup, const H: bool> CommitmentProver<C, H> for IPA<C, H> {
             let uj_inv = u[j]
                 .inverse()
                 .ok_or(Error::Other("error on computing inverse".to_string()))?;
-            u_invs[j] = uj_inv;
 
             // a_hi * uj^-1 + a_lo * uj
             a = vec_add(&vec_scalar_mul(&a_lo, &uj), &vec_scalar_mul(&a_hi, &uj_inv))?;
@@ -197,7 +191,6 @@ impl<C: CurveGroup, const H: bool> CommitmentProver<C, H> for IPA<C, H> {
             r: r.clone(),
             L,
             R,
-            u_invs,
         })
     }
 }
@@ -220,7 +213,7 @@ impl<C: CurveGroup, const H: bool> IPA<C, H> {
         if H && (p.l.len() != k || p.r.len() != k) {
             return Err(Error::CommitmentVerificationFail);
         }
-        if p.L.len() != k || p.R.len() != k || p.u_invs.len() != k {
+        if p.L.len() != k || p.R.len() != k {
             return Err(Error::CommitmentVerificationFail);
         }
 
@@ -240,15 +233,16 @@ impl<C: CurveGroup, const H: bool> IPA<C, H> {
         let mut q_0 = P;
         let mut r = *r;
 
-        // check correctnes of the u_invs delegated to the prover
+        // compute u[i]^-1 once
+        let mut u_invs = vec![C::ScalarField::zero(); u.len()];
         for (j, u_j) in u.iter().enumerate() {
-            if *u_j * p.u_invs[j] != C::ScalarField::one() {
-                return Err(Error::CommitmentVerificationFail);
-            }
+            u_invs[j] = u_j
+                .inverse()
+                .ok_or(Error::Other("error on computing inverse".to_string()))?;
         }
 
         // compute b & G from s
-        let s = build_s(&u, &p.u_invs, k)?;
+        let s = build_s(&u, &u_invs, k)?;
         // b = <s, b_vec> = <s, [1, x, x^2, ..., x^d-1]>
         let b = s_b_inner(&u, x)?;
         let d: usize = 2_u64.pow(k as u32) as usize;
@@ -259,7 +253,7 @@ impl<C: CurveGroup, const H: bool> IPA<C, H> {
 
         for (j, u_j) in u.iter().enumerate() {
             let uj2 = u_j.square();
-            let uj_inv2 = p.u_invs[j].square();
+            let uj_inv2 = u_invs[j].square();
 
             q_0 = q_0 + p.L[j].mul(uj2) + p.R[j].mul(uj_inv2);
             if H {
@@ -309,7 +303,6 @@ fn build_s<F: PrimeField>(u: &[F], u_invs: &[F], k: usize) -> Result<Vec<F>, Err
 }
 fn build_s_gadget<F: PrimeField, CF: PrimeField>(
     u: &[NonNativeFieldVar<F, CF>],
-    // u_invs are assumed have their correctness checked in higher levels of the circuit logic
     u_invs: &[NonNativeFieldVar<F, CF>],
     k: usize,
 ) -> Result<Vec<NonNativeFieldVar<F, CF>>, SynthesisError> {
@@ -394,7 +387,6 @@ pub struct ProofVar<C: CurveGroup, GC: CurveVar<C, CF<C>>> {
     r: Vec<NonNativeFieldVar<C::ScalarField, CF<C>>>,
     L: Vec<GC>,
     R: Vec<GC>,
-    u_invs: Vec<NonNativeFieldVar<C::ScalarField, CF<C>>>,
 }
 impl<C, GC> AllocVar<Proof<C>, CF<C>> for ProofVar<C, GC>
 where
@@ -421,17 +413,8 @@ where
                 Vec::new_variable(cs.clone(), || Ok(val.borrow().r.clone()), mode)?;
             let L: Vec<GC> = Vec::new_variable(cs.clone(), || Ok(val.borrow().L.clone()), mode)?;
             let R: Vec<GC> = Vec::new_variable(cs.clone(), || Ok(val.borrow().R.clone()), mode)?;
-            let u_invs: Vec<NonNativeFieldVar<C::ScalarField, CF<C>>> =
-                Vec::new_variable(cs.clone(), || Ok(val.borrow().u_invs.clone()), mode)?;
 
-            Ok(Self {
-                a,
-                l,
-                r,
-                L,
-                R,
-                u_invs,
-            })
+            Ok(Self { a, l, r, L, R })
         })
     }
 }
@@ -472,7 +455,7 @@ where
         u: &[NonNativeFieldVar<C::ScalarField, CF<C>>; K], // challenges
         U: &GC,                                       // challenge
     ) -> Result<Boolean<CF<C>>, SynthesisError> {
-        if p.L.len() != K || p.R.len() != K || p.u_invs.len() != K {
+        if p.L.len() != K || p.R.len() != K {
             return Err(SynthesisError::Unsatisfiable);
         }
 
@@ -480,14 +463,15 @@ where
         let mut q_0 = P_;
         let mut r = r.clone();
 
-        // check correctnes of the u_invs delegated to the prover
+        // compute u[i]^-1 once
+        let mut u_invs = vec![NonNativeFieldVar::<C::ScalarField, CF<C>>::zero(); u.len()];
         for (j, u_j) in u.iter().enumerate() {
-            (u_j.clone() * p.u_invs[j].clone()).enforce_equal(&NonNativeFieldVar::one())?;
+            u_invs[j] = u_j.inverse()?;
         }
 
         // compute b & G from s
         // let d: usize = 2_u64.pow(K as u32) as usize;
-        let s = build_s_gadget(u, &p.u_invs, K)?;
+        let s = build_s_gadget(u, &u_invs, K)?;
         // b = <s, b_vec> = <s, [1, x, x^2, ..., x^K-1]>
         let b = s_b_inner_gadget(u, x)?;
         // ensure that generators.len() === s.len():
@@ -503,7 +487,7 @@ where
 
         for (j, u_j) in u.iter().enumerate() {
             let uj2 = u_j.square()?;
-            let uj_inv2 = p.u_invs[j].square()?; // cheaper square than inversing the uj2
+            let uj_inv2 = u_invs[j].square()?; // cheaper square than inversing the uj2
 
             q_0 = q_0
                 + p.L[j].scalar_mul_le(uj2.to_bits_le()?.iter())?

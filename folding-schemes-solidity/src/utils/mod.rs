@@ -6,7 +6,7 @@ use crate::{GPL3_SDPX_IDENTIFIER, PRAGMA_GROTH16_VERIFIER};
 
 pub mod encoding;
 
-#[derive(Template, Default)]
+#[derive(Template)]
 #[template(path = "header_template.askama.sol", ext = "sol")]
 pub(crate) struct HeaderInclusion<T: Template> {
     /// SPDX-License-Identifier
@@ -17,23 +17,13 @@ pub(crate) struct HeaderInclusion<T: Template> {
     pub template: T,
 }
 
-impl<T: Template> From<(String, String, T)> for HeaderInclusion<T> {
-    fn from(value: (String, String, T)) -> Self {
-        Self {
-            sdpx: value.0,
-            pragma_version: value.1,
-            template: value.2,
-        }
-    }
-}
-
 impl<T: Template + Default> HeaderInclusion<T> {
     pub fn builder() -> HeaderInclusionBuilder<T> {
         HeaderInclusionBuilder::default()
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct HeaderInclusionBuilder<T: Template + Default> {
     /// SPDX-License-Identifier
     sdpx: String,
@@ -41,6 +31,16 @@ pub struct HeaderInclusionBuilder<T: Template + Default> {
     pragma_version: String,
     /// The template to render alongside the header.
     template: T,
+}
+
+impl<T: Template + Default> Default for HeaderInclusionBuilder<T> {
+    fn default() -> Self {
+        Self {
+            sdpx: GPL3_SDPX_IDENTIFIER.to_string(),
+            pragma_version: PRAGMA_GROTH16_VERIFIER.to_string(),
+            template: T::default(),
+        }
+    }
 }
 
 impl<T: Template + Default> HeaderInclusionBuilder<T> {
@@ -54,8 +54,8 @@ impl<T: Template + Default> HeaderInclusionBuilder<T> {
         self
     }
 
-    pub fn template(mut self, template: T) -> Self {
-        self.template = template;
+    pub fn template(mut self, template: impl Into<T>) -> Self {
+        self.template = template.into();
         self
     }
 

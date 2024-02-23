@@ -40,7 +40,7 @@ pub enum Error {
     NotSameLength(String, usize, String, usize),
     #[error("Vector's length ({0}) is not the expected ({1})")]
     NotExpectedLength(usize, usize),
-    #[error("Vector ({0}) length ({1}) is a power of two")]
+    #[error("Vector ({0}) length ({1}) is not a power of two")]
     NotPowerOfTwo(String, usize),
     #[error("Can not be empty")]
     Empty,

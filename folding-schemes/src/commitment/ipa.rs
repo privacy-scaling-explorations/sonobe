@@ -6,8 +6,7 @@
 /// constraints in the circuit:
 /// i. <s, b> computation is done in log time following a modification of the equation 3 in section
 /// 3.2 from the paper.
-/// ii. s computation is done in k*(2^k)/2 instead of k*2^k by taking advantadge of the symmetric
-/// nature of s.
+/// ii. s computation is done in 2^{k+1}-2 instead of k*2^k.
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::{
@@ -27,7 +26,6 @@ use core::{borrow::Borrow, marker::PhantomData};
 
 use super::{pedersen::Params as PedersenParams, CommitmentProver};
 use crate::transcript::Transcript;
-use crate::utils::espresso::virtual_polynomial::bit_decompose;
 use crate::utils::vec::{vec_add, vec_scalar_mul};
 use crate::Error;
 
@@ -279,25 +277,27 @@ impl<C: CurveGroup, const H: bool> IPA<C, H> {
 //   ⋮    ⋮      ⋮
 //   u₁   u₂   … uₖ
 // )
-// naively would take k * d = k * 2^k time, with the current approach taking advantadge of the
-// symmetric nature of s, it takes k * d/2 = k * (2^k)/2 = k * 2^{k-1} time.
+// Uses Halo2 approach computing $g(X) = \prod\limits_{i=0}^{k-1} (1 + u_{k - 1 - i} X^{2^i})$,
+// taking 2^{k+1}-2.
+// src: https://github.com/zcash/halo2/blob/81729eca91ba4755e247f49c3a72a4232864ec9e/halo2_proofs/src/poly/commitment/verifier.rs#L156
 fn build_s<F: PrimeField>(u: &[F], u_invs: &[F], k: usize) -> Result<Vec<F>, Error> {
     let d: usize = 2_u64.pow(k as u32) as usize;
     let mut s: Vec<F> = vec![F::one(); d];
-    for i in 0..d / 2 {
-        let i_bits = bit_decompose(i as u64, k);
-        for j in 0..k {
-            if i_bits[j] {
-                s[i] *= u[j];
-            } else {
-                s[i] *= u_invs[j];
-            }
+    for (len, (u_j, u_j_inv)) in u
+        .iter()
+        .zip(u_invs)
+        .enumerate()
+        .map(|(i, u_j)| (1 << i, u_j))
+    {
+        let (left, right) = s.split_at_mut(len);
+        let right = &mut right[0..len];
+        right.copy_from_slice(left);
+        for s in left {
+            *s *= u_j_inv;
         }
-
-        // now place the inverse to the other side following the symmetric structure of s
-        s[d - 1 - i] = s[i]
-            .inverse()
-            .ok_or(Error::Other("error on computing inverse".to_string()))?;
+        for s in right {
+            *s *= u_j;
+        }
     }
     Ok(s)
 }
@@ -308,18 +308,21 @@ fn build_s_gadget<F: PrimeField, CF: PrimeField>(
 ) -> Result<Vec<NonNativeFieldVar<F, CF>>, SynthesisError> {
     let d: usize = 2_u64.pow(k as u32) as usize;
     let mut s: Vec<NonNativeFieldVar<F, CF>> = vec![NonNativeFieldVar::one(); d];
-    for i in 0..d / 2 {
-        let i_bits = bit_decompose(i as u64, k);
-        for j in 0..k {
-            if i_bits[j] {
-                s[i] *= u[j].clone();
-            } else {
-                s[i] *= u_invs[j].clone();
-            }
+    for (len, (u_j, u_j_inv)) in u
+        .iter()
+        .zip(u_invs)
+        .enumerate()
+        .map(|(i, u_j)| (1 << i, u_j))
+    {
+        let (left, right) = s.split_at_mut(len);
+        let right = &mut right[0..len];
+        right.clone_from_slice(left);
+        for s in left {
+            *s *= u_j_inv;
         }
-
-        // now place the inverse to the other side
-        s[d - 1 - i] = s[i].inverse()?;
+        for s in right {
+            *s *= u_j;
+        }
     }
     Ok(s)
 }
@@ -671,7 +674,6 @@ mod tests {
         )
         .unwrap();
         v.enforce_equal(&Boolean::TRUE).unwrap();
-        dbg!(cs.num_constraints());
         assert!(cs.is_satisfied().unwrap());
     }
 }

@@ -195,9 +195,7 @@ mod tests {
             ))
             .build();
 
-        panic!("{}", decider_template.render().unwrap());
-
-        save_solidity("decider.sol", &decider_template.render().unwrap());
+        save_solidity("NovaDecider.sol", &decider_template.render().unwrap());
     }
 
     #[test]
@@ -224,7 +222,6 @@ mod tests {
                 pk.powers_of_g[0..5].to_vec(),
             ))
             .build();
-
         let decider_verifier_bytecode =
             compile_solidity(decider_template.render().unwrap(), "NovaDecider");
         let mut evm = Evm::default();
@@ -352,7 +349,7 @@ mod tests {
     }
 
     #[test]
-    fn test_kzg_verifier_compiles() {
+    fn kzg_verifier_compiles() {
         let rng = &mut test_rng();
         let n = 10;
         let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(rng, n);
@@ -369,7 +366,7 @@ mod tests {
     }
 
     #[test]
-    fn test_kzg_verifier_accepts_and_rejects_proofs() {
+    fn kzg_verifier_accepts_and_rejects_proofs() {
         let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
         let poseidon_config = poseidon_test_config::<Fr>();
         let transcript_p = &mut PoseidonTranscript::<G1>::new(&poseidon_config);
@@ -506,7 +503,7 @@ mod tests {
             .render()
             .unwrap();
 
-        let nova_cyclefold_verifier_bytecode = compile_solidity(decider_template, "NovaCyclefold");
+        let nova_cyclefold_verifier_bytecode = compile_solidity(decider_template, "NovaDecider");
 
         let mut evm = Evm::default();
         let verifier_address = evm.create(nova_cyclefold_verifier_bytecode);
@@ -519,8 +516,6 @@ mod tests {
         transcript_v.absorb_point(&cm).unwrap();
         let x = transcript_v.get_challenge();
 
-        // XXX: Continue here! Extract fn signature and call the method.
-        // Once this works, implement testing with CLI rendering.
         let x = x.into_bigint().to_bytes_be();
         let mut calldata: Vec<u8> = chain![
             FUNCTION_SIGNATURE_NOVA_CYCLEFOLD_CHECK,

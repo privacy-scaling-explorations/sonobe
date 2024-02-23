@@ -1,4 +1,3 @@
-{{ sdpx }}
 /*
     Copyright 2021 0KIMS association.
 
@@ -20,8 +19,6 @@
     You should have received a copy of the GNU General Public License
     along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
 */
-
-{{ pragma_version }}
 
 contract Groth16Verifier {
     // Scalar field size

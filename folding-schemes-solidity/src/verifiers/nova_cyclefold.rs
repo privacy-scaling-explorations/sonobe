@@ -58,7 +58,7 @@ impl NovaCyclefoldDecider {
         pragma: Option<String>,
     ) -> Self {
         Self {
-            groth16_verifier: Groth16Verifier::new(vkey_g16, pragma.clone()),
+            groth16_verifier: Groth16Verifier::new(vkey_g16),
             kzg10_verifier: KZG10Verifier::new(vkey_kzg, crs_points, pragma, None),
         }
     }

@@ -13,9 +13,9 @@ mod g16;
 mod kzg;
 mod nova_cyclefold;
 
-pub use g16::{Groth16Data, Groth16Verifier};
-pub use kzg::{KZG10Verifier, KzgData};
-pub use nova_cyclefold::{NovaCyclefoldData, NovaCyclefoldDecider};
+pub use g16::Groth16Data;
+pub use kzg::KzgData;
+pub use nova_cyclefold::NovaCyclefoldData;
 
 pub trait ProtocolData: CanonicalDeserialize + CanonicalSerialize {
     const PROTOCOL_NAME: &'static str;
@@ -41,7 +41,7 @@ pub trait ProtocolData: CanonicalDeserialize + CanonicalSerialize {
         Ok(data)
     }
 
-    fn render_as_template(self, pragma: &Option<String>) -> Vec<u8>;
+    fn render_as_template(self, pragma: Option<String>) -> Vec<u8>;
 }
 
 #[cfg(test)]
@@ -171,10 +171,10 @@ mod tests {
     }
 
     #[test]
-    fn test_groth16_kzg10_decider_template_renders() {
+    fn nova_cyclefold_decider_template_renders() {
         let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
         let (x, y, z) = (21, 21, 42);
-        let (_, vk) = {
+        let (_, vk_g16) = {
             let c = TestAddCircuit::<Fr> {
                 _f: PhantomData,
                 x,
@@ -183,21 +183,28 @@ mod tests {
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
-        let groth16_template = Groth16Verifier::new(vk);
-        let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(&mut rng, 5);
-        let kzg10_template = KZG10Verifier::new(vk, pk.powers_of_g[..5].to_vec(), None, None);
-        let decider_template = NovaCyclefoldDecider {
-            groth16_verifier: groth16_template,
-            kzg10_verifier: kzg10_template,
-        };
+
+        let (pk, vk_kzg): (ProverKey<G1>, VerifierKey<Bn254>) =
+            KZGSetup::<Bn254>::setup(&mut rng, 5);
+
+        let decider_template = HeaderInclusion::<NovaCyclefoldDecider>::builder()
+            .template(NovaCyclefoldData::new(
+                vk_g16,
+                vk_kzg,
+                pk.powers_of_g[0..5].to_vec(),
+            ))
+            .build();
+
+        panic!("{}", decider_template.render().unwrap());
+
         save_solidity("decider.sol", &decider_template.render().unwrap());
     }
 
     #[test]
-    fn test_groth16_kzg10_decider_template_compiles() {
+    fn nova_cyclefold_decider_template_compiles() {
         let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
         let (x, y, z) = (21, 21, 42);
-        let (_, vk) = {
+        let (_, vk_g16) = {
             let c = TestAddCircuit::<Fr> {
                 _f: PhantomData,
                 x,
@@ -206,14 +213,18 @@ mod tests {
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
-        // we dont specify any pragma values for both verifiers, the pragma from the decider takes over
-        let groth16_template = Groth16Verifier::new(vk);
-        let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(&mut rng, 5);
-        let kzg10_template = KZG10Verifier::new(vk, pk.powers_of_g[..5].to_vec(), None, None);
-        let decider_template = NovaCyclefoldDecider {
-            groth16_verifier: groth16_template,
-            kzg10_verifier: kzg10_template,
-        };
+
+        let (pk, vk_kzg): (ProverKey<G1>, VerifierKey<Bn254>) =
+            KZGSetup::<Bn254>::setup(&mut rng, 5);
+
+        let decider_template = HeaderInclusion::<NovaCyclefoldDecider>::builder()
+            .template(NovaCyclefoldData::new(
+                vk_g16,
+                vk_kzg,
+                pk.powers_of_g[0..5].to_vec(),
+            ))
+            .build();
+
         let decider_verifier_bytecode =
             compile_solidity(decider_template.render().unwrap(), "NovaDecider");
         let mut evm = Evm::default();
@@ -224,7 +235,7 @@ mod tests {
     fn test_groth16_verifier_template_renders() {
         let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
         let (x, y, z) = (21, 21, 42);
-        let (_, vk) = {
+        let (_, vk_g16) = {
             let c = TestAddCircuit::<Fr> {
                 _f: PhantomData,
                 x,
@@ -233,12 +244,18 @@ mod tests {
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
-        let template = Groth16Verifier::new(vk);
 
-        // The template needs to be rendered with header. So we need to add it.
-        HeaderInclusion::from((s))
-        save_solidity("groth16_verifier.sol", &template.render().unwrap());
-        _ = template.render().unwrap();
+        let (pk, vk_kzg): (ProverKey<G1>, VerifierKey<Bn254>) =
+            KZGSetup::<Bn254>::setup(&mut rng, 5);
+
+        let decider_template = HeaderInclusion::<NovaCyclefoldDecider>::builder()
+            .template(NovaCyclefoldData::new(
+                vk_g16,
+                vk_kzg,
+                pk.powers_of_g[0..5].to_vec(),
+            ))
+            .build();
+        save_solidity("groth16_verifier.sol", &decider_template.render().unwrap());
     }
 
     #[test]
@@ -254,9 +271,13 @@ mod tests {
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
-        let res = Groth16Verifier::new(vk, Some(PRAGMA_GROTH16_VERIFIER.to_string()))
+
+        let res = HeaderInclusion::<Groth16Verifier>::builder()
+            .template(Groth16Data::from(vk))
+            .build()
             .render()
             .unwrap();
+
         let groth16_verifier_bytecode = compile_solidity(res, "Verifier");
         let mut evm = Evm::default();
         _ = evm.create(groth16_verifier_bytecode);
@@ -282,9 +303,7 @@ mod tests {
             z,
         };
         let proof = Groth16::<Bn254>::prove(&pk, c, &mut rng).unwrap();
-        let res = Groth16Verifier::new(vk, Some(PRAGMA_GROTH16_VERIFIER.to_string()))
-            .render()
-            .unwrap();
+        let res = Groth16Verifier::new(vk).render().unwrap();
         save_solidity("groth16_verifier.sol", &res);
         let groth16_verifier_bytecode = compile_solidity(&res, "Verifier");
         let mut evm = Evm::default();
@@ -316,17 +335,16 @@ mod tests {
     }
 
     #[test]
-    fn test_kzg_verifier_template_renders() {
+    fn kzg_verifier_template_renders() {
         let rng = &mut test_rng();
         let n = 10;
         let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(rng, n);
-        let template = KZG10Verifier::new(
-            vk.clone(),
-            pk.powers_of_g[..5].to_vec(),
-            Some(PRAGMA_KZG10_VERIFIER.to_string()),
-            None,
-        );
-        let res = template.render().unwrap();
+
+        let res = HeaderInclusion::<KZG10Verifier>::builder()
+            .template(KZG10Verifier::new(vk.clone(), pk.powers_of_g[..5].to_vec()))
+            .build()
+            .render()
+            .unwrap();
 
         // TODO: Unsure what this is testing. If we want to test correct rendering,
         // we should first check that it COMPLETELLY renders to what we expect.
@@ -335,16 +353,16 @@ mod tests {
 
     #[test]
     fn test_kzg_verifier_compiles() {
-        let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
+        let rng = &mut test_rng();
         let n = 10;
-        let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(&mut rng, n);
-        let template = KZG10Verifier::new(
-            vk,
-            pk.powers_of_g[..5].to_vec(),
-            Some(PRAGMA_KZG10_VERIFIER.to_string()),
-            None,
-        );
-        let res = template.render().unwrap();
+        let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(rng, n);
+
+        let res = HeaderInclusion::<KZG10Verifier>::builder()
+            .template(KZG10Verifier::new(vk.clone(), pk.powers_of_g[..5].to_vec()))
+            .build()
+            .render()
+            .unwrap();
+
         let kzg_verifier_bytecode = compile_solidity(res, "KZG10");
         let mut evm = Evm::default();
         _ = evm.create(kzg_verifier_bytecode);
@@ -365,14 +383,13 @@ mod tests {
         let cm = KZGProver::<G1>::commit(&pk, &v, &Fr::zero()).unwrap();
         let (eval, proof) =
             KZGProver::<G1>::prove(&pk, transcript_p, &cm, &v, &Fr::zero(), None).unwrap();
-        let template = KZG10Verifier::from(
-            &vk,
-            &pk.powers_of_g[..5],
-            Some(PRAGMA_KZG10_VERIFIER.to_string()),
-            None,
-        );
-        let res = template.render().unwrap();
-        let kzg_verifier_bytecode = compile_solidity(res, "KZG10");
+        let template = HeaderInclusion::<KZG10Verifier>::builder()
+            .template(KZG10Verifier::new(vk.clone(), pk.powers_of_g[..5].to_vec()))
+            .build()
+            .render()
+            .unwrap();
+
+        let kzg_verifier_bytecode = compile_solidity(template, "KZG10");
         let mut evm = Evm::default();
         let verifier_address = evm.create(kzg_verifier_bytecode);
 
@@ -409,11 +426,8 @@ mod tests {
     #[test]
     fn nova_cyclefold_verifier_compiles() {
         let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
-        let n = 10;
-        let (pk, vk_kzg): (ProverKey<G1>, VerifierKey<Bn254>) =
-            KZGSetup::<Bn254>::setup(&mut rng, n);
-
         let (x, y, z) = (21, 21, 42);
+        let n = 10;
         let (_, vk_g16) = {
             let c = TestAddCircuit::<Fr> {
                 _f: PhantomData,
@@ -424,14 +438,20 @@ mod tests {
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
 
-        let template = NovaCyclefoldDecider::new(
-            vk_g16,
-            vk_kzg,
-            pk.powers_of_g[0..5].to_vec(),
-            Some(PRAGMA_KZG10_VERIFIER.to_string()),
-        );
-        let res = template.render().expect("Failed to render the template");
-        let nova_cyclefold_verifier_bytecode = compile_solidity(res, "NovaCyclefold");
+        let (pk, vk_kzg): (ProverKey<G1>, VerifierKey<Bn254>) =
+            KZGSetup::<Bn254>::setup(&mut rng, n);
+
+        let decider_template = HeaderInclusion::<NovaCyclefoldDecider>::builder()
+            .template(NovaCyclefoldData::new(
+                vk_g16,
+                vk_kzg,
+                pk.powers_of_g[0..5].to_vec(),
+            ))
+            .build()
+            .render()
+            .unwrap();
+
+        let nova_cyclefold_verifier_bytecode = compile_solidity(&decider_template, "NovaCyclefold");
         let mut evm = Evm::default();
         _ = evm.create(nova_cyclefold_verifier_bytecode);
     }
@@ -457,7 +477,7 @@ mod tests {
             z,
         };
         let g16_proof = Groth16::<Bn254>::prove(&pk_g16, c, &mut rng).unwrap();
-        let g16_template = Groth16Verifier::new(vk_g16, Some(PRAGMA_GROTH16_VERIFIER.to_string()));
+
         let (a_x, a_y) = g16_proof.a.xy().unwrap();
         let (b_x, b_y) = g16_proof.b.xy().unwrap();
         let (c_x, c_y) = g16_proof.c.xy().unwrap();
@@ -475,20 +495,18 @@ mod tests {
         let cm = KZGProver::<G1>::commit(&pk_kzg, &v, &Fr::zero()).unwrap();
         let (eval, proof) =
             KZGProver::<G1>::prove(&pk_kzg, transcript_p, &cm, &v, &Fr::zero()).unwrap();
-        let kzg10_verifier = KZG10Verifier::new(
-            vk_kzg,
-            pk_kzg.powers_of_g[..5].to_vec(),
-            Some(PRAGMA_KZG10_VERIFIER.to_string()),
-            None,
-        );
 
-        let template = NovaCyclefoldDecider {
-            groth16_verifier: g16_template,
-            kzg10_verifier,
-        };
-        let res = template.render().expect("Failed to render the template");
+        let decider_template = HeaderInclusion::<NovaCyclefoldDecider>::builder()
+            .template(NovaCyclefoldData::new(
+                vk_g16,
+                vk_kzg,
+                pk_kzg.powers_of_g[0..5].to_vec(),
+            ))
+            .build()
+            .render()
+            .unwrap();
 
-        let nova_cyclefold_verifier_bytecode = compile_solidity(res, "NovaCyclefold");
+        let nova_cyclefold_verifier_bytecode = compile_solidity(decider_template, "NovaCyclefold");
 
         let mut evm = Evm::default();
         let verifier_address = evm.create(nova_cyclefold_verifier_bytecode);

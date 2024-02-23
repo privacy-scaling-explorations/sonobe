@@ -27,8 +27,8 @@ use super::CommittedInstance;
 use crate::constants::N_BITS_RO;
 use crate::Error;
 
-// publi inputs length for the CycleFoldCircuit, |[u_i, U_i, U_{i+1}]|
-pub const CF_IO_LEN: usize = 12;
+// publi inputs length for the CycleFoldCircuit, |[p1.x,y, p2.x,y, p3.x,y]|
+pub const CF_IO_LEN: usize = 6;
 
 /// CycleFoldCommittedInstanceVar is the CycleFold CommittedInstance representation in the Nova
 /// circuit.
@@ -122,6 +122,7 @@ where
     }
 }
 
+/*
 /// NIFSinCycleFoldGadget performs the Nova NIFS.V elliptic curve points relation checks in the other
 /// curve (natively) following [CycleFold](https://eprint.iacr.org/2023/1192.pdf).
 pub struct NIFSinCycleFoldGadget<C: CurveGroup, GC: CurveVar<C, CF2<C>>> {
@@ -155,6 +156,7 @@ where
         first_check.and(&second_check)
     }
 }
+*/
 
 /// This is the gadget used in the AugmentedFCircuit to verify the CycleFold instances folding,
 /// which checks the correct RLC of u,x,cmE,cmW (hence the name containing 'Full', since it checks
@@ -224,38 +226,38 @@ where
 {
     pub fn get_challenge_native(
         poseidon_config: &PoseidonConfig<C::BaseField>,
-        u_i: CommittedInstance<C>,
         U_i: CommittedInstance<C>,
+        u_i: CommittedInstance<C>,
         cmT: C,
     ) -> Result<Vec<bool>, Error> {
         let mut sponge = PoseidonSponge::<C::BaseField>::new(poseidon_config);
 
-        let u_i_cmE_bytes = point_to_bytes(u_i.cmE);
-        let u_i_cmW_bytes = point_to_bytes(u_i.cmW);
         let U_i_cmE_bytes = point_to_bytes(U_i.cmE);
         let U_i_cmW_bytes = point_to_bytes(U_i.cmW);
+        let u_i_cmE_bytes = point_to_bytes(u_i.cmE);
+        let u_i_cmW_bytes = point_to_bytes(u_i.cmW);
         let cmT_bytes = point_to_bytes(cmT);
 
-        let mut u_i_u_bytes = Vec::new();
-        u_i.u.serialize_uncompressed(&mut u_i_u_bytes)?;
-        let mut u_i_x_bytes = Vec::new();
-        u_i.x.serialize_uncompressed(&mut u_i_x_bytes)?;
-        u_i_x_bytes = u_i_x_bytes[8..].to_vec();
         let mut U_i_u_bytes = Vec::new();
         U_i.u.serialize_uncompressed(&mut U_i_u_bytes)?;
         let mut U_i_x_bytes = Vec::new();
         U_i.x.serialize_uncompressed(&mut U_i_x_bytes)?;
         U_i_x_bytes = U_i_x_bytes[8..].to_vec();
+        let mut u_i_u_bytes = Vec::new();
+        u_i.u.serialize_uncompressed(&mut u_i_u_bytes)?;
+        let mut u_i_x_bytes = Vec::new();
+        u_i.x.serialize_uncompressed(&mut u_i_x_bytes)?;
+        u_i_x_bytes = u_i_x_bytes[8..].to_vec();
 
         let input: Vec<u8> = [
-            u_i_cmE_bytes,
-            u_i_u_bytes,
-            u_i_cmW_bytes,
-            u_i_x_bytes,
             U_i_cmE_bytes,
             U_i_u_bytes,
             U_i_cmW_bytes,
             U_i_x_bytes,
+            u_i_cmE_bytes,
+            u_i_u_bytes,
+            u_i_cmW_bytes,
+            u_i_x_bytes,
             cmT_bytes,
         ]
         .concat();
@@ -267,32 +269,32 @@ where
     pub fn get_challenge_gadget(
         cs: ConstraintSystemRef<C::BaseField>,
         poseidon_config: &PoseidonConfig<C::BaseField>,
-        u_i: CycleFoldCommittedInstanceVar<C, GC>,
         U_i: CycleFoldCommittedInstanceVar<C, GC>,
+        u_i: CycleFoldCommittedInstanceVar<C, GC>,
         cmT: GC,
     ) -> Result<Vec<Boolean<C::BaseField>>, SynthesisError> {
         let mut sponge = PoseidonSpongeVar::<C::BaseField>::new(cs, poseidon_config);
 
-        let u_i_x_bytes: Vec<UInt8<CF2<C>>> = u_i
+        let U_i_x_bytes: Vec<UInt8<CF2<C>>> = U_i
             .x
             .iter()
             .flat_map(|e| e.to_bytes().unwrap_or(vec![]))
             .collect::<Vec<UInt8<CF2<C>>>>();
-        let U_i_x_bytes: Vec<UInt8<CF2<C>>> = U_i
+        let u_i_x_bytes: Vec<UInt8<CF2<C>>> = u_i
             .x
             .iter()
             .flat_map(|e| e.to_bytes().unwrap_or(vec![]))
             .collect::<Vec<UInt8<CF2<C>>>>();
 
         let input: Vec<UInt8<CF2<C>>> = [
-            u_i.cmE.to_bytes()?,
-            u_i.u.to_bytes()?,
-            u_i.cmW.to_bytes()?,
-            u_i_x_bytes,
             U_i.cmE.to_bytes()?,
             U_i.u.to_bytes()?,
             U_i.cmW.to_bytes()?,
             U_i_x_bytes,
+            u_i.cmE.to_bytes()?,
+            u_i.u.to_bytes()?,
+            u_i.cmW.to_bytes()?,
+            u_i_x_bytes,
             cmT.to_bytes()?,
             // TODO instead of bytes, use field elements, but needs x,y coordinates from
             // u_i.{cmE,cmW}, U_i.{cmE,cmW}, cmT. Depends exposing x,y coordinates of GC. Issue to
@@ -326,12 +328,9 @@ fn point_to_bytes<C: CurveGroup>(p: C) -> Vec<u8> {
 pub struct CycleFoldCircuit<C: CurveGroup, GC: CurveVar<C, CF2<C>>> {
     pub _gc: PhantomData<GC>,
     pub r_bits: Option<Vec<bool>>,
-    pub cmT: Option<C>,
-    // u_i,U_i,U_i1 are the nova instances from AugmentedFCircuit which will be (their elliptic
-    // curve points) checked natively in CycleFoldCircuit
-    pub u_i: Option<CommittedInstance<C>>,
-    pub U_i: Option<CommittedInstance<C>>,
-    pub U_i1: Option<CommittedInstance<C>>,
+    pub p1: Option<C>,
+    pub p2: Option<C>,
+    pub p3: Option<C>,
     pub x: Option<Vec<CF2<C>>>, // public inputs (cf_u_{i+1}.x)
 }
 impl<C: CurveGroup, GC: CurveVar<C, CF2<C>>> CycleFoldCircuit<C, GC> {
@@ -339,10 +338,9 @@ impl<C: CurveGroup, GC: CurveVar<C, CF2<C>>> CycleFoldCircuit<C, GC> {
         Self {
             _gc: PhantomData,
             r_bits: None,
-            cmT: None,
-            u_i: None,
-            U_i: None,
-            U_i1: None,
+            p1: None,
+            p2: None,
+            p3: None,
             x: None,
         }
     }
@@ -358,29 +356,21 @@ where
         let r_bits: Vec<Boolean<CF2<C>>> = Vec::new_witness(cs.clone(), || {
             Ok(self.r_bits.unwrap_or(vec![false; N_BITS_RO]))
         })?;
-        let cmT = GC::new_witness(cs.clone(), || Ok(self.cmT.unwrap_or(C::zero())))?;
+        let p1 = GC::new_witness(cs.clone(), || Ok(self.p1.unwrap_or(C::zero())))?;
+        let p2 = GC::new_witness(cs.clone(), || Ok(self.p2.unwrap_or(C::zero())))?;
+        let p3 = GC::new_witness(cs.clone(), || Ok(self.p3.unwrap_or(C::zero())))?;
 
-        let u_dummy_native = CommittedInstance::<C>::dummy(1);
-
-        let u_i = CommittedInstanceInCycleFoldVar::<C, GC>::new_witness(cs.clone(), || {
-            Ok(self.u_i.unwrap_or(u_dummy_native.clone()))
-        })?;
-        let U_i = CommittedInstanceInCycleFoldVar::<C, GC>::new_witness(cs.clone(), || {
-            Ok(self.U_i.unwrap_or(u_dummy_native.clone()))
-        })?;
-        let U_i1 = CommittedInstanceInCycleFoldVar::<C, GC>::new_witness(cs.clone(), || {
-            Ok(self.U_i1.unwrap_or(u_dummy_native.clone()))
-        })?;
         let _x = Vec::<FpVar<CF2<C>>>::new_input(cs.clone(), || {
             Ok(self.x.unwrap_or(vec![CF2::<C>::zero(); CF_IO_LEN]))
         })?;
         #[cfg(test)]
         assert_eq!(_x.len(), CF_IO_LEN); // non-constrained sanity check
 
-        // fold the original Nova instances natively in CycleFold
-        let v =
-            NIFSinCycleFoldGadget::<C, GC>::verify(r_bits.clone(), cmT, u_i.clone(), U_i, U_i1)?;
-        v.enforce_equal(&Boolean::TRUE)?;
+        // Fold the original Nova instances natively in CycleFold
+        // For the cmW we're checking: U_i1.cmW == U_i.cmW + r * u_i.cmW
+        // For the cmE we're checking: U_i1.cmE == U_i.cmE + r * cmT + r^2 * u_i.cmE, where u_i.cmE
+        // is assumed to be 0, so, U_i1.cmE == U_i.cmE + r * cmT
+        p3.enforce_equal(&(p1 + p2.scalar_mul_le(r_bits.iter())?))?;
 
         // check that x == [u_i, U_i, U_{i+1}], check that the cmW & cmW from u_i, U_i, U_{i+1} in
         // the CycleFoldCircuit are the sames used in the public inputs 'x', which come from the
@@ -401,6 +391,7 @@ pub mod tests {
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::UniformRand;
 
+    use crate::folding::nova::get_cm_coordinates;
     use crate::folding::nova::nifs::tests::prepare_simple_fold_inputs;
     use crate::transcript::poseidon::poseidon_test_config;
 
@@ -426,6 +417,36 @@ pub mod tests {
         assert_eq!(ciVar.cmW.value().unwrap(), ci.cmW);
     }
 
+    #[test]
+    fn test_CycleFoldCircuit_constraints() {
+        let (_, _, _, _, ci1, _, ci2, _, ci3, _, cmT, r_bits, _) = prepare_simple_fold_inputs();
+
+        // cs is the Constraint System on the Curve Cycle auxiliary curve constraints field
+        // (E2::Fr)
+        let cs = ConstraintSystem::<Fq>::new_ref();
+
+        // let r_bitsVar = Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(r_bits)).unwrap();
+
+        let cfW_u_i_x = [
+            get_cm_coordinates(&ci1.cmW),
+            get_cm_coordinates(&ci2.cmW),
+            get_cm_coordinates(&ci3.cmW),
+        ]
+        .concat();
+        // let cmTVar = GVar::new_witness(cs.clone(), || Ok(cmT)).unwrap();
+        let cfW_circuit = CycleFoldCircuit::<Projective, GVar> {
+            _gc: PhantomData,
+            r_bits: Some(r_bits.clone()),
+            p1: Some(ci1.clone().cmW),
+            p2: Some(ci2.clone().cmW),
+            p3: Some(ci3.clone().cmW),
+            x: Some(cfW_u_i_x.clone()),
+        };
+        cfW_circuit.generate_constraints(cs.clone()).unwrap();
+        assert!(cs.is_satisfied().unwrap());
+        dbg!(cs.num_constraints());
+    }
+    /*
     #[test]
     fn test_nifs_gadget_cyclefold() {
         let (_, _, _, _, ci1, _, ci2, _, ci3, _, cmT, r_bits, _) = prepare_simple_fold_inputs();
@@ -460,6 +481,7 @@ pub mod tests {
         nifs_cf_check.enforce_equal(&Boolean::<Fq>::TRUE).unwrap();
         assert!(cs.is_satisfied().unwrap());
     }
+    */
 
     #[test]
     fn test_nifs_full_gadget() {
@@ -527,8 +549,8 @@ pub mod tests {
         // compute the challenge natively
         let r_bits = CycleFoldChallengeGadget::<Projective, GVar>::get_challenge_native(
             &poseidon_config,
-            u_i.clone(),
             U_i.clone(),
+            u_i.clone(),
             cmT,
         )
         .unwrap();
@@ -549,8 +571,8 @@ pub mod tests {
         let r_bitsVar = CycleFoldChallengeGadget::<Projective, GVar>::get_challenge_gadget(
             cs.clone(),
             &poseidon_config,
-            u_iVar,
             U_iVar,
+            u_iVar,
             cmTVar,
         )
         .unwrap();

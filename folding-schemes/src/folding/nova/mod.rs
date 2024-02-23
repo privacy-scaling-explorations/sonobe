@@ -193,8 +193,10 @@ where
     pub U_i: CommittedInstance<C1>,
 
     /// CycleFold running instance
-    pub cf_W_i: Witness<C2>,
-    pub cf_U_i: CommittedInstance<C2>,
+    pub cfW_W_i: Witness<C2>,
+    pub cfW_U_i: CommittedInstance<C2>,
+    pub cfE_W_i: Witness<C2>,
+    pub cfE_U_i: CommittedInstance<C2>,
 }
 
 impl<C1, GC1, C2, GC2, FC, CP1, CP2> FoldingScheme<C1, C2, FC>
@@ -219,7 +221,12 @@ where
     type ProverParam = ProverParams<C1, C2, CP1, CP2>;
     type VerifierParam = VerifierParams<C1, C2>;
     type CommittedInstanceWithWitness = (CommittedInstance<C1>, Witness<C1>);
-    type CFCommittedInstanceWithWitness = (CommittedInstance<C2>, Witness<C2>);
+    type CFCommittedInstanceWithWitness = (
+        CommittedInstance<C2>,
+        Witness<C2>,
+        CommittedInstance<C2>,
+        Witness<C2>,
+    );
 
     fn preprocess(
         prep_param: &Self::PreprocessorParam,
@@ -249,11 +256,13 @@ where
 
         augmented_F_circuit.generate_constraints(cs.clone())?;
         cs.finalize();
+        dbg!(cs.num_constraints());
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
         let r1cs = extract_r1cs::<C1::ScalarField>(&cs);
 
         cf_circuit.generate_constraints(cs2.clone())?;
         cs2.finalize();
+        dbg!(cs2.num_constraints());
         let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
         let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2);
 
@@ -281,25 +290,29 @@ where
             W_i: w_dummy,
             U_i: u_dummy,
             // cyclefold running instance
-            cf_W_i: cf_w_dummy.clone(),
-            cf_U_i: cf_u_dummy.clone(),
+            cfW_W_i: cf_w_dummy.clone(),
+            cfW_U_i: cf_u_dummy.clone(),
+            cfE_W_i: cf_w_dummy.clone(),
+            cfE_U_i: cf_u_dummy.clone(),
         })
     }
 
     /// Implements IVC.P of Nova+CycleFold
     fn prove_step(&mut self) -> Result<(), Error> {
         let augmented_F_circuit: AugmentedFCircuit<C1, C2, GC2, FC>;
-        let cf_circuit: CycleFoldCircuit<C1, GC1>;
+        let cfW_circuit: CycleFoldCircuit<C1, GC1>;
+        let cfE_circuit: CycleFoldCircuit<C1, GC1>;
 
         let z_i1 = self.F.step_native(self.z_i.clone())?;
 
         // compute T and cmT for AugmentedFCircuit
         let (T, cmT) = self.compute_cmT()?;
 
+        // r_bits is the r used to the RLC of the F' instances
         let r_bits = ChallengeGadget::<C1>::get_challenge_native(
             &self.poseidon_config,
-            self.u_i.clone(),
             self.U_i.clone(),
+            self.u_i.clone(),
             cmT,
         )?;
         let r_Fr = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
@@ -307,7 +320,7 @@ where
 
         // fold Nova instances
         let (W_i1, U_i1): (Witness<C1>, CommittedInstance<C1>) = NIFS::<C1, CP1>::fold_instances(
-            r_Fr, &self.w_i, &self.u_i, &self.W_i, &self.U_i, &T, cmT,
+            r_Fr, &self.W_i, &self.U_i, &self.w_i, &self.u_i, &T, cmT,
         )?;
 
         // folded instance output (public input, x)
@@ -333,75 +346,71 @@ where
                 cmT: Some(cmT),
                 F: self.F,
                 x: Some(u_i1_x),
-                cf_u_i: None,
-                cf_U_i: None,
-                cf_U_i1: None,
-                cf_cmT: None,
-                cf_r_nonnat: None,
+                cfW_u_i: None,
+                cfW_U_i: None,
+                cfW_U_i1: None,
+                cfW_cmT: None,
+                cfW_r_nonnat: None,
+                cfE_u_i: None,
+                cfE_U_i: None,
+                cfE_U_i1: None,
+                cfE_cmT: None,
+                cfE_r_nonnat: None,
             };
 
             #[cfg(test)]
-            NIFS::<C1, CP1>::verify_folded_instance(r_Fr, &self.u_i, &self.U_i, &U_i1, &cmT)?;
+            NIFS::<C1, CP1>::verify_folded_instance(r_Fr, &self.U_i, &self.u_i, &U_i1, &cmT)?;
         } else {
             // CycleFold part:
             // get the vector used as public inputs 'x' in the CycleFold circuit
-            let cf_u_i_x = [
-                get_committed_instance_coordinates(&self.u_i),
-                get_committed_instance_coordinates(&self.U_i),
-                get_committed_instance_coordinates(&U_i1),
+            // cyclefold circuit for cmW
+            let cfW_u_i_x = [
+                get_cm_coordinates(&self.U_i.cmW),
+                get_cm_coordinates(&self.u_i.cmW),
+                get_cm_coordinates(&U_i1.cmW),
+            ]
+            .concat();
+            // cyclefold circuit for cmE
+            let cfE_u_i_x = [
+                get_cm_coordinates(&self.U_i.cmE),
+                get_cm_coordinates(&self.u_i.cmE),
+                get_cm_coordinates(&U_i1.cmE),
             ]
             .concat();
 
-            cf_circuit = CycleFoldCircuit::<C1, GC1> {
+            cfW_circuit = CycleFoldCircuit::<C1, GC1> {
                 _gc: PhantomData,
                 r_bits: Some(r_bits.clone()),
-                cmT: Some(cmT),
-                u_i: Some(self.u_i.clone()),
-                U_i: Some(self.U_i.clone()),
-                U_i1: Some(U_i1.clone()),
-                x: Some(cf_u_i_x.clone()),
+                p1: Some(self.U_i.clone().cmW),
+                p2: Some(self.u_i.clone().cmW),
+                p3: Some(U_i1.clone().cmW),
+                x: Some(cfW_u_i_x.clone()),
+            };
+            cfE_circuit = CycleFoldCircuit::<C1, GC1> {
+                _gc: PhantomData,
+                r_bits: Some(r_bits.clone()),
+                p1: Some(self.U_i.clone().cmE),
+                p2: Some(cmT),
+                p3: Some(U_i1.clone().cmE),
+                x: Some(cfE_u_i_x.clone()),
             };
 
-            let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
-            cf_circuit.generate_constraints(cs2.clone())?;
-
-            let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
-            let (cf_w_i, cf_x_i) = extract_w_x::<C1::BaseField>(&cs2);
-            if cf_x_i != cf_u_i_x {
-                return Err(Error::NotEqual);
-            }
-
-            #[cfg(test)]
-            if cf_x_i.len() != CF_IO_LEN {
-                return Err(Error::NotExpectedLength(cf_x_i.len(), CF_IO_LEN));
-            }
-
-            // fold cyclefold instances
-            let cf_w_i = Witness::<C2>::new(cf_w_i.clone(), self.cf_r1cs.A.n_rows);
-            let cf_u_i: CommittedInstance<C2> =
-                cf_w_i.commit::<CP2>(&self.cf_cm_params, cf_x_i.clone())?;
-
-            // compute T* and cmT* for CycleFoldCircuit
-            let (cf_T, cf_cmT) = self.compute_cf_cmT(&cf_w_i, &cf_u_i)?;
-
-            let cf_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_native(
-                &self.poseidon_config,
-                cf_u_i.clone(),
-                self.cf_U_i.clone(),
-                cf_cmT,
-            )?;
-            let cf_r_Fq = C1::BaseField::from_bigint(BigInteger::from_bits_le(&cf_r_bits))
-                .ok_or(Error::OutOfBounds)?;
-
-            let (cf_W_i1, cf_U_i1) = NIFS::<C2, CP2>::fold_instances(
-                cf_r_Fq,
-                &self.cf_W_i,
-                &self.cf_U_i,
-                &cf_w_i,
-                &cf_u_i,
-                &cf_T,
-                cf_cmT,
-            )?;
+            // TODO maybe cfW_w_i & cfW_r_bits are not needed to be returned
+            // cf{W,E}_r_bits is the r used to the RLC of the CycleFold circuit instances
+            let (cfW_w_i, cfW_u_i, cfW_W_i1, cfW_U_i1, cfW_cmT, cfW_r_Fq, cfW_r_bits) = self
+                .fold_cyclefold_circuit(
+                    self.cfW_W_i.clone(), // CycleFold running instance witness
+                    self.cfW_U_i.clone(), // CycleFold running instance
+                    cfW_u_i_x,
+                    cfW_circuit,
+                )?;
+            let (cfE_w_i, cfE_u_i, cfE_W_i1, cfE_U_i1, cfE_cmT, cfE_r_Fq, cfE_r_bits) = self
+                .fold_cyclefold_circuit(
+                    self.cfE_W_i.clone(),
+                    self.cfE_U_i.clone(),
+                    cfE_u_i_x,
+                    cfE_circuit,
+                )?;
 
             augmented_F_circuit = AugmentedFCircuit::<C1, C2, GC2, FC> {
                 _gc2: PhantomData,
@@ -416,21 +425,31 @@ where
                 F: self.F,
                 x: Some(u_i1_x),
                 // cyclefold values
-                cf_u_i: Some(cf_u_i.clone()),
-                cf_U_i: Some(self.cf_U_i.clone()),
-                cf_U_i1: Some(cf_U_i1.clone()),
-                cf_cmT: Some(cf_cmT),
-                cf_r_nonnat: Some(cf_r_Fq),
+                cfW_u_i: Some(cfW_u_i.clone()),
+                cfW_U_i: Some(self.cfW_U_i.clone()),
+                cfW_U_i1: Some(cfW_U_i1.clone()),
+                cfW_cmT: Some(cfW_cmT),
+                cfW_r_nonnat: Some(cfW_r_Fq),
+                cfE_u_i: Some(cfE_u_i.clone()),
+                cfE_U_i: Some(self.cfE_U_i.clone()),
+                cfE_U_i1: Some(cfE_U_i1.clone()),
+                cfE_cmT: Some(cfE_cmT),
+                cfE_r_nonnat: Some(cfE_r_Fq),
             };
 
-            self.cf_W_i = cf_W_i1.clone();
-            self.cf_U_i = cf_U_i1.clone();
+            self.cfW_W_i = cfW_W_i1.clone();
+            self.cfW_U_i = cfW_U_i1.clone();
+            self.cfE_W_i = cfE_W_i1.clone();
+            self.cfE_U_i = cfE_U_i1.clone();
 
             #[cfg(test)]
             {
-                self.cf_r1cs.check_instance_relation(&cf_w_i, &cf_u_i)?;
+                self.cf_r1cs.check_instance_relation(&cfW_w_i, &cfW_u_i)?;
                 self.cf_r1cs
-                    .check_relaxed_instance_relation(&self.cf_W_i, &self.cf_U_i)?;
+                    .check_relaxed_instance_relation(&self.cfW_W_i, &self.cfW_U_i)?;
+                self.cf_r1cs.check_instance_relation(&cfE_w_i, &cfE_u_i)?; // TODO uncomment once ready
+                self.cf_r1cs
+                    .check_relaxed_instance_relation(&self.cfE_W_i, &self.cfE_U_i)?;
             }
         }
 
@@ -480,7 +499,12 @@ where
         (
             (self.U_i.clone(), self.W_i.clone()),
             (self.u_i.clone(), self.w_i.clone()),
-            (self.cf_U_i.clone(), self.cf_W_i.clone()),
+            (
+                self.cfW_U_i.clone(),
+                self.cfW_W_i.clone(),
+                self.cfE_U_i.clone(),
+                self.cfE_W_i.clone(),
+            ),
         )
     }
 
@@ -496,7 +520,7 @@ where
     ) -> Result<(), Error> {
         let (U_i, W_i) = running_instance;
         let (u_i, w_i) = incoming_instance;
-        let (cf_U_i, cf_W_i) = cyclefold_instance;
+        let (cfW_U_i, cfW_W_i, cfE_U_i, cfE_W_i) = cyclefold_instance;
 
         if u_i.x.len() != 1 || U_i.x.len() != 1 {
             return Err(Error::IVCVerificationFail);
@@ -521,7 +545,9 @@ where
 
         // check CycleFold RelaxedR1CS satisfiability
         vp.cf_r1cs
-            .check_relaxed_instance_relation(&cf_W_i, &cf_U_i)?;
+            .check_relaxed_instance_relation(&cfW_W_i, &cfW_U_i)?;
+        vp.cf_r1cs
+            .check_relaxed_instance_relation(&cfE_W_i, &cfE_U_i)?;
 
         Ok(())
     }
@@ -557,15 +583,91 @@ where
         &self,
         cf_w_i: &Witness<C2>,
         cf_u_i: &CommittedInstance<C2>,
+        cf_W_i: &Witness<C2>,
+        cf_U_i: &CommittedInstance<C2>,
     ) -> Result<(Vec<C2::ScalarField>, C2), Error> {
         NIFS::<C2, CP2>::compute_cyclefold_cmT(
             &self.cf_cm_params,
             &self.cf_r1cs,
             cf_w_i,
             cf_u_i,
-            &self.cf_W_i,
-            &self.cf_U_i,
+            &cf_W_i,
+            &cf_U_i,
         )
+    }
+}
+
+impl<C1, GC1, C2, GC2, FC, CP1, CP2> Nova<C1, GC1, C2, GC2, FC, CP1, CP2>
+where
+    C1: CurveGroup,
+    GC1: CurveVar<C1, CF2<C1>>,
+    C2: CurveGroup,
+    GC2: CurveVar<C2, CF2<C2>>,
+    FC: FCircuit<C1::ScalarField>,
+    CP1: CommitmentProver<C1>,
+    CP2: CommitmentProver<C2>,
+    <C1 as CurveGroup>::BaseField: PrimeField,
+    <C2 as CurveGroup>::BaseField: PrimeField,
+    <C1 as Group>::ScalarField: Absorb,
+    <C2 as Group>::ScalarField: Absorb,
+    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    for<'a> &'a GC1: GroupOpsBounds<'a, C1, GC1>,
+    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
+{
+    // folds the given cyclefold circuit and its instances
+    fn fold_cyclefold_circuit(
+        &self,
+        cf_W_i: Witness<C2>,
+        cf_U_i: CommittedInstance<C2>,
+        cf_u_i_x: Vec<C2::ScalarField>,
+        cf_circuit: CycleFoldCircuit<C1, GC1>,
+    ) -> Result<
+        (
+            Witness<C2>,
+            CommittedInstance<C2>,
+            Witness<C2>,
+            CommittedInstance<C2>,
+            C2,
+            C2::ScalarField,
+            Vec<bool>,
+        ),
+        Error,
+    > {
+        let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
+        cf_circuit.generate_constraints(cs2.clone())?;
+
+        let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
+        let (cf_w_i, cf_x_i) = extract_w_x::<C1::BaseField>(&cs2);
+        if cf_x_i != cf_u_i_x {
+            return Err(Error::NotEqual);
+        }
+
+        #[cfg(test)]
+        if cf_x_i.len() != CF_IO_LEN {
+            return Err(Error::NotExpectedLength(cf_x_i.len(), CF_IO_LEN));
+        }
+
+        // fold cyclefold instances
+        let cf_w_i = Witness::<C2>::new(cf_w_i.clone(), self.cf_r1cs.A.n_rows);
+        let cf_u_i: CommittedInstance<C2> =
+            cf_w_i.commit::<CP2>(&self.cf_cm_params, cf_x_i.clone())?;
+
+        // compute T* and cmT* for CycleFoldCircuit
+        let (cf_T, cf_cmT) = self.compute_cf_cmT(&cf_w_i, &cf_u_i, &cf_W_i, &cf_U_i)?;
+
+        let cf_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_native(
+            &self.poseidon_config,
+            cf_U_i.clone(),
+            cf_u_i.clone(),
+            cf_cmT,
+        )?;
+        let cf_r_Fq = C1::BaseField::from_bigint(BigInteger::from_bits_le(&cf_r_bits))
+            .ok_or(Error::OutOfBounds)?;
+
+        let (cf_W_i1, cf_U_i1) = NIFS::<C2, CP2>::fold_instances(
+            cf_r_Fq, &cf_W_i, &cf_U_i, &cf_w_i, &cf_u_i, &cf_T, cf_cmT,
+        )?;
+        Ok((cf_w_i, cf_u_i, cf_W_i1, cf_U_i1, cf_cmT, cf_r_Fq, cf_r_bits))
     }
 }
 
@@ -633,18 +735,24 @@ where
     Ok((r1cs.A.n_rows, cf_r1cs.A.n_rows))
 }
 
-pub(crate) fn get_committed_instance_coordinates<C: CurveGroup>(
-    u: &CommittedInstance<C>,
-) -> Vec<C::BaseField> {
+pub(crate) fn get_cm_coordinates<C: CurveGroup>(cm: &C) -> Vec<C::BaseField> {
     let zero = (&C::BaseField::zero(), &C::BaseField::one());
-
-    let cmE = u.cmE.into_affine();
-    let (cmE_x, cmE_y) = cmE.xy().unwrap_or(zero);
-
-    let cmW = u.cmW.into_affine();
-    let (cmW_x, cmW_y) = cmW.xy().unwrap_or(zero);
-    vec![*cmE_x, *cmE_y, *cmW_x, *cmW_y]
+    let cm = cm.into_affine();
+    let (cm_x, cm_y) = cm.xy().unwrap_or(zero);
+    vec![*cm_x, *cm_y]
 }
+// pub(crate) fn get_committed_instance_coordinates<C: CurveGroup>(
+//     u: &CommittedInstance<C>,
+// ) -> Vec<C::BaseField> {
+//     let zero = (&C::BaseField::zero(), &C::BaseField::one());
+//
+//     let cmE = u.cmE.into_affine();
+//     let (cmE_x, cmE_y) = cmE.xy().unwrap_or(zero);
+//
+//     let cmW = u.cmW.into_affine();
+//     let (cmW_x, cmW_y) = cmW.xy().unwrap_or(zero);
+//     vec![*cmE_x, *cmE_y, *cmW_x, *cmW_y]
+// }
 
 #[cfg(test)]
 pub mod tests {
@@ -693,24 +801,26 @@ pub mod tests {
         let mut nova = NOVA::init(&prover_params, F_circuit, z_0.clone()).unwrap();
 
         let num_steps: usize = 3;
-        for _ in 0..num_steps {
+        for i in 0..num_steps {
+            dbg!(i);
             nova.prove_step().unwrap();
         }
         assert_eq!(Fr::from(num_steps as u32), nova.i);
 
         let verifier_params = VerifierParams::<Projective, Projective2> {
             poseidon_config,
-            r1cs: nova.r1cs,
-            cf_r1cs: nova.cf_r1cs,
+            r1cs: nova.clone().r1cs,
+            cf_r1cs: nova.clone().cf_r1cs,
         };
+        let (running_instance, incomming_instance, cyclefold_instance) = nova.instances();
         NOVA::verify(
             verifier_params,
             z_0,
             nova.z_i,
             nova.i,
-            (nova.U_i, nova.W_i),
-            (nova.u_i, nova.w_i),
-            (nova.cf_U_i, nova.cf_W_i),
+            running_instance,
+            incomming_instance,
+            cyclefold_instance,
         )
         .unwrap();
     }

@@ -242,7 +242,7 @@ where
             _cp2: PhantomData,
 
             E_len: nova.W_i.E.len(),
-            cf_E_len: nova.cf_W_i.E.len(),
+            cf_E_len: nova.cfE_W_i.E.len(),
             r1cs: nova.r1cs,
             cf_r1cs: nova.cf_r1cs,
             cf_pedersen_params: nova.cf_cm_params,
@@ -254,8 +254,8 @@ where
             w_i: Some(nova.w_i),
             U_i: Some(nova.U_i),
             W_i: Some(nova.W_i),
-            cf_U_i: Some(nova.cf_U_i),
-            cf_W_i: Some(nova.cf_W_i),
+            cf_U_i: Some(nova.cfW_U_i), // TODO merge cfW & cfE
+            cf_W_i: Some(nova.cfW_W_i),
         }
     }
 }
@@ -641,17 +641,18 @@ pub mod tests {
         let ivc_v = nova.clone();
         let verifier_params = VerifierParams::<Projective, Projective2> {
             poseidon_config: poseidon_config.clone(),
-            r1cs: ivc_v.r1cs,
-            cf_r1cs: ivc_v.cf_r1cs,
+            r1cs: ivc_v.clone().r1cs,
+            cf_r1cs: ivc_v.clone().cf_r1cs,
         };
+        let (running_instance, incomming_instance, cyclefold_instance) = ivc_v.instances();
         NOVA::verify(
             verifier_params,
             z_0,
             ivc_v.z_i,
             Fr::one(),
-            (ivc_v.U_i, ivc_v.W_i),
-            (ivc_v.u_i, ivc_v.w_i),
-            (ivc_v.cf_U_i, ivc_v.cf_W_i),
+            running_instance,
+            incomming_instance,
+            cyclefold_instance,
         )
         .unwrap();
 

@@ -32,12 +32,12 @@ impl Protocol {
     ) -> Result<Vec<u8>, SerializationError> {
         match self {
             Self::Groth16 => {
-                Ok(Groth16Data::deserialize_protocol_data(data)?.render_as_template(&pragma))
+                Ok(Groth16Data::deserialize_protocol_data(data)?.render_as_template(pragma))
             }
 
-            Self::Kzg => Ok(KzgData::deserialize_protocol_data(data)?.render_as_template(&pragma)),
+            Self::Kzg => Ok(KzgData::deserialize_protocol_data(data)?.render_as_template(pragma)),
             Self::NovaCyclefold => {
-                Ok(NovaCyclefoldData::deserialize_protocol_data(data)?.render_as_template(&pragma))
+                Ok(NovaCyclefoldData::deserialize_protocol_data(data)?.render_as_template(pragma))
             }
         }
     }

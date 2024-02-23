@@ -78,10 +78,10 @@ impl ProtocolData for KzgData {
     const PROTOCOL_NAME: &'static str = "KZG";
 
     fn render_as_template(self, pragma: Option<String>) -> Vec<u8> {
-        HeaderInclusion::builder()
+        HeaderInclusion::<KZG10Verifier>::builder()
             .sdpx(GPL3_SDPX_IDENTIFIER.to_string())
             .pragma_version(pragma.unwrap_or(PRAGMA_KZG10_VERIFIER.to_string()))
-            .template(KZG10Verifier::from(self))
+            .template(self)
             .build()
             .render()
             .unwrap()

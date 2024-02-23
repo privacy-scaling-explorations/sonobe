@@ -77,14 +77,14 @@ impl From<VerifyingKey<Bn254>> for Groth16Data {
 impl ProtocolData for Groth16Data {
     const PROTOCOL_NAME: &'static str = "Groth16";
 
-    fn render_as_template(self, pragma: &Option<String>) -> Vec<u8> {
-        HeaderInclusion::from((
-            GPL3_SDPX_IDENTIFIER.to_string(),
-            pragma.unwrap_or(PRAGMA_GROTH16_VERIFIER.to_string()),
-            Groth16Verifier::from((self)),
-        ))
-        .render()
-        .unwrap()
-        .into_bytes()
+    fn render_as_template(self, pragma: Option<String>) -> Vec<u8> {
+        HeaderInclusion::<Groth16Verifier>::builder()
+            .sdpx(GPL3_SDPX_IDENTIFIER.to_string())
+            .pragma_version(pragma.unwrap_or(PRAGMA_GROTH16_VERIFIER.to_string()))
+            .template(self)
+            .build()
+            .render()
+            .unwrap()
+            .into_bytes()
     }
 }

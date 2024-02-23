@@ -2,9 +2,11 @@
 //! We use askama for templating and define which variables are required for each template.
 
 // Pragma statements for verifiers
-pub(crate) const PRAGMA_GROTH16_VERIFIER: &str = "pragma solidity >=0.7.0 <0.9.0;"; // from snarkjs, avoid changing
-pub(crate) const PRAGMA_KZG10_VERIFIER: &str = "pragma solidity >=0.8.1 <=0.8.4;";
+pub(crate) const PRAGMA_GROTH16_VERIFIER: &'static str = "pragma solidity >=0.7.0 <0.9.0;"; // from snarkjs, avoid changing
+pub(crate) const PRAGMA_KZG10_VERIFIER: &'static str = "pragma solidity >=0.8.1 <=0.8.4;";
 
+/// Default SDPX License identifier
+pub(crate) const GPL3_SDPX_IDENTIFIER: &'static str = "// SPDX-License-Identifier: GPL-3.0";
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write};
 
 mod g16;
@@ -46,6 +48,7 @@ pub trait ProtocolData: CanonicalDeserialize + CanonicalSerialize {
 mod tests {
     use super::{PRAGMA_GROTH16_VERIFIER, PRAGMA_KZG10_VERIFIER};
     use crate::evm::{compile_solidity, save_solidity, Evm};
+    use crate::utils::HeaderInclusion;
     use crate::{Groth16Data, KzgData, NovaCyclefoldData, ProtocolData};
     use ark_bn254::{Bn254, Fr, G1Projective as G1};
     use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
@@ -81,6 +84,7 @@ mod tests {
     // Function signatures for proof verification on kzg10 and groth16 contracts
     pub const FUNCTION_SIGNATURE_KZG10_CHECK: [u8; 4] = [0x9e, 0x78, 0xcc, 0xf7];
     pub const FUNCTION_SIGNATURE_GROTH16_VERIFY_PROOF: [u8; 4] = [0x43, 0x75, 0x3b, 0x4d];
+    pub const FUNCTION_SIGNATURE_NOVA_CYCLEFOLD_CHECK: [u8; 4] = [0x37, 0x98, 0x0b, 0xb6];
 
     struct TestAddCircuit<F: PrimeField> {
         _f: PhantomData<F>,
@@ -179,7 +183,7 @@ mod tests {
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
-        let groth16_template = Groth16Verifier::new(vk, None);
+        let groth16_template = Groth16Verifier::new(vk);
         let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(&mut rng, 5);
         let kzg10_template = KZG10Verifier::new(vk, pk.powers_of_g[..5].to_vec(), None, None);
         let decider_template = NovaCyclefoldDecider {
@@ -203,7 +207,7 @@ mod tests {
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
         // we dont specify any pragma values for both verifiers, the pragma from the decider takes over
-        let groth16_template = Groth16Verifier::new(vk, None);
+        let groth16_template = Groth16Verifier::new(vk);
         let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZGSetup::<Bn254>::setup(&mut rng, 5);
         let kzg10_template = KZG10Verifier::new(vk, pk.powers_of_g[..5].to_vec(), None, None);
         let decider_template = NovaCyclefoldDecider {
@@ -229,7 +233,10 @@ mod tests {
             };
             Groth16::<Bn254>::setup(c, &mut rng).unwrap()
         };
-        let template = Groth16Verifier::new(vk, Some(PRAGMA_GROTH16_VERIFIER.to_string()));
+        let template = Groth16Verifier::new(vk);
+
+        // The template needs to be rendered with header. So we need to add it.
+        HeaderInclusion::from((s))
         save_solidity("groth16_verifier.sol", &template.render().unwrap());
         _ = template.render().unwrap();
     }
@@ -451,6 +458,9 @@ mod tests {
         };
         let g16_proof = Groth16::<Bn254>::prove(&pk_g16, c, &mut rng).unwrap();
         let g16_template = Groth16Verifier::new(vk_g16, Some(PRAGMA_GROTH16_VERIFIER.to_string()));
+        let (a_x, a_y) = g16_proof.a.xy().unwrap();
+        let (b_x, b_y) = g16_proof.b.xy().unwrap();
+        let (c_x, c_y) = g16_proof.c.xy().unwrap();
 
         let poseidon_config = poseidon_test_config::<Fr>();
         let transcript_p = &mut PoseidonTranscript::<G1>::new(&poseidon_config);
@@ -477,6 +487,7 @@ mod tests {
             kzg10_verifier,
         };
         let res = template.render().expect("Failed to render the template");
+
         let nova_cyclefold_verifier_bytecode = compile_solidity(res, "NovaCyclefold");
 
         let mut evm = Evm::default();
@@ -490,11 +501,20 @@ mod tests {
         transcript_v.absorb_point(&cm).unwrap();
         let x = transcript_v.get_challenge();
 
-        /// XXX: Continue here! Extract fn signature and call the method.
-        /// Once this works, implement testing with CLI rendering.
+        // XXX: Continue here! Extract fn signature and call the method.
+        // Once this works, implement testing with CLI rendering.
         let x = x.into_bigint().to_bytes_be();
         let mut calldata: Vec<u8> = chain![
-            FUNCTION_SIGNATURE_KZG10_CHECK,
+            FUNCTION_SIGNATURE_NOVA_CYCLEFOLD_CHECK,
+            a_x.into_bigint().to_bytes_be(),
+            a_y.into_bigint().to_bytes_be(),
+            b_x.c1.into_bigint().to_bytes_be(),
+            b_x.c0.into_bigint().to_bytes_be(),
+            b_y.c1.into_bigint().to_bytes_be(),
+            b_y.c0.into_bigint().to_bytes_be(),
+            c_x.into_bigint().to_bytes_be(),
+            c_y.into_bigint().to_bytes_be(),
+            BigInt::from(Fr::from(z)).to_bytes_be(),
             x_comm.into_bigint().to_bytes_be(),
             y_comm.into_bigint().to_bytes_be(),
             x_proof.into_bigint().to_bytes_be(),

@@ -460,11 +460,9 @@ where
 
         #[cfg(test)]
         {
-            dbg!("pre check r1cs");
             self.r1cs.check_instance_relation(&self.w_i, &self.u_i)?;
             self.r1cs
                 .check_relaxed_instance_relation(&self.W_i, &self.U_i)?;
-            dbg!("post check r1cs");
         }
 
         Ok(())

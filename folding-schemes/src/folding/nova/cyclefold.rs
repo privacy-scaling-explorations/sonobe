@@ -173,6 +173,7 @@ where
     for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
 {
     pub fn verify(
+        // assumes that r_bits is equal to r_nonnat just that in a different format
         r_bits: Vec<Boolean<CF2<C>>>,
         r_nonnat: NonNativeFieldVar<C::ScalarField, CF2<C>>,
         cmT: GC,

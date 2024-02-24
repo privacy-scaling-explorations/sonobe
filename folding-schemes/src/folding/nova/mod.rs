@@ -193,10 +193,8 @@ where
     pub U_i: CommittedInstance<C1>,
 
     /// CycleFold running instance
-    pub cfW_W_i: Witness<C2>,
-    pub cfW_U_i: CommittedInstance<C2>,
-    pub cfE_W_i: Witness<C2>,
-    pub cfE_U_i: CommittedInstance<C2>,
+    pub cf_W_i: Witness<C2>,
+    pub cf_U_i: CommittedInstance<C2>,
 }
 
 impl<C1, GC1, C2, GC2, FC, CP1, CP2> FoldingScheme<C1, C2, FC>
@@ -221,12 +219,7 @@ where
     type ProverParam = ProverParams<C1, C2, CP1, CP2>;
     type VerifierParam = VerifierParams<C1, C2>;
     type CommittedInstanceWithWitness = (CommittedInstance<C1>, Witness<C1>);
-    type CFCommittedInstanceWithWitness = (
-        CommittedInstance<C2>,
-        Witness<C2>,
-        CommittedInstance<C2>,
-        Witness<C2>,
-    );
+    type CFCommittedInstanceWithWitness = (CommittedInstance<C2>, Witness<C2>);
 
     fn preprocess(
         prep_param: &Self::PreprocessorParam,
@@ -290,10 +283,8 @@ where
             W_i: w_dummy,
             U_i: u_dummy,
             // cyclefold running instance
-            cfW_W_i: cf_w_dummy.clone(),
-            cfW_U_i: cf_u_dummy.clone(),
-            cfE_W_i: cf_w_dummy.clone(),
-            cfE_U_i: cf_u_dummy.clone(),
+            cf_W_i: cf_w_dummy.clone(),
+            cf_U_i: cf_u_dummy.clone(),
         })
     }
 
@@ -346,16 +337,15 @@ where
                 cmT: Some(cmT),
                 F: self.F,
                 x: Some(u_i1_x),
-                cfW_u_i: None,
-                cfW_U_i: None,
-                cfW_U_i1: None,
-                cfW_cmT: None,
-                cfW_r_nonnat: None,
-                cfE_u_i: None,
-                cfE_U_i: None,
-                cfE_U_i1: None,
-                cfE_cmT: None,
-                cfE_r_nonnat: None,
+                cf1_u_i: None,
+                cf2_u_i: None,
+                cf_U_i: None,
+                cf1_U_i1: None,
+                cf_U_i1: None,
+                cf1_cmT: None,
+                cf2_cmT: None,
+                cf1_r_nonnat: None,
+                cf2_r_nonnat: None,
             };
 
             #[cfg(test)]
@@ -395,22 +385,19 @@ where
                 x: Some(cfE_u_i_x.clone()),
             };
 
-            // TODO maybe cfW_w_i & cfW_r_bits are not needed to be returned
-            // cf{W,E}_r_bits is the r used to the RLC of the CycleFold circuit instances
-            let (cfW_w_i, cfW_u_i, cfW_W_i1, cfW_U_i1, cfW_cmT, cfW_r_Fq, cfW_r_bits) = self
+            // TODO cfW_w_i & cfW_r_bits are not needed to be returned
+
+            // fold self.cf_U_i + cfW_U -> folded running with cfW
+            let (cfW_w_i, cfW_u_i, cfW_W_i1, cfW_U_i1, cfW_cmT, cfW_r1_Fq, cfW_r_bits) = self
                 .fold_cyclefold_circuit(
-                    self.cfW_W_i.clone(), // CycleFold running instance witness
-                    self.cfW_U_i.clone(), // CycleFold running instance
+                    self.cf_W_i.clone(), // CycleFold running instance witness
+                    self.cf_U_i.clone(), // CycleFold running instance
                     cfW_u_i_x,
                     cfW_circuit,
                 )?;
-            let (cfE_w_i, cfE_u_i, cfE_W_i1, cfE_U_i1, cfE_cmT, cfE_r_Fq, cfE_r_bits) = self
-                .fold_cyclefold_circuit(
-                    self.cfE_W_i.clone(),
-                    self.cfE_U_i.clone(),
-                    cfE_u_i_x,
-                    cfE_circuit,
-                )?;
+            // fold [the output from folding self.cf_U_i + cfW_U] + cfE_U = folded_running_with_cfW + cfE
+            let (cfE_w_i, cfE_u_i, cf_W_i1, cf_U_i1, cf_cmT, cf_r2_Fq, cf_r_bits) =
+                self.fold_cyclefold_circuit(cfW_W_i1, cfW_U_i1.clone(), cfE_u_i_x, cfE_circuit)?;
 
             augmented_F_circuit = AugmentedFCircuit::<C1, C2, GC2, FC> {
                 _gc2: PhantomData,
@@ -425,31 +412,26 @@ where
                 F: self.F,
                 x: Some(u_i1_x),
                 // cyclefold values
-                cfW_u_i: Some(cfW_u_i.clone()),
-                cfW_U_i: Some(self.cfW_U_i.clone()),
-                cfW_U_i1: Some(cfW_U_i1.clone()),
-                cfW_cmT: Some(cfW_cmT),
-                cfW_r_nonnat: Some(cfW_r_Fq),
-                cfE_u_i: Some(cfE_u_i.clone()),
-                cfE_U_i: Some(self.cfE_U_i.clone()),
-                cfE_U_i1: Some(cfE_U_i1.clone()),
-                cfE_cmT: Some(cfE_cmT),
-                cfE_r_nonnat: Some(cfE_r_Fq),
+                cf1_u_i: Some(cfW_u_i.clone()),
+                cf2_u_i: Some(cfE_u_i.clone()),
+                cf_U_i: Some(self.cf_U_i.clone()),
+                cf1_U_i1: Some(cfW_U_i1.clone()),
+                cf_U_i1: Some(cf_U_i1.clone()),
+                cf1_cmT: Some(cfW_cmT),
+                cf2_cmT: Some(cf_cmT),
+                cf1_r_nonnat: Some(cfW_r1_Fq),
+                cf2_r_nonnat: Some(cf_r2_Fq),
             };
 
-            self.cfW_W_i = cfW_W_i1.clone();
-            self.cfW_U_i = cfW_U_i1.clone();
-            self.cfE_W_i = cfE_W_i1.clone();
-            self.cfE_U_i = cfE_U_i1.clone();
+            self.cf_W_i = cf_W_i1.clone();
+            self.cf_U_i = cf_U_i1.clone();
 
             #[cfg(test)]
             {
                 self.cf_r1cs.check_instance_relation(&cfW_w_i, &cfW_u_i)?;
+                self.cf_r1cs.check_instance_relation(&cfE_w_i, &cfE_u_i)?;
                 self.cf_r1cs
-                    .check_relaxed_instance_relation(&self.cfW_W_i, &self.cfW_U_i)?;
-                self.cf_r1cs.check_instance_relation(&cfE_w_i, &cfE_u_i)?; // TODO uncomment once ready
-                self.cf_r1cs
-                    .check_relaxed_instance_relation(&self.cfE_W_i, &self.cfE_U_i)?;
+                    .check_relaxed_instance_relation(&self.cf_W_i, &self.cf_U_i)?;
             }
         }
 
@@ -478,9 +460,11 @@ where
 
         #[cfg(test)]
         {
+            dbg!("pre check r1cs");
             self.r1cs.check_instance_relation(&self.w_i, &self.u_i)?;
             self.r1cs
                 .check_relaxed_instance_relation(&self.W_i, &self.U_i)?;
+            dbg!("post check r1cs");
         }
 
         Ok(())
@@ -499,12 +483,7 @@ where
         (
             (self.U_i.clone(), self.W_i.clone()),
             (self.u_i.clone(), self.w_i.clone()),
-            (
-                self.cfW_U_i.clone(),
-                self.cfW_W_i.clone(),
-                self.cfE_U_i.clone(),
-                self.cfE_W_i.clone(),
-            ),
+            (self.cf_U_i.clone(), self.cf_W_i.clone()),
         )
     }
 
@@ -520,7 +499,7 @@ where
     ) -> Result<(), Error> {
         let (U_i, W_i) = running_instance;
         let (u_i, w_i) = incoming_instance;
-        let (cfW_U_i, cfW_W_i, cfE_U_i, cfE_W_i) = cyclefold_instance;
+        let (cf_U_i, cf_W_i) = cyclefold_instance;
 
         if u_i.x.len() != 1 || U_i.x.len() != 1 {
             return Err(Error::IVCVerificationFail);
@@ -545,9 +524,7 @@ where
 
         // check CycleFold RelaxedR1CS satisfiability
         vp.cf_r1cs
-            .check_relaxed_instance_relation(&cfW_W_i, &cfW_U_i)?;
-        vp.cf_r1cs
-            .check_relaxed_instance_relation(&cfE_W_i, &cfE_U_i)?;
+            .check_relaxed_instance_relation(&cf_W_i, &cf_U_i)?;
 
         Ok(())
     }
@@ -617,8 +594,8 @@ where
     // folds the given cyclefold circuit and its instances
     fn fold_cyclefold_circuit(
         &self,
-        cf_W_i: Witness<C2>,
-        cf_U_i: CommittedInstance<C2>,
+        cf_W_i: Witness<C2>,           // witness of the running instance
+        cf_U_i: CommittedInstance<C2>, // running instance
         cf_u_i_x: Vec<C2::ScalarField>,
         cf_circuit: CycleFoldCircuit<C1, GC1>,
     ) -> Result<
@@ -741,18 +718,6 @@ pub(crate) fn get_cm_coordinates<C: CurveGroup>(cm: &C) -> Vec<C::BaseField> {
     let (cm_x, cm_y) = cm.xy().unwrap_or(zero);
     vec![*cm_x, *cm_y]
 }
-// pub(crate) fn get_committed_instance_coordinates<C: CurveGroup>(
-//     u: &CommittedInstance<C>,
-// ) -> Vec<C::BaseField> {
-//     let zero = (&C::BaseField::zero(), &C::BaseField::one());
-//
-//     let cmE = u.cmE.into_affine();
-//     let (cmE_x, cmE_y) = cmE.xy().unwrap_or(zero);
-//
-//     let cmW = u.cmW.into_affine();
-//     let (cmW_x, cmW_y) = cmW.xy().unwrap_or(zero);
-//     vec![*cmE_x, *cmE_y, *cmW_x, *cmW_y]
-// }
 
 #[cfg(test)]
 pub mod tests {

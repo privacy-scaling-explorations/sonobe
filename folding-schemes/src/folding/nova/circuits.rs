@@ -46,11 +46,14 @@ pub type CF2<C> = <<C as CurveGroup>::BaseField as Field>::BasePrimeField;
 /// constraints field (E1::Fr, where E1 is the main curve). The peculiarity is that cmE and cmW are
 /// represented non-natively over the constraint field.
 #[derive(Debug, Clone)]
-pub struct CommittedInstanceVar<C: CurveGroup> {
+pub struct CommittedInstanceVar<C: CurveGroup>
+where
+    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
+{
     pub u: FpVar<C::ScalarField>,
     pub x: Vec<FpVar<C::ScalarField>>,
-    pub cmE: NonNativeAffineVar<C::ScalarField>,
-    pub cmW: NonNativeAffineVar<C::ScalarField>,
+    pub cmE: NonNativeAffineVar<C>,
+    pub cmW: NonNativeAffineVar<C>,
 }
 
 impl<C> AllocVar<CommittedInstance<C>, CF1<C>> for CommittedInstanceVar<C>
@@ -70,16 +73,10 @@ where
             let x: Vec<FpVar<C::ScalarField>> =
                 Vec::new_variable(cs.clone(), || Ok(val.borrow().x.clone()), mode)?;
 
-            let cmE = NonNativeAffineVar::<C::ScalarField>::new_variable(
-                cs.clone(),
-                || Ok(val.borrow().cmE),
-                mode,
-            )?;
-            let cmW = NonNativeAffineVar::<C::ScalarField>::new_variable(
-                cs.clone(),
-                || Ok(val.borrow().cmW),
-                mode,
-            )?;
+            let cmE =
+                NonNativeAffineVar::<C>::new_variable(cs.clone(), || Ok(val.borrow().cmE), mode)?;
+            let cmW =
+                NonNativeAffineVar::<C>::new_variable(cs.clone(), || Ok(val.borrow().cmW), mode)?;
 
             Ok(Self { u, x, cmE, cmW })
         })
@@ -90,6 +87,7 @@ impl<C> CommittedInstanceVar<C>
 where
     C: CurveGroup,
     <C as Group>::ScalarField: Absorb,
+    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
 {
     /// hash implements the committed instance hash compatible with the native implementation from
     /// CommittedInstance.hash.
@@ -108,10 +106,10 @@ where
             z_i,
             vec![self.u],
             self.x,
-            self.cmE.x,
-            self.cmE.y,
-            self.cmW.x,
-            self.cmW.y,
+            self.cmE.x.to_constraint_field()?, // TODO avoid repeating this computation
+            self.cmE.y.to_constraint_field()?,
+            self.cmW.x.to_constraint_field()?,
+            self.cmW.y.to_constraint_field()?,
         ]
         .concat();
         CRHGadget::<C::ScalarField>::evaluate(crh_params, &input)
@@ -128,6 +126,7 @@ pub struct NIFSGadget<C: CurveGroup> {
 impl<C: CurveGroup> NIFSGadget<C>
 where
     C: CurveGroup,
+    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
 {
     /// Implements the constraints for NIFS.V for u and x, since cm(E) and cm(W) are delegated to
     /// the CycleFold circuit.
@@ -205,25 +204,25 @@ where
         poseidon_config: &PoseidonConfig<C::ScalarField>,
         U_i: CommittedInstanceVar<C>,
         u_i: CommittedInstanceVar<C>,
-        cmT: NonNativeAffineVar<C::ScalarField>,
+        cmT: NonNativeAffineVar<C>,
     ) -> Result<Vec<Boolean<C::ScalarField>>, SynthesisError> {
         let mut sponge = PoseidonSpongeVar::<C::ScalarField>::new(cs, poseidon_config);
 
         let input: Vec<FpVar<C::ScalarField>> = vec![
             vec![U_i.u.clone()],
             U_i.x.clone(),
-            U_i.cmE.x,
-            U_i.cmE.y,
-            U_i.cmW.x,
-            U_i.cmW.y,
+            U_i.cmE.x.to_constraint_field()?, // TODO avoid repeating this computation
+            U_i.cmE.y.to_constraint_field()?,
+            U_i.cmW.x.to_constraint_field()?,
+            U_i.cmW.y.to_constraint_field()?,
             vec![u_i.u.clone()],
             u_i.x.clone(),
-            u_i.cmE.x,
-            u_i.cmE.y,
-            u_i.cmW.x,
-            u_i.cmW.y,
-            cmT.x,
-            cmT.y,
+            u_i.cmE.x.to_constraint_field()?,
+            u_i.cmE.y.to_constraint_field()?,
+            u_i.cmW.x.to_constraint_field()?,
+            u_i.cmW.y.to_constraint_field()?,
+            cmT.x.to_constraint_field()?,
+            cmT.y.to_constraint_field()?,
         ]
         .concat();
         sponge.absorb(&input)?;
@@ -257,16 +256,17 @@ pub struct AugmentedFCircuit<
     pub x: Option<CF1<C1>>, // public inputs (u_{i+1}.x)
 
     // cyclefold verifier on C1
-    pub cfW_u_i: Option<CommittedInstance<C2>>,
-    pub cfW_U_i: Option<CommittedInstance<C2>>,
-    pub cfW_U_i1: Option<CommittedInstance<C2>>,
-    pub cfW_cmT: Option<C2>,
-    pub cfW_r_nonnat: Option<C2::ScalarField>,
-    pub cfE_u_i: Option<CommittedInstance<C2>>,
-    pub cfE_U_i: Option<CommittedInstance<C2>>,
-    pub cfE_U_i1: Option<CommittedInstance<C2>>,
-    pub cfE_cmT: Option<C2>,
-    pub cfE_r_nonnat: Option<C2::ScalarField>,
+    // Here 'cf1, cf2' are for each of the CycleFold circuits, corresponding to the fold of cmW and
+    // cmE respectively
+    pub cf1_u_i: Option<CommittedInstance<C2>>,  // input
+    pub cf2_u_i: Option<CommittedInstance<C2>>,  // input
+    pub cf_U_i: Option<CommittedInstance<C2>>,   // input
+    pub cf1_U_i1: Option<CommittedInstance<C2>>, // intermediate
+    pub cf_U_i1: Option<CommittedInstance<C2>>,  // output
+    pub cf1_cmT: Option<C2>,
+    pub cf2_cmT: Option<C2>,
+    pub cf1_r_nonnat: Option<C2::ScalarField>,
+    pub cf2_r_nonnat: Option<C2::ScalarField>,
 }
 
 impl<C1: CurveGroup, C2: CurveGroup, GC2: CurveVar<C2, CF2<C2>>, FC: FCircuit<CF1<C1>>>
@@ -288,82 +288,16 @@ where
             F: F_circuit,
             x: None,
             // cyclefold values
-            cfW_u_i: None,
-            cfW_U_i: None,
-            cfW_U_i1: None,
-            cfW_cmT: None,
-            cfW_r_nonnat: None,
-            cfE_u_i: None,
-            cfE_U_i: None,
-            cfE_U_i1: None,
-            cfE_cmT: None,
-            cfE_r_nonnat: None,
+            cf1_u_i: None,
+            cf2_u_i: None,
+            cf_U_i: None,
+            cf1_U_i1: None,
+            cf_U_i1: None,
+            cf1_cmT: None,
+            cf2_cmT: None,
+            cf1_r_nonnat: None,
+            cf2_r_nonnat: None,
         }
-    }
-}
-
-impl<C1: CurveGroup, C2: CurveGroup, GC2: CurveVar<C2, CF2<C2>>, FC: FCircuit<CF1<C1>>>
-    AugmentedFCircuit<C1, C2, GC2, FC>
-where
-    FC: FCircuit<CF1<C1>>,
-    <C1 as CurveGroup>::BaseField: PrimeField,
-    <C2 as CurveGroup>::BaseField: PrimeField,
-    <C1 as Group>::ScalarField: Absorb,
-    <C2 as Group>::ScalarField: Absorb,
-    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
-{
-    // verify CycleFold instances in the AugmentedFCircuit
-    fn verify_cyclefold_instances(
-        // &self,
-        cs: ConstraintSystemRef<CF1<C1>>,
-        poseidon_config: &PoseidonConfig<CF1<C1>>,
-        is_not_basecase: Boolean<CF1<C1>>,
-        incircuit_cf_x: Vec<FpVar<CF2<C2>>>, // =[U_i, u_i, U_i1]
-        // CycleFold instances of the cmW
-        cf_U_i: CycleFoldCommittedInstanceVar<C2, GC2>,
-        cf_u_i: CycleFoldCommittedInstanceVar<C2, GC2>,
-        cf_U_i1: CycleFoldCommittedInstanceVar<C2, GC2>,
-        cf_cmT: GC2,
-        cf_r_nonnat: NonNativeFieldVar<C2::ScalarField, CF2<C2>>,
-    ) -> Result<(), SynthesisError> {
-        let mut cf_u_i_x: Vec<FpVar<CF2<C2>>> = vec![];
-        for x_i in cf_u_i.x.iter() {
-            let mut x_fpvar = x_i.to_constraint_field()?;
-            cf_u_i_x.append(&mut x_fpvar);
-        }
-        cf_u_i_x.conditional_enforce_equal(&incircuit_cf_x, &is_not_basecase)?;
-
-        // cf_r_bits is denoted by rho* in the paper
-        let cf_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_gadget(
-            cs.clone(),
-            &poseidon_config,
-            cf_U_i.clone(),
-            cf_u_i.clone(),
-            cf_cmT.clone(),
-        )?;
-        // assert that cf_r_bits == cf_r_nonnat converted to bits. cf_r_nonnat is just an auxiliary
-        // value used to compute RLC of NonNativeFieldVar values, since we can convert
-        // NonNativeFieldVar into Vec<Boolean>, but not in the other direction.
-        let cf_r_nonnat_bits = cf_r_nonnat.to_bits_le()?;
-        cf_r_bits.conditional_enforce_equal(&cf_r_nonnat_bits[..N_BITS_RO], &is_not_basecase)?;
-
-        // check cf_u_i.cmE=0, cf_u_i.u=1
-        (cf_u_i.cmE.is_zero()?).conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
-        (cf_u_i.u.is_one()?).conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
-
-        // check the fold of all the parameteres of the CycleFold instances, where the elliptic
-        // curve points relations are checked natively in Curve1 circuit (this one)
-        let v = NIFSFullGadget::<C2, GC2>::verify(
-            cf_r_bits,
-            cf_r_nonnat,
-            cf_cmT,
-            cf_U_i,
-            cf_u_i,
-            cf_U_i1,
-        )?;
-        v.conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
-        Ok(())
     }
 }
 
@@ -433,13 +367,11 @@ where
         let zero_x = NonNativeFieldVar::<C1::BaseField, C1::ScalarField>::new_constant(
             cs.clone(),
             C1::BaseField::zero(),
-        )?
-        .to_constraint_field()?;
+        )?;
         let zero_y = NonNativeFieldVar::<C1::BaseField, C1::ScalarField>::new_constant(
             cs.clone(),
             C1::BaseField::one(),
-        )?
-        .to_constraint_field()?;
+        )?;
         (u_i.cmE.x.is_eq(&zero_x)?).conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
         (u_i.cmE.y.is_eq(&zero_y)?).conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
         (u_i.u.is_one()?).conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
@@ -473,73 +405,114 @@ where
         // CycleFold part
         let cf_u_dummy_native = CommittedInstance::<C2>::dummy(CF_IO_LEN);
         // cf W circuit data
-        let cfW_u_i = CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || {
-            Ok(self.cfW_u_i.unwrap_or_else(|| cf_u_dummy_native.clone()))
+        let cf1_u_i = CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || {
+            Ok(self.cf1_u_i.unwrap_or_else(|| cf_u_dummy_native.clone()))
         })?;
-        let cfW_U_i = CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || {
-            Ok(self.cfW_U_i.unwrap_or_else(|| cf_u_dummy_native.clone()))
+        let cf2_u_i = CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || {
+            Ok(self.cf2_u_i.unwrap_or_else(|| cf_u_dummy_native.clone()))
         })?;
-        let cfW_U_i1 = CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || {
-            Ok(self.cfW_U_i1.unwrap_or_else(|| cf_u_dummy_native.clone()))
+        let cf_U_i = CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || {
+            Ok(self.cf_U_i.unwrap_or_else(|| cf_u_dummy_native.clone()))
         })?;
-        let cfW_cmT = GC2::new_witness(cs.clone(), || Ok(self.cfW_cmT.unwrap_or_else(C2::zero)))?;
-        // cfW_r_nonnat is an auxiliary input
-        let cfW_r_nonnat =
-            NonNativeFieldVar::<C2::ScalarField, CF2<C2>>::new_witness(cs.clone(), || {
-                Ok(self.cfW_r_nonnat.unwrap_or_else(C2::ScalarField::zero))
+        let cf1_U_i1 = CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || {
+            Ok(self.cf1_U_i1.unwrap_or_else(|| cf_u_dummy_native.clone()))
+        })?;
+        let cf_U_i1 = CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || {
+            Ok(self.cf_U_i1.unwrap_or_else(|| cf_u_dummy_native.clone()))
+        })?;
+        let cf1_cmT = GC2::new_witness(cs.clone(), || Ok(self.cf1_cmT.unwrap_or_else(C2::zero)))?;
+        let cf2_cmT = GC2::new_witness(cs.clone(), || Ok(self.cf2_cmT.unwrap_or_else(C2::zero)))?;
+        let cf1_r_nonnat =
+            NonNativeFieldVar::<C1::BaseField, C1::ScalarField>::new_witness(cs.clone(), || {
+                Ok(self.cf1_r_nonnat.unwrap_or_else(C2::ScalarField::zero))
             })?;
-        // cf E circuit data
-        let cfE_u_i = CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || {
-            Ok(self.cfE_u_i.unwrap_or_else(|| cf_u_dummy_native.clone()))
-        })?;
-        let cfE_U_i = CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || {
-            Ok(self.cfE_U_i.unwrap_or_else(|| cf_u_dummy_native.clone()))
-        })?;
-        let cfE_U_i1 = CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || {
-            Ok(self
-                .cfE_U_i1
-                .clone()
-                .unwrap_or_else(|| cf_u_dummy_native.clone()))
-        })?;
-        let cfE_cmT = GC2::new_witness(cs.clone(), || Ok(self.cfE_cmT.unwrap_or_else(C2::zero)))?;
-        // cfE_r_nonnat is an auxiliary input
-        let cfE_r_nonnat =
-            NonNativeFieldVar::<C2::ScalarField, CF2<C2>>::new_witness(cs.clone(), || {
-                Ok(self.cfE_r_nonnat.unwrap_or_else(C2::ScalarField::zero))
+        let cf2_r_nonnat =
+            NonNativeFieldVar::<C1::BaseField, C1::ScalarField>::new_witness(cs.clone(), || {
+                Ok(self.cf2_r_nonnat.unwrap_or_else(C2::ScalarField::zero))
             })?;
 
-        let incircuit_cfE_x = vec![
+        let cfW_x: Vec<NonNativeFieldVar<C1::BaseField, C1::ScalarField>> = vec![
             U_i.cmW.x, U_i.cmW.y, u_i.cmW.x, u_i.cmW.y, U_i1.cmW.x, U_i1.cmW.y,
-        ]
-        .concat();
-        Self::verify_cyclefold_instances(
-            cs.clone(),
-            &self.poseidon_config.clone(),
-            is_not_basecase.clone(),
-            incircuit_cfE_x,
-            // CycleFold instances of the cmW
-            cfW_U_i,
-            cfW_u_i,
-            cfW_U_i1,
-            cfW_cmT,
-            cfW_r_nonnat,
-        )?;
-        let incircuit_cfE_x = vec![
+        ];
+        let cfE_x: Vec<NonNativeFieldVar<C1::BaseField, C1::ScalarField>> = vec![
             U_i.cmE.x, U_i.cmE.y, u_i.cmE.x, u_i.cmE.y, U_i1.cmE.x, U_i1.cmE.y,
-        ]
-        .concat();
-        Self::verify_cyclefold_instances(
-            cs,
-            &self.poseidon_config.clone(),
-            is_not_basecase,
-            incircuit_cfE_x,
-            // CycleFold instances of the cmE
-            cfE_U_i,
-            cfE_u_i,
-            cfE_U_i1,
-            cfE_cmT,
-            cfE_r_nonnat,
+        ];
+        /*
+        // fold cf_U.x + cfW_x
+        let intermediate_x_rlc: Vec<NonNativeFieldVar<C1::BaseField, C1::ScalarField>> = cf_U_i
+            .x
+            .iter()
+            .zip(cfW_x.clone())
+            .map(|(a, b)| a + &cf_r1_nonnat * &b)
+            .collect::<Vec<NonNativeFieldVar<C1::BaseField, C1::ScalarField>>>();
+        // fold intermediate_x_rlc + cfE_x
+        let incircuit_cf_x: Vec<NonNativeFieldVar<C1::BaseField, C1::ScalarField>> =
+            intermediate_x_rlc
+                .iter()
+                .zip(cfE_x)
+                .map(|(a, b)| a + &cf_r2_nonnat * &b)
+                .collect::<Vec<NonNativeFieldVar<C1::BaseField, C1::ScalarField>>>();
+        */
+
+        // ensure that cf1_u & cf2_u have as public inputs the cmW & cmE from main instances U_i,
+        // u_i, U_i+1 coordinates of the commitments
+        cf1_u_i
+            .x
+            .conditional_enforce_equal(&cfW_x, &is_not_basecase)?;
+        cf2_u_i
+            .x
+            .conditional_enforce_equal(&cfE_x, &is_not_basecase)?;
+
+        // cf_r_bits is denoted by rho* in the paper.
+        // assert that cf_r_bits == cf_r_nonnat converted to bits. cf_r_nonnat is just an auxiliary
+        // value used to compute RLC of NonNativeFieldVar values, since we can convert
+        // NonNativeFieldVar into Vec<Boolean>, but not in the other direction.
+        let cf1_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_gadget(
+            cs.clone(),
+            &self.poseidon_config,
+            cf_U_i.clone(),
+            cf1_u_i.clone(),
+            cf1_cmT.clone(),
         )?;
+        let cf1_r_nonnat_bits = cf1_r_nonnat.to_bits_le()?;
+        cf1_r_bits.conditional_enforce_equal(&cf1_r_nonnat_bits[..N_BITS_RO], &is_not_basecase)?;
+        // same for cf2_r:
+        let cf2_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_gadget(
+            cs.clone(),
+            &self.poseidon_config,
+            cf1_U_i1.clone(),
+            cf2_u_i.clone(),
+            cf2_cmT.clone(),
+        )?;
+        let cf2_r_nonnat_bits = cf2_r_nonnat.to_bits_le()?;
+        cf2_r_bits.conditional_enforce_equal(&cf2_r_nonnat_bits[..N_BITS_RO], &is_not_basecase)?;
+
+        // check cf_u_i.cmE=0, cf_u_i.u=1
+        (cf1_u_i.cmE.is_zero()?).conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
+        (cf1_u_i.u.is_one()?).conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
+        (cf2_u_i.cmE.is_zero()?).conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
+        (cf2_u_i.u.is_one()?).conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
+
+        // check the fold of all the parameteres of the CycleFold instances, where the elliptic
+        // curve points relations are checked natively in Curve1 circuit (this one)
+        let v1 = NIFSFullGadget::<C2, GC2>::verify(
+            cf1_r_bits,
+            cf1_r_nonnat,
+            cf1_cmT,
+            cf_U_i,
+            cf1_u_i,
+            cf1_U_i1.clone(),
+        )?;
+        v1.conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
+        let v2 = NIFSFullGadget::<C2, GC2>::verify(
+            cf2_r_bits,
+            cf2_r_nonnat,
+            cf2_cmT,
+            cf1_U_i1, // the output from NIFS.V(cf1_r, cf_U, cfE_u)
+            cf2_u_i,
+            cf_U_i1,
+        )?;
+        v2.conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
 
         Ok(())
     }
@@ -691,7 +664,7 @@ pub mod tests {
         let U_iVar =
             CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || Ok(U_i.clone()))
                 .unwrap();
-        let cmTVar = NonNativeAffineVar::<Fr>::new_witness(cs.clone(), || Ok(cmT)).unwrap();
+        let cmTVar = NonNativeAffineVar::<Projective>::new_witness(cs.clone(), || Ok(cmT)).unwrap();
 
         // compute the challenge in-circuit
         let r_bitsVar = ChallengeGadget::<Projective>::get_challenge_gadget(

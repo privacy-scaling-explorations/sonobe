@@ -1,6 +1,2 @@
-[default]
-extend-ignore-identifiers-re = [
-]
-
 [default.extend-words]
 groth = "groth"

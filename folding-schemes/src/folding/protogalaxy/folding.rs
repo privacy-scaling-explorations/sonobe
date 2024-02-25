@@ -522,7 +522,7 @@ mod tests {
         )
         .unwrap();
 
-        // veriier
+        // verifier
         let folded_instance_v = Folding::<Projective>::verify(
             &mut transcript_v,
             &r1cs,
@@ -572,7 +572,7 @@ mod tests {
                 )
                 .unwrap();
 
-            // veriier
+            // verifier
             let folded_instance_v = Folding::<Projective>::verify(
                 &mut transcript_v,
                 &r1cs,

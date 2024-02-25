@@ -572,7 +572,7 @@ pub mod tests {
         assert_eq!(hVar.value().unwrap(), h);
     }
 
-    // checks that the gadget and native implementations of the challenge computation matcbh
+    // checks that the gadget and native implementations of the challenge computation match
     #[test]
     fn test_challenge_gadget() {
         let mut rng = ark_std::test_rng();

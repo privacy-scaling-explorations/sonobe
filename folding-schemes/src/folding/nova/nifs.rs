@@ -143,7 +143,7 @@ where
         // use r_T=1 since we don't need hiding property for cm(T)
         let w3 = NIFS::<C, CP>::fold_witness(r, w1, w2, T, C::ScalarField::one())?;
 
-        // fold committed instancs
+        // fold committed instances
         let ci3 = NIFS::<C, CP>::fold_committed_instance(r, ci1, ci2, &cmT);
 
         Ok((w3, ci3))

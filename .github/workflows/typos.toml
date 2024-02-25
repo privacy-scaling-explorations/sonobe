@@ -1,0 +1,7 @@
+[default]
+extend-ignore-identifiers-re = [
+]
+
+[default.extend-words]
+# Don't correct the surname "Teh"
+groth = "groth"

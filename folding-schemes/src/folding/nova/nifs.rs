@@ -161,7 +161,7 @@ where
         NIFS::<C, CP>::fold_committed_instance(r, ci1, ci2, cmT)
     }
 
-    /// Verify commited folded instance (ci) relations. Notice that this method does not open the
+    /// Verify committed folded instance (ci) relations. Notice that this method does not open the
     /// commitments, but just checks that the given committed instances (ci1, ci2) when folded
     /// result in the folded committed instance (ci3) values.
     pub fn verify_folded_instance(
@@ -426,16 +426,16 @@ pub mod tests {
 
         let num_iters = 10;
         for i in 0..num_iters {
-            // prepare the incomming instance
-            let incomming_instance_z = get_test_z(i + 4);
-            let (w, x) = r1cs.split_z(&incomming_instance_z);
-            let incomming_instance_w = Witness::<Projective>::new(w.clone(), r1cs.A.n_rows);
-            let incomming_committed_instance = incomming_instance_w
+            // prepare the incoming instance
+            let incoming_instance_z = get_test_z(i + 4);
+            let (w, x) = r1cs.split_z(&incoming_instance_z);
+            let incoming_instance_w = Witness::<Projective>::new(w.clone(), r1cs.A.n_rows);
+            let incoming_committed_instance = incoming_instance_w
                 .commit::<Pedersen<Projective>>(&pedersen_params, x)
                 .unwrap();
             r1cs.check_relaxed_instance_relation(
-                &incomming_instance_w,
-                &incomming_committed_instance,
+                &incoming_instance_w,
+                &incoming_committed_instance,
             )
             .unwrap();
 
@@ -447,16 +447,16 @@ pub mod tests {
                 &r1cs,
                 &running_instance_w,
                 &running_committed_instance,
-                &incomming_instance_w,
-                &incomming_committed_instance,
+                &incoming_instance_w,
+                &incoming_committed_instance,
             )
             .unwrap();
             let (folded_w, _) = NIFS::<Projective, Pedersen<Projective>>::fold_instances(
                 r,
                 &running_instance_w,
                 &running_committed_instance,
-                &incomming_instance_w,
-                &incomming_committed_instance,
+                &incoming_instance_w,
+                &incoming_committed_instance,
                 &T,
                 cmT,
             )
@@ -466,7 +466,7 @@ pub mod tests {
             let folded_committed_instance = NIFS::<Projective, Pedersen<Projective>>::verify(
                 r,
                 &running_committed_instance,
-                &incomming_committed_instance,
+                &incoming_committed_instance,
                 &cmT,
             );
 

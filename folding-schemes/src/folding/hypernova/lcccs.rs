@@ -133,7 +133,7 @@ pub mod tests {
 
         let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, ccs.n - ccs.l - 1);
         let (lcccs, _) = ccs.to_lcccs(&mut rng, &pedersen_params, &z).unwrap();
-        // with our test vector comming from R1CS, v should have length 3
+        // with our test vector coming from R1CS, v should have length 3
         assert_eq!(lcccs.v.len(), 3);
 
         let vec_L_j_x = lcccs.compute_Ls(&ccs, &z);
@@ -164,7 +164,7 @@ pub mod tests {
         let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, ccs.n - ccs.l - 1);
         // Compute v_j with the right z
         let (lcccs, _) = ccs.to_lcccs(&mut rng, &pedersen_params, &z).unwrap();
-        // with our test vector comming from R1CS, v should have length 3
+        // with our test vector coming from R1CS, v should have length 3
         assert_eq!(lcccs.v.len(), 3);
 
         // Bad compute L_j(x) with the bad z

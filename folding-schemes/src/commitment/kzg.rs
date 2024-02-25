@@ -80,7 +80,7 @@ where
 
     /// commit implements the CommitmentProver commit interface, adapting the implementation from
     /// https://github.com/arkworks-rs/poly-commit/tree/c724fa666e935bbba8db5a1421603bab542e15ab/poly-commit/src/kzg10/mod.rs#L178
-    /// with the main difference being the removal of the blinding factors and the no-dependancy to
+    /// with the main difference being the removal of the blinding factors and the no-dependency to
     /// the Pairing trait.
     fn commit(
         params: &Self::Params,
@@ -105,7 +105,7 @@ where
 
     /// prove implements the CommitmentProver prove interface, adapting the implementation from
     /// https://github.com/arkworks-rs/poly-commit/tree/c724fa666e935bbba8db5a1421603bab542e15ab/poly-commit/src/kzg10/mod.rs#L307
-    /// with the main difference being the removal of the blinding factors and the no-dependancy to
+    /// with the main difference being the removal of the blinding factors and the no-dependency to
     /// the Pairing trait.
     fn prove(
         params: &Self::Params,

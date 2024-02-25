@@ -40,7 +40,7 @@ where
         // running instance
         instance: &CommittedInstance<C>,
         w: &Witness<C::ScalarField>,
-        // incomming instances
+        // incoming instances
         vec_instances: &[CommittedInstance<C>],
         vec_w: &[Witness<C::ScalarField>],
     ) -> Result<
@@ -226,7 +226,7 @@ where
         r1cs: &R1CS<C::ScalarField>,
         // running instance
         instance: &CommittedInstance<C>,
-        // incomming instances
+        // incoming instances
         vec_instances: &[CommittedInstance<C>],
         // polys from P
         F_coeffs: Vec<C::ScalarField>,
@@ -440,7 +440,7 @@ mod tests {
         assert!(!is_zero_vec(&f_w));
     }
 
-    // k represents the number of instances to be fold, appart from the running instance
+    // k represents the number of instances to be fold, apart from the running instance
     #[allow(clippy::type_complexity)]
     fn prepare_inputs(
         k: usize,

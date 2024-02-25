@@ -97,7 +97,7 @@ pub fn extract_r1cs<F: PrimeField>(cs: &ConstraintSystem<F>) -> R1CS<F> {
     };
 
     R1CS::<F> {
-        l: cs.num_instance_variables - 1, // -1 to substract the first '1'
+        l: cs.num_instance_variables - 1, // -1 to subtract the first '1'
         A,
         B,
         C,

@@ -43,8 +43,49 @@ impl Protocol {
     }
 }
 
+const ABOUT: &str = "A powerful Command-Line Interface (CLI) tool designed to simplify the generation of Solidity smart contracts that verify proofs of Zero Knowledge cryptographic protocols.
+";
+
+const LONG_ABOUT: &str = "
+ _____  ______  ______  ______  ______  ______  ______ 
+| |__| || |__| || |__| || |__| || |__| || |__| || |__| |
+|  ()  ||  ()  ||  ()  ||  ()  ||  ()  ||  ()  ||  ()  |
+|______||______||______||______||______||______||______|
+ ______                                          ______ 
+| |__| |   ____        _ _     _ _ _            | |__| |
+|  ()  |  / ___|  ___ | (_) __| (_) |_ _   _    |  ()  |
+|______|  \\___ \\ / _ \\| | |/ _` | | __| | | |   |______|
+ ______    ___) | (_) | | | (_| | | |_| |_| |    ______ 
+| |__| |  |____/ \\___/|_|_|\\__,_|_|\\__|\\__, |   | |__| |
+|  ()  |  __     __        _  __ _     |___/    |  ()  |
+|______|  \\ \\   / /__ _ __(_)/ _(_) ___ _ __    |______|
+ ______    \\ \\ / / _ \\ '__| | |_| |/ _ \\ '__|    ______ 
+| |__| |    \\ V /  __/ |  | |  _| |  __/ |      | |__| |
+|  ()  |     \\_/ \\___|_|  |_|_| |_|\\___|_|      |  ()  |
+|______|                                        |______|
+ ______  ______  ______  ______  ______  ______  ______ 
+| |__| || |__| || |__| || |__| || |__| || |__| || |__| |
+|  ()  ||  ()  ||  ()  ||  ()  ||  ()  ||  ()  ||  ()  |
+|______||______||______||______||______||______||______|
+
+Welcome to Solidity Verifier, a powerful Command-Line Interface (CLI) tool designed to simplify the generation of Solidity smart contracts that verify proofs of Zero Knowledge cryptographic protocols.
+for Zero Knowledge protocols. This tool is developed by the collaborative efforts of the PSE (Privacy & Scaling Explorations) and 0XPARC teams. 
+
+As an open-source project, Solidity Verifier is released under the GPL3 license.
+
+Solidity Verifier currently supports the generation of Solidity smart contracts for the verification of proofs in the following Zero Knowledge protocols:
+
+    Groth16:
+        Efficient and succinct zero-knowledge proof system.
+
+    KZG:
+        Uses the Kate-Zaverucha-Goldberg polynomial commitment scheme.
+
+    Nova + CycleFold Decider:
+        Implements the decider circuit verification for the Nova zero-knowledge proof system in conjunction with the CycleFold protocol optimization.
+";
 #[derive(Debug, Parser)]
-#[command(author = "0XPARC & PSE", version, about, long_about = None)]
+#[command(author = "0XPARC & PSE", version, about = ABOUT, long_about = Some(LONG_ABOUT))]
 #[command(propagate_version = true)]
 /// A tool to create Solidity Contracts which act as verifiers for the major Folding Schemes implemented
 /// within the `folding-schemes` repo.
@@ -52,7 +93,7 @@ pub(crate) struct Cli {
     #[command(flatten)]
     pub verbosity: clap_verbosity_flag::Verbosity,
 
-    /// Selects the protocol for which we want to generate the Decider circuit Solidity Verifier.
+    /// Selects the protocol for which we want to generate the Solidity Verifier contract.
     #[arg(short = 'p', long, value_enum, rename_all = "lower")]
     pub protocol: Protocol,
 

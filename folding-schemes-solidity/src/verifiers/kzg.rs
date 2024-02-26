@@ -61,8 +61,8 @@ impl KZG10Verifier {
 
 #[derive(CanonicalDeserialize, CanonicalSerialize, Clone, PartialEq, Debug)]
 pub struct KzgData {
-    vk: VerifierKey<Bn254>,
-    g1_crs_batch_points: Option<Vec<G1Affine>>,
+    pub(crate) vk: VerifierKey<Bn254>,
+    pub(crate) g1_crs_batch_points: Option<Vec<G1Affine>>,
 }
 
 impl From<(VerifierKey<Bn254>, Option<Vec<G1Affine>>)> for KzgData {

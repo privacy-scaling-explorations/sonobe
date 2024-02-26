@@ -385,10 +385,8 @@ where
                 x: Some(cfE_u_i_x.clone()),
             };
 
-            // TODO cfW_w_i & cfW_r_bits are not needed to be returned
-
             // fold self.cf_U_i + cfW_U -> folded running with cfW
-            let (cfW_w_i, cfW_u_i, cfW_W_i1, cfW_U_i1, cfW_cmT, cfW_r1_Fq, cfW_r_bits) = self
+            let (_cfW_w_i, cfW_u_i, cfW_W_i1, cfW_U_i1, cfW_cmT, cfW_r1_Fq) = self
                 .fold_cyclefold_circuit(
                     self.cf_W_i.clone(), // CycleFold running instance witness
                     self.cf_U_i.clone(), // CycleFold running instance
@@ -396,7 +394,7 @@ where
                     cfW_circuit,
                 )?;
             // fold [the output from folding self.cf_U_i + cfW_U] + cfE_U = folded_running_with_cfW + cfE
-            let (cfE_w_i, cfE_u_i, cf_W_i1, cf_U_i1, cf_cmT, cf_r2_Fq, cf_r_bits) =
+            let (_cfE_w_i, cfE_u_i, cf_W_i1, cf_U_i1, cf_cmT, cf_r2_Fq) =
                 self.fold_cyclefold_circuit(cfW_W_i1, cfW_U_i1.clone(), cfE_u_i_x, cfE_circuit)?;
 
             augmented_F_circuit = AugmentedFCircuit::<C1, C2, GC2, FC> {
@@ -428,8 +426,8 @@ where
 
             #[cfg(test)]
             {
-                self.cf_r1cs.check_instance_relation(&cfW_w_i, &cfW_u_i)?;
-                self.cf_r1cs.check_instance_relation(&cfE_w_i, &cfE_u_i)?;
+                self.cf_r1cs.check_instance_relation(&_cfW_w_i, &cfW_u_i)?;
+                self.cf_r1cs.check_instance_relation(&_cfE_w_i, &cfE_u_i)?;
                 self.cf_r1cs
                     .check_relaxed_instance_relation(&self.cf_W_i, &self.cf_U_i)?;
             }
@@ -599,12 +597,11 @@ where
     ) -> Result<
         (
             Witness<C2>,
-            CommittedInstance<C2>,
-            Witness<C2>,
-            CommittedInstance<C2>,
-            C2,
-            C2::ScalarField,
-            Vec<bool>,
+            CommittedInstance<C2>, // u_i
+            Witness<C2>,           // W_i1
+            CommittedInstance<C2>, // U_i1
+            C2,                    // cmT
+            C2::ScalarField,       // r_Fq
         ),
         Error,
     > {
@@ -642,7 +639,7 @@ where
         let (cf_W_i1, cf_U_i1) = NIFS::<C2, CP2>::fold_instances(
             cf_r_Fq, &cf_W_i, &cf_U_i, &cf_w_i, &cf_u_i, &cf_T, cf_cmT,
         )?;
-        Ok((cf_w_i, cf_u_i, cf_W_i1, cf_U_i1, cf_cmT, cf_r_Fq, cf_r_bits))
+        Ok((cf_w_i, cf_u_i, cf_W_i1, cf_U_i1, cf_cmT, cf_r_Fq))
     }
 }
 

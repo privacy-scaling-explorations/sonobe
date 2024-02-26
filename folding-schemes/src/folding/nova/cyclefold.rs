@@ -122,42 +122,6 @@ where
     }
 }
 
-/*
-/// NIFSinCycleFoldGadget performs the Nova NIFS.V elliptic curve points relation checks in the other
-/// curve (natively) following [CycleFold](https://eprint.iacr.org/2023/1192.pdf).
-pub struct NIFSinCycleFoldGadget<C: CurveGroup, GC: CurveVar<C, CF2<C>>> {
-    _c: PhantomData<C>,
-    _gc: PhantomData<GC>,
-}
-impl<C: CurveGroup, GC: CurveVar<C, CF2<C>>> NIFSinCycleFoldGadget<C, GC>
-where
-    C: CurveGroup,
-    GC: CurveVar<C, CF2<C>>,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
-{
-    pub fn verify(
-        r_bits: Vec<Boolean<CF2<C>>>,
-        cmT: GC,
-        ci1: CommittedInstanceInCycleFoldVar<C, GC>,
-        ci2: CommittedInstanceInCycleFoldVar<C, GC>,
-        ci3: CommittedInstanceInCycleFoldVar<C, GC>,
-    ) -> Result<Boolean<CF2<C>>, SynthesisError> {
-        // cm(E) check: ci3.cmE == ci1.cmE + r * cmT + r^2 * ci2.cmE
-        let first_check = ci3.cmE.is_eq(
-            &((ci2.cmE.scalar_mul_le(r_bits.iter())? + cmT).scalar_mul_le(r_bits.iter())?
-                + ci1.cmE),
-        )?;
-        // cm(W) check: ci3.cmW == ci1.cmW + r * ci2.cmW
-        let second_check = ci3
-            .cmW
-            .is_eq(&(ci1.cmW + ci2.cmW.scalar_mul_le(r_bits.iter())?))?;
-
-        first_check.and(&second_check)
-    }
-}
-*/
-
 /// This is the gadget used in the AugmentedFCircuit to verify the CycleFold instances folding,
 /// which checks the correct RLC of u,x,cmE,cmW (hence the name containing 'Full', since it checks
 /// all the RLC values, not only the native ones). It assumes that ci2.cmE=0, ci2.u=1.
@@ -233,11 +197,11 @@ where
     ) -> Result<Vec<bool>, Error> {
         let mut sponge = PoseidonSponge::<C::BaseField>::new(poseidon_config);
 
-        let U_i_cmE_bytes = point_to_bytes(U_i.cmE);
-        let U_i_cmW_bytes = point_to_bytes(U_i.cmW);
-        let u_i_cmE_bytes = point_to_bytes(u_i.cmE);
-        let u_i_cmW_bytes = point_to_bytes(u_i.cmW);
-        let cmT_bytes = point_to_bytes(cmT);
+        let U_i_cmE_bytes = point_to_bytes(U_i.cmE)?;
+        let U_i_cmW_bytes = point_to_bytes(U_i.cmW)?;
+        let u_i_cmE_bytes = point_to_bytes(u_i.cmE)?;
+        let u_i_cmW_bytes = point_to_bytes(u_i.cmW)?;
+        let cmT_bytes = point_to_bytes(cmT)?;
 
         let mut U_i_u_bytes = Vec::new();
         U_i.u.serialize_uncompressed(&mut U_i_u_bytes)?;
@@ -310,16 +274,16 @@ where
 }
 
 /// returns the bytes being compatible with the ark_r1cs_std `.to_bytes` approach
-fn point_to_bytes<C: CurveGroup>(p: C) -> Vec<u8> {
+fn point_to_bytes<C: CurveGroup>(p: C) -> Result<Vec<u8>, Error> {
     let l = p.uncompressed_size();
     let mut b = Vec::new();
-    p.serialize_uncompressed(&mut b).unwrap();
+    p.serialize_uncompressed(&mut b)?;
     b[l - 1] = 0;
     if p.is_zero() {
         b[l / 2] = 1;
         b[l - 1] = 1;
     }
-    b
+    Ok(b)
 }
 
 /// CycleFoldCircuit contains the constraints that check the correct fold of the committed
@@ -423,10 +387,8 @@ pub mod tests {
         let (_, _, _, _, ci1, _, ci2, _, ci3, _, cmT, r_bits, _) = prepare_simple_fold_inputs();
 
         // cs is the Constraint System on the Curve Cycle auxiliary curve constraints field
-        // (E2::Fr)
+        // (E1::Fq=E2::Fr)
         let cs = ConstraintSystem::<Fq>::new_ref();
-
-        // let r_bitsVar = Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(r_bits)).unwrap();
 
         let cfW_u_i_x = [
             get_cm_coordinates(&ci1.cmW),
@@ -434,7 +396,6 @@ pub mod tests {
             get_cm_coordinates(&ci3.cmW),
         ]
         .concat();
-        // let cmTVar = GVar::new_witness(cs.clone(), || Ok(cmT)).unwrap();
         let cfW_circuit = CycleFoldCircuit::<Projective, GVar> {
             _gc: PhantomData,
             r_bits: Some(r_bits.clone()),
@@ -446,43 +407,26 @@ pub mod tests {
         cfW_circuit.generate_constraints(cs.clone()).unwrap();
         assert!(cs.is_satisfied().unwrap());
         dbg!(cs.num_constraints());
-    }
-    /*
-    #[test]
-    fn test_nifs_gadget_cyclefold() {
-        let (_, _, _, _, ci1, _, ci2, _, ci3, _, cmT, r_bits, _) = prepare_simple_fold_inputs();
 
-        // cs is the Constraint System on the Curve Cycle auxiliary curve constraints field
-        // (E2::Fr)
+        // same for E:
         let cs = ConstraintSystem::<Fq>::new_ref();
-
-        let r_bitsVar = Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(r_bits)).unwrap();
-
-        let cmTVar = GVar::new_witness(cs.clone(), || Ok(cmT)).unwrap();
-        let ci1Var =
-            CommittedInstanceInCycleFoldVar::<Projective, GVar>::new_witness(cs.clone(), || {
-                Ok(ci1.clone())
-            })
-            .unwrap();
-        let ci2Var =
-            CommittedInstanceInCycleFoldVar::<Projective, GVar>::new_witness(cs.clone(), || {
-                Ok(ci2.clone())
-            })
-            .unwrap();
-        let ci3Var =
-            CommittedInstanceInCycleFoldVar::<Projective, GVar>::new_witness(cs.clone(), || {
-                Ok(ci3.clone())
-            })
-            .unwrap();
-
-        let nifs_cf_check = NIFSinCycleFoldGadget::<Projective, GVar>::verify(
-            r_bitsVar, cmTVar, ci1Var, ci2Var, ci3Var,
-        )
-        .unwrap();
-        nifs_cf_check.enforce_equal(&Boolean::<Fq>::TRUE).unwrap();
+        let cfE_u_i_x = [
+            get_cm_coordinates(&ci1.cmE),
+            get_cm_coordinates(&ci2.cmE),
+            get_cm_coordinates(&ci3.cmE),
+        ]
+        .concat();
+        let cfE_circuit = CycleFoldCircuit::<Projective, GVar> {
+            _gc: PhantomData,
+            r_bits: Some(r_bits.clone()),
+            p1: Some(ci1.clone().cmE),
+            p2: Some(cmT),
+            p3: Some(ci3.clone().cmE),
+            x: Some(cfE_u_i_x.clone()),
+        };
+        cfE_circuit.generate_constraints(cs.clone()).unwrap();
         assert!(cs.is_satisfied().unwrap());
     }
-    */
 
     #[test]
     fn test_nifs_full_gadget() {

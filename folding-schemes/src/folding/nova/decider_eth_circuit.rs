@@ -11,7 +11,6 @@ use ark_r1cs_std::{
     fields::{fp::FpVar, nonnative::NonNativeFieldVar, FieldVar},
     groups::GroupOpsBounds,
     prelude::CurveVar,
-    ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
 use ark_std::{One, Zero};
@@ -354,7 +353,7 @@ where
         (u_i.u.is_one()?).enforce_equal(&Boolean::TRUE)?;
 
         // 4. u_i.x == H(i, z_0, z_i, U_i)
-        let u_i_x = U_i
+        let (u_i_x, _) = U_i
             .clone()
             .hash(&crh_params, i.clone(), z_0.clone(), z_i.clone())?;
         (u_i.x[0]).enforce_equal(&u_i_x)?;
@@ -384,16 +383,20 @@ where
             // 5. check Pedersen commitments of cf_U_i.{cmE, cmW}
             let H = GC2::new_constant(cs.clone(), self.cf_pedersen_params.h)?;
             let G = Vec::<GC2>::new_constant(cs.clone(), self.cf_pedersen_params.generators)?;
+            let cf_W_i_E_bits: Result<Vec<Vec<Boolean<CF1<C1>>>>, SynthesisError> =
+                cf_W_i.E.iter().map(|E_i| E_i.to_bits_le()).collect();
+            let cf_W_i_W_bits: Result<Vec<Vec<Boolean<CF1<C1>>>>, SynthesisError> =
+                cf_W_i.W.iter().map(|W_i| W_i.to_bits_le()).collect();
 
             let computed_cmE = PedersenGadget::<C2, GC2>::commit(
                 H.clone(),
                 G.clone(),
-                cf_W_i.E.clone(),
-                cf_W_i.rE,
+                cf_W_i_E_bits?,
+                cf_W_i.rE.to_bits_le()?,
             )?;
             cf_U_i.cmE.enforce_equal(&computed_cmE)?;
             let computed_cmW =
-                PedersenGadget::<C2, GC2>::commit(H, G, cf_W_i.W.clone(), cf_W_i.rW)?;
+                PedersenGadget::<C2, GC2>::commit(H, G, cf_W_i_W_bits?, cf_W_i.rW.to_bits_le()?)?;
             cf_U_i.cmW.enforce_equal(&computed_cmW)?;
 
             let cf_r1cs = R1CSVar::<

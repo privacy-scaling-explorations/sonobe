@@ -45,24 +45,6 @@ impl From<Groth16Data> for Groth16Verifier {
     }
 }
 
-impl Groth16Verifier {
-    pub(crate) fn new(value: VerifyingKey<Bn254>) -> Self {
-        Self {
-            vkey_alpha_g1: g1_to_fq_repr(value.alpha_g1),
-            vkey_beta_g2: g2_to_fq_repr(value.beta_g2),
-            vkey_gamma_g2: g2_to_fq_repr(value.gamma_g2),
-            vkey_delta_g2: g2_to_fq_repr(value.delta_g2),
-            gamma_abc_len: value.gamma_abc_g1.len(),
-            gamma_abc_g1: value
-                .gamma_abc_g1
-                .iter()
-                .copied()
-                .map(g1_to_fq_repr)
-                .collect(),
-        }
-    }
-}
-
 // Ideally I would like to link this to the `Decider` trait in FoldingSchemes.
 // For now, this is the easiest as NovaCyclefold isn't clear target from where we can get all it's needed arguments.
 #[derive(CanonicalDeserialize, CanonicalSerialize, Clone, PartialEq, Debug)]

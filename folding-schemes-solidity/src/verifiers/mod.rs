@@ -2,11 +2,11 @@
 //! We use askama for templating and define which variables are required for each template.
 
 // Pragma statements for verifiers
-pub(crate) const PRAGMA_GROTH16_VERIFIER: &'static str = "pragma solidity >=0.7.0 <0.9.0;"; // from snarkjs, avoid changing
-pub(crate) const PRAGMA_KZG10_VERIFIER: &'static str = "pragma solidity >=0.8.1 <=0.8.4;";
+pub(crate) const PRAGMA_GROTH16_VERIFIER: &str = "pragma solidity >=0.7.0 <0.9.0;"; // from snarkjs, avoid changing
+pub(crate) const PRAGMA_KZG10_VERIFIER: &str = "pragma solidity >=0.8.1 <=0.8.4;";
 
 /// Default SDPX License identifier
-pub(crate) const GPL3_SDPX_IDENTIFIER: &'static str = "// SPDX-License-Identifier: GPL-3.0";
+pub(crate) const GPL3_SDPX_IDENTIFIER: &str = "// SPDX-License-Identifier: GPL-3.0";
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write};
 
 mod g16;
@@ -34,7 +34,7 @@ pub trait ProtocolData: CanonicalDeserialize + CanonicalSerialize {
         let name: String = String::deserialize_compressed(reader)?;
         let data = Self::deserialize_compressed(reader)?;
 
-        if name != Self::PROTOCOL_NAME.to_string() {
+        if name != Self::PROTOCOL_NAME {
             return Err(SerializationError::InvalidData);
         }
 
@@ -46,7 +46,6 @@ pub trait ProtocolData: CanonicalDeserialize + CanonicalSerialize {
 
 #[cfg(test)]
 mod tests {
-    use super::{PRAGMA_GROTH16_VERIFIER, PRAGMA_KZG10_VERIFIER};
     use crate::evm::{compile_solidity, save_solidity, Evm};
     use crate::utils::HeaderInclusion;
     use crate::{Groth16Data, KzgData, NovaCyclefoldData, ProtocolData};
@@ -78,7 +77,6 @@ mod tests {
     use itertools::chain;
     use std::fs::File;
     use std::marker::PhantomData;
-    use std::path::PathBuf;
 
     use super::g16::Groth16Verifier;
     use super::kzg::KZG10Verifier;
@@ -108,13 +106,13 @@ mod tests {
     }
 
     fn deserialize_protocol_data<T: ProtocolData>(asset_name: &str) -> T {
-        let f = File::open(&format!("../assets/{}", asset_name))
+        let f = File::open(format!("../assets/{}", asset_name))
             .expect("Requested asset doesn't exist.");
         T::deserialize_protocol_data(&f).expect("Error while reading protocol data")
     }
 
     fn deserialize_data<T: CanonicalDeserialize>(asset_name: &str) -> T {
-        let f = File::open(&format!("../assets/{}", asset_name))
+        let f = File::open(format!("../assets/{}", asset_name))
             .expect("Requested asset doesn't exist.");
         T::deserialize_compressed(&f).expect("Error while reading protocol data")
     }

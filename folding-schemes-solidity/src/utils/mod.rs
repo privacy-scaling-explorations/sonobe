@@ -1,8 +1,5 @@
-use std::fmt::Display;
-
-use askama::Template;
-
 use crate::{GPL3_SDPX_IDENTIFIER, PRAGMA_GROTH16_VERIFIER};
+use askama::Template;
 
 pub mod encoding;
 

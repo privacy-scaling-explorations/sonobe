@@ -25,19 +25,6 @@ impl From<NovaCyclefoldData> for NovaCyclefoldDecider {
     }
 }
 
-impl NovaCyclefoldDecider {
-    pub(crate) fn new(
-        vkey_g16: VerifyingKey<Bn254>,
-        vkey_kzg: VerifierKey<Bn254>,
-        crs_points: Vec<G1Affine>,
-    ) -> Self {
-        Self {
-            groth16_verifier: Groth16Verifier::new(vkey_g16),
-            kzg10_verifier: KZG10Verifier::new(vkey_kzg, crs_points),
-        }
-    }
-}
-
 #[derive(CanonicalDeserialize, CanonicalSerialize, PartialEq, Debug)]
 pub struct NovaCyclefoldData {
     g16_data: Groth16Data,

@@ -1,3 +1,4 @@
+#[cfg(test)]
 mod evm;
 mod utils;
 mod verifiers;

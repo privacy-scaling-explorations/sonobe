@@ -1,7 +1,6 @@
 use ::clap::Parser;
 use ark_serialize::Write;
-use folding_schemes_solidity::{Groth16Data, KzgData, ProtocolData};
-use settings::{Cli, Protocol};
+use settings::Cli;
 use std::path::Path;
 use std::{fs, io};
 

@@ -491,11 +491,11 @@ where
         z_i: Vec<C1::ScalarField>, // last state
         num_steps: C1::ScalarField,
         running_instance: Self::CommittedInstanceWithWitness,
-        incomming_instance: Self::CommittedInstanceWithWitness,
+        incoming_instance: Self::CommittedInstanceWithWitness,
         cyclefold_instance: Self::CFCommittedInstanceWithWitness,
     ) -> Result<(), Error> {
         let (U_i, W_i) = running_instance;
-        let (u_i, w_i) = incomming_instance;
+        let (u_i, w_i) = incoming_instance;
         let (cf_U_i, cf_W_i) = cyclefold_instance;
 
         if u_i.x.len() != 1 || U_i.x.len() != 1 {

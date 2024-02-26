@@ -102,3 +102,13 @@ jobs:
         with:
           command: clippy
           args: --all-targets --all-features -- -D warnings
+
+  typos:
+    name: Spell Check with Typos
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Use typos with config file
+      uses: crate-ci/typos@master
+      with: 
+        config: .github/workflows/typos.toml

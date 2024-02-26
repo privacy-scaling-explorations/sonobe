@@ -10,7 +10,7 @@ use ark_relations::r1cs::{Namespace, SynthesisError};
 use ark_std::{One, Zero};
 use core::borrow::Borrow;
 
-/// NonNativeAffineVar represents an elliptic curve point in Affine represenation in the non-native
+/// NonNativeAffineVar represents an elliptic curve point in Affine representation in the non-native
 /// field, over the constraint field. It is not intended to perform operations, but just to contain
 /// the affine coordinates in order to perform hash operations of the point.
 #[derive(Debug, Clone)]

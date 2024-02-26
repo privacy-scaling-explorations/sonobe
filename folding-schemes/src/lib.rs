@@ -42,7 +42,7 @@ pub enum Error {
     NotExpectedLength(usize, usize),
     #[error("Can not be empty")]
     Empty,
-    #[error("Pedersen parameters length is not suficient (generators.len={0} < vector.len={1} unsatisfied)")]
+    #[error("Pedersen parameters length is not sufficient (generators.len={0} < vector.len={1} unsatisfied)")]
     PedersenParamsLen(usize, usize),
     #[error("Commitment verification failed")]
     CommitmentVerificationFail,
@@ -116,7 +116,7 @@ where
         // number of steps between the initial state and the last state
         num_steps: C1::ScalarField,
         running_instance: Self::CommittedInstanceWithWitness,
-        incomming_instance: Self::CommittedInstanceWithWitness,
+        incoming_instance: Self::CommittedInstanceWithWitness,
         cyclefold_instance: Self::CFCommittedInstanceWithWitness,
     ) -> Result<(), Error>;
 }

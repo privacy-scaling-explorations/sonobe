@@ -58,12 +58,12 @@ impl<F: PrimeField> FCircuit<F> for MultiInputsFCircuit<F> {
         z_i: Vec<FpVar<F>>,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let four = FpVar::<F>::new_constant(cs.clone(), F::from(4u32))?;
-        let fourty = FpVar::<F>::new_constant(cs.clone(), F::from(40u32))?;
+        let forty = FpVar::<F>::new_constant(cs.clone(), F::from(40u32))?;
         let onehundred = FpVar::<F>::new_constant(cs.clone(), F::from(100u32))?;
         let a = z_i[0].clone() + four.clone();
-        let b = z_i[1].clone() + fourty.clone();
+        let b = z_i[1].clone() + forty.clone();
         let c = z_i[2].clone() * four;
-        let d = z_i[3].clone() * fourty;
+        let d = z_i[3].clone() * forty;
         let e = z_i[4].clone() + onehundred;
 
         Ok(vec![a, b, c, d, e])
@@ -140,7 +140,7 @@ fn main() {
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
 
-    let (running_instance, incomming_instance, cyclefold_instance) = folding_scheme.instances();
+    let (running_instance, incoming_instance, cyclefold_instance) = folding_scheme.instances();
 
     println!("Run the Nova's IVC verifier");
     NOVA::verify(
@@ -149,7 +149,7 @@ fn main() {
         folding_scheme.state(), // latest state
         Fr::from(num_steps as u32),
         running_instance,
-        incomming_instance,
+        incoming_instance,
         cyclefold_instance,
     )
     .unwrap();

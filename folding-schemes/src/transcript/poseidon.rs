@@ -57,7 +57,7 @@ where
     }
 }
 
-// Returns the point coordinates in Fr, so it can be absrobed by the transcript. It does not work
+// Returns the point coordinates in Fr, so it can be absorbed by the transcript. It does not work
 // over bytes in order to have a logic that can be reproduced in-circuit.
 fn prepare_point<C: CurveGroup>(p: &C) -> Result<Vec<C::ScalarField>, Error> {
     let affine = p.into_affine();

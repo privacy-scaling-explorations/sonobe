@@ -50,7 +50,7 @@ where
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     for<'b> &'b GC2: GroupOpsBounds<'b, C2, GC2>,
-    // constrain FS into Nova, since this is a Decider specificly for Nova
+    // constrain FS into Nova, since this is a Decider specifically for Nova
     Nova<C1, GC1, C2, GC2, FC, CP1, CP2>: From<FS>,
 {
     type ProverParam = S::ProvingKey;

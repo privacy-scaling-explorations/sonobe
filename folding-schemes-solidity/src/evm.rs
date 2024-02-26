@@ -1,3 +1,4 @@
+use ark_serialize::Read;
 pub use revm;
 use revm::{
     primitives::{hex, Address, CreateScheme, ExecutionResult, Output, TransactTo, TxEnv},
@@ -173,7 +174,7 @@ impl Evm {
                 (gas_used, output)
             }
             ExecutionResult::Revert { gas_used, output } => {
-                panic!("Transaction reverts with gas_used {gas_used} and output {output:#x}")
+                return (gas_used, Output::Call(output))
             }
             ExecutionResult::Halt { reason, gas_used } => panic!(
                 "Transaction halts unexpectedly with gas_used {gas_used} and reason {reason:?}"

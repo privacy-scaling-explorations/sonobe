@@ -256,7 +256,7 @@ mod tests {
             .unwrap();
 
         // TODO: Unsure what this is testing. If we want to test correct rendering,
-        // we should first check that it COMPLETELLY renders to what we expect.
+        // we should first check that it COMPLETELY renders to what we expect.
         assert!(rendered_template.contains(&kzg_data.vk.g.x.to_string()));
     }
 

@@ -239,6 +239,5 @@ mod tests {
         // use the gadget
         let cmVar = PedersenGadget::<Projective, GVar>::commit(hVar, gVar, vVar, rVar).unwrap();
         cmVar.enforce_equal(&expected_cmVar).unwrap();
-        dbg!(cs.num_constraints());
     }
 }

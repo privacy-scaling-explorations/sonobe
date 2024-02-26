@@ -670,6 +670,5 @@ pub mod tests {
         // generate the constraints and check that are satisfied by the inputs
         decider_circuit.generate_constraints(cs.clone()).unwrap();
         assert!(cs.is_satisfied().unwrap());
-        dbg!(cs.num_constraints());
     }
 }

@@ -19,20 +19,25 @@ use ark_r1cs_std::{
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
 use ark_std::{
+    cfg_iter,
     rand::{Rng, RngCore},
     UniformRand, Zero,
 };
 use core::{borrow::Borrow, marker::PhantomData};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use super::{pedersen::Params as PedersenParams, CommitmentProver};
 use crate::transcript::Transcript;
-use crate::utils::vec::{vec_add, vec_scalar_mul};
+use crate::utils::{
+    powers_of,
+    vec::{vec_add, vec_scalar_mul},
+};
 use crate::Error;
 
 /// IPA implements the Inner Product Argument protocol. The `H` parameter indicates if to use the
 /// commitment in hiding mode or not.
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct IPA<C: CurveGroup, const H: bool> {
+pub struct IPA<C: CurveGroup, const H: bool = false> {
     _c: PhantomData<C>,
 }
 
@@ -158,19 +163,10 @@ impl<C: CurveGroup, const H: bool> CommitmentProver<C, H> for IPA<C, H> {
                 &vec_scalar_mul(&b[m..], &uj),
             )?;
             // G_lo * uj^-1 + G_hi * uj
-            G = G[..m]
-                .iter()
+            G = cfg_iter!(G[..m])
                 .map(|e| e.into_group().mul(uj_inv))
-                .collect::<Vec<C>>()
-                .iter()
-                .zip(
-                    G[m..]
-                        .iter()
-                        .map(|e| e.into_group().mul(uj))
-                        .collect::<Vec<C>>()
-                        .iter(),
-                )
-                .map(|(a, b)| (*a + *b).into_affine())
+                .zip(cfg_iter!(G[m..]).map(|e| e.into_group().mul(uj)))
+                .map(|(a, b)| (a + b).into_affine())
                 .collect::<Vec<C::Affine>>();
         }
 
@@ -199,12 +195,12 @@ impl<C: CurveGroup, const H: bool> IPA<C, H> {
     pub fn verify(
         params: &PedersenParams<C>,
         transcript: &mut impl Transcript<C>,
-        x: &C::ScalarField, // evaluation point
-        v: &C::ScalarField, // value at evaluation point
-        P: &C,              // commitment
-        p: &Proof<C>,
-        r: &C::ScalarField, // blinding factor
-        k: usize,           // k = log2(d), where d is the degree of the committed polynomial
+        x: C::ScalarField, // evaluation point
+        v: C::ScalarField, // value at evaluation point
+        P: C,              // commitment
+        p: Proof<C>,
+        r: C::ScalarField, // blinding factor
+        k: usize,          // k = log2(d), where d is the degree of the committed polynomial
     ) -> Result<bool, Error> {
         if !H && (!p.l.is_empty() || !p.r.is_empty()) {
             return Err(Error::CommitmentVerificationFail);
@@ -217,7 +213,7 @@ impl<C: CurveGroup, const H: bool> IPA<C, H> {
         }
 
         // absorbs & get challenges
-        transcript.absorb_point(P)?;
+        transcript.absorb_point(&P)?;
         let s = transcript.get_challenge();
         let U = C::generator().mul(s);
         let mut u: Vec<C::ScalarField> = vec![C::ScalarField::zero(); k];
@@ -227,10 +223,10 @@ impl<C: CurveGroup, const H: bool> IPA<C, H> {
             u[i] = transcript.get_challenge();
         }
 
-        let P = *P + U.mul(v);
+        let P = P + U.mul(v);
 
         let mut q_0 = P;
-        let mut r = *r;
+        let mut r = r;
 
         // compute u[i]^-1 once
         let mut u_invs = vec![C::ScalarField::zero(); u.len()];
@@ -243,7 +239,7 @@ impl<C: CurveGroup, const H: bool> IPA<C, H> {
         // compute b & G from s
         let s = build_s(&u, &u_invs, k)?;
         // b = <s, b_vec> = <s, [1, x, x^2, ..., x^d-1]>
-        let b = s_b_inner(&u, x)?;
+        let b = s_b_inner(&u, &x)?;
         let d: usize = 2_u64.pow(k as u32) as usize;
         if params.generators.len() < d {
             return Err(Error::PedersenParamsLen(params.generators.len(), d));
@@ -351,15 +347,15 @@ fn inner_prod<F: PrimeField>(a: &[F], b: &[F]) -> Result<F, Error> {
             b.len(),
         ));
     }
-    let mut c: F = F::zero();
-    for i in 0..a.len() {
-        c += a[i] * b[i];
-    }
+    let c = cfg_iter!(a)
+        .zip(cfg_iter!(b))
+        .map(|(a_i, b_i)| *a_i * b_i)
+        .sum();
     Ok(c)
 }
 
 // g(x, u_1, u_2, ..., u_k) = <s, b>, naively takes linear, but can compute in log time through
-// g(x, u_1, u_2, ..., u_k) = (\Prod u_i x^{2^i} + u_i^-1) * x
+// g(x, u_1, u_2, ..., u_k) = \Prod u_i x^{2^i} + u_i^-1
 fn s_b_inner<F: PrimeField>(u: &[F], x: &F) -> Result<F, Error> {
     let mut c: F = F::one();
     let mut x_2_i = *x; // x_2_i is x^{2^i}, starting from x^{2^0}=x
@@ -370,11 +366,11 @@ fn s_b_inner<F: PrimeField>(u: &[F], x: &F) -> Result<F, Error> {
                 .ok_or(Error::Other("error on computing inverse".to_string()))?;
         x_2_i *= x_2_i;
     }
-    Ok(c * x)
+    Ok(c)
 }
 
 // g(x, u_1, u_2, ..., u_k) = <s, b>, naively takes linear, but can compute in log time through
-// g(x, u_1, u_2, ..., u_k) = (\Prod u_i x^{2^i} + u_i^-1) * x
+// g(x, u_1, u_2, ..., u_k) = \Prod u_i x^{2^i} + u_i^-1
 fn s_b_inner_gadget<F: PrimeField, CF: PrimeField>(
     u: &[NonNativeFieldVar<F, CF>],
     x: &NonNativeFieldVar<F, CF>,
@@ -385,16 +381,7 @@ fn s_b_inner_gadget<F: PrimeField, CF: PrimeField>(
         c *= u_i.clone() * x_2_i.clone() + u_i.inverse()?;
         x_2_i *= x_2_i.clone();
     }
-    Ok(c * x.clone())
-}
-
-fn powers_of<F: PrimeField>(x: F, n: usize) -> Vec<F> {
-    let mut c: Vec<F> = vec![F::zero(); n];
-    c[0] = x;
-    for i in 1..n {
-        c[i] = c[i - 1] * x;
-    }
-    c
+    Ok(c)
 }
 
 pub type CF<C> = <<C as CurveGroup>::BaseField as Field>::BasePrimeField;
@@ -458,13 +445,13 @@ where
     <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
     for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
 {
-    /// verify the IPA opening proof, K=log2(d), where d is the degree of the committed polynomial,
-    /// and H indicates if the commitment is in hiding mode and thus uses blinding factors, if
-    /// not, there are some constraints saved.
+    /// Verify the IPA opening proof, K=log2(d), where d is the degree of the committed polynomial,
+    /// and H indicates if the commitment is in hiding mode and thus uses blinding factors, if not,
+    /// there are some constraints saved.
     #[allow(clippy::too_many_arguments)]
     pub fn verify<const K: usize>(
-        g: &Vec<GC>,                                  // parms.generators
-        h: &GC,                                       // parms.h
+        g: &Vec<GC>,                                  // params.generators
+        h: &GC,                                       // params.h
         x: &NonNativeFieldVar<C::ScalarField, CF<C>>, // evaluation point
         v: &NonNativeFieldVar<C::ScalarField, CF<C>>, // value at evaluation point
         P: &GC,                                       // commitment
@@ -579,16 +566,16 @@ mod tests {
         )
         .unwrap();
 
-        let b = powers_of(x, d); // WIP
-        let v = inner_prod(&a, &b).unwrap(); // WIP
+        let b = powers_of(x, d);
+        let v = inner_prod(&a, &b).unwrap();
         assert!(IPA::<Projective, hiding>::verify(
             &params,
             &mut transcript_v,
-            &x,
-            &v,
-            &cm,
-            &proof,
-            &r_blind,
+            x,
+            v,
+            cm,
+            proof,
+            r_blind,
             k,
         )
         .unwrap());
@@ -634,16 +621,16 @@ mod tests {
         )
         .unwrap();
 
-        let b = powers_of(x, d); // WIP
-        let v = inner_prod(&a, &b).unwrap(); // WIP
+        let b = powers_of(x, d);
+        let v = inner_prod(&a, &b).unwrap();
         assert!(IPA::<Projective, hiding>::verify(
             &params,
             &mut transcript_v,
-            &x,
-            &v,
-            &cm,
-            &proof,
-            &r_blind,
+            x,
+            v,
+            cm,
+            proof.clone(),
+            r_blind,
             k,
         )
         .unwrap());

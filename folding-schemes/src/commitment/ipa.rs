@@ -125,23 +125,17 @@ impl<C: CurveGroup, const H: bool> CommitmentProver<C, H> for IPA<C, H> {
         let mut u: Vec<C::ScalarField> = vec![C::ScalarField::zero(); k];
         for j in (0..k).rev() {
             let m = a.len() / 2;
-            let a_lo = a[..m].to_vec();
-            let a_hi = a[m..].to_vec();
-            let b_lo = b[..m].to_vec();
-            let b_hi = b[m..].to_vec();
-            let G_lo = G[..m].to_vec();
-            let G_hi = G[m..].to_vec();
 
             if H {
-                L[j] = C::msm_unchecked(&G_hi, &a_lo)
+                L[j] = C::msm_unchecked(&G[m..], &a[..m])
                     + params.h.mul(l[j])
-                    + U.mul(inner_prod(&a_lo, &b_hi)?);
-                R[j] = C::msm_unchecked(&G_lo, &a_hi)
+                    + U.mul(inner_prod(&a[..m], &b[m..])?);
+                R[j] = C::msm_unchecked(&G[..m], &a[m..])
                     + params.h.mul(r[j])
-                    + U.mul(inner_prod(&a_hi, &b_lo)?);
+                    + U.mul(inner_prod(&a[m..], &b[..m])?);
             } else {
-                L[j] = C::msm_unchecked(&G_hi, &a_lo) + U.mul(inner_prod(&a_lo, &b_hi)?);
-                R[j] = C::msm_unchecked(&G_lo, &a_hi) + U.mul(inner_prod(&a_hi, &b_lo)?);
+                L[j] = C::msm_unchecked(&G[m..], &a[..m]) + U.mul(inner_prod(&a[..m], &b[m..])?);
+                R[j] = C::msm_unchecked(&G[..m], &a[m..]) + U.mul(inner_prod(&a[m..], &b[..m])?);
             }
             // get challenge for the j-th round
             transcript.absorb_point(&L[j])?;
@@ -154,17 +148,24 @@ impl<C: CurveGroup, const H: bool> CommitmentProver<C, H> for IPA<C, H> {
                 .ok_or(Error::Other("error on computing inverse".to_string()))?;
 
             // a_hi * uj^-1 + a_lo * uj
-            a = vec_add(&vec_scalar_mul(&a_lo, &uj), &vec_scalar_mul(&a_hi, &uj_inv))?;
+            a = vec_add(
+                &vec_scalar_mul(&a[..m], &uj),
+                &vec_scalar_mul(&a[m..], &uj_inv),
+            )?;
             // b_lo * uj^-1 + b_hi * uj
-            b = vec_add(&vec_scalar_mul(&b_lo, &uj_inv), &vec_scalar_mul(&b_hi, &uj))?;
+            b = vec_add(
+                &vec_scalar_mul(&b[..m], &uj_inv),
+                &vec_scalar_mul(&b[m..], &uj),
+            )?;
             // G_lo * uj^-1 + G_hi * uj
-            G = G_lo
+            G = G[..m]
                 .iter()
                 .map(|e| e.into_group().mul(uj_inv))
                 .collect::<Vec<C>>()
                 .iter()
                 .zip(
-                    G_hi.iter()
+                    G[m..]
+                        .iter()
                         .map(|e| e.into_group().mul(uj))
                         .collect::<Vec<C>>()
                         .iter(),
@@ -269,17 +270,18 @@ impl<C: CurveGroup, const H: bool> IPA<C, H> {
     }
 }
 
-// s = (
-//   u₁⁻¹ u₂⁻¹ … uₖ⁻¹,
-//   u₁   u₂⁻¹ … uₖ⁻¹,
-//   u₁⁻¹ u₂   … uₖ⁻¹,
-//   u₁   u₂   … uₖ⁻¹,
-//   ⋮    ⋮      ⋮
-//   u₁   u₂   … uₖ
-// )
-// Uses Halo2 approach computing $g(X) = \prod\limits_{i=0}^{k-1} (1 + u_{k - 1 - i} X^{2^i})$,
-// taking 2^{k+1}-2.
-// src: https://github.com/zcash/halo2/blob/81729eca91ba4755e247f49c3a72a4232864ec9e/halo2_proofs/src/poly/commitment/verifier.rs#L156
+/// Computes s such that
+/// s = (
+///   u₁⁻¹ u₂⁻¹ … uₖ⁻¹,
+///   u₁   u₂⁻¹ … uₖ⁻¹,
+///   u₁⁻¹ u₂   … uₖ⁻¹,
+///   u₁   u₂   … uₖ⁻¹,
+///   ⋮    ⋮      ⋮
+///   u₁   u₂   … uₖ
+/// )
+/// Uses Halo2 approach computing $g(X) = \prod\limits_{i=0}^{k-1} (1 + u_{k - 1 - i} X^{2^i})$,
+/// taking 2^{k+1}-2.
+/// src: https://github.com/zcash/halo2/blob/81729eca91ba4755e247f49c3a72a4232864ec9e/halo2_proofs/src/poly/commitment/verifier.rs#L156
 fn build_s<F: PrimeField>(u: &[F], u_invs: &[F], k: usize) -> Result<Vec<F>, Error> {
     let d: usize = 2_u64.pow(k as u32) as usize;
     let mut s: Vec<F> = vec![F::one(); d];
@@ -301,6 +303,19 @@ fn build_s<F: PrimeField>(u: &[F], u_invs: &[F], k: usize) -> Result<Vec<F>, Err
     }
     Ok(s)
 }
+
+/// Computes (in-circuit) s such that
+/// s = (
+///   u₁⁻¹ u₂⁻¹ … uₖ⁻¹,
+///   u₁   u₂⁻¹ … uₖ⁻¹,
+///   u₁⁻¹ u₂   … uₖ⁻¹,
+///   u₁   u₂   … uₖ⁻¹,
+///   ⋮    ⋮      ⋮
+///   u₁   u₂   … uₖ
+/// )
+/// Uses Halo2 approach computing $g(X) = \prod\limits_{i=0}^{k-1} (1 + u_{k - 1 - i} X^{2^i})$,
+/// taking 2^{k+1}-2.
+/// src: https://github.com/zcash/halo2/blob/81729eca91ba4755e247f49c3a72a4232864ec9e/halo2_proofs/src/poly/commitment/verifier.rs#L156
 fn build_s_gadget<F: PrimeField, CF: PrimeField>(
     u: &[NonNativeFieldVar<F, CF>],
     u_invs: &[NonNativeFieldVar<F, CF>],

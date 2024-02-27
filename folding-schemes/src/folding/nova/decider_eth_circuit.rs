@@ -645,14 +645,14 @@ pub mod tests {
             r1cs: ivc_v.clone().r1cs,
             cf_r1cs: ivc_v.clone().cf_r1cs,
         };
-        let (running_instance, incomming_instance, cyclefold_instance) = ivc_v.instances();
+        let (running_instance, incoming_instance, cyclefold_instance) = ivc_v.instances();
         NOVA::verify(
             verifier_params,
             z_0,
             ivc_v.z_i,
             Fr::one(),
             running_instance,
-            incomming_instance,
+            incoming_instance,
             cyclefold_instance,
         )
         .unwrap();

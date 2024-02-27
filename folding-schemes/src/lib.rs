@@ -105,7 +105,7 @@ where
     fn state(&self) -> Vec<C1::ScalarField>;
 
     // returns the instances at the current step, in the following order:
-    // (running_instance, incomming_instance, cyclefold_instance)
+    // (running_instance, incoming_instance, cyclefold_instance)
     fn instances(
         &self,
     ) -> (

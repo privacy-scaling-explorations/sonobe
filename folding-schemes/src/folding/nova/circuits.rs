@@ -475,7 +475,7 @@ where
         (cf2_u_i.cmE.is_zero()?).conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
         (cf2_u_i.u.is_one()?).conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
 
-        // check the fold of all the parameteres of the CycleFold instances, where the elliptic
+        // check the fold of all the parameters of the CycleFold instances, where the elliptic
         // curve points relations are checked natively in Curve1 circuit (this one)
         let v1 = NIFSFullGadget::<C2, GC2>::verify(
             cf1_r_bits,

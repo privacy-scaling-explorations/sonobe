@@ -564,8 +564,8 @@ where
             &self.cf_r1cs,
             cf_w_i,
             cf_u_i,
-            &cf_W_i,
-            &cf_U_i,
+            cf_W_i,
+            cf_U_i,
         )
     }
 }
@@ -588,6 +588,7 @@ where
     for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     // folds the given cyclefold circuit and its instances
+    #[allow(clippy::type_complexity)]
     fn fold_cyclefold_circuit(
         &self,
         cf_W_i: Witness<C2>,           // witness of the running instance
@@ -724,6 +725,8 @@ pub mod tests {
     use crate::frontend::tests::CubicFCircuit;
     use crate::transcript::poseidon::poseidon_test_config;
 
+    /// This test tests the Nova+CycleFold IVC, and by consequence it is also testing the
+    /// AugmentedFCircuit
     #[test]
     fn test_ivc() {
         type NOVA = Nova<

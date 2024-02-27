@@ -95,6 +95,7 @@ where
     /// `CommittedInstance`.
     /// Additionally it returns the vector of the field elements from the self parameters, so they
     /// can be reused in other gadgets avoiding recalculating (reconstraining) them.
+    #[allow(clippy::type_complexity)]
     pub fn hash(
         self,
         crh_params: &CRHParametersVar<CF1<C>>,
@@ -102,7 +103,7 @@ where
         z_0: Vec<FpVar<CF1<C>>>,
         z_i: Vec<FpVar<CF1<C>>>,
     ) -> Result<(FpVar<CF1<C>>, Vec<FpVar<CF1<C>>>), SynthesisError> {
-        let U_vec = vec![
+        let U_vec = [
             vec![self.u],
             self.x,
             self.cmE.x.to_constraint_field()?,
@@ -111,7 +112,7 @@ where
             self.cmW.y.to_constraint_field()?,
         ]
         .concat();
-        let input = vec![vec![i], z_0, z_i, U_vec.clone()].concat();
+        let input = [vec![i], z_0, z_i, U_vec.clone()].concat();
         Ok((
             CRHGadget::<C::ScalarField>::evaluate(crh_params, &input)?,
             U_vec,
@@ -504,19 +505,14 @@ where
 pub mod tests {
     use super::*;
     use ark_ff::BigInteger;
-    use ark_pallas::{Fq, Fr, Projective};
+    use ark_pallas::{Fr, Projective};
     use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
-    use ark_relations::r1cs::{ConstraintLayer, ConstraintSystem, TracingMode};
-    use ark_std::One;
+    use ark_relations::r1cs::ConstraintSystem;
     use ark_std::UniformRand;
-    use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
-    use tracing_subscriber::layer::SubscriberExt;
 
-    use crate::ccs::r1cs::{extract_r1cs, extract_w_x};
     use crate::commitment::pedersen::Pedersen;
     use crate::folding::nova::nifs::tests::prepare_simple_fold_inputs;
-    use crate::folding::nova::{nifs::NIFS, traits::NovaR1CS, Witness};
-    use crate::frontend::tests::CubicFCircuit;
+    use crate::folding::nova::nifs::NIFS;
     use crate::transcript::poseidon::poseidon_test_config;
 
     #[test]
@@ -649,7 +645,7 @@ pub mod tests {
         let cmTVar = NonNativeAffineVar::<Projective>::new_witness(cs.clone(), || Ok(cmT)).unwrap();
 
         // compute the challenge in-circuit
-        let U_iVar_vec = vec![
+        let U_iVar_vec = [
             vec![U_iVar.u.clone()],
             U_iVar.x.clone(),
             U_iVar.cmE.x.to_constraint_field().unwrap(),
@@ -673,227 +669,4 @@ pub mod tests {
         assert_eq!(rVar.value().unwrap(), r);
         assert_eq!(r_bitsVar.value().unwrap(), r_bits);
     }
-
-    /*
-    #[test]
-    /// test_augmented_f_circuit folds the CubicFCircuit circuit in multiple iterations, feeding the
-    /// values into the AugmentedFCircuit.
-    fn test_augmented_f_circuit() {
-        let mut layer = ConstraintLayer::default();
-        layer.mode = TracingMode::OnlyConstraints;
-        let subscriber = tracing_subscriber::Registry::default().with(layer);
-        let _guard = tracing::subscriber::set_default(subscriber);
-
-        let mut rng = ark_std::test_rng();
-        let poseidon_config = poseidon_test_config::<Fr>();
-
-        // compute z vector for the initial instance
-        let cs = ConstraintSystem::<Fr>::new_ref();
-
-        // prepare the circuit to obtain its R1CS
-        let F_circuit = CubicFCircuit::<Fr>::new(());
-        let mut augmented_F_circuit =
-            AugmentedFCircuit::<Projective, Projective2, GVar2, CubicFCircuit<Fr>>::empty(
-                &poseidon_config,
-                F_circuit,
-            );
-        augmented_F_circuit
-            .generate_constraints(cs.clone())
-            .unwrap();
-        cs.finalize();
-        let cs = cs.into_inner().unwrap();
-        let r1cs = extract_r1cs::<Fr>(&cs);
-        let (w, x) = extract_w_x::<Fr>(&cs);
-        assert_eq!(1 + x.len() + w.len(), r1cs.A.n_cols);
-        assert_eq!(r1cs.l, x.len());
-
-        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, r1cs.A.n_rows);
-
-        // first step, set z_i=z_0=3 and z_{i+1}=35 (initial values)
-        let z_0 = vec![Fr::from(3_u32)];
-        let mut z_i = z_0.clone();
-        let mut z_i1 = vec![Fr::from(35_u32)];
-
-        let w_dummy = Witness::<Projective>::new(vec![Fr::zero(); w.len()], r1cs.A.n_rows);
-        let u_dummy = CommittedInstance::<Projective>::dummy(x.len());
-
-        // W_i is a 'dummy witness', all zeroes, but with the size corresponding to the R1CS that
-        // we're working with.
-        // set U_i <-- dummy instance
-        let mut W_i = w_dummy.clone();
-        let mut U_i = u_dummy.clone();
-        r1cs.check_relaxed_instance_relation(&W_i, &U_i).unwrap();
-
-        let mut w_i = w_dummy.clone();
-        let mut u_i = u_dummy.clone();
-        let (mut W_i1, mut U_i1, mut cmT): (
-            Witness<Projective>,
-            CommittedInstance<Projective>,
-            Projective,
-        ) = (w_dummy.clone(), u_dummy.clone(), Projective::generator());
-        // as expected, dummy instances pass the relaxed_r1cs check
-        r1cs.check_relaxed_instance_relation(&W_i1, &U_i1).unwrap();
-
-        let mut i = Fr::zero();
-        let mut u_i1_x: Fr;
-        for _ in 0..4 {
-            if i == Fr::zero() {
-                // base case: i=0, z_i=z_0, U_i = U_d := dummy instance
-                // u_1.x = H(1, z_0, z_i, U_i)
-                u_i1_x = U_i
-                    .hash(&poseidon_config, Fr::one(), z_0.clone(), z_i1.clone())
-                    .unwrap();
-
-                // base case
-                augmented_F_circuit =
-                    AugmentedFCircuit::<Projective, Projective2, GVar2, CubicFCircuit<Fr>> {
-                        _gc2: PhantomData,
-                        poseidon_config: poseidon_config.clone(),
-                        i: Some(i),             // = 0
-                        z_0: Some(z_0.clone()), // = z_i=3
-                        z_i: Some(z_i.clone()),
-                        u_i: Some(u_i.clone()),   // = dummy
-                        U_i: Some(U_i.clone()),   // = dummy
-                        U_i1: Some(U_i1.clone()), // = dummy
-                        cmT: Some(cmT),
-                        F: F_circuit,
-                        x: Some(u_i1_x),
-                        // cyclefold instances (not tested in this test)
-                        cf_u_i: None,
-                        cf_U_i: None,
-                        cf_U_i1: None,
-                        cf_cmT: None,
-                        cf_r_nonnat: None,
-                    };
-            } else {
-                r1cs.check_relaxed_instance_relation(&w_i, &u_i).unwrap();
-                r1cs.check_relaxed_instance_relation(&W_i, &U_i).unwrap();
-
-                // U_{i+1}
-                let T: Vec<Fr>;
-                (T, cmT) = NIFS::<Projective, Pedersen<Projective>>::compute_cmT(
-                    &pedersen_params,
-                    &r1cs,
-                    &w_i,
-                    &u_i,
-                    &W_i,
-                    &U_i,
-                )
-                .unwrap();
-
-                // get challenge r
-                let r_bits = ChallengeGadget::<Projective>::get_challenge_native(
-                    &poseidon_config,
-                    U_i.clone(),
-                    u_i.clone(),
-                    cmT,
-                )
-                .unwrap();
-                let r_Fr = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
-
-                (W_i1, U_i1) = NIFS::<Projective, Pedersen<Projective>>::fold_instances(
-                    r_Fr, &w_i, &u_i, &W_i, &U_i, &T, cmT,
-                )
-                .unwrap();
-
-                r1cs.check_relaxed_instance_relation(&W_i1, &U_i1).unwrap();
-
-                // folded instance output (public input, x)
-                // u_{i+1}.x = H(i+1, z_0, z_{i+1}, U_{i+1})
-                u_i1_x = U_i1
-                    .hash(&poseidon_config, i + Fr::one(), z_0.clone(), z_i1.clone())
-                    .unwrap();
-
-                // set up dummy cyclefold instances just for the sake of this test. Warning, this
-                // is only because we are in a test were we're not testing the cyclefold side of
-                // things.
-                let cf_W_i = Witness::<Projective2>::new(vec![Fq::zero(); 1], 1);
-                let cf_U_i = CommittedInstance::<Projective2>::dummy(CF_IO_LEN);
-                let cf_u_i_x = [
-                    get_committed_instance_coordinates(&u_i),
-                    get_committed_instance_coordinates(&U_i),
-                    get_committed_instance_coordinates(&U_i1),
-                ]
-                .concat();
-                let cf_u_i = CommittedInstance::<Projective2> {
-                    cmE: cf_U_i.cmE,
-                    u: Fq::one(),
-                    cmW: cf_U_i.cmW,
-                    x: cf_u_i_x,
-                };
-                let cf_w_i = cf_W_i.clone();
-                let (cf_T, cf_cmT): (Vec<Fq>, Projective2) =
-                    (vec![Fq::zero(); cf_W_i.E.len()], Projective2::zero());
-                let cf_r_bits =
-                    CycleFoldChallengeGadget::<Projective2, GVar2>::get_challenge_native(
-                        &poseidon_config,
-                        cf_U_i.clone(),
-                        cf_u_i.clone(),
-                        cf_cmT,
-                    )
-                    .unwrap();
-                let cf_r_Fq = Fq::from_bigint(BigInteger::from_bits_le(&cf_r_bits)).unwrap();
-                let (_, cf_U_i1) = NIFS::<Projective2, Pedersen<Projective2>>::fold_instances(
-                    cf_r_Fq, &cf_W_i, &cf_U_i, &cf_w_i, &cf_u_i, &cf_T, cf_cmT,
-                )
-                .unwrap();
-
-                augmented_F_circuit =
-                    AugmentedFCircuit::<Projective, Projective2, GVar2, CubicFCircuit<Fr>> {
-                        _gc2: PhantomData,
-                        poseidon_config: poseidon_config.clone(),
-                        i: Some(i),
-                        z_0: Some(z_0.clone()),
-                        z_i: Some(z_i.clone()),
-                        u_i: Some(u_i),
-                        U_i: Some(U_i.clone()),
-                        U_i1: Some(U_i1.clone()),
-                        cmT: Some(cmT),
-                        F: F_circuit,
-                        x: Some(u_i1_x),
-                        cf_u_i: Some(cf_u_i),
-                        cf_U_i: Some(cf_U_i),
-                        cf_U_i1: Some(cf_U_i1),
-                        cf_cmT: Some(cf_cmT),
-                        cf_r_nonnat: Some(cf_r_Fq),
-                    };
-            }
-
-            let cs = ConstraintSystem::<Fr>::new_ref();
-
-            augmented_F_circuit
-                .generate_constraints(cs.clone())
-                .unwrap();
-            let is_satisfied = cs.is_satisfied().unwrap();
-            if !is_satisfied {
-                dbg!(cs.which_is_unsatisfied().unwrap());
-            }
-            assert!(is_satisfied);
-
-            cs.finalize();
-            let cs = cs.into_inner().unwrap();
-            let (w_i1, x_i1) = extract_w_x::<Fr>(&cs);
-            assert_eq!(x_i1.len(), 1);
-            assert_eq!(x_i1[0], u_i1_x);
-
-            // compute committed instances, w_{i+1}, u_{i+1}, which will be used as w_i, u_i, so we
-            // assign them directly to w_i, u_i.
-            w_i = Witness::<Projective>::new(w_i1.clone(), r1cs.A.n_rows);
-            u_i = w_i
-                .commit::<Pedersen<Projective>>(&pedersen_params, vec![u_i1_x])
-                .unwrap();
-
-            r1cs.check_relaxed_instance_relation(&w_i, &u_i).unwrap();
-            r1cs.check_relaxed_instance_relation(&W_i1, &U_i1).unwrap();
-
-            // set values for next iteration
-            i += Fr::one();
-            // advance the F circuit state
-            z_i = z_i1.clone();
-            z_i1 = F_circuit.step_native(z_i.clone()).unwrap();
-            U_i = U_i1.clone();
-            W_i = W_i1.clone();
-        }
-    }
-    */
 }

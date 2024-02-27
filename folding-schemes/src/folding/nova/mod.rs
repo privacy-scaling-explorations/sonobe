@@ -249,13 +249,11 @@ where
 
         augmented_F_circuit.generate_constraints(cs.clone())?;
         cs.finalize();
-        dbg!(cs.num_constraints());
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
         let r1cs = extract_r1cs::<C1::ScalarField>(&cs);
 
         cf_circuit.generate_constraints(cs2.clone())?;
         cs2.finalize();
-        dbg!(cs2.num_constraints());
         let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
         let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2);
 
@@ -764,8 +762,7 @@ pub mod tests {
         let mut nova = NOVA::init(&prover_params, F_circuit, z_0.clone()).unwrap();
 
         let num_steps: usize = 3;
-        for i in 0..num_steps {
-            dbg!(i);
+        for _ in 0..num_steps {
             nova.prove_step().unwrap();
         }
         assert_eq!(Fr::from(num_steps as u32), nova.i);

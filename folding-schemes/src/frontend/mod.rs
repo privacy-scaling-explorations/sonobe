@@ -9,7 +9,6 @@ use ark_std::fmt::Debug;
 use ark_r1cs_std::R1CSVar;
 
 use crate::frontend::circom::CircomWrapper;
-use ark_ec::pairing::Pairing;
 use std::path::PathBuf;
 use num_bigint::BigInt;
 use ark_circom::circom::CircomCircuit;
@@ -45,13 +44,12 @@ pub trait FCircuit<F: PrimeField>: Clone + Debug {
 
 /// Define CircomFCircuit
 #[derive(Clone, Debug)]
-pub struct CircomtoFCircuit<E: Pairing> {
-    circom_wrapper: CircomWrapper<E>,
-    // z_i: Vec<E::ScalarField>
+pub struct CircomtoFCircuit<F: PrimeField> {
+    circom_wrapper: CircomWrapper<F>,
 }
 
-impl<E: Pairing> FCircuit<E::ScalarField> for CircomtoFCircuit<E> {
-    type Params = (PathBuf, PathBuf, Vec<E::ScalarField>);
+impl<F: PrimeField> FCircuit<F> for CircomtoFCircuit<F> {
+    type Params = (PathBuf, PathBuf, Vec<F>);
 
     fn new(params: Self::Params) -> Self {
         let (r1cs_filepath, wasm_filepath, _z_i) = params;
@@ -59,7 +57,7 @@ impl<E: Pairing> FCircuit<E::ScalarField> for CircomtoFCircuit<E> {
         Self { circom_wrapper}
     }
 
-    fn step_native(self, z_i: Vec<E::ScalarField>) -> Result<Vec<E::ScalarField>, Error> {
+    fn step_native(self, z_i: Vec<F>) -> Result<Vec<F>, Error> {
         // Convert from PrimeField::Bigint to num_bigint::BigInt
         let input_num_bigint = z_i.iter().map(|val| {
             self.circom_wrapper.ark_bigint_to_num_bigint(*val)
@@ -78,9 +76,9 @@ impl<E: Pairing> FCircuit<E::ScalarField> for CircomtoFCircuit<E> {
 
     fn generate_step_constraints(
         self,
-        cs: ConstraintSystemRef<E::ScalarField>,
-        z_i: Vec<FpVar<E::ScalarField>>,
-    ) -> Result<Vec<FpVar<E::ScalarField>>, SynthesisError> {
+        cs: ConstraintSystemRef<F>,
+        z_i: Vec<FpVar<F>>,
+    ) -> Result<Vec<FpVar<F>>, SynthesisError> {
 
         let mut input_values = Vec::new();
         // Convert each FpVar to BigInt and add it to the input_values vector
@@ -109,8 +107,8 @@ impl<E: Pairing> FCircuit<E::ScalarField> for CircomtoFCircuit<E> {
         assert!(cs.is_satisfied().unwrap());
     
         let new_z_i = witness.iter().map(|w| {
-            FpVar::<E::ScalarField>::new_witness(cs.clone(), || Ok(*w))
-        }).collect::<Result<Vec<FpVar<E::ScalarField>>, SynthesisError>>()?;
+            FpVar::<F>::new_witness(cs.clone(), || Ok(*w))
+        }).collect::<Result<Vec<FpVar<F>>, SynthesisError>>()?;
     
         Ok(new_z_i)
     }    
@@ -119,7 +117,6 @@ impl<E: Pairing> FCircuit<E::ScalarField> for CircomtoFCircuit<E> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use ark_bn254::Bn254;
     use ark_pallas::Fr;
     use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget};
     use ark_relations::r1cs::{
@@ -257,11 +254,7 @@ pub mod tests {
         let wasm_path = PathBuf::from("./src/frontend/circom/test_folder/test_circuit_js/test_circuit.wasm");
         
         let z_i = vec![Fr::from(3u32)];
-
-        /// [Issue: Incompatibility of Pairing and Pallas]
-        /// We have to avoid Bn254(Pairing) because we want to use Pallas.
-        /// However, original ark-circom is defined on the Pairing.
-        let circom_fcircuit = CircomtoFCircuit::<Pallas>::new((r1cs_path, wasm_path, z_i));
+        let circom_fcircuit = CircomtoFCircuit::<Fr>::new((r1cs_path, wasm_path, z_i.clone()));
 
         let wrapper_circuit = WrapperCircuit {
             FC: circom_fcircuit,

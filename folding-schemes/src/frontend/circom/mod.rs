@@ -6,11 +6,6 @@ use num_bigint::{BigInt, Sign};
 use ark_circom::{circom::{r1cs_reader, R1CS}, WitnessCalculator};
 use ark_ff::{BigInteger, PrimeField};
 
-pub type Constraints<F> = (ConstraintVec<F>, ConstraintVec<F>, ConstraintVec<F>);
-pub type ConstraintVec<F> = Vec<(usize, F)>;
-type ExtractedConstraints<F> = (Vec<Constraints<F>>, usize, usize);
-pub type ExtractedConstraintsResult<F> = Result<ExtractedConstraints<F>, Box<dyn Error>>;
-
 // A struct that wraps Circom functionalities, allowing for extraction of R1CS and witnesses
 // based on file paths to Circom's .r1cs and .wasm.
 #[derive(Clone, Debug)]
@@ -94,8 +89,8 @@ mod tests {
     #[test]
     fn satisfied() {
         let cfg = CircomConfig::<Fr>::new(
-            "./src/frontend/circom/test_folder/test_circuit_js/test_circuit.wasm",
-            "./src/frontend/circom/test_folder/test_circuit.r1cs",
+            "./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm",
+            "./src/frontend/circom/test_folder/cubic_circuit.r1cs",
         )
         .unwrap();
         let mut builder = CircomBuilder::new(cfg);
@@ -110,16 +105,15 @@ mod tests {
     // test CircomWrapper function
     #[test]
     fn test_extract_r1cs_and_witness() -> Result<(), Box<dyn Error>> {
-        let r1cs_filepath = PathBuf::from("./src/frontend/circom/test_folder/test_circuit.r1cs");
-        let wasm_filepath = PathBuf::from("./src/frontend/circom/test_folder/test_circuit_js/test_circuit.wasm");
+        let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit.r1cs");
+        let wasm_path = PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
-        let wrapper = CircomWrapper::<Fr>::new(r1cs_filepath, wasm_filepath);
-
-        let inputs = vec![
-            ("ivc_input".to_string(), vec![BigInt::from(3)]),
-        ];
+        let inputs = vec![("ivc_input".to_string(), vec![BigInt::from(3)])];
+        let wrapper = CircomWrapper::<Fr>::new(r1cs_path, wasm_path);
 
         let (r1cs, witness) = wrapper.extract_r1cs_and_witness(&inputs)?;
+        println!("Test passed with witness: {:?}", r1cs);
+        println!("Test passed with witness: {:?}", witness);
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 

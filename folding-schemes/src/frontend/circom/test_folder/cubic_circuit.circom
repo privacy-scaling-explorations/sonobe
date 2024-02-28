@@ -9,4 +9,4 @@ template Example () {
     ivc_output[0] <== temp * ivc_input[0] + ivc_input[0] + 5;
 }
 
-component main = Example();
+component main { public [ivc_input] } = Example();

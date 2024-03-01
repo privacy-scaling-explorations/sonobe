@@ -15,6 +15,11 @@ pub fn mat_vec_mul_sparse<F: PrimeField, CF: PrimeField, FV: FieldVar<F, CF>>(
     let mut res = vec![FV::zero(); m.n_rows];
     for (row_i, row) in m.coeffs.iter().enumerate() {
         for (value, col_i) in row.iter() {
+            if value.value().unwrap() == F::one() {
+                // no need to multiply by 1
+                res[row_i] += v[*col_i].clone();
+                continue;
+            }
             res[row_i] += value.clone().mul(&v[*col_i].clone());
         }
     }

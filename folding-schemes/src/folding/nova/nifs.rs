@@ -68,8 +68,8 @@ where
 
     pub fn fold_committed_instance(
         r: C::ScalarField,
-        ci1: &CommittedInstance<C>,
-        ci2: &CommittedInstance<C>,
+        ci1: &CommittedInstance<C>, // U_i
+        ci2: &CommittedInstance<C>, // u_i
         cmT: &C,
     ) -> CommittedInstance<C> {
         let r2 = r * r;

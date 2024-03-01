@@ -1,6 +1,6 @@
 use ark_ec::CurveGroup;
 use ark_ff::Field;
-use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar};
+use ark_r1cs_std::{boolean::Boolean, groups::GroupOpsBounds, prelude::CurveVar};
 use ark_relations::r1cs::SynthesisError;
 use ark_std::Zero;
 use ark_std::{
@@ -148,7 +148,7 @@ where
     _gc: PhantomData<GC>,
 }
 
-use ark_r1cs_std::{fields::nonnative::NonNativeFieldVar, ToBitsGadget};
+use ark_r1cs_std::ToBitsGadget;
 impl<C, GC, const H: bool> PedersenGadget<C, GC, H>
 where
     C: CurveGroup,
@@ -160,12 +160,12 @@ where
     pub fn commit(
         h: GC,
         g: Vec<GC>,
-        v: Vec<NonNativeFieldVar<C::ScalarField, CF<C>>>,
-        r: NonNativeFieldVar<C::ScalarField, CF<C>>,
+        v: Vec<Vec<Boolean<CF<C>>>>,
+        r: Vec<Boolean<CF<C>>>,
     ) -> Result<GC, SynthesisError> {
         let mut res = GC::zero();
         if H {
-            res += h.scalar_mul_le(r.to_bits_le()?.iter())?;
+            res += h.scalar_mul_le(r.iter())?;
         }
         for (i, v_i) in v.iter().enumerate() {
             res += g[i].scalar_mul_le(v_i.to_bits_le()?.iter())?;
@@ -176,6 +176,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use ark_ff::{BigInteger, PrimeField};
     use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
     use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget};
     use ark_relations::r1cs::ConstraintSystem;
@@ -226,12 +227,20 @@ mod tests {
         let r: Fr = Fr::rand(&mut rng);
         let cm = Pedersen::<Projective>::commit(&params, &v, &r).unwrap();
 
+        let v_bits: Vec<Vec<bool>> = v.iter().map(|val| val.into_bigint().to_bits_le()).collect();
+        let r_bits: Vec<bool> = r.into_bigint().to_bits_le();
+
         // circuit
         let cs = ConstraintSystem::<Fq>::new_ref();
 
         // prepare inputs
-        let vVar = Vec::<NonNativeFieldVar<Fr, Fq>>::new_witness(cs.clone(), || Ok(v)).unwrap();
-        let rVar = NonNativeFieldVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(r)).unwrap();
+        let vVar: Vec<Vec<Boolean<Fq>>> = v_bits
+            .iter()
+            .map(|val_bits| {
+                Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(val_bits.clone())).unwrap()
+            })
+            .collect();
+        let rVar = Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(r_bits)).unwrap();
         let gVar = Vec::<GVar>::new_witness(cs.clone(), || Ok(params.generators)).unwrap();
         let hVar = GVar::new_witness(cs.clone(), || Ok(params.h)).unwrap();
         let expected_cmVar = GVar::new_witness(cs.clone(), || Ok(cm)).unwrap();

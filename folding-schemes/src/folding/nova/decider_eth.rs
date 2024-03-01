@@ -68,9 +68,7 @@ where
         let circuit =
             DeciderEthCircuit::<C1, GC1, C2, GC2, CP1, CP2>::from_nova::<FC>(folding_scheme.into());
 
-        let proof = S::prove(pp, circuit.clone(), &mut rng).unwrap();
-
-        Ok(proof)
+        S::prove(pp, circuit.clone(), &mut rng).map_err(|e| Error::Other(e.to_string()))
     }
 
     fn verify(

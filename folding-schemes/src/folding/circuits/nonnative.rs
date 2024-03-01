@@ -1,10 +1,8 @@
 use ark_ec::{AffineRepr, CurveGroup};
-use ark_ff::PrimeField;
 use ark_r1cs_std::fields::nonnative::{params::OptimizationType, AllocatedNonNativeFieldVar};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
-    fields::{fp::FpVar, nonnative::NonNativeFieldVar},
-    ToConstraintFieldGadget,
+    fields::nonnative::NonNativeFieldVar,
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
 use ark_std::{One, Zero};
@@ -14,12 +12,15 @@ use core::borrow::Borrow;
 /// field, over the constraint field. It is not intended to perform operations, but just to contain
 /// the affine coordinates in order to perform hash operations of the point.
 #[derive(Debug, Clone)]
-pub struct NonNativeAffineVar<F: PrimeField> {
-    pub x: Vec<FpVar<F>>,
-    pub y: Vec<FpVar<F>>,
+pub struct NonNativeAffineVar<C: CurveGroup>
+where
+    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
+{
+    pub x: NonNativeFieldVar<C::BaseField, C::ScalarField>,
+    pub y: NonNativeFieldVar<C::BaseField, C::ScalarField>,
 }
 
-impl<C> AllocVar<C, C::ScalarField> for NonNativeAffineVar<C::ScalarField>
+impl<C> AllocVar<C, C::ScalarField> for NonNativeAffineVar<C>
 where
     C: CurveGroup,
     <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
@@ -40,14 +41,12 @@ where
                 cs.clone(),
                 || Ok(xy.0),
                 mode,
-            )?
-            .to_constraint_field()?;
+            )?;
             let y = NonNativeFieldVar::<C::BaseField, C::ScalarField>::new_variable(
                 cs.clone(),
                 || Ok(xy.1),
                 mode,
-            )?
-            .to_constraint_field()?;
+            )?;
 
             Ok(Self { x, y })
         })
@@ -108,7 +107,7 @@ where
 mod tests {
     use super::*;
     use ark_pallas::{Fr, Projective};
-    use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
+    use ark_r1cs_std::{alloc::AllocVar, R1CSVar, ToConstraintFieldGadget};
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::{UniformRand, Zero};
 
@@ -118,14 +117,14 @@ mod tests {
 
         // dealing with the 'zero' point should not panic when doing the unwrap
         let p = Projective::zero();
-        NonNativeAffineVar::<Fr>::new_witness(cs.clone(), || Ok(p)).unwrap();
+        NonNativeAffineVar::<Projective>::new_witness(cs.clone(), || Ok(p)).unwrap();
 
         // check that point_to_nonnative_limbs returns the expected values
         let mut rng = ark_std::test_rng();
         let p = Projective::rand(&mut rng);
-        let pVar = NonNativeAffineVar::<Fr>::new_witness(cs.clone(), || Ok(p)).unwrap();
+        let pVar = NonNativeAffineVar::<Projective>::new_witness(cs.clone(), || Ok(p)).unwrap();
         let (x, y) = point_to_nonnative_limbs(p).unwrap();
-        assert_eq!(pVar.x.value().unwrap(), x);
-        assert_eq!(pVar.y.value().unwrap(), y);
+        assert_eq!(pVar.x.to_constraint_field().unwrap().value().unwrap(), x);
+        assert_eq!(pVar.y.to_constraint_field().unwrap().value().unwrap(), y);
     }
 }

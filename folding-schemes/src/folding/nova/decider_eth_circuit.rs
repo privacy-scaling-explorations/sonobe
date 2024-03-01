@@ -11,7 +11,6 @@ use ark_r1cs_std::{
     fields::{fp::FpVar, nonnative::NonNativeFieldVar, FieldVar},
     groups::GroupOpsBounds,
     prelude::CurveVar,
-    ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
 use ark_std::{One, Zero};
@@ -344,19 +343,17 @@ where
         let zero_x = NonNativeFieldVar::<C1::BaseField, C1::ScalarField>::new_constant(
             cs.clone(),
             C1::BaseField::zero(),
-        )?
-        .to_constraint_field()?;
+        )?;
         let zero_y = NonNativeFieldVar::<C1::BaseField, C1::ScalarField>::new_constant(
             cs.clone(),
             C1::BaseField::one(),
-        )?
-        .to_constraint_field()?;
+        )?;
         (u_i.cmE.x.is_eq(&zero_x)?).enforce_equal(&Boolean::TRUE)?;
         (u_i.cmE.y.is_eq(&zero_y)?).enforce_equal(&Boolean::TRUE)?;
         (u_i.u.is_one()?).enforce_equal(&Boolean::TRUE)?;
 
         // 4. u_i.x == H(i, z_0, z_i, U_i)
-        let u_i_x = U_i
+        let (u_i_x, _) = U_i
             .clone()
             .hash(&crh_params, i.clone(), z_0.clone(), z_i.clone())?;
         (u_i.x[0]).enforce_equal(&u_i_x)?;
@@ -370,6 +367,7 @@ where
             // `#[cfg(not(test))]`
             use crate::commitment::pedersen::PedersenGadget;
             use crate::folding::nova::cyclefold::{CycleFoldCommittedInstanceVar, CF_IO_LEN};
+            use ark_r1cs_std::ToBitsGadget;
 
             let cf_u_dummy_native = CommittedInstance::<C2>::dummy(CF_IO_LEN);
             let w_dummy_native = Witness::<C2>::new(
@@ -386,16 +384,20 @@ where
             // 5. check Pedersen commitments of cf_U_i.{cmE, cmW}
             let H = GC2::new_constant(cs.clone(), self.cf_pedersen_params.h)?;
             let G = Vec::<GC2>::new_constant(cs.clone(), self.cf_pedersen_params.generators)?;
+            let cf_W_i_E_bits: Result<Vec<Vec<Boolean<CF1<C1>>>>, SynthesisError> =
+                cf_W_i.E.iter().map(|E_i| E_i.to_bits_le()).collect();
+            let cf_W_i_W_bits: Result<Vec<Vec<Boolean<CF1<C1>>>>, SynthesisError> =
+                cf_W_i.W.iter().map(|W_i| W_i.to_bits_le()).collect();
 
             let computed_cmE = PedersenGadget::<C2, GC2>::commit(
                 H.clone(),
                 G.clone(),
-                cf_W_i.E.clone(),
-                cf_W_i.rE,
+                cf_W_i_E_bits?,
+                cf_W_i.rE.to_bits_le()?,
             )?;
             cf_U_i.cmE.enforce_equal(&computed_cmE)?;
             let computed_cmW =
-                PedersenGadget::<C2, GC2>::commit(H, G, cf_W_i.W.clone(), cf_W_i.rW)?;
+                PedersenGadget::<C2, GC2>::commit(H, G, cf_W_i_W_bits?, cf_W_i.rW.to_bits_le()?)?;
             cf_U_i.cmW.enforce_equal(&computed_cmW)?;
 
             let cf_r1cs = R1CSVar::<
@@ -641,17 +643,18 @@ pub mod tests {
         let ivc_v = nova.clone();
         let verifier_params = VerifierParams::<Projective, Projective2> {
             poseidon_config: poseidon_config.clone(),
-            r1cs: ivc_v.r1cs,
-            cf_r1cs: ivc_v.cf_r1cs,
+            r1cs: ivc_v.clone().r1cs,
+            cf_r1cs: ivc_v.clone().cf_r1cs,
         };
+        let (running_instance, incoming_instance, cyclefold_instance) = ivc_v.instances();
         NOVA::verify(
             verifier_params,
             z_0,
             ivc_v.z_i,
             Fr::one(),
-            (ivc_v.U_i, ivc_v.W_i),
-            (ivc_v.u_i, ivc_v.w_i),
-            (ivc_v.cf_U_i, ivc_v.cf_W_i),
+            running_instance,
+            incoming_instance,
+            cyclefold_instance,
         )
         .unwrap();
 

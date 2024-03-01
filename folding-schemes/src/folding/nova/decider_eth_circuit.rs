@@ -367,6 +367,7 @@ where
             // `#[cfg(not(test))]`
             use crate::commitment::pedersen::PedersenGadget;
             use crate::folding::nova::cyclefold::{CycleFoldCommittedInstanceVar, CF_IO_LEN};
+            use ark_r1cs_std::ToBitsGadget;
 
             let cf_u_dummy_native = CommittedInstance::<C2>::dummy(CF_IO_LEN);
             let w_dummy_native = Witness::<C2>::new(

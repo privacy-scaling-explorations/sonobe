@@ -74,8 +74,7 @@ impl<F: PrimeField> FCircuit<F> for CircomtoFCircuit<F> {
             ("ivc_input".to_string(), input_num_bigint)
         ]).map_err(|e| Error::Other(format!("Circom computation failed: {}", e)))?;  
         
-        // [To Do: I have to extract the z_i1(next public output) in Z(R1CS vector)]
-        // This is not correct
+        // [To Do: extract the z_i1(next public output) in Z(R1CS vector)]
         match witness {
             Some(new_z_i) => Ok(new_z_i),
             None => Err(Error::Other("Witness was not found".to_string())),
@@ -98,39 +97,32 @@ impl<F: PrimeField> FCircuit<F> for CircomtoFCircuit<F> {
         }
     
         // Temporarily
-        // let big_int_inputs = vec![("ivc_input".to_string(), input_values)];
-        let big_int_inputs = vec![("ivc_input".to_string(), vec![BigInt::from(3)])];
+        let big_int_inputs = vec![("ivc_input".to_string(), input_values)];
+        // let big_int_inputs = vec![("ivc_input".to_string(), vec![BigInt::from(5)])];
 
         let (r1cs, witness) = self.circom_wrapper.extract_r1cs_and_witness(&big_int_inputs)
             .map_err(|_| SynthesisError::AssignmentMissing)?;
         println!("Extracted R1CS and witness");
-        println!("Test passed with witness: {:?}", r1cs);
-        println!("Test passed with witness: {:?}", witness);
-
-        // [To Do]
-        // Error
-        // The mismatch is due to the fact that ConstraintSystem::<Fr> was used to constrain constraints 
-        // in arccircom, but ConstraintSystemRef must be used here.
-
-        // cs: ConstraintSystemRef<F> and ConstraintSystem::<Fr>::new_ref();
+        println!("r1cs: {:?}", r1cs);
+        println!("witness: {:?}", witness);
 
         // CircomCircuit constraints
         let circom_circuit = CircomCircuit { r1cs, witness };
+
         circom_circuit.generate_constraints(cs.clone())
             .map_err(|_| SynthesisError::AssignmentMissing)?;
-        println!("Generated constraints from CircomCircuit");
+        println!("Generated constraints");
+
+        // [ToDo: error: Constraint trace requires enabling `ConstraintLayer`]
     
         // satisfication check
         if !cs.is_satisfied().unwrap() {
             println!("Constraint is not satisfied");
             return Err(SynthesisError::AssignmentMissing);
         }
-    
         println!("Constraint is satisfied");
         
-        // [To Do: I have to extract the z_i1(next public output) in Z(R1CS vector)]
-        // This is not correct
-
+        // [To Do: extract the z_i1(next public output) in Z(R1CS vector)]
         //let new_z_i = witness.iter().map(|w| {
         //    FpVar::<F>::new_witness(cs.clone(), || Ok(*w))
         //}).collect::<Result<Vec<FpVar<F>>, SynthesisError>>()?;
@@ -303,8 +295,6 @@ pub mod tests {
 
         circom_fcircuit.generate_step_constraints(cs.clone(), z_i_vars)?;
 
-        assert!(cs.is_satisfied().unwrap(), "Constraint system is not satisfied");
-
         Ok(())
     }
 
@@ -326,9 +316,7 @@ pub mod tests {
         Ok(())
     }
 
-    // not yet
-    // [To Do]
-    // I have to extract the z_i1
+    // [To Do extract the z_i1]
     // Absolutely fails because all elements of Z(R1CS) are passed to z_i1
     #[test]
     fn test_wrapper_circomtofcircuit() {

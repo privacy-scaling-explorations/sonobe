@@ -451,7 +451,7 @@ mod tests {
             .render()
             .unwrap();
 
-        let nova_cyclefold_verifier_bytecode = compile_solidity(decider_template, "NovaCyclefold");
+        let nova_cyclefold_verifier_bytecode = compile_solidity(decider_template, "NovaDecider");
         let mut evm = Evm::default();
         _ = evm.create(nova_cyclefold_verifier_bytecode);
     }

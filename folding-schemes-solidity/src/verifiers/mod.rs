@@ -492,7 +492,7 @@ mod tests {
             .collect();
         let cm = KZGProver::<G1>::commit(&pk_kzg, &v, &Fr::zero()).unwrap();
         let (eval, proof) =
-            KZGProver::<G1>::prove(&pk_kzg, transcript_p, &cm, &v, &Fr::zero()).unwrap();
+            KZGProver::<G1>::prove(&pk_kzg, transcript_p, &cm, &v, &Fr::zero(), None).unwrap();
 
         let decider_template = HeaderInclusion::<NovaCyclefoldDecider>::builder()
             .template(NovaCyclefoldData::new(

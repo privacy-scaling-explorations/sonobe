@@ -22,7 +22,7 @@ pub trait ProtocolData: CanonicalDeserialize + CanonicalSerialize {
 
     fn serialize_name<W: Write>(&self, writer: &mut W) -> Result<(), SerializationError> {
         Self::PROTOCOL_NAME
-            .as_bytes()
+            .to_string()
             .serialize_uncompressed(writer)
     }
 
@@ -30,9 +30,11 @@ pub trait ProtocolData: CanonicalDeserialize + CanonicalSerialize {
         self.serialize_name(writer)?;
         self.serialize_compressed(writer)
     }
-    fn deserialize_protocol_data<R: Read + Copy>(reader: R) -> Result<Self, SerializationError> {
-        let name: String = String::deserialize_compressed(reader)?;
-        let data = Self::deserialize_compressed(reader)?;
+    fn deserialize_protocol_data<R: Read + Copy>(
+        mut reader: R,
+    ) -> Result<Self, SerializationError> {
+        let name: String = String::deserialize_uncompressed(&mut reader)?;
+        let data = Self::deserialize_compressed(&mut reader)?;
 
         if name != Self::PROTOCOL_NAME {
             return Err(SerializationError::InvalidData);
@@ -345,7 +347,7 @@ mod tests {
             .unwrap();
 
         // TODO: Unsure what this is testing. If we want to test correct rendering,
-        // we should first check that it COMPLETELLY renders to what we expect.
+        // we should first check that it COMPLETELY renders to what we expect.
         assert!(res.contains(&vk.g.x.to_string()));
     }
 
@@ -449,7 +451,7 @@ mod tests {
             .render()
             .unwrap();
 
-        let nova_cyclefold_verifier_bytecode = compile_solidity(&decider_template, "NovaCyclefold");
+        let nova_cyclefold_verifier_bytecode = compile_solidity(decider_template, "NovaCyclefold");
         let mut evm = Evm::default();
         _ = evm.create(nova_cyclefold_verifier_bytecode);
     }

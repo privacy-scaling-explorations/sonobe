@@ -290,7 +290,7 @@ pub mod tests {
         let r_x_prime: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
 
         // Initialize a multifolding object
-        let pedersen_params = Pedersen::new_params(&mut rng, ccs.n - ccs.l - 1);
+        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, ccs.n - ccs.l - 1);
         let (lcccs_instance, _) = ccs.to_lcccs(&mut rng, &pedersen_params, &z1).unwrap();
 
         let sigmas_thetas =
@@ -333,7 +333,7 @@ pub mod tests {
         let beta: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
 
         // Initialize a multifolding object
-        let pedersen_params = Pedersen::new_params(&mut rng, ccs.n - ccs.l - 1);
+        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, ccs.n - ccs.l - 1);
         let (lcccs_instance, _) = ccs.to_lcccs(&mut rng, &pedersen_params, &z1).unwrap();
 
         let mut sum_v_j_gamma = Fr::zero();

@@ -430,7 +430,7 @@ pub mod tests {
 
         // Create a basic CCS circuit
         let ccs = get_test_ccs::<Projective>();
-        let pedersen_params = Pedersen::new_params(&mut rng, ccs.n - ccs.l - 1);
+        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, ccs.n - ccs.l - 1);
 
         // Generate a satisfying witness
         let z_1 = get_test_z(3);
@@ -489,7 +489,7 @@ pub mod tests {
 
         let ccs = get_test_ccs::<Projective>();
 
-        let pedersen_params = Pedersen::new_params(&mut rng, ccs.n - ccs.l - 1);
+        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, ccs.n - ccs.l - 1);
 
         // LCCCS witness
         let z_1 = get_test_z(2);
@@ -557,7 +557,7 @@ pub mod tests {
 
         // Create a basic CCS circuit
         let ccs = get_test_ccs::<Projective>();
-        let pedersen_params = Pedersen::new_params(&mut rng, ccs.n - ccs.l - 1);
+        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, ccs.n - ccs.l - 1);
 
         let mu = 10;
         let nu = 15;
@@ -639,7 +639,7 @@ pub mod tests {
 
         // Create a basic CCS circuit
         let ccs = get_test_ccs::<Projective>();
-        let pedersen_params = Pedersen::new_params(&mut rng, ccs.n - ccs.l - 1);
+        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, ccs.n - ccs.l - 1);
 
         let poseidon_config = poseidon_test_config::<Fr>();
         // Prover's transcript

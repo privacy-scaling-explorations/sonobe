@@ -459,7 +459,6 @@ pub mod tests {
         .unwrap();
         nifs_cf_check.enforce_equal(&Boolean::<Fq>::TRUE).unwrap();
         assert!(cs.is_satisfied().unwrap());
-        dbg!(cs.num_constraints());
     }
 
     #[test]
@@ -500,7 +499,6 @@ pub mod tests {
         .unwrap();
         nifs_check.enforce_equal(&Boolean::<Fq>::TRUE).unwrap();
         assert!(cs.is_satisfied().unwrap());
-        dbg!(cs.num_constraints());
     }
 
     #[test]

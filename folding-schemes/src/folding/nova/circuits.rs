@@ -654,7 +654,6 @@ pub mod tests {
             .generate_constraints(cs.clone())
             .unwrap();
         cs.finalize();
-        println!("num_constraints={:?}", cs.num_constraints());
         let cs = cs.into_inner().unwrap();
         let r1cs = extract_r1cs::<Fr>(&cs);
         let (w, x) = extract_w_x::<Fr>(&cs);

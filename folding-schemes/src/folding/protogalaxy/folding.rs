@@ -18,7 +18,8 @@ use super::{CommittedInstance, Witness};
 
 use crate::ccs::r1cs::R1CS;
 use crate::transcript::Transcript;
-use crate::utils::{bit::bit_decompose, vec::*};
+use crate::utils::vec::*;
+use crate::utils::virtual_polynomial::bit_decompose;
 use crate::Error;
 
 #[derive(Clone, Debug)]

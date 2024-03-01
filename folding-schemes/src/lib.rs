@@ -40,10 +40,14 @@ pub enum Error {
     NotSameLength(String, usize, String, usize),
     #[error("Vector's length ({0}) is not the expected ({1})")]
     NotExpectedLength(usize, usize),
+    #[error("Vector ({0}) length ({1}) is not a power of two")]
+    NotPowerOfTwo(String, usize),
     #[error("Can not be empty")]
     Empty,
     #[error("Pedersen parameters length is not sufficient (generators.len={0} < vector.len={1} unsatisfied)")]
     PedersenParamsLen(usize, usize),
+    #[error("Randomness for blinding not found")]
+    MissingRandomness,
     #[error("Commitment verification failed")]
     CommitmentVerificationFail,
     #[error("IVC verification failed")]

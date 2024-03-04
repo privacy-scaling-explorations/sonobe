@@ -37,8 +37,8 @@ use utils::test_nova_setup;
 /// the new state is an array which contains the new state and a zero which will be ignored.
 ///
 /// This is useful for example if we want to fold multiple verifications of signatures, where the
-/// circuit F checks the signature and is folded for each of the signatures and public keys.
-/// To keep things simplier, the following example does not verify signatures but does a similar
+/// circuit F checks the signature and is folded for each of the signatures and public keys. To
+/// keep things simpler, the following example does not verify signatures but does a similar
 /// approach with a chain of hashes, where each iteration hashes the previous step output (z_i)
 /// together with an external input (w_i).
 ///
@@ -134,14 +134,14 @@ pub mod tests {
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        let circuit = ExternalInputsCircuits::<Fr>::new(poseidon_config);
-        let z_i = vec![Fr::from(1_u32), Fr::from(2_u32)];
+        let circuit = ExternalInputsCircuits::<Fr>::new((poseidon_config, vec![Fr::from(3_u32)]));
+        let z_i = vec![Fr::from(1_u32), Fr::zero()];
 
-        let z_i1 = circuit.step_native(z_i.clone()).unwrap();
+        let z_i1 = circuit.step_native(0, z_i.clone()).unwrap();
 
         let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i)).unwrap();
         let computed_z_i1Var = circuit
-            .generate_step_constraints(cs.clone(), z_iVar.clone())
+            .generate_step_constraints(cs.clone(), 0, z_iVar.clone())
             .unwrap();
         assert_eq!(computed_z_i1Var.value().unwrap(), z_i1);
     }

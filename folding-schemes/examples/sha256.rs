@@ -72,7 +72,7 @@ impl<F: PrimeField> FCircuit<F> for Sha256FCircuit<F> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use ark_r1cs_std::alloc::AllocVar;
+    use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
     use ark_relations::r1cs::ConstraintSystem;
 
     // test to check that the Sha256FCircuit computes the same values inside and outside the circuit
@@ -83,11 +83,11 @@ pub mod tests {
         let circuit = Sha256FCircuit::<Fr>::new(());
         let z_i = vec![Fr::from(1_u32)];
 
-        let z_i1 = circuit.step_native(z_i.clone()).unwrap();
+        let z_i1 = circuit.step_native(0, z_i.clone()).unwrap();
 
         let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i)).unwrap();
         let computed_z_i1Var = circuit
-            .generate_step_constraints(cs.clone(), z_iVar.clone())
+            .generate_step_constraints(cs.clone(), 0, z_iVar.clone())
             .unwrap();
         assert_eq!(computed_z_i1Var.value().unwrap(), z_i1);
     }

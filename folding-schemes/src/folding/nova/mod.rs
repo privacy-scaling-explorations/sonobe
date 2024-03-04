@@ -227,7 +227,7 @@ where
         let (prover_params, F_circuit) = prep_param;
 
         let (r1cs, cf_r1cs) =
-            get_r1cs::<C1, GC1, C2, GC2, FC>(&prover_params.poseidon_config, *F_circuit)?;
+            get_r1cs::<C1, GC1, C2, GC2, FC>(&prover_params.poseidon_config, F_circuit.clone())?;
 
         let verifier_params = VerifierParams::<C1, C2> {
             poseidon_config: prover_params.poseidon_config.clone(),
@@ -244,7 +244,7 @@ where
         let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
 
         let augmented_F_circuit =
-            AugmentedFCircuit::<C1, C2, GC2, FC>::empty(&pp.poseidon_config, F);
+            AugmentedFCircuit::<C1, C2, GC2, FC>::empty(&pp.poseidon_config, F.clone());
         let cf_circuit = CycleFoldCircuit::<C1, GC1>::empty();
 
         augmented_F_circuit.generate_constraints(cs.clone())?;
@@ -292,7 +292,14 @@ where
         let cfW_circuit: CycleFoldCircuit<C1, GC1>;
         let cfE_circuit: CycleFoldCircuit<C1, GC1>;
 
-        let z_i1 = self.F.step_native(self.z_i.clone())?;
+        if self.i > C1::ScalarField::from_le_bytes_mod_order(&std::usize::MAX.to_le_bytes()) {
+            return Err(Error::MaxStep);
+        }
+        let mut i_bytes: [u8; 8] = [0; 8];
+        i_bytes.copy_from_slice(&self.i.into_bigint().to_bytes_le()[..8]);
+        let i_usize: usize = usize::from_le_bytes(i_bytes);
+
+        let z_i1 = self.F.step_native(i_usize, self.z_i.clone())?;
 
         // compute T and cmT for AugmentedFCircuit
         let (T, cmT) = self.compute_cmT()?;
@@ -327,13 +334,14 @@ where
                 _gc2: PhantomData,
                 poseidon_config: self.poseidon_config.clone(),
                 i: Some(C1::ScalarField::zero()), // = i=0
-                z_0: Some(self.z_0.clone()),      // = z_i
+                i_usize: Some(0),
+                z_0: Some(self.z_0.clone()), // = z_i
                 z_i: Some(self.z_i.clone()),
                 u_i: Some(self.u_i.clone()), // = dummy
                 U_i: Some(self.U_i.clone()), // = dummy
                 U_i1: Some(U_i1.clone()),
                 cmT: Some(cmT),
-                F: self.F,
+                F: self.F.clone(),
                 x: Some(u_i1_x),
                 cf1_u_i: None,
                 cf2_u_i: None,
@@ -399,13 +407,14 @@ where
                 _gc2: PhantomData,
                 poseidon_config: self.poseidon_config.clone(),
                 i: Some(self.i),
+                i_usize: Some(i_usize),
                 z_0: Some(self.z_0.clone()),
                 z_i: Some(self.z_i.clone()),
                 u_i: Some(self.u_i.clone()),
                 U_i: Some(self.U_i.clone()),
                 U_i1: Some(U_i1.clone()),
                 cmT: Some(cmT),
-                F: self.F,
+                F: self.F.clone(),
                 x: Some(u_i1_x),
                 // cyclefold values
                 cf1_u_i: Some(cfW_u_i.clone()),

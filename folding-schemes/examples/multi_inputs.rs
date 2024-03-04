@@ -35,13 +35,13 @@ impl<F: PrimeField> FCircuit<F> for MultiInputsFCircuit<F> {
     fn new(_params: Self::Params) -> Self {
         Self { _f: PhantomData }
     }
-    fn state_len(self) -> usize {
+    fn state_len(&self) -> usize {
         5
     }
 
     /// computes the next state values in place, assigning z_{i+1} into z_i, and computing the new
     /// z_{i+1}
-    fn step_native(self, z_i: Vec<F>) -> Result<Vec<F>, Error> {
+    fn step_native(&self, _i: usize, z_i: Vec<F>) -> Result<Vec<F>, Error> {
         let a = z_i[0] + F::from(4_u32);
         let b = z_i[1] + F::from(40_u32);
         let c = z_i[2] * F::from(4_u32);
@@ -53,8 +53,9 @@ impl<F: PrimeField> FCircuit<F> for MultiInputsFCircuit<F> {
 
     /// generates the constraints for the step of F for the given z_i
     fn generate_step_constraints(
-        self,
+        &self,
         cs: ConstraintSystemRef<F>,
+        _i: usize,
         z_i: Vec<FpVar<F>>,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let four = FpVar::<F>::new_constant(cs.clone(), F::from(4u32))?;
@@ -79,7 +80,7 @@ pub mod tests {
 
     // test to check that the MultiInputsFCircuit computes the same values inside and outside the circuit
     #[test]
-    fn test_add_f_circuit() {
+    fn test_f_circuit() {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         let circuit = MultiInputsFCircuit::<Fr>::new(());

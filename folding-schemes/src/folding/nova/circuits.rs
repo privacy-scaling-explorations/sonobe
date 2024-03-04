@@ -245,6 +245,7 @@ pub struct AugmentedFCircuit<
     pub _gc2: PhantomData<GC2>,
     pub poseidon_config: PoseidonConfig<CF1<C1>>,
     pub i: Option<CF1<C1>>,
+    pub i_usize: Option<usize>,
     pub z_0: Option<Vec<C1::ScalarField>>,
     pub z_i: Option<Vec<C1::ScalarField>>,
     pub u_i: Option<CommittedInstance<C1>>,
@@ -278,6 +279,7 @@ where
             _gc2: PhantomData,
             poseidon_config: poseidon_config.clone(),
             i: None,
+            i_usize: None,
             z_0: None,
             z_i: None,
             u_i: None,
@@ -349,7 +351,10 @@ where
         )?;
 
         // get z_{i+1} from the F circuit
-        let z_i1 = self.F.generate_step_constraints(cs.clone(), z_i.clone())?;
+        let i_usize = self.i_usize.unwrap_or(0);
+        let z_i1 = self
+            .F
+            .generate_step_constraints(cs.clone(), i_usize, z_i.clone())?;
 
         let zero = FpVar::<CF1<C1>>::new_constant(cs.clone(), CF1::<C1>::zero())?;
         let is_not_basecase = i.is_neq(&zero)?;

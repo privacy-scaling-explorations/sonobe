@@ -10,7 +10,7 @@ use ark_std::fmt::Debug;
 /// inside the agmented F' function).
 /// The parameter z_i denotes the current state, and z_{i+1} denotes the next state after applying
 /// the step.
-pub trait FCircuit<F: PrimeField>: Clone + Copy + Debug {
+pub trait FCircuit<F: PrimeField>: Clone + Debug {
     type Params: Debug;
 
     /// returns a new FCircuit instance
@@ -18,14 +18,15 @@ pub trait FCircuit<F: PrimeField>: Clone + Copy + Debug {
 
     /// returns the number of elements in the state of the FCircuit, which corresponds to the
     /// FCircuit inputs.
-    fn state_len(self) -> usize;
+    fn state_len(&self) -> usize;
 
     /// computes the next state values in place, assigning z_{i+1} into z_i, and computing the new
     /// z_{i+1}
     fn step_native(
         // this method uses self, so that each FCircuit implementation (and different frontends)
         // can hold a state if needed to store data to compute the next state.
-        self,
+        &self,
+        i: usize,
         z_i: Vec<F>,
     ) -> Result<Vec<F>, Error>;
 
@@ -33,8 +34,9 @@ pub trait FCircuit<F: PrimeField>: Clone + Copy + Debug {
     fn generate_step_constraints(
         // this method uses self, so that each FCircuit implementation (and different frontends)
         // can hold a state if needed to store data to generate the constraints.
-        self,
+        &self,
         cs: ConstraintSystemRef<F>,
+        i: usize,
         z_i: Vec<FpVar<F>>,
     ) -> Result<Vec<FpVar<F>>, SynthesisError>;
 }
@@ -63,15 +65,16 @@ pub mod tests {
         fn new(_params: Self::Params) -> Self {
             Self { _f: PhantomData }
         }
-        fn state_len(self) -> usize {
+        fn state_len(&self) -> usize {
             1
         }
-        fn step_native(self, z_i: Vec<F>) -> Result<Vec<F>, Error> {
+        fn step_native(&self, _i: usize, z_i: Vec<F>) -> Result<Vec<F>, Error> {
             Ok(vec![z_i[0] * z_i[0] * z_i[0] + z_i[0] + F::from(5_u32)])
         }
         fn generate_step_constraints(
-            self,
+            &self,
             cs: ConstraintSystemRef<F>,
+            _i: usize,
             z_i: Vec<FpVar<F>>,
         ) -> Result<Vec<FpVar<F>>, SynthesisError> {
             let five = FpVar::<F>::new_constant(cs.clone(), F::from(5u32))?;
@@ -97,10 +100,10 @@ pub mod tests {
                 n_constraints: params,
             }
         }
-        fn state_len(self) -> usize {
+        fn state_len(&self) -> usize {
             1
         }
-        fn step_native(self, z_i: Vec<F>) -> Result<Vec<F>, Error> {
+        fn step_native(&self, _i: usize, z_i: Vec<F>) -> Result<Vec<F>, Error> {
             let mut z_i1 = F::one();
             for _ in 0..self.n_constraints - 1 {
                 z_i1 *= z_i[0];
@@ -108,8 +111,9 @@ pub mod tests {
             Ok(vec![z_i1])
         }
         fn generate_step_constraints(
-            self,
+            &self,
             cs: ConstraintSystemRef<F>,
+            _i: usize,
             z_i: Vec<FpVar<F>>,
         ) -> Result<Vec<FpVar<F>>, SynthesisError> {
             let mut z_i1 = FpVar::<F>::new_witness(cs.clone(), || Ok(F::one()))?;
@@ -143,7 +147,9 @@ pub mod tests {
             let z_i1 = Vec::<FpVar<F>>::new_input(cs.clone(), || {
                 Ok(self.z_i1.unwrap_or(vec![F::zero()]))
             })?;
-            let computed_z_i1 = self.FC.generate_step_constraints(cs.clone(), z_i.clone())?;
+            let computed_z_i1 = self
+                .FC
+                .generate_step_constraints(cs.clone(), 0, z_i.clone())?;
 
             computed_z_i1.enforce_equal(&z_i1)?;
             Ok(())
@@ -173,7 +179,7 @@ pub mod tests {
         let wrapper_circuit = WrapperCircuit::<Fr, CustomFCircuit<Fr>> {
             FC: custom_circuit,
             z_i: Some(z_i.clone()),
-            z_i1: Some(custom_circuit.step_native(z_i).unwrap()),
+            z_i1: Some(custom_circuit.step_native(0, z_i).unwrap()),
         };
         wrapper_circuit.generate_constraints(cs.clone()).unwrap();
         assert_eq!(cs.num_constraints(), n_constraints);

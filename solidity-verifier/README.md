@@ -46,6 +46,10 @@ Solidity Verifier currently supports the generation of Solidity smart contracts 
 solidity-verifier [OPTIONS] -p <PROTOCOL> -pd <PROTOCOL_DATA> -o <OUTPUT_PATH>
 ```
 
+A real use case (which was used to test the tool itself):
+`solidity-verifier -p groth16 -pd ./folding-verifier-solidity/assets/G16_test_vk_data`
+This would generate a Groth16 verifier contract for the given G16 data (which consists on the G16_Vkey only) and store this contract in `$pwd`.
+
 ### Options:
     -v, --verbose: Increase logging verbosity
     -q, --quiet: Decrease logging verbosity

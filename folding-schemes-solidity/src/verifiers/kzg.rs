@@ -41,25 +41,6 @@ impl From<KzgData> for KZG10Verifier {
     }
 }
 
-impl KZG10Verifier {
-    #[cfg(test)]
-    pub(crate) fn new(vk: VerifierKey<Bn254>, crs: Vec<G1Affine>) -> KZG10Verifier {
-        let g1_string_repr = g1_to_fq_repr(vk.g);
-        let g2_string_repr = g2_to_fq_repr(vk.h);
-        let vk_string_repr = g2_to_fq_repr(vk.beta_h);
-        let g1_crs_len = crs.len();
-        let g1_crs = crs.iter().map(|g1| g1_to_fq_repr(*g1)).collect();
-
-        KZG10Verifier {
-            g1: g1_string_repr,
-            g2: g2_string_repr,
-            vk: vk_string_repr,
-            g1_crs,
-            g1_crs_len,
-        }
-    }
-}
-
 #[derive(CanonicalDeserialize, CanonicalSerialize, Clone, PartialEq, Debug)]
 pub struct KzgData {
     pub(crate) vk: VerifierKey<Bn254>,

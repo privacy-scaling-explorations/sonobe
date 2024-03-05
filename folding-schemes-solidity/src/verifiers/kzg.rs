@@ -1,7 +1,7 @@
 use crate::utils::encoding::{g1_to_fq_repr, g2_to_fq_repr};
 use crate::utils::encoding::{G1Repr, G2Repr};
 use crate::utils::HeaderInclusion;
-use crate::{ProtocolData, GPL3_SDPX_IDENTIFIER};
+use crate::{ProtocolData, MIT_SDPX_IDENTIFIER};
 use ark_bn254::{Bn254, G1Affine};
 use ark_poly_commit::kzg10::VerifierKey;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -61,7 +61,7 @@ impl ProtocolData for KzgData {
 
     fn render_as_template(self, pragma: Option<String>) -> Vec<u8> {
         HeaderInclusion::<KZG10Verifier>::builder()
-            .sdpx(GPL3_SDPX_IDENTIFIER.to_string())
+            .sdpx(MIT_SDPX_IDENTIFIER.to_string())
             .pragma_version(pragma.unwrap_or(PRAGMA_KZG10_VERIFIER.to_string()))
             .template(self)
             .build()

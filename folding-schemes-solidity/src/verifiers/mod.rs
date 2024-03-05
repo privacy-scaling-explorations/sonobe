@@ -7,6 +7,7 @@ pub(crate) const PRAGMA_KZG10_VERIFIER: &str = "pragma solidity >=0.8.1 <=0.8.4;
 
 /// Default SDPX License identifier
 pub(crate) const GPL3_SDPX_IDENTIFIER: &str = "// SPDX-License-Identifier: GPL-3.0";
+pub(crate) const MIT_SDPX_IDENTIFIER: &str = "// SPDX-License-Identifier: MIT";
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write};
 
 mod g16;

@@ -58,6 +58,7 @@ solidity-verifier [OPTIONS] -p <PROTOCOL> -pd <PROTOCOL_DATA> -o <OUTPUT_PATH>
 
 ## License
 Solidity Verifier is released under the GPL3 license for any of the protocols that include `Groth16`. See the LICENSE file in the project repository for more details.
+For the rest of contracts/protocols and the CLI itself, this tooling is released under MIT/Apache license.
 
 ## Contributing
 Feel free to explore, use, and contribute to Solidity Verifier as we strive to enhance privacy and scalability in the blockchain space!

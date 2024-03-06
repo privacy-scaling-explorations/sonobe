@@ -6,7 +6,8 @@
  * @author  PSE & 0xPARC
  * @title   NovaDecider contract, for verifying zk-snarks Nova IVC proofs.
  * @dev     This is an askama template. It will feature a snarkjs groth16 and a kzg10 verifier, from which this contract inherits.
- *          WARNING: This contract is known to not be sound. It lacks checks to ensure that no soundness issues can happen.
+ *          WARNING: This contract is not complete nor finished. It lacks checks to ensure that no soundness issues can happen.
+ *          Indeed, we know some of the checks that are missing. And we're working on the solution
  *          but for now, it's good enough for testing and benchmarking.
  */
 contract NovaDecider is Groth16Verifier, KZG10Verifier {

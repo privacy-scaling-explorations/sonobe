@@ -110,6 +110,7 @@ mod tests {
         }
     }
 
+    #[allow(clippy::type_complexity)]
     fn setup<'a>(
         n: usize,
     ) -> (

@@ -68,8 +68,8 @@ mod tests {
     use askama::Template;
     use folding_schemes::{
         commitment::{
-            kzg::{KZGProver, KZGSetup, ProverKey},
-            CommitmentProver,
+            kzg::{ProverKey, KZG},
+            CommitmentScheme,
         },
         transcript::{
             poseidon::{poseidon_test_config, PoseidonTranscript},
@@ -131,7 +131,7 @@ mod tests {
         let (g16_pk, g16_vk) = Groth16::<Bn254>::setup(circuit, &mut rng).unwrap();
 
         let (kzg_pk, kzg_vk): (ProverKey<G1>, VerifierKey<Bn254>) =
-            KZGSetup::<Bn254>::setup(&mut rng, n);
+            KZG::<Bn254>::setup(&mut rng, n).unwrap();
         (kzg_pk, kzg_vk, g16_pk, g16_vk, circuit)
     }
 
@@ -290,9 +290,9 @@ mod tests {
         let v: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(&mut rng))
             .take(DEFAULT_SETUP_LEN)
             .collect();
-        let cm = KZGProver::<G1>::commit(&kzg_pk, &v, &Fr::zero()).unwrap();
+        let cm = KZG::<Bn254>::commit(&kzg_pk, &v, &Fr::zero()).unwrap();
         let (eval, proof) =
-            KZGProver::<G1>::prove(&kzg_pk, transcript_p, &cm, &v, &Fr::zero(), None).unwrap();
+            KZG::<Bn254>::prove(&kzg_pk, transcript_p, &cm, &v, &Fr::zero(), None).unwrap();
         let template = HeaderInclusion::<KZG10Verifier>::builder()
             .template(kzg_data)
             .build()
@@ -372,9 +372,9 @@ mod tests {
         let v: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(&mut rng))
             .take(DEFAULT_SETUP_LEN)
             .collect();
-        let cm = KZGProver::<G1>::commit(&kzg_pk, &v, &Fr::zero()).unwrap();
+        let cm = KZG::<Bn254>::commit(&kzg_pk, &v, &Fr::zero()).unwrap();
         let (eval, proof) =
-            KZGProver::<G1>::prove(&kzg_pk, transcript_p, &cm, &v, &Fr::zero(), None).unwrap();
+            KZG::<Bn254>::prove(&kzg_pk, transcript_p, &cm, &v, &Fr::zero(), None).unwrap();
 
         let decider_template = HeaderInclusion::<NovaCyclefoldDecider>::builder()
             .template(nova_cyclefold_data)

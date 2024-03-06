@@ -26,9 +26,8 @@ espresso_subroutines = {git="https://github.com/EspressoSystems/hyperplonk", pac
 [dev-dependencies]
 ark-pallas = {version="0.4.0", features=["r1cs"]}
 ark-vesta = {version="0.4.0", features=["r1cs"]}
-ark-bn254 = "0.4.0"
-ark-mnt4-298 = {version="0.4.0", features=["r1cs"]}
-ark-mnt6-298 = {version="0.4.0", features=["r1cs"]}
+ark-bn254 = {version="0.4.0", features=["r1cs"]}
+ark-grumpkin = {version="0.4.0", features=["r1cs"]}
 ark-groth16 = { version = "^0.4.0" }
 rand = "0.8.5"
 tracing = { version = "0.1", default-features = false, features = [ "attributes" ] }
@@ -45,4 +44,3 @@ parallel = [
     "ark-crypto-primitives/parallel",  
     "ark-r1cs-std/parallel",  
     ]
-

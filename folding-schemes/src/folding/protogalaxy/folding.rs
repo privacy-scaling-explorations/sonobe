@@ -384,7 +384,7 @@ mod tests {
     use ark_std::UniformRand;
 
     use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z};
-    use crate::commitment::{pedersen::Pedersen, CommitmentProver};
+    use crate::commitment::{pedersen::Pedersen, CommitmentScheme};
     use crate::transcript::poseidon::{poseidon_test_config, PoseidonTranscript};
 
     pub(crate) fn check_instance<C: CurveGroup>(
@@ -452,7 +452,7 @@ mod tests {
         Vec<CommittedInstance<Projective>>,
     ) {
         let mut rng = ark_std::test_rng();
-        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, 100); // 100 is wip, will get it from actual vec
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, 100).unwrap(); // 100 is wip, will get it from actual vec
 
         let z = get_test_z::<Fr>(3);
         let mut zs: Vec<Vec<Fr>> = Vec::new();
@@ -471,8 +471,8 @@ mod tests {
             w: z.clone(),
             r_w: Fr::rand(&mut rng),
         };
-        let phi =
-            Pedersen::<Projective>::commit(&pedersen_params, &witness.w, &witness.r_w).unwrap();
+        let phi = Pedersen::<Projective, true>::commit(&pedersen_params, &witness.w, &witness.r_w)
+            .unwrap();
         let instance = CommittedInstance::<Projective> {
             phi,
             betas: betas.clone(),
@@ -487,9 +487,12 @@ mod tests {
                 w: zs[i].clone(),
                 r_w: Fr::rand(&mut rng),
             };
-            let phi_i =
-                Pedersen::<Projective>::commit(&pedersen_params, &witness_i.w, &witness_i.r_w)
-                    .unwrap();
+            let phi_i = Pedersen::<Projective, true>::commit(
+                &pedersen_params,
+                &witness_i.w,
+                &witness_i.r_w,
+            )
+            .unwrap();
             let instance_i = CommittedInstance::<Projective> {
                 phi: phi_i,
                 betas: betas.clone(),

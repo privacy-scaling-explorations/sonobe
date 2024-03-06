@@ -378,7 +378,7 @@ pub mod tests {
     use ark_std::test_rng;
     use ark_std::UniformRand;
 
-    use crate::commitment::pedersen::Pedersen;
+    use crate::commitment::{pedersen::Pedersen, CommitmentScheme};
     use ark_pallas::{Fr, Projective};
 
     #[test]
@@ -395,7 +395,8 @@ pub mod tests {
         let sigmas_thetas =
             compute_sigmas_and_thetas(&ccs, &[z1.clone()], &[z2.clone()], &r_x_prime);
 
-        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, ccs.n - ccs.l - 1);
+        let (pedersen_params, _) =
+            Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
 
         let (lcccs, w1) = ccs.to_lcccs(&mut rng, &pedersen_params, &z1).unwrap();
         let (cccs, w2) = ccs.to_cccs(&mut rng, &pedersen_params, &z2).unwrap();
@@ -430,7 +431,8 @@ pub mod tests {
 
         // Create a basic CCS circuit
         let ccs = get_test_ccs::<Projective>();
-        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, ccs.n - ccs.l - 1);
+        let (pedersen_params, _) =
+            Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
 
         // Generate a satisfying witness
         let z_1 = get_test_z(3);
@@ -489,7 +491,8 @@ pub mod tests {
 
         let ccs = get_test_ccs::<Projective>();
 
-        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, ccs.n - ccs.l - 1);
+        let (pedersen_params, _) =
+            Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
 
         // LCCCS witness
         let z_1 = get_test_z(2);
@@ -557,7 +560,8 @@ pub mod tests {
 
         // Create a basic CCS circuit
         let ccs = get_test_ccs::<Projective>();
-        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, ccs.n - ccs.l - 1);
+        let (pedersen_params, _) =
+            Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
 
         let mu = 10;
         let nu = 15;
@@ -639,7 +643,8 @@ pub mod tests {
 
         // Create a basic CCS circuit
         let ccs = get_test_ccs::<Projective>();
-        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, ccs.n - ccs.l - 1);
+        let (pedersen_params, _) =
+            Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
 
         let poseidon_config = poseidon_test_config::<Fr>();
         // Prover's transcript

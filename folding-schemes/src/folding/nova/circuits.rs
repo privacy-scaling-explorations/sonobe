@@ -509,8 +509,8 @@ where
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use ark_bn254::{Fr, G1Projective as Projective};
     use ark_ff::BigInteger;
-    use ark_pallas::{Fr, Projective};
     use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::UniformRand;

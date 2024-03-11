@@ -41,13 +41,13 @@ impl<F: PrimeField> FCircuit<F> for Sha256FCircuit<F> {
     fn new(_params: Self::Params) -> Self {
         Self { _f: PhantomData }
     }
-    fn state_len(self) -> usize {
+    fn state_len(&self) -> usize {
         1
     }
 
     /// computes the next state values in place, assigning z_{i+1} into z_i, and computing the new
     /// z_{i+1}
-    fn step_native(self, z_i: Vec<F>) -> Result<Vec<F>, Error> {
+    fn step_native(&self, _i: usize, z_i: Vec<F>) -> Result<Vec<F>, Error> {
         let out_bytes = Sha256::evaluate(&(), z_i[0].into_bigint().to_bytes_le()).unwrap();
         let out: Vec<F> = out_bytes.to_field_elements().unwrap();
 
@@ -56,8 +56,9 @@ impl<F: PrimeField> FCircuit<F> for Sha256FCircuit<F> {
 
     /// generates the constraints for the step of F for the given z_i
     fn generate_step_constraints(
-        self,
+        &self,
         _cs: ConstraintSystemRef<F>,
+        _i: usize,
         z_i: Vec<FpVar<F>>,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let unit_var = UnitVar::default();
@@ -71,22 +72,22 @@ impl<F: PrimeField> FCircuit<F> for Sha256FCircuit<F> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use ark_r1cs_std::alloc::AllocVar;
+    use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
     use ark_relations::r1cs::ConstraintSystem;
 
     // test to check that the Sha256FCircuit computes the same values inside and outside the circuit
     #[test]
-    fn test_sha256_f_circuit() {
+    fn test_f_circuit() {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         let circuit = Sha256FCircuit::<Fr>::new(());
         let z_i = vec![Fr::from(1_u32)];
 
-        let z_i1 = circuit.step_native(z_i.clone()).unwrap();
+        let z_i1 = circuit.step_native(0, z_i.clone()).unwrap();
 
         let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i)).unwrap();
         let computed_z_i1Var = circuit
-            .generate_step_constraints(cs.clone(), z_iVar.clone())
+            .generate_step_constraints(cs.clone(), 0, z_iVar.clone())
             .unwrap();
         assert_eq!(computed_z_i1Var.value().unwrap(), z_i1);
     }

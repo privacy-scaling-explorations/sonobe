@@ -66,6 +66,8 @@ pub enum Error {
     NewDomainFail,
     #[error("Feature '{0}' not supported yet")]
     NotSupportedYet(String),
+    #[error("max i-th step reached (usize limit reached)")]
+    MaxStep,
 
     #[error(transparent)]
     ProtoGalaxy(folding::protogalaxy::ProtoGalaxyError),

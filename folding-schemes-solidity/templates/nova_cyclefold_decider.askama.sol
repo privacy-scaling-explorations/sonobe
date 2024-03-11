@@ -16,7 +16,6 @@ contract NovaDecider is Groth16Verifier, KZG10Verifier {
         require(success_kzg == true, "KZG  Failed");
         
         // for now, we do not relate the Groth16 and KZG10 proofs
-        // this will done in the future, by computing challenge points from the groth16 proof's data
         bool success_g16 =  super.verifyProof(_pA, _pB, _pC, _pubSignals);
         require(success_g16 == true, "G16 Failed");
 

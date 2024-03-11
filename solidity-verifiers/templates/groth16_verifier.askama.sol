@@ -1,7 +1,7 @@
 /*
     Copyright 2021 0KIMS association.
 
-    * `folding-schemes-solidity` added comment
+    * `solidity-verifiers` added comment
         This file is a template built out of [snarkJS](https://github.com/iden3/snarkjs) groth16 verifier.
         See the original ejs template [here](https://github.com/iden3/snarkjs/blob/master/templates/verifier_groth16.sol.ejs)
     *

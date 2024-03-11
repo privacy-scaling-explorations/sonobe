@@ -1,8 +1,8 @@
 [workspace]
 members = [
     "folding-schemes",
-    "folding-schemes-solidity",
-    "solidity-verifier"
+    "solidity-verifiers",
+    "cli"
 ]
 resolver = "2"
 

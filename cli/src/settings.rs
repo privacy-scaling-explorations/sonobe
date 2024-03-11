@@ -1,6 +1,6 @@
 use ark_serialize::SerializationError;
 use clap::{Parser, ValueEnum};
-use folding_schemes_solidity::{Groth16Data, KzgData, NovaCyclefoldData, ProtocolData};
+use solidity_verifiers::{Groth16Data, KzgData, NovaCyclefoldData, ProtocolData};
 use std::{env, fmt::Display, path::PathBuf};
 
 fn get_default_out_path() -> PathBuf {

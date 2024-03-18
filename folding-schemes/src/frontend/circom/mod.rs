@@ -85,6 +85,16 @@ mod tests {
     use ark_circom::CircomCircuit;
     use ark_circom::circom::{CircomBuilder, CircomConfig};
 
+    /*
+    test_circuit represents 35 = x^3 + x + 5 in test_folder/test_circuit.circom.
+    In the test_circom_conversion_success function, x is assigned the value 3, which satisfies the R1CS correctly.
+    */
+
+    /*
+    To generate .r1cs and .wasm files, run the below command in the terminal.
+    bash ./folding-schemes/src/frontend/circom/test_folder/compile.sh
+    */
+
     // satisfied function that uses the circom builder
     #[test]
     fn satisfied() {

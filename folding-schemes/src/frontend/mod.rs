@@ -82,19 +82,17 @@ impl<F: PrimeField> FCircuit<F> for CircomtoFCircuit<F> {
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let mut input_values = Vec::new();
         // Convert each FpVar to BigInt and add it to the input_values vector
-        let z_i = vec![F::from(3u32)];
+        // let z_i = vec![F::from(3u32)];
         for fp_var in z_i.iter() {
             // Convert from FpVar to PrimeField::Bigint
-            // let prime_bigint = fp_var.value()?;
-            let prime_bigint = *fp_var; // WIP
+            let prime_bigint = fp_var.value()?;
+            // let prime_bigint = *fp_var; // WIP
             // Convert from PrimeField::Bigint to num_bigint::BigInt
             let num_bigint = self.circom_wrapper.ark_bigint_to_num_bigint(prime_bigint);
             input_values.push(num_bigint);
         }
     
-        // Temporarily
         let big_int_inputs = vec![("ivc_input".to_string(), input_values)];
-        // let big_int_inputs = vec![("ivc_input".to_string(), vec![BigInt::from(5)])];
 
         let (r1cs, witness) = self.circom_wrapper.extract_r1cs_and_witness(&big_int_inputs)
             .map_err(|_| SynthesisError::AssignmentMissing)?;
@@ -277,12 +275,19 @@ pub mod tests {
 
         // let z_i_values = vec![Fr::from(3u32)];
 
-        // let z_i_vars = z_i_values.into_iter().map(|val| {
-        //     FpVar::<Fr>::new_witness(cs.clone(), || Ok(val))
-        //         .expect("Failed to create FpVar")
-        // }).collect::<Vec<FpVar<Fr>>>();
+        //let z_i_vars = z_i_values.into_iter().map(|val| {
+        //    FpVar::<Fr>::new_witness(cs.clone(), || Ok(val))
+        //        .expect("Failed to create FpVar")
+        //}).collect::<Vec<FpVar<Fr>>>();
 
-        let z_i_vars: Vec<FpVar<Fr>> = vec![];
+        // let z_i_vars: Vec<FpVar<Fr>> = vec![];
+
+        let three = Fr::from(3u32);
+
+        let three_var = FpVar::<Fr>::new_constant(cs.clone(), three)
+        .expect("Failed to create constant FpVar");
+
+        let z_i_vars: Vec<FpVar<Fr>> = vec![three_var];
 
         circom_fcircuit.generate_step_constraints(cs.clone(), z_i_vars)?;
 

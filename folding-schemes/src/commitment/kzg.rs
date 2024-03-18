@@ -35,6 +35,7 @@ pub struct ProverKey<'a, C: CurveGroup> {
     pub powers_of_g: Cow<'a, [C::Affine]>,
 }
 
+#[derive(Debug)]
 pub struct KZGSetup<P: Pairing> {
     _p: PhantomData<P>,
 }

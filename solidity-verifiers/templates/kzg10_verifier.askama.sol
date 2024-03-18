@@ -1,7 +1,3 @@
-{{ sdpx }}
-
-{{ pragma_version }}
-
 /**
  * @author  Privacy and Scaling Explorations team - pse.dev
  * @dev     Contains utility functions for ops in BN254; in G_1 mostly.

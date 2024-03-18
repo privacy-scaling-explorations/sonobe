@@ -112,8 +112,8 @@ mod tests {
         let wrapper = CircomWrapper::<Fr>::new(r1cs_path, wasm_path);
 
         let (r1cs, witness) = wrapper.extract_r1cs_and_witness(&inputs)?;
-        println!("Test passed with r1cs: {:?}", r1cs);
-        println!("Test passed with witness: {:?}", witness);
+        println!("r1cs: {:?}", r1cs);
+        println!("witness: {:?}", witness);
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 

@@ -10,4 +10,4 @@ template Example () {
     ivc_output[0] === 35;
 }
 
-component main { public [ivc_input] } = Example();
+component main = Example();

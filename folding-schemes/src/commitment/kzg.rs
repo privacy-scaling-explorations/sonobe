@@ -9,7 +9,7 @@ use ark_ec::{pairing::Pairing, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_poly::{
     univariate::{DenseOrSparsePolynomial, DensePolynomial},
-    DenseUVPolynomial, EvaluationDomain, Evaluations, GeneralEvaluationDomain, Polynomial,
+    DenseUVPolynomial, Polynomial,
 };
 use ark_poly_commit::kzg10::{
     Commitment as KZG10Commitment, Proof as KZG10Proof, VerifierKey, KZG10,
@@ -22,6 +22,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use super::CommitmentScheme;
 use crate::transcript::Transcript;
+use crate::utils::vec::poly_from_vec;
 use crate::Error;
 
 /// ProverKey defines a similar struct as in ark_poly_commit::kzg10::Powers, but instead of
@@ -30,6 +31,12 @@ use crate::Error;
 pub struct ProverKey<'a, C: CurveGroup> {
     /// Group elements of the form `β^i G`, for different values of `i`.
     pub powers_of_g: Cow<'a, [C::Affine]>,
+}
+
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
+pub struct Proof<C: CurveGroup> {
+    pub eval: C::ScalarField,
+    pub proof: C,
 }
 
 /// KZG implements the CommitmentScheme trait for the KZG commitment scheme.
@@ -44,8 +51,7 @@ where
 {
     type ProverParams = ProverKey<'a, E::G1>;
     type VerifierParams = VerifierKey<E>;
-    /// Proof is a tuple containing (evaluation, proof)
-    type Proof = (E::ScalarField, E::G1);
+    type Proof = Proof<E::G1>;
     type ProverChallenge = E::ScalarField;
     type Challenge = E::ScalarField;
 
@@ -144,7 +150,7 @@ where
             // should not give an error.
             .unwrap();
 
-        let evaluation = if remainder_poly.is_zero() {
+        let eval = if remainder_poly.is_zero() {
             E::ScalarField::zero()
         } else {
             remainder_poly[0]
@@ -158,7 +164,7 @@ where
             &witness_coeffs,
         );
 
-        Ok((evaluation, proof))
+        Ok(Proof { eval, proof })
     }
 
     fn verify(
@@ -187,9 +193,9 @@ where
             params, // vk
             &KZG10Commitment(cm.into_affine()),
             challenge,
-            proof.0, // eval
+            proof.eval,
             &KZG10Proof::<E> {
-                w: proof.1.into_affine(),
+                w: proof.proof.into_affine(),
                 random_v: None,
             },
         )?;
@@ -198,13 +204,6 @@ where
         }
         Ok(())
     }
-}
-
-/// returns the interpolated polynomial of degree=v.len().next_power_of_two(), which passes through all
-/// the given elements of v.
-fn poly_from_vec<F: PrimeField>(v: Vec<F>) -> Result<DensePolynomial<F>, Error> {
-    let D = GeneralEvaluationDomain::<F>::new(v.len()).ok_or(Error::NewDomainFail)?;
-    Ok(Evaluations::from_vec_and_domain(v, D).interpolate())
 }
 
 fn check_degree_is_too_large(

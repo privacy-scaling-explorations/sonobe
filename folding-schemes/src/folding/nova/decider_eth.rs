@@ -15,7 +15,9 @@ use super::{
     nifs::NIFS,
     CommittedInstance, Nova, Witness,
 };
-use crate::commitment::{pedersen::Params as PedersenParams, CommitmentScheme};
+use crate::commitment::{
+    kzg::Proof as KZGProof, pedersen::Params as PedersenParams, CommitmentScheme,
+};
 use crate::folding::circuits::nonnative::point_to_nonnative_limbs_custom_opt;
 use crate::frontend::FCircuit;
 use crate::Error;
@@ -61,7 +63,12 @@ where
     GC1: CurveVar<C1, CF2<C1>>,
     GC2: CurveVar<C2, CF2<C2>>,
     FC: FCircuit<C1::ScalarField>,
-    CS1: CommitmentScheme<C1, ProverChallenge = C1::ScalarField, Challenge = C1::ScalarField>, // KZG commitment, where challenge is C1::Fr elem
+    CS1: CommitmentScheme<
+        C1,
+        ProverChallenge = C1::ScalarField,
+        Challenge = C1::ScalarField,
+        Proof = KZGProof<C1>,
+    >, // KZG commitment, where challenge is C1::Fr elem
     // enforce that the CS2 is Pedersen commitment scheme, since we're at Ethereum's EVM decider
     CS2: CommitmentScheme<C2, ProverParams = PedersenParams<C2>>,
     S: SNARK<C1::ScalarField>,
@@ -200,6 +207,10 @@ where
             cmW_x,
             cmW_y,
             proof.kzg_challenges.to_vec(),
+            vec![
+                proof.kzg_proofs[0].eval, // eval_W
+                proof.kzg_proofs[1].eval, // eval_E
+            ],
             cmT_x,
             cmT_y,
             vec![proof.r],

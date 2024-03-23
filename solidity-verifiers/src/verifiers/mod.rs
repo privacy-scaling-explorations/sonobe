@@ -291,8 +291,7 @@ mod tests {
             .take(DEFAULT_SETUP_LEN)
             .collect();
         let cm = KZG::<Bn254>::commit(&kzg_pk, &v, &Fr::zero()).unwrap();
-        let (eval, proof) =
-            KZG::<Bn254>::prove(&kzg_pk, transcript_p, &cm, &v, &Fr::zero(), None).unwrap();
+        let proof = KZG::<Bn254>::prove(&kzg_pk, transcript_p, &cm, &v, &Fr::zero(), None).unwrap();
         let template = HeaderInclusion::<KZG10Verifier>::builder()
             .template(kzg_data)
             .build()
@@ -303,10 +302,10 @@ mod tests {
         let mut evm = Evm::default();
         let verifier_address = evm.create(kzg_verifier_bytecode);
 
-        let (cm_affine, proof_affine) = (cm.into_affine(), proof.into_affine());
+        let (cm_affine, proof_affine) = (cm.into_affine(), proof.proof.into_affine());
         let (x_comm, y_comm) = cm_affine.xy().unwrap();
         let (x_proof, y_proof) = proof_affine.xy().unwrap();
-        let y = eval.into_bigint().to_bytes_be();
+        let y = proof.eval.into_bigint().to_bytes_be();
 
         transcript_v.absorb_point(&cm).unwrap();
         let x = transcript_v.get_challenge();
@@ -373,8 +372,7 @@ mod tests {
             .take(DEFAULT_SETUP_LEN)
             .collect();
         let cm = KZG::<Bn254>::commit(&kzg_pk, &v, &Fr::zero()).unwrap();
-        let (eval, proof) =
-            KZG::<Bn254>::prove(&kzg_pk, transcript_p, &cm, &v, &Fr::zero(), None).unwrap();
+        let proof = KZG::<Bn254>::prove(&kzg_pk, transcript_p, &cm, &v, &Fr::zero(), None).unwrap();
 
         let decider_template = HeaderInclusion::<NovaCyclefoldDecider>::builder()
             .template(nova_cyclefold_data)
@@ -387,10 +385,10 @@ mod tests {
         let mut evm = Evm::default();
         let verifier_address = evm.create(nova_cyclefold_verifier_bytecode);
 
-        let (cm_affine, proof_affine) = (cm.into_affine(), proof.into_affine());
+        let (cm_affine, proof_affine) = (cm.into_affine(), proof.proof.into_affine());
         let (x_comm, y_comm) = cm_affine.xy().unwrap();
         let (x_proof, y_proof) = proof_affine.xy().unwrap();
-        let y = eval.into_bigint().to_bytes_be();
+        let y = proof.eval.into_bigint().to_bytes_be();
 
         transcript_v.absorb_point(&cm).unwrap();
         let x = transcript_v.get_challenge();

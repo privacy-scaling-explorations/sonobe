@@ -4,17 +4,19 @@ use ark_crypto_primitives::crh::poseidon::constraints::CRHParametersVar;
 use ark_crypto_primitives::sponge::{poseidon::PoseidonConfig, Absorb};
 use ark_ec::{CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
+use ark_poly::Polynomial;
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
     eq::EqGadget,
     fields::{fp::FpVar, nonnative::NonNativeFieldVar, FieldVar},
     groups::GroupOpsBounds,
+    poly::{domain::Radix2DomainVar, evaluations::univariate::EvaluationsVar},
     prelude::CurveVar,
     ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
-use ark_std::{One, Zero};
+use ark_std::{log2, One, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::{circuits::ChallengeGadget, nifs::NIFS};
@@ -30,8 +32,9 @@ use crate::transcript::{
     poseidon::{PoseidonTranscript, PoseidonTranscriptVar},
     Transcript, TranscriptVar,
 };
-use crate::utils::gadgets::{
-    hadamard, mat_vec_mul_sparse, vec_add, vec_scalar_mul, SparseMatrixVar,
+use crate::utils::{
+    gadgets::{hadamard, mat_vec_mul_sparse, vec_add, vec_scalar_mul, SparseMatrixVar},
+    vec::poly_from_vec,
 };
 use crate::Error;
 
@@ -234,6 +237,8 @@ where
     /// KZG challenges
     pub kzg_c_W: Option<C1::ScalarField>,
     pub kzg_c_E: Option<C1::ScalarField>,
+    pub eval_W: Option<C1::ScalarField>,
+    pub eval_E: Option<C1::ScalarField>,
 }
 impl<C1, GC1, C2, GC2, CS1, CS2> DeciderEthCircuit<C1, GC1, C2, GC2, CS1, CS2>
 where
@@ -275,6 +280,22 @@ where
         let (kzg_challenge_W, kzg_challenge_E) =
             KZGChallengesGadget::<C1>::get_challenges_native(&nova.poseidon_config, U_i1.clone())?;
 
+        // get KZG evals
+        let mut W = W_i1.W.clone();
+        W.extend(
+            std::iter::repeat(C1::ScalarField::zero())
+                .take(W_i1.W.len().next_power_of_two() - W_i1.W.len()),
+        );
+        let mut E = W_i1.E.clone();
+        E.extend(
+            std::iter::repeat(C1::ScalarField::zero())
+                .take(W_i1.E.len().next_power_of_two() - W_i1.E.len()),
+        );
+        let p_W = poly_from_vec(W.to_vec())?;
+        let eval_W = p_W.evaluate(&kzg_challenge_W);
+        let p_E = poly_from_vec(E.to_vec())?;
+        let eval_E = p_E.evaluate(&kzg_challenge_E);
+
         Ok(Self {
             _c1: PhantomData,
             _gc1: PhantomData,
@@ -304,6 +325,8 @@ where
             cf_W_i: Some(nova.cf_W_i),
             kzg_c_W: Some(kzg_challenge_W),
             kzg_c_E: Some(kzg_challenge_E),
+            eval_W: Some(eval_W),
+            eval_E: Some(eval_E),
         })
     }
 }
@@ -366,6 +389,12 @@ where
         let kzg_c_E = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
             Ok(self.kzg_c_E.unwrap_or_else(CF1::<C1>::zero))
         })?;
+        let _eval_W = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
+            Ok(self.eval_W.unwrap_or_else(CF1::<C1>::zero))
+        })?;
+        let _eval_E = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
+            Ok(self.eval_E.unwrap_or_else(CF1::<C1>::zero))
+        })?;
 
         let crh_params = CRHParametersVar::<C1::ScalarField>::new_constant(
             cs.clone(),
@@ -377,7 +406,7 @@ where
             [vec![U_i1.u.clone()], U_i1.x.to_vec(), W_i1.W.to_vec()].concat();
         RelaxedR1CSGadget::<C1::ScalarField, CF1<C1>, FpVar<CF1<C1>>>::check(
             r1cs,
-            W_i1.E,
+            W_i1.E.clone(),
             U_i1.u.clone(),
             z_U1,
         )?;
@@ -469,7 +498,16 @@ where
         incircuit_c_W.enforce_equal(&kzg_c_W)?;
         incircuit_c_E.enforce_equal(&kzg_c_E)?;
 
-        // 7. compute the NIFS.V challenge and check that matches the one from the public input (so we
+        // Check 7 is temporary disabled due
+        // https://github.com/privacy-scaling-explorations/folding-schemes/issues/80
+        //
+        // 7. check eval_W==p_W(c_W) and eval_E==p_E(c_E)
+        // let incircuit_eval_W = evaluate_gadget::<CF1<C1>>(W_i1.W, incircuit_c_W)?;
+        // let incircuit_eval_E = evaluate_gadget::<CF1<C1>>(W_i1.E, incircuit_c_E)?;
+        // incircuit_eval_W.enforce_equal(&eval_W)?;
+        // incircuit_eval_E.enforce_equal(&eval_E)?;
+
+        // 8. compute the NIFS.V challenge and check that matches the one from the public input (so we
         // avoid the verifier computing it)
         let cmT =
             NonNativeAffineVar::new_input(cs.clone(), || Ok(self.cmT.unwrap_or_else(C1::zero)))?;
@@ -481,7 +519,6 @@ where
             cmT.clone(),
         )?;
         let r_Fr = Boolean::le_bits_to_fp_var(&r_bits)?;
-
         // check that the in-circuit computed r is equal to the inputted r
         let r =
             FpVar::<CF1<C1>>::new_input(cs.clone(), || Ok(self.r.unwrap_or_else(CF1::<C1>::zero)))?;
@@ -489,6 +526,24 @@ where
 
         Ok(())
     }
+}
+
+/// Interpolates the polynomial from the given vector, and then returns it's evaluation at the
+/// given point.
+#[allow(unused)] // unused while check 7 is disabled
+fn evaluate_gadget<F: PrimeField>(
+    v: Vec<FpVar<F>>,
+    point: FpVar<F>,
+) -> Result<FpVar<F>, SynthesisError> {
+    if !v.len().is_power_of_two() {
+        return Err(SynthesisError::Unsatisfiable);
+    }
+    let n = v.len() as u64;
+    let gen = F::get_root_of_unity(n).unwrap();
+    let domain = Radix2DomainVar::new(gen, log2(v.len()) as u64, FpVar::one()).unwrap();
+
+    let evaluations_var = EvaluationsVar::from_vec_and_domain(v, domain, true);
+    evaluations_var.interpolate_and_evaluate(&point)
 }
 
 /// Gadget that computes the KZG challenges, also offers the rust native implementation compatible
@@ -844,5 +899,35 @@ pub mod tests {
         use ark_r1cs_std::R1CSVar;
         assert_eq!(challenge_W_Var.value().unwrap(), challenge_W);
         assert_eq!(challenge_E_Var.value().unwrap(), challenge_E);
+    }
+
+    // The test test_polynomial_interpolation is temporary disabled due
+    // https://github.com/privacy-scaling-explorations/folding-schemes/issues/80
+    // for n<=11 it will work, but for n>11 it will fail with stack overflow.
+    #[ignore]
+    #[test]
+    fn test_polynomial_interpolation() {
+        let mut rng = ark_std::test_rng();
+        let n = 12;
+        let l = 1 << n;
+
+        let v: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(&mut rng))
+            .take(l)
+            .collect();
+        let challenge = Fr::rand(&mut rng);
+
+        use ark_poly::Polynomial;
+        let polynomial = poly_from_vec(v.to_vec()).unwrap();
+        let eval = polynomial.evaluate(&challenge);
+
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        let vVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(v)).unwrap();
+        let challengeVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(challenge)).unwrap();
+
+        let evalVar = evaluate_gadget::<Fr>(vVar, challengeVar).unwrap();
+
+        use ark_r1cs_std::R1CSVar;
+        assert_eq!(evalVar.value().unwrap(), eval);
+        assert!(cs.is_satisfied().unwrap());
     }
 }

@@ -69,6 +69,8 @@ impl<F: PrimeField> FCircuit<F> for CircomtoFCircuit<F> {
         ]).map_err(|e| Error::Other(format!("Circom computation failed: {}", e)))?;  
         
         // [To Do: extract the z_i1(next public output) in Z(R1CS vector)]
+        // let z_i1 = witness.unwrap()[1]?;
+
         match witness {
             Some(new_z_i) => Ok(new_z_i),
             None => Err(Error::Other("Witness was not found".to_string())),
@@ -124,7 +126,9 @@ impl<F: PrimeField> FCircuit<F> for CircomtoFCircuit<F> {
     
         //Ok(new_z_i)
         // Ok(z_i)
+
         let z_i1 = FpVar::<F>::new_witness(cs.clone(), || Ok(witness.unwrap()[1]))?;
+        println!("z_i1: {:?}", z_i1);
         Ok(vec![z_i1])
     } 
        
@@ -222,7 +226,7 @@ pub mod tests {
         FC: FCircuit<F>,
     {
         fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> Result<(), SynthesisError> {
-            let z_i = Vec::<FpVar<F>>::new_witness(cs.clone(), || {
+            let z_i = Vec::<FpVar<F>>::new_input(cs.clone(), || {
                 Ok(self.z_i.unwrap_or(vec![F::zero()]))
             })?;
             let z_i1 = Vec::<FpVar<F>>::new_input(cs.clone(), || {
@@ -283,9 +287,16 @@ pub mod tests {
         // let z_i_vars: Vec<FpVar<Fr>> = vec![];
 
         let three = Fr::from(3u32);
+        
+        // Here new_input is appropriate, but an error occurs.
+        let three_var = FpVar::<Fr>::new_input(cs.clone(), || Ok(three))
+        .expect("Failed to create input FpVar");
 
-        let three_var = FpVar::<Fr>::new_constant(cs.clone(), three)
-        .expect("Failed to create constant FpVar");
+        // let three_var = FpVar::<Fr>::new_witness(cs.clone(), || Ok(three))
+        // .expect("Failed to create input FpVar");
+
+        // let three_var = FpVar::<Fr>::new_constant(cs.clone(), three)
+        // .expect("Failed to create constant FpVar");
 
         let z_i_vars: Vec<FpVar<Fr>> = vec![three_var];
 
@@ -316,19 +327,19 @@ pub mod tests {
     // Absolutely fails because all elements of Z(R1CS) are passed to z_i1
     #[test]
     fn test_wrapper_circomtofcircuit() {
+
+        let cs = ConstraintSystem::<Fr>::new_ref();
+
         let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit.r1cs");
         let wasm_path = PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
         
-        let z_i = vec![Fr::from(3u32)];
         let circom_fcircuit = CircomtoFCircuit::<Fr>::new((r1cs_path, wasm_path));
 
-        let wrapper_circuit = WrapperCircuit {
+        let wrapper_circuit = WrapperCircuit::<Fr, CircomtoFCircuit<Fr>>  {
             FC: circom_fcircuit,
-            z_i: Some(z_i.clone()),
+            z_i: Some(vec![Fr::from(3u32)]),
             z_i1: Some(vec![Fr::from(35u32)]),
         };
-
-        let cs = ConstraintSystem::<Fr>::new_ref();
 
         wrapper_circuit.generate_constraints(cs.clone()).unwrap();
         assert!(cs.is_satisfied().unwrap(), "Constraint system is not satisfied");

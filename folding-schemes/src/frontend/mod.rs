@@ -63,7 +63,11 @@ impl<F: PrimeField> FCircuit<F> for CircomtoFCircuit<F> {
         Self { circom_wrapper }
     }
 
-    fn step_native(self, z_i: Vec<F>) -> Result<Vec<F>, Error> {
+    fn state_len(&self) -> usize {
+        1
+    }
+
+    fn step_native(&self, _i: usize, z_i: Vec<F>) -> Result<Vec<F>, Error> {
         // convert from PrimeField::Bigint to num_bigint::BigInt
         let input_num_bigint = z_i
             .iter()
@@ -77,16 +81,14 @@ impl<F: PrimeField> FCircuit<F> for CircomtoFCircuit<F> {
             .map_err(|e| Error::Other(format!("Circom computation failed: {}", e)))?;
 
         let w = witness.ok_or(Error::Other("Witness was not found".to_string()))?;
-        // TODO here instead of the next '2' will be the .state_len() from
-        // https://github.com/privacy-scaling-explorations/folding-schemes/blob/1072b66e92aa90e1d2b34aa8c44977e7bafa8e72/folding-schemes/src/frontend/mod.rs#L21
-        // (needs a rebase to last changes for that)
-        let z_i1 = w[1..2].to_vec();
+        let z_i1 = w[1..1 + self.state_len()].to_vec();
         Ok(z_i1)
     }
 
     fn generate_step_constraints(
-        self,
+        &self,
         cs: ConstraintSystemRef<F>,
+        _i: usize,
         z_i: Vec<FpVar<F>>,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let mut input_values = Vec::new();
@@ -127,9 +129,8 @@ impl<F: PrimeField> FCircuit<F> for CircomtoFCircuit<F> {
         let w = witness.ok_or(SynthesisError::Unsatisfiable)?;
 
         // extract the z_i1(next state) from the witness vector
-        let l = 1; // TODO this will be self.state_len() after we rebase to last 'main' branch
         let z_i1: Vec<FpVar<F>> =
-            Vec::<FpVar<F>>::new_witness(cs.clone(), || Ok(w[1..1 + l].to_vec()))?;
+            Vec::<FpVar<F>>::new_witness(cs.clone(), || Ok(w[1..1 + self.state_len()].to_vec()))?;
 
         Ok(z_i1)
     }
@@ -295,7 +296,7 @@ pub mod tests {
 
         let cs = ConstraintSystem::<Fr>::new_ref();
         let z_i1_var = circom_fcircuit
-            .generate_step_constraints(cs.clone(), z_i_var)
+            .generate_step_constraints(cs.clone(), 1, z_i_var)
             .unwrap();
         assert_eq!(z_i1_var.value().unwrap(), vec![Fr::from(35u32)]);
     }
@@ -309,7 +310,7 @@ pub mod tests {
         let circom_fcircuit = CircomtoFCircuit::<Fr>::new((r1cs_path, wasm_path));
 
         let z_i = vec![Fr::from(3u32)];
-        let z_i1 = circom_fcircuit.step_native(z_i).unwrap();
+        let z_i1 = circom_fcircuit.step_native(1, z_i).unwrap();
         assert_eq!(z_i1, vec![Fr::from(35u32)]);
     }
 

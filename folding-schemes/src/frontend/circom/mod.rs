@@ -3,7 +3,10 @@ use std::{error::Error, fs::File, io::BufReader, marker::PhantomData, path::Path
 use color_eyre::Result;
 use num_bigint::{BigInt, Sign};
 
-use ark_circom::{circom::{r1cs_reader, R1CS}, WitnessCalculator};
+use ark_circom::{
+    circom::{r1cs_reader, R1CS},
+    WitnessCalculator,
+};
 use ark_ff::{BigInteger, PrimeField};
 
 // A struct that wraps Circom functionalities, allowing for extraction of R1CS and witnesses
@@ -35,19 +38,21 @@ impl<F: PrimeField> CircomWrapper<F> {
         let reader = BufReader::new(file);
         let r1cs_file = r1cs_reader::R1CSFile::<F>::new(reader)?;
         let r1cs = r1cs_reader::R1CS::<F>::from(r1cs_file);
-    
+
         // Calcultes the witness
         let witness = self.calculate_witness(inputs)?;
-    
-        let witness_vec: Result<Vec<F>, _> = witness.iter().map(|big_int| {
-            let ark_big_int = self.num_bigint_to_ark_bigint(big_int)
-                .map_err(|_| Box::new(std::fmt::Error) as Box<dyn Error>)?;
-            F::from_bigint(ark_big_int).ok_or_else(|| {
-                Box::new(std::fmt::Error) as Box<dyn Error> 
+
+        let witness_vec: Result<Vec<F>, _> = witness
+            .iter()
+            .map(|big_int| {
+                let ark_big_int = self
+                    .num_bigint_to_ark_bigint(big_int)
+                    .map_err(|_| Box::new(std::fmt::Error) as Box<dyn Error>)?;
+                F::from_bigint(ark_big_int)
+                    .ok_or_else(|| Box::new(std::fmt::Error) as Box<dyn Error>)
             })
-        }).collect();
-          
-    
+            .collect();
+
         Ok((r1cs, witness_vec.ok()))
     }
 
@@ -58,10 +63,7 @@ impl<F: PrimeField> CircomWrapper<F> {
     }
 
     // Converts a num_bigint::Bigint to PrimeField::BigInt.
-    pub fn num_bigint_to_ark_bigint(
-        &self,
-        value: &BigInt,
-    ) -> Result<F::BigInt, Box<dyn Error>> {
+    pub fn num_bigint_to_ark_bigint(&self, value: &BigInt) -> Result<F::BigInt, Box<dyn Error>> {
         let big_uint = value
             .to_biguint()
             .ok_or_else(|| "BigInt is negative".to_string())?;
@@ -70,7 +72,7 @@ impl<F: PrimeField> CircomWrapper<F> {
 
     // Converts a PrimeField::BigInt to num_bigint::BigInt.
     pub fn ark_bigint_to_num_bigint(&self, value: F) -> BigInt {
-        let bigint_repr: F::BigInt = value.into_bigint();  
+        let bigint_repr: F::BigInt = value.into_bigint();
         let bytes = bigint_repr.to_bytes_be();
         BigInt::from_bytes_be(Sign::Plus, &bytes)
     }
@@ -80,10 +82,10 @@ impl<F: PrimeField> CircomWrapper<F> {
 mod tests {
     use super::*;
     use ark_bn254::Fr;
-    use std::path::PathBuf;
-    use ark_relations::r1cs::{ConstraintSystem, ConstraintSynthesizer};
-    use ark_circom::CircomCircuit;
     use ark_circom::circom::{CircomBuilder, CircomConfig};
+    use ark_circom::CircomCircuit;
+    use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
+    use std::path::PathBuf;
 
     // satisfied function that uses the circom builder
     #[test]
@@ -106,7 +108,8 @@ mod tests {
     #[test]
     fn test_extract_r1cs_and_witness() -> Result<(), Box<dyn Error>> {
         let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit.r1cs");
-        let wasm_path = PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
+        let wasm_path =
+            PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
         let inputs = vec![("ivc_input".to_string(), vec![BigInt::from(3)])];
         let wrapper = CircomWrapper::<Fr>::new(r1cs_path, wasm_path);
@@ -117,7 +120,11 @@ mod tests {
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        let circom_circuit = CircomCircuit { r1cs, witness };
+        let circom_circuit = CircomCircuit {
+            r1cs,
+            witness,
+            inputs_already_computed: false,
+        };
 
         circom_circuit.generate_constraints(cs.clone())?;
         assert!(cs.is_satisfied().unwrap());

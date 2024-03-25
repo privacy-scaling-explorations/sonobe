@@ -1,134 +1,168 @@
-use std::{error::Error, fs::File, io::BufReader, marker::PhantomData, path::PathBuf};
+use ark_circom::circom::CircomCircuit;
+use ark_ff::PrimeField;
+use ark_r1cs_std::alloc::AllocVar;
+use ark_r1cs_std::fields::fp::FpVar;
+use ark_r1cs_std::R1CSVar;
+use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+use ark_std::fmt::Debug;
+use num_bigint::BigInt;
+use std::path::PathBuf;
 
-use color_eyre::Result;
-use num_bigint::{BigInt, Sign};
+use crate::frontend::FCircuit;
+use crate::Error;
 
-use ark_circom::{
-    circom::{r1cs_reader, R1CS},
-    WitnessCalculator,
-};
-use ark_ff::{BigInteger, PrimeField};
+pub mod utils;
+use utils::CircomWrapper;
 
-// A struct that wraps Circom functionalities, allowing for extraction of R1CS and witnesses
-// based on file paths to Circom's .r1cs and .wasm.
+/// Define CircomFCircuit
 #[derive(Clone, Debug)]
-pub struct CircomWrapper<F: PrimeField> {
-    r1cs_filepath: PathBuf,
-    wasm_filepath: PathBuf,
-    _marker: PhantomData<F>,
+pub struct CircomtoFCircuit<F: PrimeField> {
+    circom_wrapper: CircomWrapper<F>,
 }
 
-impl<F: PrimeField> CircomWrapper<F> {
-    // Creates a new instance of the CircomWrapper with the file paths.
-    pub fn new(r1cs_filepath: PathBuf, wasm_filepath: PathBuf) -> Self {
-        CircomWrapper {
-            r1cs_filepath,
-            wasm_filepath,
-            _marker: PhantomData,
-        }
+impl<F: PrimeField> FCircuit<F> for CircomtoFCircuit<F> {
+    type Params = (PathBuf, PathBuf);
+
+    fn new(params: Self::Params) -> Self {
+        let (r1cs_path, wasm_path) = params;
+        let circom_wrapper = CircomWrapper::new(r1cs_path, wasm_path);
+        Self { circom_wrapper }
     }
 
-    // Aggregated funtion to obtain R1CS and witness from Circom.
-    pub fn extract_r1cs_and_witness(
-        &self,
-        inputs: &[(String, Vec<BigInt>)],
-    ) -> Result<(R1CS<F>, Option<Vec<F>>), Box<dyn Error>> {
-        // extracts the R1CS data from the file.
-        let file = File::open(&self.r1cs_filepath)?;
-        let reader = BufReader::new(file);
-        let r1cs_file = r1cs_reader::R1CSFile::<F>::new(reader)?;
-        let r1cs = r1cs_reader::R1CS::<F>::from(r1cs_file);
+    fn state_len(&self) -> usize {
+        1
+    }
 
-        // Calcultes the witness
-        let witness = self.calculate_witness(inputs)?;
-
-        let witness_vec: Result<Vec<F>, _> = witness
+    fn step_native(&self, _i: usize, z_i: Vec<F>) -> Result<Vec<F>, Error> {
+        // convert from PrimeField::Bigint to num_bigint::BigInt
+        let input_num_bigint = z_i
             .iter()
-            .map(|big_int| {
-                let ark_big_int = self
-                    .num_bigint_to_ark_bigint(big_int)
-                    .map_err(|_| Box::new(std::fmt::Error) as Box<dyn Error>)?;
-                F::from_bigint(ark_big_int)
-                    .ok_or_else(|| Box::new(std::fmt::Error) as Box<dyn Error>)
-            })
-            .collect();
+            .map(|val| self.circom_wrapper.ark_bigint_to_num_bigint(*val))
+            .collect::<Vec<BigInt>>();
 
-        Ok((r1cs, witness_vec.ok()))
+        // compute witness
+        let (_, witness) = self
+            .circom_wrapper
+            .extract_r1cs_and_witness(&[("ivc_input".to_string(), input_num_bigint)])
+            .map_err(|e| Error::Other(format!("Circom computation failed: {}", e)))?;
+
+        let w = witness.ok_or(Error::Other("Witness was not found".to_string()))?;
+        let z_i1 = w[1..1 + self.state_len()].to_vec();
+        Ok(z_i1)
     }
 
-    // Calculates the witness given the Wasm filepath and inputs.
-    pub fn calculate_witness(&self, inputs: &[(String, Vec<BigInt>)]) -> Result<Vec<BigInt>> {
-        let mut calculator = WitnessCalculator::new(&self.wasm_filepath)?;
-        calculator.calculate_witness(inputs.iter().cloned(), true)
-    }
+    fn generate_step_constraints(
+        &self,
+        cs: ConstraintSystemRef<F>,
+        _i: usize,
+        z_i: Vec<FpVar<F>>,
+    ) -> Result<Vec<FpVar<F>>, SynthesisError> {
+        let mut input_values = Vec::new();
+        // convert each FpVar to BigInt and add it to the input_values vector
+        for fp_var in z_i.iter() {
+            // convert from FpVar to PrimeField::Bigint
+            let prime_bigint = fp_var.value()?;
+            // convert from PrimeField::Bigint to num_bigint::BigInt
+            let num_bigint = self.circom_wrapper.ark_bigint_to_num_bigint(prime_bigint);
+            input_values.push(num_bigint);
+        }
 
-    // Converts a num_bigint::Bigint to PrimeField::BigInt.
-    pub fn num_bigint_to_ark_bigint(&self, value: &BigInt) -> Result<F::BigInt, Box<dyn Error>> {
-        let big_uint = value
-            .to_biguint()
-            .ok_or_else(|| "BigInt is negative".to_string())?;
-        F::BigInt::try_from(big_uint).map_err(|_| "BigInt conversion failed".to_string().into())
-    }
+        let big_int_inputs = vec![("ivc_input".to_string(), input_values)];
 
-    // Converts a PrimeField::BigInt to num_bigint::BigInt.
-    pub fn ark_bigint_to_num_bigint(&self, value: F) -> BigInt {
-        let bigint_repr: F::BigInt = value.into_bigint();
-        let bytes = bigint_repr.to_bytes_be();
-        BigInt::from_bytes_be(Sign::Plus, &bytes)
+        let (r1cs, witness) = self
+            .circom_wrapper
+            .extract_r1cs_and_witness(&big_int_inputs)
+            .map_err(|_| SynthesisError::AssignmentMissing)?;
+        println!("Extracted R1CS and witness");
+        println!("r1cs: {:?}", r1cs);
+        println!("witness: {:?}", witness);
+
+        // CircomCircuit constraints
+        let circom_circuit = CircomCircuit {
+            r1cs,
+            witness: witness.clone(),
+            inputs_already_computed: true,
+        };
+
+        circom_circuit
+            .generate_constraints(cs.clone())
+            .map_err(|_| SynthesisError::AssignmentMissing)?;
+
+        if !cs.is_satisfied().unwrap() {
+            return Err(SynthesisError::Unsatisfiable);
+        }
+
+        let w = witness.ok_or(SynthesisError::Unsatisfiable)?;
+
+        // extract the z_i1(next state) from the witness vector
+        let z_i1: Vec<FpVar<F>> =
+            Vec::<FpVar<F>>::new_witness(cs.clone(), || Ok(w[1..1 + self.state_len()].to_vec()))?;
+
+        Ok(z_i1)
     }
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use ark_bn254::Fr;
-    use ark_circom::circom::{CircomBuilder, CircomConfig};
-    use ark_circom::CircomCircuit;
+    use ark_r1cs_std::alloc::AllocVar;
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
-    use std::path::PathBuf;
 
-    // satisfied function that uses the circom builder
     #[test]
-    fn satisfied() {
-        let cfg = CircomConfig::<Fr>::new(
-            "./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm",
-            "./src/frontend/circom/test_folder/cubic_circuit.r1cs",
-        )
-        .unwrap();
-        let mut builder = CircomBuilder::new(cfg);
-        builder.push_input("ivc_input", 3);
-
-        let circom = builder.build().unwrap();
-        let cs = ConstraintSystem::<Fr>::new_ref();
-        circom.generate_constraints(cs.clone()).unwrap();
-        assert!(cs.is_satisfied().unwrap());
-    }
-
-    // test CircomWrapper function
-    #[test]
-    fn test_extract_r1cs_and_witness() -> Result<(), Box<dyn Error>> {
+    fn test_circom_step_constraints() {
         let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit.r1cs");
         let wasm_path =
             PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
-        let inputs = vec![("ivc_input".to_string(), vec![BigInt::from(3)])];
-        let wrapper = CircomWrapper::<Fr>::new(r1cs_path, wasm_path);
-
-        let (r1cs, witness) = wrapper.extract_r1cs_and_witness(&inputs)?;
-        println!("Test passed with r1cs: {:?}", r1cs);
-        println!("Test passed with witness: {:?}", witness);
+        let circom_fcircuit = CircomtoFCircuit::<Fr>::new((r1cs_path, wasm_path));
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        let circom_circuit = CircomCircuit {
-            r1cs,
-            witness,
-            inputs_already_computed: false,
+        let z_i = vec![Fr::from(3u32)];
+
+        let z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i)).unwrap();
+
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        let z_i1_var = circom_fcircuit
+            .generate_step_constraints(cs.clone(), 1, z_i_var)
+            .unwrap();
+        assert_eq!(z_i1_var.value().unwrap(), vec![Fr::from(35u32)]);
+    }
+
+    #[test]
+    fn test_circom_step_native() {
+        let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit.r1cs");
+        let wasm_path =
+            PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
+
+        let circom_fcircuit = CircomtoFCircuit::<Fr>::new((r1cs_path, wasm_path));
+
+        let z_i = vec![Fr::from(3u32)];
+        let z_i1 = circom_fcircuit.step_native(1, z_i).unwrap();
+        assert_eq!(z_i1, vec![Fr::from(35u32)]);
+    }
+
+    #[test]
+    fn test_wrapper_circomtofcircuit() {
+        let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit.r1cs");
+        let wasm_path =
+            PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
+
+        let circom_fcircuit = CircomtoFCircuit::<Fr>::new((r1cs_path, wasm_path));
+
+        let wrapper_circuit = crate::frontend::tests::WrapperCircuit {
+            FC: circom_fcircuit,
+            z_i: Some(vec![Fr::from(3u32)]),
+            z_i1: Some(vec![Fr::from(35u32)]),
         };
 
-        circom_circuit.generate_constraints(cs.clone())?;
-        assert!(cs.is_satisfied().unwrap());
+        let cs = ConstraintSystem::<Fr>::new_ref();
 
-        Ok(())
+        wrapper_circuit.generate_constraints(cs.clone()).unwrap();
+        assert!(
+            cs.is_satisfied().unwrap(),
+            "Constraint system is not satisfied"
+        );
     }
 }

@@ -32,6 +32,8 @@ pub enum Error {
     ArithError(#[from] utils::espresso::virtual_polynomial::ArithErrors),
     #[error(transparent)]
     ProtoGalaxy(folding::protogalaxy::ProtoGalaxyError),
+    #[error("std::io::Error")]
+    IOError(#[from] std::io::Error),
     #[error("{0}")]
     Other(String),
 

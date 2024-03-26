@@ -110,6 +110,19 @@ pub mod tests {
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 
     #[test]
+    fn test_circom_step_native() {
+        let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit.r1cs");
+        let wasm_path =
+            PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
+
+        let circom_fcircuit = CircomtoFCircuit::<Fr>::new((r1cs_path, wasm_path));
+
+        let z_i = vec![Fr::from(3u32)];
+        let z_i1 = circom_fcircuit.step_native(1, z_i).unwrap();
+        assert_eq!(z_i1, vec![Fr::from(35u32)]);
+    }
+
+    #[test]
     fn test_circom_step_constraints() {
         let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit.r1cs");
         let wasm_path =
@@ -128,19 +141,6 @@ pub mod tests {
             .generate_step_constraints(cs.clone(), 1, z_i_var)
             .unwrap();
         assert_eq!(z_i1_var.value().unwrap(), vec![Fr::from(35u32)]);
-    }
-
-    #[test]
-    fn test_circom_step_native() {
-        let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit.r1cs");
-        let wasm_path =
-            PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
-
-        let circom_fcircuit = CircomtoFCircuit::<Fr>::new((r1cs_path, wasm_path));
-
-        let z_i = vec![Fr::from(3u32)];
-        let z_i1 = circom_fcircuit.step_native(1, z_i).unwrap();
-        assert_eq!(z_i1, vec![Fr::from(35u32)]);
     }
 
     #[test]

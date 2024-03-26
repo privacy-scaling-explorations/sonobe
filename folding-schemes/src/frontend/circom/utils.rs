@@ -1,13 +1,13 @@
-use std::{error::Error, fs::File, io::BufReader, marker::PhantomData, path::PathBuf};
-
-use color_eyre::Result;
-use num_bigint::{BigInt, Sign};
-
 use ark_circom::{
     circom::{r1cs_reader, R1CS},
     WitnessCalculator,
 };
 use ark_ff::{BigInteger, PrimeField};
+use color_eyre::Result;
+use num_bigint::{BigInt, Sign};
+use std::{fs::File, io::BufReader, marker::PhantomData, path::PathBuf};
+
+use crate::Error;
 
 // A struct that wraps Circom functionalities, allowing for extraction of R1CS and witnesses
 // based on file paths to Circom's .r1cs and .wasm.
@@ -28,28 +28,26 @@ impl<F: PrimeField> CircomWrapper<F> {
         }
     }
 
-    // Aggregated funtion to obtain R1CS and witness from Circom.
+    // Aggregated function to obtain R1CS and witness from Circom.
     pub fn extract_r1cs_and_witness(
         &self,
         inputs: &[(String, Vec<BigInt>)],
-    ) -> Result<(R1CS<F>, Option<Vec<F>>), Box<dyn Error>> {
+    ) -> Result<(R1CS<F>, Option<Vec<F>>), Error> {
         // extracts the R1CS data from the file.
         let file = File::open(&self.r1cs_filepath)?;
         let reader = BufReader::new(file);
         let r1cs_file = r1cs_reader::R1CSFile::<F>::new(reader)?;
         let r1cs = r1cs_reader::R1CS::<F>::from(r1cs_file);
 
-        // Calcultes the witness
+        // Calculates the witness
         let witness = self.calculate_witness(inputs)?;
 
         let witness_vec: Result<Vec<F>, _> = witness
             .iter()
             .map(|big_int| {
-                let ark_big_int = self
-                    .num_bigint_to_ark_bigint(big_int)
-                    .map_err(|_| Box::new(std::fmt::Error) as Box<dyn Error>)?;
+                let ark_big_int = self.num_bigint_to_ark_bigint(big_int)?;
                 F::from_bigint(ark_big_int)
-                    .ok_or_else(|| Box::new(std::fmt::Error) as Box<dyn Error>)
+                    .ok_or(Error::Other("could not get F from bigint".to_string()))
             })
             .collect();
 
@@ -57,17 +55,24 @@ impl<F: PrimeField> CircomWrapper<F> {
     }
 
     // Calculates the witness given the Wasm filepath and inputs.
-    pub fn calculate_witness(&self, inputs: &[(String, Vec<BigInt>)]) -> Result<Vec<BigInt>> {
-        let mut calculator = WitnessCalculator::new(&self.wasm_filepath)?;
-        calculator.calculate_witness(inputs.iter().cloned(), true)
+    pub fn calculate_witness(
+        &self,
+        inputs: &[(String, Vec<BigInt>)],
+    ) -> Result<Vec<BigInt>, Error> {
+        let mut calculator = WitnessCalculator::new(&self.wasm_filepath)
+            .map_err(|_| Error::Other("could not create new WitnessCalculator".to_string()))?;
+        calculator
+            .calculate_witness(inputs.iter().cloned(), true)
+            .map_err(|_| Error::Other("".to_string()))
     }
 
     // Converts a num_bigint::Bigint to PrimeField::BigInt.
-    pub fn num_bigint_to_ark_bigint(&self, value: &BigInt) -> Result<F::BigInt, Box<dyn Error>> {
+    pub fn num_bigint_to_ark_bigint(&self, value: &BigInt) -> Result<F::BigInt, Error> {
         let big_uint = value
             .to_biguint()
-            .ok_or_else(|| "BigInt is negative".to_string())?;
-        F::BigInt::try_from(big_uint).map_err(|_| "BigInt conversion failed".to_string().into())
+            .ok_or(Error::Other("BigInt is negative".to_string()))?;
+        F::BigInt::try_from(big_uint)
+            .map_err(|_| Error::Other("BigInt conversion failed".to_string()))
     }
 
     // Converts a PrimeField::BigInt to num_bigint::BigInt.
@@ -106,7 +111,7 @@ mod tests {
 
     // test CircomWrapper function
     #[test]
-    fn test_extract_r1cs_and_witness() -> Result<(), Box<dyn Error>> {
+    fn test_extract_r1cs_and_witness() {
         let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit.r1cs");
         let wasm_path =
             PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
@@ -114,7 +119,7 @@ mod tests {
         let inputs = vec![("ivc_input".to_string(), vec![BigInt::from(3)])];
         let wrapper = CircomWrapper::<Fr>::new(r1cs_path, wasm_path);
 
-        let (r1cs, witness) = wrapper.extract_r1cs_and_witness(&inputs)?;
+        let (r1cs, witness) = wrapper.extract_r1cs_and_witness(&inputs).unwrap();
         println!("Test passed with r1cs: {:?}", r1cs);
         println!("Test passed with witness: {:?}", witness);
 
@@ -126,9 +131,7 @@ mod tests {
             inputs_already_computed: false,
         };
 
-        circom_circuit.generate_constraints(cs.clone())?;
+        circom_circuit.generate_constraints(cs.clone()).unwrap();
         assert!(cs.is_satisfied().unwrap());
-
-        Ok(())
     }
 }

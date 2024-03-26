@@ -3,13 +3,10 @@ use ark_ff::Field;
 use ark_r1cs_std::{boolean::Boolean, groups::GroupOpsBounds, prelude::CurveVar};
 use ark_relations::r1cs::SynthesisError;
 use ark_std::Zero;
-use ark_std::{
-    rand::{Rng, RngCore},
-    UniformRand,
-};
+use ark_std::{rand::RngCore, UniformRand};
 use core::marker::PhantomData;
 
-use super::CommitmentProver;
+use super::CommitmentScheme;
 use crate::transcript::Transcript;
 use crate::utils::vec::{vec_add, vec_scalar_mul};
 use crate::Error;
@@ -18,7 +15,7 @@ use crate::Error;
 pub struct Proof<C: CurveGroup> {
     pub R: C,
     pub u: Vec<C::ScalarField>,
-    pub r_u: C::ScalarField,
+    pub r_u: C::ScalarField, // blind
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -32,30 +29,40 @@ pub struct Pedersen<C: CurveGroup, const H: bool = false> {
     _c: PhantomData<C>,
 }
 
-impl<C: CurveGroup, const H: bool> Pedersen<C, H> {
-    pub fn new_params<R: Rng>(rng: &mut R, max: usize) -> Params<C> {
-        let generators: Vec<C::Affine> = std::iter::repeat_with(|| C::Affine::rand(rng))
-            .take(max.next_power_of_two())
-            .collect();
-        Params::<C> {
-            h: C::rand(rng),
-            generators,
-        }
-    }
-}
-
-// implement the CommitmentProver trait for Pedersen
-impl<C: CurveGroup, const H: bool> CommitmentProver<C, H> for Pedersen<C, H> {
-    type Params = Params<C>;
+/// Implements the CommitmentScheme trait for Pedersen commitments
+impl<C: CurveGroup, const H: bool> CommitmentScheme<C, H> for Pedersen<C, H> {
+    type ProverParams = Params<C>;
+    type VerifierParams = Params<C>;
     type Proof = Proof<C>;
+    type ProverChallenge = (C::ScalarField, Vec<C::ScalarField>, C, C::ScalarField);
+    type Challenge = C::ScalarField;
+
+    fn setup(
+        mut rng: impl RngCore,
+        len: usize,
+    ) -> Result<(Self::ProverParams, Self::VerifierParams), Error> {
+        let generators: Vec<C::Affine> = std::iter::repeat_with(|| C::Affine::rand(&mut rng))
+            .take(len.next_power_of_two())
+            .collect();
+        let p = Params::<C> {
+            h: C::rand(&mut rng),
+            generators,
+        };
+        Ok((p.clone(), p))
+    }
+
     fn commit(
-        params: &Self::Params,
+        params: &Self::ProverParams,
         v: &[C::ScalarField],
         r: &C::ScalarField, // blinding factor
     ) -> Result<C, Error> {
         if params.generators.len() < v.len() {
             return Err(Error::PedersenParamsLen(params.generators.len(), v.len()));
         }
+        if !H && (!r.is_zero()) {
+            return Err(Error::BlindingNotZero);
+        }
+
         // h⋅r + <g, v>
         // use msm_unchecked because we already ensured at the if that lengths match
         if !H {
@@ -65,17 +72,13 @@ impl<C: CurveGroup, const H: bool> CommitmentProver<C, H> for Pedersen<C, H> {
     }
 
     fn prove(
-        params: &Params<C>,
+        params: &Self::ProverParams,
         transcript: &mut impl Transcript<C>,
         cm: &C,
         v: &[C::ScalarField],
         r: &C::ScalarField, // blinding factor
         _rng: Option<&mut dyn RngCore>,
     ) -> Result<Self::Proof, Error> {
-        if params.generators.len() < v.len() {
-            return Err(Error::PedersenParamsLen(params.generators.len(), v.len()));
-        }
-
         transcript.absorb_point(cm)?;
         let r1 = transcript.get_challenge();
         let d = transcript.get_challenges(v.len());
@@ -90,6 +93,25 @@ impl<C: CurveGroup, const H: bool> CommitmentProver<C, H> for Pedersen<C, H> {
         transcript.absorb_point(&R)?;
         let e = transcript.get_challenge();
 
+        let challenge = (r1, d, R, e);
+        Self::prove_with_challenge(params, challenge, v, r, _rng)
+    }
+
+    fn prove_with_challenge(
+        params: &Self::ProverParams,
+        challenge: Self::ProverChallenge,
+        v: &[C::ScalarField], // vector
+        r: &C::ScalarField,   // blinding factor
+        _rng: Option<&mut dyn RngCore>,
+    ) -> Result<Self::Proof, Error> {
+        if params.generators.len() < v.len() {
+            return Err(Error::PedersenParamsLen(params.generators.len(), v.len()));
+        }
+        if !H && (!r.is_zero()) {
+            return Err(Error::BlindingNotZero);
+        }
+        let (r1, d, R, e): (C::ScalarField, Vec<C::ScalarField>, C, C::ScalarField) = challenge;
+
         // u = d + v⋅e
         let u = vec_add(&vec_scalar_mul(v, &e), &d)?;
         // r_u = e⋅r + r_1
@@ -100,14 +122,26 @@ impl<C: CurveGroup, const H: bool> CommitmentProver<C, H> for Pedersen<C, H> {
 
         Ok(Self::Proof { R, u, r_u })
     }
-}
 
-impl<C: CurveGroup, const H: bool> Pedersen<C, H> {
-    pub fn verify(
-        params: &Params<C>,
+    fn verify(
+        params: &Self::VerifierParams,
         transcript: &mut impl Transcript<C>,
-        cm: C,
-        proof: Proof<C>,
+        cm: &C,
+        proof: &Proof<C>,
+    ) -> Result<(), Error> {
+        transcript.absorb_point(cm)?;
+        transcript.get_challenge(); // r_1
+        transcript.get_challenges(proof.u.len()); // d
+        transcript.absorb_point(&proof.R)?;
+        let e = transcript.get_challenge();
+        Self::verify_with_challenge(params, e, cm, proof)
+    }
+
+    fn verify_with_challenge(
+        params: &Self::VerifierParams,
+        challenge: Self::Challenge,
+        cm: &C,
+        proof: &Proof<C>,
     ) -> Result<(), Error> {
         if params.generators.len() < proof.u.len() {
             return Err(Error::PedersenParamsLen(
@@ -115,12 +149,11 @@ impl<C: CurveGroup, const H: bool> Pedersen<C, H> {
                 proof.u.len(),
             ));
         }
+        if !H && (!proof.r_u.is_zero()) {
+            return Err(Error::BlindingNotZero);
+        }
 
-        transcript.absorb_point(&cm)?;
-        transcript.get_challenge(); // r_1
-        transcript.get_challenges(proof.u.len()); // d
-        transcript.absorb_point(&proof.R)?;
-        let e = transcript.get_challenge();
+        let e = challenge;
 
         // check that: R + cm⋅e == h⋅r_u + <g, u>
         let lhs = proof.R + cm.mul(e);
@@ -186,12 +219,16 @@ mod tests {
     use crate::transcript::poseidon::{poseidon_test_config, PoseidonTranscript};
 
     #[test]
-    fn test_pedersen_vector() {
+    fn test_pedersen() {
+        test_pedersen_opt::<false>();
+        test_pedersen_opt::<true>();
+    }
+    fn test_pedersen_opt<const hiding: bool>() {
         let mut rng = ark_std::test_rng();
 
         let n: usize = 10;
         // setup params
-        let params = Pedersen::<Projective>::new_params(&mut rng, n);
+        let (params, _) = Pedersen::<Projective>::setup(&mut rng, n).unwrap();
         let poseidon_config = poseidon_test_config::<Fr>();
 
         // init Prover's transcript
@@ -202,11 +239,17 @@ mod tests {
         let v: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(&mut rng))
             .take(n)
             .collect();
-        let r: Fr = Fr::rand(&mut rng);
-        let cm = Pedersen::<Projective>::commit(&params, &v, &r).unwrap();
+        // blinding factor
+        let r: Fr = if hiding {
+            Fr::rand(&mut rng)
+        } else {
+            Fr::zero()
+        };
+        let cm = Pedersen::<Projective, hiding>::commit(&params, &v, &r).unwrap();
         let proof =
-            Pedersen::<Projective>::prove(&params, &mut transcript_p, &cm, &v, &r, None).unwrap();
-        Pedersen::<Projective>::verify(&params, &mut transcript_v, cm, proof).unwrap();
+            Pedersen::<Projective, hiding>::prove(&params, &mut transcript_p, &cm, &v, &r, None)
+                .unwrap();
+        Pedersen::<Projective, hiding>::verify(&params, &mut transcript_v, &cm, &proof).unwrap();
     }
 
     #[test]
@@ -217,15 +260,20 @@ mod tests {
     fn test_pedersen_circuit_opt<const hiding: bool>() {
         let mut rng = ark_std::test_rng();
 
-        let n: usize = 16;
+        let n: usize = 8;
         // setup params
-        let params = Pedersen::<Projective>::new_params(&mut rng, n);
+        let (params, _) = Pedersen::<Projective, hiding>::setup(&mut rng, n).unwrap();
 
         let v: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(&mut rng))
             .take(n)
             .collect();
-        let r: Fr = Fr::rand(&mut rng);
-        let cm = Pedersen::<Projective>::commit(&params, &v, &r).unwrap();
+        // blinding factor
+        let r: Fr = if hiding {
+            Fr::rand(&mut rng)
+        } else {
+            Fr::zero()
+        };
+        let cm = Pedersen::<Projective, hiding>::commit(&params, &v, &r).unwrap();
 
         let v_bits: Vec<Vec<bool>> = v.iter().map(|val| val.into_bigint().to_bits_le()).collect();
         let r_bits: Vec<bool> = r.into_bigint().to_bits_le();
@@ -246,7 +294,8 @@ mod tests {
         let expected_cmVar = GVar::new_witness(cs.clone(), || Ok(cm)).unwrap();
 
         // use the gadget
-        let cmVar = PedersenGadget::<Projective, GVar>::commit(hVar, gVar, vVar, rVar).unwrap();
+        let cmVar =
+            PedersenGadget::<Projective, GVar, hiding>::commit(hVar, gVar, vVar, rVar).unwrap();
         cmVar.enforce_equal(&expected_cmVar).unwrap();
     }
 }

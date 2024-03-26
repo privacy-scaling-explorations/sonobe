@@ -11,7 +11,7 @@ use super::utils::compute_sum_Mz;
 use crate::ccs::CCS;
 use crate::commitment::{
     pedersen::{Params as PedersenParams, Pedersen},
-    CommitmentProver,
+    CommitmentScheme,
 };
 use crate::utils::hypercube::BooleanHypercube;
 use crate::utils::mle::matrix_to_mle;
@@ -44,7 +44,7 @@ impl<C: CurveGroup> CCS<C> {
     ) -> Result<(CCCS<C>, Witness<C::ScalarField>), Error> {
         let w: Vec<C::ScalarField> = z[(1 + self.l)..].to_vec();
         let r_w = C::ScalarField::rand(rng);
-        let C = Pedersen::<C>::commit(pedersen_params, &w, &r_w)?;
+        let C = Pedersen::<C, true>::commit(pedersen_params, &w, &r_w)?;
 
         Ok((
             CCCS::<C> {
@@ -112,7 +112,7 @@ impl<C: CurveGroup> CCCS<C> {
     ) -> Result<(), Error> {
         // check that C is the commitment of w. Notice that this is not verifying a Pedersen
         // opening, but checking that the commitment comes from committing to the witness.
-        if self.C != Pedersen::<C>::commit(pedersen_params, &w.w, &w.r_w)? {
+        if self.C != Pedersen::<C, true>::commit(pedersen_params, &w.w, &w.r_w)? {
             return Err(Error::NotSatisfied);
         }
 

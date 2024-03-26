@@ -14,7 +14,7 @@ use core::marker::PhantomData;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 
 use crate::ccs::r1cs::{extract_r1cs, extract_w_x, R1CS};
-use crate::commitment::CommitmentProver;
+use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::nonnative::point_to_nonnative_limbs;
 use crate::frontend::FCircuit;
 use crate::utils::vec::is_zero_vec;
@@ -115,16 +115,16 @@ where
             rW: C::ScalarField::zero(),
         }
     }
-    pub fn commit<CP: CommitmentProver<C>>(
+    pub fn commit<CS: CommitmentScheme<C>>(
         &self,
-        params: &CP::Params,
+        params: &CS::ProverParams,
         x: Vec<C::ScalarField>,
     ) -> Result<CommittedInstance<C>, Error> {
         let mut cmE = C::zero();
         if !is_zero_vec::<C::ScalarField>(&self.E) {
-            cmE = CP::commit(params, &self.E, &self.rE)?;
+            cmE = CS::commit(params, &self.E, &self.rE)?;
         }
-        let cmW = CP::commit(params, &self.W, &self.rW)?;
+        let cmW = CS::commit(params, &self.W, &self.rW)?;
         Ok(CommittedInstance {
             cmE,
             u: C::ScalarField::one(),
@@ -135,16 +135,16 @@ where
 }
 
 #[derive(Debug, Clone)]
-pub struct ProverParams<C1, C2, CP1, CP2>
+pub struct ProverParams<C1, C2, CS1, CS2>
 where
     C1: CurveGroup,
     C2: CurveGroup,
-    CP1: CommitmentProver<C1>,
-    CP2: CommitmentProver<C2>,
+    CS1: CommitmentScheme<C1>,
+    CS2: CommitmentScheme<C2>,
 {
     pub poseidon_config: PoseidonConfig<C1::ScalarField>,
-    pub cm_params: CP1::Params,
-    pub cf_cm_params: CP2::Params,
+    pub cs_params: CS1::ProverParams,
+    pub cf_cs_params: CS2::ProverParams,
 }
 
 #[derive(Debug, Clone)]
@@ -157,15 +157,15 @@ pub struct VerifierParams<C1: CurveGroup, C2: CurveGroup> {
 /// Implements Nova+CycleFold's IVC, described in [Nova](https://eprint.iacr.org/2021/370.pdf) and
 /// [CycleFold](https://eprint.iacr.org/2023/1192.pdf), following the FoldingScheme trait
 #[derive(Clone, Debug)]
-pub struct Nova<C1, GC1, C2, GC2, FC, CP1, CP2>
+pub struct Nova<C1, GC1, C2, GC2, FC, CS1, CS2>
 where
     C1: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>>,
     C2: CurveGroup,
     GC2: CurveVar<C2, CF2<C2>>,
     FC: FCircuit<C1::ScalarField>,
-    CP1: CommitmentProver<C1>,
-    CP2: CommitmentProver<C2>,
+    CS1: CommitmentScheme<C1>,
+    CS2: CommitmentScheme<C2>,
 {
     _gc1: PhantomData<GC1>,
     _c2: PhantomData<C2>,
@@ -175,10 +175,10 @@ where
     /// R1CS of the CycleFold circuit
     pub cf_r1cs: R1CS<C2::ScalarField>,
     pub poseidon_config: PoseidonConfig<C1::ScalarField>,
-    /// CommitmentProver::Params over C1
-    pub cm_params: CP1::Params,
-    /// CycleFold CommitmentProver::Params, over C2
-    pub cf_cm_params: CP2::Params,
+    /// CommitmentScheme::ProverParams over C1
+    pub cs_params: CS1::ProverParams,
+    /// CycleFold CommitmentScheme::ProverParams, over C2
+    pub cf_cs_params: CS2::ProverParams,
     /// F circuit, the circuit that is being folded
     pub F: FC,
     pub i: C1::ScalarField,
@@ -197,16 +197,16 @@ where
     pub cf_U_i: CommittedInstance<C2>,
 }
 
-impl<C1, GC1, C2, GC2, FC, CP1, CP2> FoldingScheme<C1, C2, FC>
-    for Nova<C1, GC1, C2, GC2, FC, CP1, CP2>
+impl<C1, GC1, C2, GC2, FC, CS1, CS2> FoldingScheme<C1, C2, FC>
+    for Nova<C1, GC1, C2, GC2, FC, CS1, CS2>
 where
     C1: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>>,
     C2: CurveGroup,
     GC2: CurveVar<C2, CF2<C2>>,
     FC: FCircuit<C1::ScalarField>,
-    CP1: CommitmentProver<C1>,
-    CP2: CommitmentProver<C2>,
+    CS1: CommitmentScheme<C1>,
+    CS2: CommitmentScheme<C2>,
     <C1 as CurveGroup>::BaseField: PrimeField,
     <C2 as CurveGroup>::BaseField: PrimeField,
     <C1 as Group>::ScalarField: Absorb,
@@ -216,7 +216,7 @@ where
     for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     type PreprocessorParam = (Self::ProverParam, FC);
-    type ProverParam = ProverParams<C1, C2, CP1, CP2>;
+    type ProverParam = ProverParams<C1, C2, CS1, CS2>;
     type VerifierParam = VerifierParams<C1, C2>;
     type CommittedInstanceWithWitness = (CommittedInstance<C1>, Witness<C1>);
     type CFCommittedInstanceWithWitness = (CommittedInstance<C2>, Witness<C2>);
@@ -270,8 +270,8 @@ where
             r1cs,
             cf_r1cs,
             poseidon_config: pp.poseidon_config.clone(),
-            cm_params: pp.cm_params.clone(),
-            cf_cm_params: pp.cf_cm_params.clone(),
+            cs_params: pp.cs_params.clone(),
+            cf_cs_params: pp.cf_cs_params.clone(),
             F,
             i: C1::ScalarField::zero(),
             z_0: z_0.clone(),
@@ -315,7 +315,7 @@ where
             .ok_or(Error::OutOfBounds)?;
 
         // fold Nova instances
-        let (W_i1, U_i1): (Witness<C1>, CommittedInstance<C1>) = NIFS::<C1, CP1>::fold_instances(
+        let (W_i1, U_i1): (Witness<C1>, CommittedInstance<C1>) = NIFS::<C1, CS1>::fold_instances(
             r_Fr, &self.W_i, &self.U_i, &self.w_i, &self.u_i, &T, cmT,
         )?;
 
@@ -355,7 +355,7 @@ where
             };
 
             #[cfg(test)]
-            NIFS::<C1, CP1>::verify_folded_instance(r_Fr, &self.U_i, &self.u_i, &U_i1, &cmT)?;
+            NIFS::<C1, CS1>::verify_folded_instance(r_Fr, &self.U_i, &self.u_i, &U_i1, &cmT)?;
         } else {
             // CycleFold part:
             // get the vector used as public inputs 'x' in the CycleFold circuit
@@ -444,6 +444,9 @@ where
 
         augmented_F_circuit.generate_constraints(cs.clone())?;
 
+        #[cfg(test)]
+        assert!(cs.is_satisfied().unwrap());
+
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
         let (w_i1, x_i1) = extract_w_x::<C1::ScalarField>(&cs);
         if x_i1[0] != u_i1_x {
@@ -459,7 +462,7 @@ where
         self.i += C1::ScalarField::one();
         self.z_i = z_i1.clone();
         self.w_i = Witness::<C1>::new(w_i1, self.r1cs.A.n_rows);
-        self.u_i = self.w_i.commit::<CP1>(&self.cm_params, vec![u_i1_x])?;
+        self.u_i = self.w_i.commit::<CS1>(&self.cs_params, vec![u_i1_x])?;
         self.W_i = W_i1.clone();
         self.U_i = U_i1.clone();
 
@@ -533,15 +536,15 @@ where
     }
 }
 
-impl<C1, GC1, C2, GC2, FC, CP1, CP2> Nova<C1, GC1, C2, GC2, FC, CP1, CP2>
+impl<C1, GC1, C2, GC2, FC, CS1, CS2> Nova<C1, GC1, C2, GC2, FC, CS1, CS2>
 where
     C1: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>>,
     C2: CurveGroup,
     GC2: CurveVar<C2, CF2<C2>>,
     FC: FCircuit<C1::ScalarField>,
-    CP1: CommitmentProver<C1>,
-    CP2: CommitmentProver<C2>,
+    CS1: CommitmentScheme<C1>,
+    CS2: CommitmentScheme<C2>,
     <C2 as CurveGroup>::BaseField: PrimeField,
     <C1 as Group>::ScalarField: Absorb,
     <C2 as Group>::ScalarField: Absorb,
@@ -549,8 +552,8 @@ where
 {
     // computes T and cmT for the AugmentedFCircuit
     fn compute_cmT(&self) -> Result<(Vec<C1::ScalarField>, C1), Error> {
-        NIFS::<C1, CP1>::compute_cmT(
-            &self.cm_params,
+        NIFS::<C1, CS1>::compute_cmT(
+            &self.cs_params,
             &self.r1cs,
             &self.w_i,
             &self.u_i,
@@ -566,8 +569,8 @@ where
         cf_W_i: &Witness<C2>,
         cf_U_i: &CommittedInstance<C2>,
     ) -> Result<(Vec<C2::ScalarField>, C2), Error> {
-        NIFS::<C2, CP2>::compute_cyclefold_cmT(
-            &self.cf_cm_params,
+        NIFS::<C2, CS2>::compute_cyclefold_cmT(
+            &self.cf_cs_params,
             &self.cf_r1cs,
             cf_w_i,
             cf_u_i,
@@ -577,15 +580,15 @@ where
     }
 }
 
-impl<C1, GC1, C2, GC2, FC, CP1, CP2> Nova<C1, GC1, C2, GC2, FC, CP1, CP2>
+impl<C1, GC1, C2, GC2, FC, CS1, CS2> Nova<C1, GC1, C2, GC2, FC, CS1, CS2>
 where
     C1: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>>,
     C2: CurveGroup,
     GC2: CurveVar<C2, CF2<C2>>,
     FC: FCircuit<C1::ScalarField>,
-    CP1: CommitmentProver<C1>,
-    CP2: CommitmentProver<C2>,
+    CS1: CommitmentScheme<C1>,
+    CS2: CommitmentScheme<C2>,
     <C1 as CurveGroup>::BaseField: PrimeField,
     <C2 as CurveGroup>::BaseField: PrimeField,
     <C1 as Group>::ScalarField: Absorb,
@@ -630,7 +633,7 @@ where
         // fold cyclefold instances
         let cf_w_i = Witness::<C2>::new(cf_w_i.clone(), self.cf_r1cs.A.n_rows);
         let cf_u_i: CommittedInstance<C2> =
-            cf_w_i.commit::<CP2>(&self.cf_cm_params, cf_x_i.clone())?;
+            cf_w_i.commit::<CS2>(&self.cf_cs_params, cf_x_i.clone())?;
 
         // compute T* and cmT* for CycleFoldCircuit
         let (cf_T, cf_cmT) = self.compute_cf_cmT(&cf_w_i, &cf_u_i, &cf_W_i, &cf_U_i)?;
@@ -644,7 +647,7 @@ where
         let cf_r_Fq = C1::BaseField::from_bigint(BigInteger::from_bits_le(&cf_r_bits))
             .ok_or(Error::OutOfBounds)?;
 
-        let (cf_W_i1, cf_U_i1) = NIFS::<C2, CP2>::fold_instances(
+        let (cf_W_i1, cf_U_i1) = NIFS::<C2, CS2>::fold_instances(
             cf_r_Fq, &cf_W_i, &cf_U_i, &cf_w_i, &cf_u_i, &cf_T, cf_cmT,
         )?;
         Ok((cf_w_i, cf_u_i, cf_W_i1, cf_U_i1, cf_cmT, cf_r_Fq))
@@ -693,7 +696,7 @@ where
 
 /// helper method to get the pedersen params length for both the AugmentedFCircuit and the
 /// CycleFold circuit
-pub fn get_pedersen_params_len<C1, GC1, C2, GC2, FC>(
+pub fn get_cs_params_len<C1, GC1, C2, GC2, FC>(
     poseidon_config: &PoseidonConfig<C1::ScalarField>,
     F_circuit: FC,
 ) -> Result<(usize, usize), Error>
@@ -715,6 +718,7 @@ where
     Ok((r1cs.A.n_rows, cf_r1cs.A.n_rows))
 }
 
+/// returns the coordinates of a commitment point
 pub(crate) fn get_cm_coordinates<C: CurveGroup>(cm: &C) -> Vec<C::BaseField> {
     let zero = (&C::BaseField::zero(), &C::BaseField::one());
     let cm = cm.into_affine();
@@ -725,8 +729,10 @@ pub(crate) fn get_cm_coordinates<C: CurveGroup>(cm: &C) -> Vec<C::BaseField> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use ark_pallas::{constraints::GVar, Fr, Projective};
-    use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
+    use crate::commitment::kzg::{ProverKey as KZGProverKey, KZG};
+    use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as Projective};
+    use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
+    use ark_poly_commit::kzg10::VerifierKey as KZGVerifierKey;
 
     use crate::commitment::pedersen::Pedersen;
     use crate::frontend::tests::CubicFCircuit;
@@ -736,38 +742,56 @@ pub mod tests {
     /// AugmentedFCircuit
     #[test]
     fn test_ivc() {
-        type NOVA = Nova<
-            Projective,
-            GVar,
-            Projective2,
-            GVar2,
-            CubicFCircuit<Fr>,
-            Pedersen<Projective>,
-            Pedersen<Projective2>,
-        >;
-
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_test_config::<Fr>();
 
         let F_circuit = CubicFCircuit::<Fr>::new(());
-        let z_0 = vec![Fr::from(3_u32)];
 
-        let (cm_len, cf_cm_len) =
-            get_pedersen_params_len::<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>>(
+        let (cs_len, cf_cs_len) =
+            get_cs_params_len::<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>>(
                 &poseidon_config,
                 F_circuit,
             )
             .unwrap();
-        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, cm_len);
-        let cf_pedersen_params = Pedersen::<Projective2>::new_params(&mut rng, cf_cm_len);
+        let (kzg_pk, _): (KZGProverKey<Projective>, KZGVerifierKey<Bn254>) =
+            KZG::<Bn254>::setup(&mut rng, cs_len).unwrap();
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, cs_len).unwrap();
+        let (cf_pedersen_params, _) = Pedersen::<Projective2>::setup(&mut rng, cf_cs_len).unwrap();
 
-        let prover_params =
-            ProverParams::<Projective, Projective2, Pedersen<Projective>, Pedersen<Projective2>> {
-                poseidon_config: poseidon_config.clone(),
-                cm_params: pedersen_params,
-                cf_cm_params: cf_pedersen_params,
-            };
+        // run the test using Pedersen commitments on both sides of the curve cycle
+        test_ivc_opt::<Pedersen<Projective>, Pedersen<Projective2>>(
+            poseidon_config.clone(),
+            pedersen_params,
+            cf_pedersen_params.clone(),
+            F_circuit,
+        );
+        // run the test using KZG for the commitments on the main curve, and Pedersen for the
+        // commitments on the secondary curve
+        test_ivc_opt::<KZG<Bn254>, Pedersen<Projective2>>(
+            poseidon_config,
+            kzg_pk,
+            cf_pedersen_params,
+            F_circuit,
+        );
+    }
 
+    // test_ivc allowing to choose the CommitmentSchemes
+    fn test_ivc_opt<CS1: CommitmentScheme<Projective>, CS2: CommitmentScheme<Projective2>>(
+        poseidon_config: PoseidonConfig<Fr>,
+        cs_params: CS1::ProverParams,
+        cf_cs_params: CS2::ProverParams,
+        F_circuit: CubicFCircuit<Fr>,
+    ) {
+        type NOVA<CS1, CS2> =
+            Nova<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>, CS1, CS2>;
+
+        let prover_params = ProverParams::<Projective, Projective2, CS1, CS2> {
+            poseidon_config: poseidon_config.clone(),
+            cs_params,
+            cf_cs_params,
+        };
+
+        let z_0 = vec![Fr::from(3_u32)];
         let mut nova = NOVA::init(&prover_params, F_circuit, z_0.clone()).unwrap();
 
         let num_steps: usize = 3;
@@ -782,7 +806,7 @@ pub mod tests {
             cf_r1cs: nova.clone().cf_r1cs,
         };
         let (running_instance, incoming_instance, cyclefold_instance) = nova.instances();
-        NOVA::verify(
+        NOVA::<CS1, CS2>::verify(
             verifier_params,
             z_0,
             nova.z_i,

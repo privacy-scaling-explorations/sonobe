@@ -175,7 +175,7 @@ where
     }
 }
 
-/// ChallengeGadget computes the RO challenge used for the CycleFold instances NIFS, it contains a
+/// CycleFoldChallengeGadget computes the RO challenge used for the CycleFold instances NIFS, it contains a
 /// rust-native and a in-circuit compatible versions.
 pub struct CycleFoldChallengeGadget<C: CurveGroup, GC: CurveVar<C, CF2<C>>> {
     _c: PhantomData<C>, // Nova's Curve2, the one used for the CycleFold circuit
@@ -252,19 +252,15 @@ where
             .collect::<Vec<UInt8<CF2<C>>>>();
 
         let input: Vec<UInt8<CF2<C>>> = [
-            U_i.cmE.to_bytes()?,
+            pointvar_to_bytes(U_i.cmE)?,
             U_i.u.to_bytes()?,
-            U_i.cmW.to_bytes()?,
+            pointvar_to_bytes(U_i.cmW)?,
             U_i_x_bytes,
-            u_i.cmE.to_bytes()?,
+            pointvar_to_bytes(u_i.cmE)?,
             u_i.u.to_bytes()?,
-            u_i.cmW.to_bytes()?,
+            pointvar_to_bytes(u_i.cmW)?,
             u_i_x_bytes,
-            cmT.to_bytes()?,
-            // TODO instead of bytes, use field elements, but needs x,y coordinates from
-            // u_i.{cmE,cmW}, U_i.{cmE,cmW}, cmT. Depends exposing x,y coordinates of GC. Issue to
-            // keep track of this:
-            // https://github.com/privacy-scaling-explorations/folding-schemes/issues/44
+            pointvar_to_bytes(cmT)?,
         ]
         .concat();
         sponge.absorb(&input)?;
@@ -273,17 +269,26 @@ where
     }
 }
 
-/// returns the bytes being compatible with the ark_r1cs_std `.to_bytes` approach
+/// returns the bytes being compatible with the pointvar_to_bytes method.
+/// These methods are temporary once arkworks has the fix to prevent different to_bytes behaviour
+/// across different curves. Eg, in pasta and bn254: pasta returns 65 bytes both native and gadget,
+/// whereas bn254 returns 64 bytes native and 65 in gadget, also the penultimate byte is different
+/// natively than in gadget.
 fn point_to_bytes<C: CurveGroup>(p: C) -> Result<Vec<u8>, Error> {
     let l = p.uncompressed_size();
     let mut b = Vec::new();
     p.serialize_uncompressed(&mut b)?;
-    b[l - 1] = 0;
     if p.is_zero() {
         b[l / 2] = 1;
         b[l - 1] = 1;
     }
-    Ok(b)
+    Ok(b[..63].to_vec())
+}
+fn pointvar_to_bytes<C: CurveGroup, GC: CurveVar<C, CF2<C>>>(
+    p: GC,
+) -> Result<Vec<UInt8<CF2<C>>>, SynthesisError> {
+    let b = p.to_bytes()?;
+    Ok(b[..63].to_vec())
 }
 
 /// CycleFoldCircuit contains the constraints that check the correct fold of the committed
@@ -350,8 +355,8 @@ where
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use ark_bn254::{constraints::GVar, Fq, Fr, G1Projective as Projective};
     use ark_ff::BigInteger;
-    use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
     use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::UniformRand;
@@ -466,6 +471,21 @@ pub mod tests {
         .unwrap();
         nifs_check.enforce_equal(&Boolean::<Fq>::TRUE).unwrap();
         assert!(cs.is_satisfied().unwrap());
+    }
+
+    #[test]
+    fn test_point_bytes() {
+        let mut rng = ark_std::test_rng();
+
+        let p = Projective::rand(&mut rng);
+        let p_bytes = point_to_bytes(p).unwrap();
+
+        let cs = ConstraintSystem::<Fq>::new_ref();
+        let pVar = GVar::new_witness(cs.clone(), || Ok(p)).unwrap();
+        assert_eq!(pVar.value().unwrap(), p);
+
+        let p_bytesVar = &pointvar_to_bytes(pVar).unwrap();
+        assert_eq!(p_bytesVar.value().unwrap(), p_bytes);
     }
 
     #[test]

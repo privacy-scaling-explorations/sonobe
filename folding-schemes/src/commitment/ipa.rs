@@ -18,28 +18,17 @@ use ark_r1cs_std::{
     ToBitsGadget,
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
-use ark_std::{
-    cfg_iter,
-    rand::{Rng, RngCore},
-    UniformRand, Zero,
-};
+use ark_std::{cfg_iter, rand::RngCore, UniformRand, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
-use super::{pedersen::Params as PedersenParams, CommitmentProver};
+use super::{pedersen::Params as PedersenParams, CommitmentScheme};
 use crate::transcript::Transcript;
 use crate::utils::{
     powers_of,
     vec::{vec_add, vec_scalar_mul},
 };
 use crate::Error;
-
-/// IPA implements the Inner Product Argument protocol. The `H` parameter indicates if to use the
-/// commitment in hiding mode or not.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct IPA<C: CurveGroup, const H: bool = false> {
-    _c: PhantomData<C>,
-}
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Proof<C: CurveGroup> {
@@ -50,22 +39,35 @@ pub struct Proof<C: CurveGroup> {
     R: Vec<C>,
 }
 
-impl<C: CurveGroup, const H: bool> IPA<C, H> {
-    pub fn new_params<R: Rng>(rng: &mut R, max: usize) -> PedersenParams<C> {
-        let generators: Vec<C::Affine> = std::iter::repeat_with(|| C::Affine::rand(rng))
-            .take(max.next_power_of_two())
-            .collect();
-        PedersenParams::<C> {
-            h: C::rand(rng),
-            generators,
-        }
-    }
+/// IPA implements the Inner Product Argument protocol following the CommitmentScheme trait. The
+/// `H` parameter indicates if to use the commitment in hiding mode or not.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct IPA<C: CurveGroup, const H: bool = false> {
+    _c: PhantomData<C>,
 }
 
-// Implement the CommitmentProver trait for IPA
-impl<C: CurveGroup, const H: bool> CommitmentProver<C, H> for IPA<C, H> {
-    type Params = PedersenParams<C>;
-    type Proof = Proof<C>;
+/// Implements the CommitmentScheme trait for IPA
+impl<C: CurveGroup, const H: bool> CommitmentScheme<C, H> for IPA<C, H> {
+    type ProverParams = PedersenParams<C>;
+    type VerifierParams = PedersenParams<C>;
+    type Proof = (Proof<C>, C::ScalarField, C::ScalarField); // (proof, v=p(x), r=blinding factor)
+    type ProverChallenge = (C::ScalarField, C, Vec<C::ScalarField>);
+    type Challenge = (C::ScalarField, C, Vec<C::ScalarField>);
+
+    fn setup(
+        mut rng: impl RngCore,
+        len: usize,
+    ) -> Result<(Self::ProverParams, Self::VerifierParams), Error> {
+        let generators: Vec<C::Affine> = std::iter::repeat_with(|| C::Affine::rand(&mut rng))
+            .take(len.next_power_of_two())
+            .collect();
+        let p = PedersenParams::<C> {
+            h: C::rand(&mut rng),
+            generators,
+        };
+        Ok((p.clone(), p))
+    }
+
     fn commit(
         params: &PedersenParams<C>,
         a: &[C::ScalarField],
@@ -74,6 +76,10 @@ impl<C: CurveGroup, const H: bool> CommitmentProver<C, H> for IPA<C, H> {
         if params.generators.len() < a.len() {
             return Err(Error::PedersenParamsLen(params.generators.len(), a.len()));
         }
+        if !H && (!r.is_zero()) {
+            return Err(Error::BlindingNotZero);
+        }
+
         // h⋅r + <g, a>
         // use msm_unchecked because we already ensured at the if that lengths match
         if !H {
@@ -83,15 +89,18 @@ impl<C: CurveGroup, const H: bool> CommitmentProver<C, H> for IPA<C, H> {
     }
 
     fn prove(
-        params: &Self::Params,
+        params: &Self::ProverParams,
         transcript: &mut impl Transcript<C>,
-        P: &C, // commitment
-        a: &[C::ScalarField],
-        x: &C::ScalarField,
+        P: &C,                // commitment
+        a: &[C::ScalarField], // vector
+        blind: &C::ScalarField,
         rng: Option<&mut dyn RngCore>,
     ) -> Result<Self::Proof, Error> {
         if !a.len().is_power_of_two() {
             return Err(Error::NotPowerOfTwo("a".to_string(), a.len()));
+        }
+        if !H && (!blind.is_zero()) {
+            return Err(Error::BlindingNotZero);
         }
         let d = a.len();
         let k = (f64::from(d as u32).log2()) as usize;
@@ -116,11 +125,14 @@ impl<C: CurveGroup, const H: bool> CommitmentProver<C, H> for IPA<C, H> {
         }
 
         transcript.absorb_point(P)?;
+        let x = transcript.get_challenge(); // challenge value at which we evaluate
         let s = transcript.get_challenge();
         let U = C::generator().mul(s);
 
         let mut a = a.to_owned();
-        let mut b = powers_of(*x, d);
+        let mut b = powers_of(x, d);
+        let v = inner_prod(&a, &b)?;
+
         let mut G = params.generators.clone();
 
         let mut L: Vec<C> = vec![C::zero(); k];
@@ -180,40 +192,41 @@ impl<C: CurveGroup, const H: bool> CommitmentProver<C, H> for IPA<C, H> {
             return Err(Error::NotExpectedLength(G.len(), 1));
         }
 
-        Ok(Self::Proof {
-            a: a[0],
-            l: l.clone(),
-            r: r.clone(),
-            L,
-            R,
-        })
+        Ok((
+            Proof {
+                a: a[0],
+                l: l.clone(),
+                r: r.clone(),
+                L,
+                R,
+            },
+            v,      // evaluation at challenge, v=p(x)
+            *blind, // blind factor
+        ))
     }
-}
 
-impl<C: CurveGroup, const H: bool> IPA<C, H> {
-    #[allow(clippy::too_many_arguments)]
-    pub fn verify(
-        params: &PedersenParams<C>,
+    fn prove_with_challenge(
+        _params: &Self::ProverParams,
+        _challenge: Self::ProverChallenge,
+        _a: &[C::ScalarField], // vector
+        _blind: &C::ScalarField,
+        _rng: Option<&mut dyn RngCore>,
+    ) -> Result<Self::Proof, Error> {
+        // not supported because the prover logic computes challenges as it advances on the logic
+        Err(Error::NotSupported("IPA::prove_with_challenge".to_string()))
+    }
+
+    fn verify(
+        params: &Self::VerifierParams,
         transcript: &mut impl Transcript<C>,
-        x: C::ScalarField, // evaluation point
-        v: C::ScalarField, // value at evaluation point
-        P: C,              // commitment
-        p: Proof<C>,
-        r: C::ScalarField, // blinding factor
-        k: usize,          // k = log2(d), where d is the degree of the committed polynomial
-    ) -> Result<bool, Error> {
-        if !H && (!p.l.is_empty() || !p.r.is_empty()) {
-            return Err(Error::CommitmentVerificationFail);
-        }
-        if H && (p.l.len() != k || p.r.len() != k) {
-            return Err(Error::CommitmentVerificationFail);
-        }
-        if p.L.len() != k || p.R.len() != k {
-            return Err(Error::CommitmentVerificationFail);
-        }
+        P: &C, // commitment
+        proof: &Self::Proof,
+    ) -> Result<(), Error> {
+        let (p, _r) = (proof.0.clone(), proof.1);
+        let k = p.L.len();
 
-        // absorbs & get challenges
-        transcript.absorb_point(&P)?;
+        transcript.absorb_point(P)?;
+        let x = transcript.get_challenge(); // challenge value at which we evaluate
         let s = transcript.get_challenge();
         let U = C::generator().mul(s);
         let mut u: Vec<C::ScalarField> = vec![C::ScalarField::zero(); k];
@@ -222,8 +235,35 @@ impl<C: CurveGroup, const H: bool> IPA<C, H> {
             transcript.absorb_point(&p.R[i])?;
             u[i] = transcript.get_challenge();
         }
+        let challenge = (x, U, u);
 
-        let P = P + U.mul(v);
+        Self::verify_with_challenge(params, challenge, P, proof)
+    }
+
+    fn verify_with_challenge(
+        params: &Self::VerifierParams,
+        challenge: Self::Challenge,
+        P: &C, // commitment
+        proof: &Self::Proof,
+    ) -> Result<(), Error> {
+        let (p, v, r) = (proof.0.clone(), proof.1, proof.2);
+        let (x, U, u) = challenge;
+
+        let k = p.L.len();
+        if p.R.len() != k {
+            return Err(Error::CommitmentVerificationFail);
+        }
+        if !H && (!r.is_zero()) {
+            return Err(Error::BlindingNotZero);
+        }
+        if !H && (!p.l.is_empty() || !p.r.is_empty()) {
+            return Err(Error::CommitmentVerificationFail);
+        }
+        if H && (p.l.len() != k || p.r.len() != k) {
+            return Err(Error::CommitmentVerificationFail);
+        }
+
+        let P = *P + U.mul(v); // where v=p(x)
 
         let mut q_0 = P;
         let mut r = r;
@@ -262,7 +302,10 @@ impl<C: CurveGroup, const H: bool> IPA<C, H> {
             G.mul(p.a) + U.mul(p.a * b)
         };
 
-        Ok(q_0 == q_1)
+        if q_0 != q_1 {
+            return Err(Error::CommitmentVerificationFail);
+        }
+        Ok(())
     }
 }
 
@@ -452,7 +495,7 @@ where
     pub fn verify<const K: usize>(
         g: &Vec<GC>,                                  // params.generators
         h: &GC,                                       // params.h
-        x: &NonNativeFieldVar<C::ScalarField, CF<C>>, // evaluation point
+        x: &NonNativeFieldVar<C::ScalarField, CF<C>>, // evaluation point, challenge
         v: &NonNativeFieldVar<C::ScalarField, CF<C>>, // value at evaluation point
         P: &GC,                                       // commitment
         p: &ProofVar<C, GC>,
@@ -475,7 +518,6 @@ where
         }
 
         // compute b & G from s
-        // let d: usize = 2_u64.pow(K as u32) as usize;
         let s = build_s_gadget(u, &u_invs, K)?;
         // b = <s, b_vec> = <s, [1, x, x^2, ..., x^K-1]>
         let b = s_b_inner_gadget(u, x)?;
@@ -539,7 +581,7 @@ mod tests {
         const d: usize = 2_u64.pow(k as u32) as usize;
 
         // setup params
-        let params = IPA::<Projective, hiding>::new_params(&mut rng, d);
+        let (params, _) = IPA::<Projective, hiding>::setup(&mut rng, d).unwrap();
 
         let poseidon_config = poseidon_test_config::<Fr>();
         // init Prover's transcript
@@ -547,38 +589,28 @@ mod tests {
         // init Verifier's transcript
         let mut transcript_v = PoseidonTranscript::<Projective>::new(&poseidon_config);
 
+        // a is the vector that we're committing
         let a: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(&mut rng))
             .take(d)
             .collect();
-        let r_blind: Fr = Fr::rand(&mut rng);
+        let r_blind: Fr = if hiding {
+            Fr::rand(&mut rng)
+        } else {
+            Fr::zero()
+        };
         let cm = IPA::<Projective, hiding>::commit(&params, &a, &r_blind).unwrap();
-
-        // evaluation point
-        let x = Fr::rand(&mut rng);
 
         let proof = IPA::<Projective, hiding>::prove(
             &params,
             &mut transcript_p,
             &cm,
             &a,
-            &x,
+            &r_blind,
             Some(&mut rng),
         )
         .unwrap();
 
-        let b = powers_of(x, d);
-        let v = inner_prod(&a, &b).unwrap();
-        assert!(IPA::<Projective, hiding>::verify(
-            &params,
-            &mut transcript_v,
-            x,
-            v,
-            cm,
-            proof,
-            r_blind,
-            k,
-        )
-        .unwrap());
+        IPA::<Projective, hiding>::verify(&params, &mut transcript_v, &cm, &proof).unwrap();
     }
 
     #[test]
@@ -589,11 +621,11 @@ mod tests {
     fn test_ipa_gadget_opt<const hiding: bool>() {
         let mut rng = ark_std::test_rng();
 
-        const k: usize = 4;
+        const k: usize = 3;
         const d: usize = 2_u64.pow(k as u32) as usize;
 
         // setup params
-        let params = IPA::<Projective, hiding>::new_params(&mut rng, d);
+        let (params, _) = IPA::<Projective, hiding>::setup(&mut rng, d).unwrap();
 
         let poseidon_config = poseidon_test_config::<Fr>();
         // init Prover's transcript
@@ -605,57 +637,49 @@ mod tests {
             .take(d / 2)
             .collect();
         a.extend(vec![Fr::zero(); d / 2]);
-        let r_blind: Fr = Fr::rand(&mut rng);
+        let r_blind: Fr = if hiding {
+            Fr::rand(&mut rng)
+        } else {
+            Fr::zero()
+        };
         let cm = IPA::<Projective, hiding>::commit(&params, &a, &r_blind).unwrap();
-
-        // evaluation point
-        let x = Fr::rand(&mut rng);
 
         let proof = IPA::<Projective, hiding>::prove(
             &params,
             &mut transcript_p,
             &cm,
             &a,
-            &x,
+            &r_blind,
             Some(&mut rng),
         )
         .unwrap();
 
-        let b = powers_of(x, d);
-        let v = inner_prod(&a, &b).unwrap();
-        assert!(IPA::<Projective, hiding>::verify(
-            &params,
-            &mut transcript_v,
-            x,
-            v,
-            cm,
-            proof.clone(),
-            r_blind,
-            k,
-        )
-        .unwrap());
+        IPA::<Projective, hiding>::verify(&params, &mut transcript_v, &cm, &proof).unwrap();
 
         // circuit
         let cs = ConstraintSystem::<Fq>::new_ref();
 
         let mut transcript_v = PoseidonTranscript::<Projective>::new(&poseidon_config);
         transcript_v.absorb_point(&cm).unwrap();
+        let challenge = transcript_v.get_challenge(); // challenge value at which we evaluate
         let s = transcript_v.get_challenge();
         let U = Projective::generator().mul(s);
         let mut u: Vec<Fr> = vec![Fr::zero(); k];
         for i in (0..k).rev() {
-            transcript_v.absorb_point(&proof.L[i]).unwrap();
-            transcript_v.absorb_point(&proof.R[i]).unwrap();
+            transcript_v.absorb_point(&proof.0.L[i]).unwrap();
+            transcript_v.absorb_point(&proof.0.R[i]).unwrap();
             u[i] = transcript_v.get_challenge();
         }
 
         // prepare inputs
         let gVar = Vec::<GVar>::new_constant(cs.clone(), params.generators).unwrap();
         let hVar = GVar::new_constant(cs.clone(), params.h).unwrap();
-        let xVar = NonNativeFieldVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(x)).unwrap();
-        let vVar = NonNativeFieldVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(v)).unwrap();
+        let challengeVar =
+            NonNativeFieldVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(challenge)).unwrap();
+        let vVar = NonNativeFieldVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(proof.1)).unwrap();
         let cmVar = GVar::new_witness(cs.clone(), || Ok(cm)).unwrap();
-        let proofVar = ProofVar::<Projective, GVar>::new_witness(cs.clone(), || Ok(proof)).unwrap();
+        let proofVar =
+            ProofVar::<Projective, GVar>::new_witness(cs.clone(), || Ok(proof.0)).unwrap();
         let r_blindVar =
             NonNativeFieldVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(r_blind)).unwrap();
         let uVar_vec = Vec::<NonNativeFieldVar<Fr, Fq>>::new_witness(cs.clone(), || Ok(u)).unwrap();
@@ -663,10 +687,9 @@ mod tests {
         let UVar = GVar::new_witness(cs.clone(), || Ok(U)).unwrap();
 
         let v = IPAGadget::<Projective, GVar, hiding>::verify::<k>(
-            // &mut transcriptVar,
             &gVar,
             &hVar,
-            &xVar,
+            &challengeVar,
             &vVar,
             &cmVar,
             &proofVar,

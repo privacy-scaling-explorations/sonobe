@@ -205,6 +205,7 @@ where
     }
 }
 
+/// Prepares solidity calldata for calling the NovaDecider contract
 pub fn prepare_calldata(
     function_signature_check: [u8; 4],
     i: ark_bn254::Fr,
@@ -214,45 +215,42 @@ pub fn prepare_calldata(
     incoming_instance: &CommittedInstance<ark_bn254::G1Projective>,
     proof: Proof<ark_bn254::G1Projective, KZG<'static, Bn254>, Groth16<Bn254>>,
 ) -> Result<Vec<u8>, Error> {
+    // additional comments below link each element to the contract's function signature
     Ok(vec![
         function_signature_check.to_vec(),
-        // IVC values
-        i.into_bigint().to_bytes_be(),
+        i.into_bigint().to_bytes_be(), // i
         z_0.iter()
             .flat_map(|v| v.into_bigint().to_bytes_be())
-            .collect::<Vec<u8>>(),
+            .collect::<Vec<u8>>(), // z_0
         z_i.iter()
             .flat_map(|v| v.into_bigint().to_bytes_be())
-            .collect::<Vec<u8>>(),
-        point_to_eth_format(running_instance.cmW.into_affine())?,
-        point_to_eth_format(running_instance.cmE.into_affine())?,
-        running_instance.u.into_bigint().to_bytes_be(),
+            .collect::<Vec<u8>>(), // z_i
+        point_to_eth_format(running_instance.cmW.into_affine())?, // U_i_cmW compute limbs
+        point_to_eth_format(running_instance.cmE.into_affine())?, // U_i_cmE compute limbs
+        running_instance.u.into_bigint().to_bytes_be(), // U_i_u
+        incoming_instance.u.into_bigint().to_bytes_be(), // u_i_u
+        proof.r.into_bigint().to_bytes_be(), // r
         running_instance
             .x
             .iter()
             .flat_map(|v| v.into_bigint().to_bytes_be())
-            .collect::<Vec<u8>>(),
-        point_to_eth_format(incoming_instance.cmW.into_affine())?,
-        point_to_eth_format(incoming_instance.cmE.into_affine())?,
-        incoming_instance.u.into_bigint().to_bytes_be(),
+            .collect::<Vec<u8>>(), // U_i_x
+        point_to_eth_format(incoming_instance.cmW.into_affine())?, // u_i_cmW compute limbs
         incoming_instance
             .x
             .iter()
             .flat_map(|v| v.into_bigint().to_bytes_be())
-            .collect::<Vec<u8>>(),
-        point_to_eth_format(proof.cmT.into_affine())?,
-        proof.r.into_bigint().to_bytes_be(),
-        // Groth16 proof
-        point_to_eth_format(proof.snark_proof.a)?,
-        point2_to_eth_format(proof.snark_proof.b)?,
-        point_to_eth_format(proof.snark_proof.c)?,
-        // KZG proof
-        proof.kzg_challenges[0].into_bigint().to_bytes_be(),
-        proof.kzg_challenges[1].into_bigint().to_bytes_be(),
-        point_to_eth_format(proof.kzg_proofs[0].proof.into_affine())?, // proofs
-        point_to_eth_format(proof.kzg_proofs[1].proof.into_affine())?,
-        proof.kzg_proofs[0].eval.into_bigint().to_bytes_be(), // evals
-        proof.kzg_proofs[1].eval.into_bigint().to_bytes_be(),
+            .collect::<Vec<u8>>(), // u_i_x
+        point_to_eth_format(proof.cmT.into_affine())?, // cmT compute limbs
+        point_to_eth_format(proof.snark_proof.a)?, // pA
+        point2_to_eth_format(proof.snark_proof.b)?, // pB
+        point_to_eth_format(proof.snark_proof.c)?, // pC
+        proof.kzg_challenges[0].into_bigint().to_bytes_be(), // challenge_W
+        proof.kzg_challenges[1].into_bigint().to_bytes_be(), // challenge_E
+        proof.kzg_proofs[0].eval.into_bigint().to_bytes_be(), // eval W
+        proof.kzg_proofs[1].eval.into_bigint().to_bytes_be(), // eval E
+        point_to_eth_format(proof.kzg_proofs[0].proof.into_affine())?, // W kzg_proof
+        point_to_eth_format(proof.kzg_proofs[1].proof.into_affine())?, // E kzg_proof
     ]
     .concat())
 }

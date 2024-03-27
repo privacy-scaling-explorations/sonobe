@@ -5,17 +5,23 @@ use revm::{
 };
 use std::{
     fmt::{self, Debug, Formatter},
-    fs::{create_dir_all, File},
+    fs::{self, create_dir_all, File},
     io::{self, Write},
+    path::PathBuf,
     process::{Command, Stdio},
     str,
 };
 
 // from: https://github.com/privacy-scaling-explorations/halo2-solidity-verifier/blob/85cb77b171ce3ee493628007c7a1cfae2ea878e6/examples/separately.rs#L56
 pub(crate) fn save_solidity(name: impl AsRef<str>, solidity: &str) {
-    const DIR_GENERATED: &str = "./generated";
-    create_dir_all(DIR_GENERATED).unwrap();
-    File::create(format!("{DIR_GENERATED}/{}", name.as_ref()))
+    let curdir = PathBuf::from(".");
+    let curdir_abs_path = fs::canonicalize(&curdir).expect("Failed to get current directory");
+    let curdir_abs_path = curdir_abs_path
+        .to_str()
+        .expect("Failed to convert path to string");
+    let dir_generated = format!("{curdir_abs_path}/generated");
+    create_dir_all(dir_generated.clone()).unwrap();
+    File::create(format!("{}/{}", dir_generated, name.as_ref()))
         .unwrap()
         .write_all(solidity.as_bytes())
         .unwrap();

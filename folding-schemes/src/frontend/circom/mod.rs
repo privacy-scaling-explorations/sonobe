@@ -41,13 +41,12 @@ impl<F: PrimeField> FCircuit<F> for CircomtoFCircuit<F> {
             .collect::<Vec<BigInt>>();
 
         // compute witness
-        let (_, witness) = self
-            .circom_wrapper
-            .extract_r1cs_and_witness(&[("ivc_input".to_string(), input_num_bigint)])
-            .map_err(|e| Error::Other(format!("Circom computation failed: {}", e)))?;
+        let witness = self
+        .circom_wrapper
+        .extract_witness(&[("ivc_input".to_string(), input_num_bigint)])
+        .map_err(|e| Error::Other(format!("Circom computation failed: {}", e)))?;
 
-        let w = witness.ok_or(Error::Other("Witness was not found".to_string()))?;
-        let z_i1 = w[1..1 + self.state_len()].to_vec();
+        let z_i1 = witness[1..1 + self.state_len()].to_vec();
         Ok(z_i1)
     }
 
@@ -151,10 +150,19 @@ pub mod tests {
 
         let circom_fcircuit = CircomtoFCircuit::<Fr>::new((r1cs_path, wasm_path));
 
+        /*
         let wrapper_circuit = crate::frontend::tests::WrapperCircuit {
             FC: circom_fcircuit,
             z_i: Some(vec![Fr::from(3u32)]),
             z_i1: Some(vec![Fr::from(35u32)]),
+        };
+        */
+
+        let z_i = vec![Fr::from(3_u32)];
+        let wrapper_circuit = crate::frontend::tests::WrapperCircuit {
+            FC: circom_fcircuit.clone(),
+            z_i: Some(z_i.clone()),
+            z_i1: Some(circom_fcircuit.step_native(0, z_i.clone()).unwrap()),
         };
 
         let cs = ConstraintSystem::<Fr>::new_ref();

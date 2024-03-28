@@ -39,19 +39,24 @@ impl<F: PrimeField> CircomWrapper<F> {
         let r1cs_file = r1cs_reader::R1CSFile::<F>::new(reader)?;
         let r1cs = r1cs_reader::R1CS::<F>::from(r1cs_file);
 
-        // Calculates the witness
-        let witness = self.calculate_witness(inputs)?;
+        let witness_vec = self.extract_witness(inputs)?;
 
-        let witness_vec: Result<Vec<F>, _> = witness
+        Ok((r1cs, Some(witness_vec)))
+    }
+
+    pub fn extract_witness(
+        &self,
+        inputs: &[(String, Vec<BigInt>)],
+    ) -> Result<Vec<F>, Error> {
+        let witness_bigint = self.calculate_witness(inputs)?;
+
+        witness_bigint
             .iter()
             .map(|big_int| {
-                let ark_big_int = self.num_bigint_to_ark_bigint(big_int)?;
-                F::from_bigint(ark_big_int)
-                    .ok_or(Error::Other("could not get F from bigint".to_string()))
+                self.num_bigint_to_ark_bigint(big_int)
+                    .and_then(|ark_big_int| F::from_bigint(ark_big_int).ok_or_else(|| Error::Other("could not get F from bigint".to_string())))
             })
-            .collect();
-
-        Ok((r1cs, witness_vec.ok()))
+            .collect()
     }
 
     // Calculates the witness given the Wasm filepath and inputs.

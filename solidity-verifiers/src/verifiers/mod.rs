@@ -454,6 +454,79 @@ mod tests {
     }
 
     #[test]
+    fn nova_cyclefold_verifier_accepts_and_rejects_proofs_for_cubic_fcircuit_and_2_steps_folding() {
+        let mut rng = rand::rngs::OsRng;
+        let z_0 = vec![Fr::from(3_u32)];
+        let (prover_params, kzg_vk) = init_test_prover_params::<CubicFCircuit<Fr>>();
+        let f_circuit = CubicFCircuit::<Fr>::new(());
+
+        let mut nova = NOVACubicFCircuit::init(&prover_params, f_circuit, z_0.clone()).unwrap();
+        nova.prove_step().unwrap();
+        nova.prove_step().unwrap();
+
+        let decider_circuit =
+            DeciderEthCircuit::<G1, GVar, G2, GVar2, KZG<Bn254>, Pedersen<G2>>::from_nova::<
+                CubicFCircuit<Fr>,
+            >(nova.clone())
+            .unwrap();
+        let (g16_pk, g16_vk) =
+            init_test_groth16_setup_for_decider_eth_circuit(decider_circuit.clone(), &mut rng);
+        let proof = DECIDEREthCubicFCircuit::prove(
+            (
+                prover_params.poseidon_config.clone(),
+                g16_pk,
+                prover_params.cs_params.clone(),
+            ),
+            rng,
+            nova.clone(),
+        )
+        .unwrap();
+
+        let verified = DECIDEREthCubicFCircuit::verify(
+            (g16_vk.clone(), kzg_vk.clone()),
+            nova.i,
+            nova.z_0.clone(),
+            nova.z_i.clone(),
+            &nova.U_i,
+            &nova.u_i,
+            &proof,
+        )
+        .unwrap();
+        assert!(verified);
+
+        let g16_data = Groth16Data::from(g16_vk);
+        let kzg_data = KzgData::from((
+            kzg_vk,
+            Some(prover_params.cs_params.powers_of_g[0..3].to_vec()),
+        ));
+        let nova_cyclefold_data = NovaCyclefoldData::from((g16_data, kzg_data, nova.z_0.len()));
+
+        let function_selector =
+            get_function_selector_for_nova_cyclefold_verifier(nova.z_0.len() * 2 + 1);
+
+        let mut calldata: Vec<u8> = prepare_calldata(
+            function_selector,
+            nova.i,
+            nova.z_0,
+            nova.z_i,
+            &nova.U_i,
+            &nova.u_i,
+            proof,
+        )
+        .unwrap();
+
+        let decider_template = get_decider_template_for_cyclefold_decider(nova_cyclefold_data);
+
+        let nova_cyclefold_verifier_bytecode = compile_solidity(decider_template, "NovaDecider");
+
+        let mut evm = Evm::default();
+        let verifier_address = evm.create(nova_cyclefold_verifier_bytecode);
+
+        let (_, output) = evm.call(verifier_address, calldata.clone());
+        assert_eq!(*output.last().unwrap(), 1);
+    }
+
+    #[test]
     fn nova_cyclefold_verifier_accepts_and_rejects_proofs_for_cubic_fcircuit() {
         let mut rng = rand::rngs::OsRng;
         let z_0 = vec![Fr::from(3_u32)];
@@ -537,6 +610,88 @@ mod tests {
         calldata[35] = prev_call_data_i;
 
         // change z_0 to make calldata invalid
+    }
+
+    #[test]
+    fn nova_cyclefold_verifier_accepts_and_rejects_proofs_for_multi_inputs_fcircuit_and_2_steps_folding(
+    ) {
+        let mut rng = rand::rngs::OsRng;
+        let z_0 = vec![
+            Fr::from(1_u32),
+            Fr::from(1_u32),
+            Fr::from(1_u32),
+            Fr::from(1_u32),
+            Fr::from(1_u32),
+        ];
+
+        let (prover_params, kzg_vk) = init_test_prover_params::<MultiInputsFCircuit<Fr>>();
+        let f_circuit = MultiInputsFCircuit::<Fr>::new(());
+
+        let mut nova =
+            NOVAMultiInputsFCircuit::init(&prover_params, f_circuit, z_0.clone()).unwrap();
+        nova.prove_step().unwrap();
+        nova.prove_step().unwrap();
+
+        let decider_circuit =
+            DeciderEthCircuit::<G1, GVar, G2, GVar2, KZG<Bn254>, Pedersen<G2>>::from_nova::<
+                MultiInputsFCircuit<Fr>,
+            >(nova.clone())
+            .unwrap();
+        let (g16_pk, g16_vk) =
+            init_test_groth16_setup_for_decider_eth_circuit(decider_circuit.clone(), &mut rng);
+        let proof = DECIDEREthMultiInputsFCircuit::prove(
+            (
+                prover_params.poseidon_config.clone(),
+                g16_pk,
+                prover_params.cs_params.clone(),
+            ),
+            rng,
+            nova.clone(),
+        )
+        .unwrap();
+
+        let verified = DECIDEREthMultiInputsFCircuit::verify(
+            (g16_vk.clone(), kzg_vk.clone()),
+            nova.i,
+            nova.z_0.clone(),
+            nova.z_i.clone(),
+            &nova.U_i,
+            &nova.u_i,
+            &proof,
+        )
+        .unwrap();
+        assert!(verified);
+
+        let g16_data = Groth16Data::from(g16_vk);
+        let kzg_data = KzgData::from((
+            kzg_vk,
+            Some(prover_params.cs_params.powers_of_g[0..3].to_vec()),
+        ));
+        let nova_cyclefold_data = NovaCyclefoldData::from((g16_data, kzg_data, nova.z_0.len()));
+
+        let function_selector =
+            get_function_selector_for_nova_cyclefold_verifier(nova.z_0.len() * 2 + 1);
+
+        let mut calldata: Vec<u8> = prepare_calldata(
+            function_selector,
+            nova.i,
+            nova.z_0,
+            nova.z_i,
+            &nova.U_i,
+            &nova.u_i,
+            proof,
+        )
+        .unwrap();
+
+        let decider_template = get_decider_template_for_cyclefold_decider(nova_cyclefold_data);
+
+        let nova_cyclefold_verifier_bytecode = compile_solidity(decider_template, "NovaDecider");
+
+        let mut evm = Evm::default();
+        let verifier_address = evm.create(nova_cyclefold_verifier_bytecode);
+
+        let (_, output) = evm.call(verifier_address, calldata.clone());
+        assert_eq!(*output.last().unwrap(), 1);
     }
 
     #[test]
@@ -633,6 +788,8 @@ mod tests {
         // change z_0 to make calldata invalid
     }
 
+    /// Computes the function selector for the nova cyclefold verifier
+    /// It is computed on the fly since it depends on the length of the first parameter array
     fn get_function_selector_for_nova_cyclefold_verifier(
         first_param_array_length: usize,
     ) -> [u8; 4] {

@@ -5,11 +5,8 @@ use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
 use ark_snark::SNARK;
 use ark_std::rand::{CryptoRng, RngCore};
-use ark_std::{One, Zero};
+use ark_std::Zero;
 use core::marker::PhantomData;
-
-use ark_bn254::Bn254;
-use ark_groth16::Groth16;
 
 pub use super::decider_eth_circuit::{DeciderEthCircuit, KZGChallengesGadget};
 use super::{circuits::CF2, nifs::NIFS, CommittedInstance, Nova};
@@ -22,6 +19,9 @@ use crate::folding::circuits::nonnative::affine::NonNativeAffineVar;
 use crate::frontend::FCircuit;
 use crate::Error;
 use crate::{Decider as DeciderTrait, FoldingScheme};
+use ark_bn254::Bn254;
+use ark_ff::Field;
+use ark_groth16::Groth16;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Proof<C1, CS1, S>
@@ -152,6 +152,11 @@ where
     ) -> Result<bool, Error> {
         let (snark_vk, cs_vk): (S::VerifyingKey, CS1::VerifierParams) = vp;
 
+        assert!(
+            i > C1::ScalarField::ONE,
+            "The number of folded steps must be greater than 1"
+        );
+
         // compute U = U_{d+1}= NIFS.V(U_d, u_d, cmT)
         let U = NIFS::<C1, CS1>::verify(proof.r, running_instance, incoming_instance, &proof.cmT);
 
@@ -259,7 +264,8 @@ fn point_to_eth_format<C: AffineRepr>(p: C) -> Result<Vec<u8>, Error>
 where
     C::BaseField: PrimeField,
 {
-    let zero_point = (&C::BaseField::zero(), &C::BaseField::one());
+    // the encoding of the additive identity is [0, 0] on the EVM
+    let zero_point = (&C::BaseField::zero(), &C::BaseField::zero());
     let (x, y) = p.xy().unwrap_or(zero_point);
 
     Ok([x.into_bigint().to_bytes_be(), y.into_bigint().to_bytes_be()].concat())

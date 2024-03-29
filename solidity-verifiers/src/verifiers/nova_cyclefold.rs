@@ -14,21 +14,28 @@ use super::kzg::KZG10Verifier;
 pub(crate) struct NovaCyclefoldDecider {
     groth16_verifier: Groth16Verifier,
     kzg10_verifier: KZG10Verifier,
+    z_len: usize,
+    public_inputs_len: usize,
 }
 
 impl From<NovaCyclefoldData> for NovaCyclefoldDecider {
     fn from(value: NovaCyclefoldData) -> Self {
+        let groth16_verifier = Groth16Verifier::from(value.g16_data);
+        let public_inputs_len = groth16_verifier.gamma_abc_len;
         Self {
-            groth16_verifier: Groth16Verifier::from(value.g16_data),
+            groth16_verifier,
             kzg10_verifier: KZG10Verifier::from(value.kzg_data),
+            z_len: value.z_len,
+            public_inputs_len,
         }
     }
 }
 
-#[derive(CanonicalDeserialize, CanonicalSerialize, PartialEq, Debug)]
+#[derive(CanonicalDeserialize, CanonicalSerialize, PartialEq, Debug, Clone)]
 pub struct NovaCyclefoldData {
     g16_data: Groth16Data,
     kzg_data: KzgData,
+    z_len: usize,
 }
 
 impl ProtocolData for NovaCyclefoldData {
@@ -45,11 +52,12 @@ impl ProtocolData for NovaCyclefoldData {
     }
 }
 
-impl From<(Groth16Data, KzgData)> for NovaCyclefoldData {
-    fn from(value: (Groth16Data, KzgData)) -> Self {
+impl From<(Groth16Data, KzgData, usize)> for NovaCyclefoldData {
+    fn from(value: (Groth16Data, KzgData, usize)) -> Self {
         Self {
             g16_data: value.0,
             kzg_data: value.1,
+            z_len: value.2,
         }
     }
 }
@@ -59,11 +67,13 @@ impl NovaCyclefoldData {
         vkey_g16: VerifyingKey<Bn254>,
         vkey_kzg: VerifierKey<Bn254>,
         crs_points: Vec<G1Affine>,
+        z_len: usize,
     ) -> Self {
         Self {
             g16_data: Groth16Data::from(vkey_g16),
             // TODO: Remove option from crs points
             kzg_data: KzgData::from((vkey_kzg, Some(crs_points))),
+            z_len,
         }
     }
 }

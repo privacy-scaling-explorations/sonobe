@@ -10,7 +10,7 @@ use super::utils::{compute_all_sum_Mz_evals, compute_sum_Mz};
 use crate::ccs::CCS;
 use crate::commitment::{
     pedersen::{Params as PedersenParams, Pedersen},
-    CommitmentProver,
+    CommitmentScheme,
 };
 use crate::utils::mle::{matrix_to_mle, vec_to_mle};
 use crate::utils::virtual_polynomial::VirtualPolynomial;
@@ -46,7 +46,7 @@ impl<C: CurveGroup> CCS<C> {
     ) -> Result<(LCCCS<C>, Witness<C::ScalarField>), Error> {
         let w: Vec<C::ScalarField> = z[(1 + self.l)..].to_vec();
         let r_w = C::ScalarField::rand(rng);
-        let C = Pedersen::commit(pedersen_params, &w, &r_w)?;
+        let C = Pedersen::<C, true>::commit(pedersen_params, &w, &r_w)?;
 
         let r_x: Vec<C::ScalarField> = (0..self.s).map(|_| C::ScalarField::rand(rng)).collect();
         let v = self.compute_v_j(z, &r_x);
@@ -96,8 +96,8 @@ impl<C: CurveGroup> LCCCS<C> {
         w: &Witness<C::ScalarField>,
     ) -> Result<(), Error> {
         // check that C is the commitment of w. Notice that this is not verifying a Pedersen
-        // opening, but checking that the Commmitment comes from committing to the witness.
-        if self.C != Pedersen::commit(pedersen_params, &w.w, &w.r_w)? {
+        // opening, but checking that the Commitment comes from committing to the witness.
+        if self.C != Pedersen::<C, true>::commit(pedersen_params, &w.w, &w.r_w)? {
             return Err(Error::NotSatisfied);
         }
 
@@ -131,9 +131,10 @@ pub mod tests {
         let z = get_test_z(3);
         ccs.check_relation(&z.clone()).unwrap();
 
-        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, ccs.n - ccs.l - 1);
+        let (pedersen_params, _) =
+            Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
         let (lcccs, _) = ccs.to_lcccs(&mut rng, &pedersen_params, &z).unwrap();
-        // with our test vector comming from R1CS, v should have length 3
+        // with our test vector coming from R1CS, v should have length 3
         assert_eq!(lcccs.v.len(), 3);
 
         let vec_L_j_x = lcccs.compute_Ls(&ccs, &z);
@@ -161,10 +162,11 @@ pub mod tests {
         bad_z[3] = Fr::zero();
         assert!(ccs.check_relation(&bad_z.clone()).is_err());
 
-        let pedersen_params = Pedersen::<Projective>::new_params(&mut rng, ccs.n - ccs.l - 1);
+        let (pedersen_params, _) =
+            Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
         // Compute v_j with the right z
         let (lcccs, _) = ccs.to_lcccs(&mut rng, &pedersen_params, &z).unwrap();
-        // with our test vector comming from R1CS, v should have length 3
+        // with our test vector coming from R1CS, v should have length 3
         assert_eq!(lcccs.v.len(), 3);
 
         // Bad compute L_j(x) with the bad z

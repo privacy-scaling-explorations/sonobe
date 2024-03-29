@@ -12,7 +12,7 @@ use std::{
 };
 
 // from: https://github.com/privacy-scaling-explorations/halo2-solidity-verifier/blob/85cb77b171ce3ee493628007c7a1cfae2ea878e6/examples/separately.rs#L56
-pub fn save_solidity(name: impl AsRef<str>, solidity: &str) {
+pub(crate) fn save_solidity(name: impl AsRef<str>, solidity: &str) {
     const DIR_GENERATED: &str = "./generated";
     create_dir_all(DIR_GENERATED).unwrap();
     File::create(format!("{DIR_GENERATED}/{}", name.as_ref()))
@@ -25,7 +25,7 @@ pub fn save_solidity(name: impl AsRef<str>, solidity: &str) {
 ///
 /// # Panics
 /// Panics if executable `solc` can not be found, or compilation fails.
-pub fn compile_solidity(solidity: impl AsRef<[u8]>, contract_name: &str) -> Vec<u8> {
+pub(crate) fn compile_solidity(solidity: impl AsRef<[u8]>, contract_name: &str) -> Vec<u8> {
     let mut process = match Command::new("solc")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -72,7 +72,7 @@ fn find_binary(stdout: &str, contract_name: &str) -> Option<Vec<u8>> {
 }
 
 /// Evm runner.
-pub struct Evm {
+pub(crate) struct Evm {
     evm: EVM<InMemoryDB>,
 }
 
@@ -98,25 +98,12 @@ impl Default for Evm {
 }
 
 impl Evm {
-    /// Return code_size of given address.
-    ///
-    /// # Panics
-    /// Panics if given address doesn't have bytecode.
-    pub fn code_size(&mut self, address: Address) -> usize {
-        self.evm.db.as_ref().unwrap().accounts[&address]
-            .info
-            .code
-            .as_ref()
-            .unwrap()
-            .len()
-    }
-
     /// Apply create transaction with given `bytecode` as creation bytecode.
     /// Return created `address`.
     ///
     /// # Panics
     /// Panics if execution reverts or halts unexpectedly.
-    pub fn create(&mut self, bytecode: Vec<u8>) -> Address {
+    pub(crate) fn create(&mut self, bytecode: Vec<u8>) -> Address {
         let (_, output) = self.transact_success_or_panic(TxEnv {
             gas_limit: u64::MAX,
             transact_to: TransactTo::Create(CreateScheme::Create),
@@ -134,7 +121,7 @@ impl Evm {
     ///
     /// # Panics
     /// Panics if execution reverts or halts unexpectedly.
-    pub fn call(&mut self, address: Address, calldata: Vec<u8>) -> (u64, Vec<u8>) {
+    pub(crate) fn call(&mut self, address: Address, calldata: Vec<u8>) -> (u64, Vec<u8>) {
         let (gas_used, output) = self.transact_success_or_panic(TxEnv {
             gas_limit: u64::MAX,
             transact_to: TransactTo::Call(address),
@@ -170,9 +157,7 @@ impl Evm {
                 }
                 (gas_used, output)
             }
-            ExecutionResult::Revert { gas_used, output } => {
-                panic!("Transaction reverts with gas_used {gas_used} and output {output:#x}")
-            }
+            ExecutionResult::Revert { gas_used, output } => (gas_used, Output::Call(output)),
             ExecutionResult::Halt { reason, gas_used } => panic!(
                 "Transaction halts unexpectedly with gas_used {gas_used} and reason {reason:?}"
             ),

@@ -5,4 +5,4 @@ folding-schemes/src/frontend/circom/test_folder/cubic_circuit.r1cs
 folding-schemes/src/frontend/circom/test_folder/cubic_circuit_js/
 
 # generated contracts at test time
-folding-schemes-solidity/generated
+solidity-verifiers/generated

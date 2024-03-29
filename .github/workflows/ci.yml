@@ -72,6 +72,18 @@ jobs:
         run: |
           cargo test --doc
 
+  examples:
+    if: github.event.pull_request.draft == false
+    name: Run examples & examples tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+      - name: Run examples tests
+        run: cargo test --examples
+      - name: Run examples
+        run: cargo run --release --example 2>&1 | grep -E '^ ' | xargs -n1 cargo run --release --example
+
   fmt:
     if: github.event.pull_request.draft == false
     name: Rustfmt
@@ -102,3 +114,14 @@ jobs:
         with:
           command: clippy
           args: --all-targets --all-features -- -D warnings
+
+  typos:
+    if: github.event.pull_request.draft == false
+    name: Spell Check with Typos
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Use typos with config file
+      uses: crate-ci/typos@master
+      with: 
+        config: .github/workflows/typos.toml

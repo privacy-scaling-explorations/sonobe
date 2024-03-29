@@ -1,4 +1,7 @@
 use ark_ff::PrimeField;
+use ark_poly::{
+    univariate::DensePolynomial, EvaluationDomain, Evaluations, GeneralEvaluationDomain,
+};
 pub use ark_relations::r1cs::Matrix as R1CSMatrix;
 use ark_std::cfg_iter;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
@@ -126,6 +129,13 @@ pub fn hadamard<F: PrimeField>(a: &[F], b: &[F]) -> Result<Vec<F>, Error> {
         ));
     }
     Ok(cfg_iter!(a).zip(b).map(|(a, b)| *a * b).collect())
+}
+
+/// returns the interpolated polynomial of degree=v.len().next_power_of_two(), which passes through all
+/// the given elements of v.
+pub fn poly_from_vec<F: PrimeField>(v: Vec<F>) -> Result<DensePolynomial<F>, Error> {
+    let D = GeneralEvaluationDomain::<F>::new(v.len()).ok_or(Error::NewDomainFail)?;
+    Ok(Evaluations::from_vec_and_domain(v, D).interpolate())
 }
 
 #[cfg(test)]

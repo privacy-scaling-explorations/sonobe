@@ -1,7 +1,3 @@
-{{ sdpx }}
-
-{{ pragma_version }}
-
 /**
  * @author  Privacy and Scaling Explorations team - pse.dev
  * @dev     Contains utility functions for ops in BN254; in G_1 mostly.
@@ -231,7 +227,7 @@ contract KZG10Verifier {
             require(eval_z == 0, "checkAndCommitAuxPolys: wrong zero poly");
             require(eval_l == y_vals[i], "checkAndCommitAuxPolys: wrong lagrange poly");
         }
-        // z(x) has len(x_vals) + 1 coeffs, we add to the commmitment the last coeff of z(x)
+        // z(x) has len(x_vals) + 1 coeffs, we add to the commitment the last coeff of z(x)
         z_commit = add(z_commit, mulScalar(G1_CRS[z_coeffs.length - 1], z_coeffs[z_coeffs.length - 1]));
 
         return (z_commit, l_commit);

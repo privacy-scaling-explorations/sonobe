@@ -1,5 +1,5 @@
 [package]
-name = "folding-schemes-solidity"
+name = "solidity-verifiers-cli"
 version = "0.1.0"
 edition = "2021"
 
@@ -12,16 +12,15 @@ ark-groth16 = "0.4"
 askama = { version = "0.12.0", features = ["config"], default-features = false }
 ark-bn254 = "0.4.0"
 ark-poly-commit = "0.4.0"
-folding-schemes = { path = "../folding-schemes/" }
+solidity-verifiers = { path = "../solidity-verifiers" }
 itertools = "0.12.1"
 ark-serialize = "0.4.1"
-revm = "3.5.0"
+clap = { version = "4.4", features = ["derive", "string"] }
+clap-verbosity-flag = "2.1"
+log = "0.4"
+env_logger = "0.10"
 
 [dev-dependencies]
-ark-crypto-primitives = "0.4.0"
-ark-groth16 = "0.4"
-ark-r1cs-std = "0.4.0"
-ark-relations = "0.4.0"
 revm = "3.5.0"
 tracing = { version = "0.1", default-features = false, features = [ "attributes" ] }
 tracing-subscriber = { version = "0.2" }

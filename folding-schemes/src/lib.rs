@@ -21,6 +21,7 @@ pub mod utils;
 
 #[derive(Debug, Error)]
 pub enum Error {
+    // Wrappers on top of other errors
     #[error("ark_relations::r1cs::SynthesisError")]
     SynthesisError(#[from] ark_relations::r1cs::SynthesisError),
     #[error("ark_serialize::SerializationError")]
@@ -29,23 +30,18 @@ pub enum Error {
     PolyCommitError(#[from] ark_poly_commit::Error),
     #[error("crate::utils::espresso::virtual_polynomial::ArithErrors")]
     ArithError(#[from] utils::espresso::virtual_polynomial::ArithErrors),
+    #[error(transparent)]
+    ProtoGalaxy(folding::protogalaxy::ProtoGalaxyError),
+    #[error("std::io::Error")]
+    IOError(#[from] std::io::Error),
     #[error("{0}")]
     Other(String),
 
+    // Relation errors
     #[error("Relation not satisfied")]
     NotSatisfied,
-    #[error("Not equal")]
-    NotEqual,
-    #[error("Vectors should have the same length ({0}: {1}, {2}: {3})")]
-    NotSameLength(String, usize, String, usize),
-    #[error("Vector's length ({0}) is not the expected ({1})")]
-    NotExpectedLength(usize, usize),
-    #[error("Can not be empty")]
-    Empty,
-    #[error("Pedersen parameters length is not suficient (generators.len={0} < vector.len={1} unsatisfied)")]
-    PedersenParamsLen(usize, usize),
-    #[error("Commitment verification failed")]
-    CommitmentVerificationFail,
+    #[error("SNARK verification failed")]
+    SNARKVerificationFail,
     #[error("IVC verification failed")]
     IVCVerificationFail,
     #[error("R1CS instance is expected to not be relaxed")]
@@ -56,15 +52,42 @@ pub enum Error {
     SumCheckProveError(String),
     #[error("Sum-check verify failed: {0}")]
     SumCheckVerifyError(String),
+
+    // Comparators errors
+    #[error("Not equal")]
+    NotEqual,
+    #[error("Vectors should have the same length ({0}: {1}, {2}: {3})")]
+    NotSameLength(String, usize, String, usize),
+    #[error("Vector's length ({0}) is not the expected ({1})")]
+    NotExpectedLength(usize, usize),
+    #[error("Vector ({0}) length ({1}) is not a power of two")]
+    NotPowerOfTwo(String, usize),
+    #[error("Can not be empty")]
+    Empty,
     #[error("Value out of bounds")]
     OutOfBounds,
     #[error("Could not construct the Evaluation Domain")]
     NewDomainFail,
+
+    // Commitment errors
+    #[error("Pedersen parameters length is not sufficient (generators.len={0} < vector.len={1} unsatisfied)")]
+    PedersenParamsLen(usize, usize),
+    #[error("Blinding factor not 0 for Commitment without hiding")]
+    BlindingNotZero,
+    #[error("Commitment verification failed")]
+    CommitmentVerificationFail,
+
+    // Other
+    #[error("Randomness for blinding not found")]
+    MissingRandomness,
+    #[error("Missing value: {0}")]
+    MissingValue(String),
     #[error("Feature '{0}' not supported yet")]
     NotSupportedYet(String),
-
-    #[error(transparent)]
-    ProtoGalaxy(folding::protogalaxy::ProtoGalaxyError),
+    #[error("Feature '{0}' is not supported and it will not be")]
+    NotSupported(String),
+    #[error("max i-th step reached (usize limit reached)")]
+    MaxStep,
 }
 
 /// FoldingScheme defines trait that is implemented by the diverse folding schemes. It is defined
@@ -100,7 +123,8 @@ where
     // returns the state at the current step
     fn state(&self) -> Vec<C1::ScalarField>;
 
-    // returns the instances at the current step
+    // returns the instances at the current step, in the following order:
+    // (running_instance, incoming_instance, cyclefold_instance)
     fn instances(
         &self,
     ) -> (
@@ -116,7 +140,7 @@ where
         // number of steps between the initial state and the last state
         num_steps: C1::ScalarField,
         running_instance: Self::CommittedInstanceWithWitness,
-        incomming_instance: Self::CommittedInstanceWithWitness,
+        incoming_instance: Self::CommittedInstanceWithWitness,
         cyclefold_instance: Self::CFCommittedInstanceWithWitness,
     ) -> Result<(), Error>;
 }
@@ -131,24 +155,25 @@ pub trait Decider<
     C2::BaseField: PrimeField,
 {
     type ProverParam: Clone;
-    type Proof: Clone;
+    type Proof;
     type VerifierParam;
     type PublicInput: Debug;
     type CommittedInstanceWithWitness: Debug;
     type CommittedInstance: Clone + Debug;
 
     fn prove(
-        pp: &Self::ProverParam,
+        pp: Self::ProverParam,
         rng: impl RngCore + CryptoRng,
         folding_scheme: FS,
     ) -> Result<Self::Proof, Error>;
 
     fn verify(
-        vp: &Self::VerifierParam,
+        vp: Self::VerifierParam,
         i: C1::ScalarField,
         z_0: Vec<C1::ScalarField>,
         z_i: Vec<C1::ScalarField>,
         running_instance: &Self::CommittedInstance,
+        incoming_instance: &Self::CommittedInstance,
         proof: Self::Proof,
         // returns `Result<bool, Error>` to differentiate between an error occurred while performing
         // the verification steps, and the verification logic of the scheme not passing.

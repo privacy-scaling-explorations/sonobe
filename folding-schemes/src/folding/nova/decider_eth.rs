@@ -215,7 +215,7 @@ pub fn prepare_calldata(
     incoming_instance: &CommittedInstance<ark_bn254::G1Projective>,
     proof: Proof<ark_bn254::G1Projective, KZG<'static, Bn254>, Groth16<Bn254>>,
 ) -> Result<Vec<u8>, Error> {
-    // additional comments below link each element to the contract's function signature
+    // each additional comment below links each vector element to the contract's function signature
     Ok(vec![
         function_signature_check.to_vec(),
         i.into_bigint().to_bytes_be(), // i

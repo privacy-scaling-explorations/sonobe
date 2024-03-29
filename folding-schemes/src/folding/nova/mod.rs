@@ -243,6 +243,7 @@ where
         let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
         let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
 
+        let F_clone = F.clone();
         let augmented_F_circuit =
             AugmentedFCircuit::<C1, C2, GC2, FC>::empty(&pp.poseidon_config, F.clone());
         let cf_circuit = CycleFoldCircuit::<C1, GC1>::empty();
@@ -270,9 +271,9 @@ where
             r1cs,
             cf_r1cs,
             poseidon_config: pp.poseidon_config.clone(),
-            cs_params: pp.cs_params.clone(),
-            cf_cs_params: pp.cf_cs_params.clone(),
-            F,
+            cm_params: pp.cm_params.clone(),
+            cf_cm_params: pp.cf_cm_params.clone(),
+            F: F_clone,
             i: C1::ScalarField::zero(),
             z_0: z_0.clone(),
             z_i: z_0,

@@ -42,9 +42,9 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
 
         // Computes witness
         let witness = self
-        .circom_wrapper
-        .extract_witness(&[("ivc_input".to_string(), input_num_bigint)])
-        .map_err(|e| Error::Other(format!("Circom computation failed: {}", e)))?;
+            .circom_wrapper
+            .extract_witness(&[("ivc_input".to_string(), input_num_bigint)])
+            .map_err(|e| Error::Other(format!("Circom computation failed: {}", e)))?;
 
         // Extracts the z_i1(next state) from the witness vector.
         let z_i1 = witness[1..1 + self.state_len()].to_vec();
@@ -63,7 +63,9 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
             // Extracts the PrimeField value from FpVar.
             let primefield_value = fp_var.value()?;
             // Converts the PrimeField value to num_bigint::BigInt.
-            let num_bigint_value = self.circom_wrapper.ark_primefield_to_num_bigint(primefield_value);
+            let num_bigint_value = self
+                .circom_wrapper
+                .ark_primefield_to_num_bigint(primefield_value);
             input_values.push(num_bigint_value);
         }
 

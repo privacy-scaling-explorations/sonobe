@@ -46,17 +46,17 @@ impl<F: PrimeField> CircomWrapper<F> {
     }
 
     // Extracts the witness vector as a vector of PrimeField elements.
-    pub fn extract_witness(
-        &self,
-        inputs: &[(String, Vec<BigInt>)],
-    ) -> Result<Vec<F>, Error> {
+    pub fn extract_witness(&self, inputs: &[(String, Vec<BigInt>)]) -> Result<Vec<F>, Error> {
         let witness_bigint = self.calculate_witness(inputs)?;
 
         witness_bigint
             .iter()
             .map(|big_int| {
                 self.num_bigint_to_ark_bigint(big_int)
-                    .and_then(|ark_big_int| F::from_bigint(ark_big_int).ok_or_else(|| Error::Other("could not get F from bigint".to_string())))
+                    .and_then(|ark_big_int| {
+                        F::from_bigint(ark_big_int)
+                            .ok_or_else(|| Error::Other("could not get F from bigint".to_string()))
+                    })
             })
             .collect()
     }
@@ -78,8 +78,9 @@ impl<F: PrimeField> CircomWrapper<F> {
         let big_uint = value
             .to_biguint()
             .ok_or(Error::Other("BigInt is negative".to_string()))?;
-        F::BigInt::try_from(big_uint)
-            .map_err(|_| Error::Other("Failed to convert num_bigint::BigInt to PrimeField::BigInt".to_string()))
+        F::BigInt::try_from(big_uint).map_err(|_| {
+            Error::Other("Failed to convert num_bigint::BigInt to PrimeField::BigInt".to_string())
+        })
     }
 
     // Converts a PrimeField element to a num_bigint::BigInt representation.
@@ -104,7 +105,7 @@ mod tests {
 
     // Test the satisfication by using the CircomBuilder of circom-compat
     #[test]
-    fn satisfied() {
+    fn test_circombuilder_satisfied() {
         let cfg = CircomConfig::<Fr>::new(
             "./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm",
             "./src/frontend/circom/test_folder/cubic_circuit.r1cs",

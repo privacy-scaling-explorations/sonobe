@@ -9,6 +9,17 @@ use askama::Template;
 use super::g16::Groth16Verifier;
 use super::kzg::KZG10Verifier;
 
+pub fn get_decider_template_for_cyclefold_decider(
+    nova_cyclefold_data: NovaCyclefoldData,
+) -> String {
+    let decider_template = HeaderInclusion::<NovaCyclefoldDecider>::builder()
+        .template(nova_cyclefold_data)
+        .build()
+        .render()
+        .unwrap();
+    decider_template
+}
+
 #[derive(Template, Default)]
 #[template(path = "nova_cyclefold_decider.askama.sol", ext = "sol")]
 pub(crate) struct NovaCyclefoldDecider {

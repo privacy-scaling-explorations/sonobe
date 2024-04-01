@@ -13,7 +13,7 @@ use std::{
 };
 
 // from: https://github.com/privacy-scaling-explorations/halo2-solidity-verifier/blob/85cb77b171ce3ee493628007c7a1cfae2ea878e6/examples/separately.rs#L56
-pub(crate) fn save_solidity(name: impl AsRef<str>, solidity: &str) {
+pub fn save_solidity(name: impl AsRef<str>, solidity: &str) {
     let curdir = PathBuf::from(".");
     let curdir_abs_path = fs::canonicalize(&curdir).expect("Failed to get current directory");
     let curdir_abs_path = curdir_abs_path
@@ -31,7 +31,7 @@ pub(crate) fn save_solidity(name: impl AsRef<str>, solidity: &str) {
 ///
 /// # Panics
 /// Panics if executable `solc` can not be found, or compilation fails.
-pub(crate) fn compile_solidity(solidity: impl AsRef<[u8]>, contract_name: &str) -> Vec<u8> {
+pub fn compile_solidity(solidity: impl AsRef<[u8]>, contract_name: &str) -> Vec<u8> {
     let mut process = match Command::new("solc")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -78,7 +78,7 @@ fn find_binary(stdout: &str, contract_name: &str) -> Option<Vec<u8>> {
 }
 
 /// Evm runner.
-pub(crate) struct Evm {
+pub struct Evm {
     evm: EVM<InMemoryDB>,
 }
 

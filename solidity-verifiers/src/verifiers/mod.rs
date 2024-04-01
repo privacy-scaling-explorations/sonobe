@@ -49,9 +49,12 @@ pub trait ProtocolData: CanonicalDeserialize + CanonicalSerialize {
 
 #[cfg(test)]
 mod tests {
-    use crate::evm::{compile_solidity, save_solidity, Evm};
-    use crate::utils::HeaderInclusion;
-    use crate::{Groth16Data, KzgData, NovaCyclefoldData, ProtocolData};
+    use crate::{
+        evm::{compile_solidity, save_solidity, Evm},
+        utils::{get_function_selector_for_nova_cyclefold_verifier, HeaderInclusion},
+        verifiers::nova_cyclefold::get_decider_template_for_cyclefold_decider,
+        Groth16Data, KzgData, NovaCyclefoldData, ProtocolData,
+    };
     use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as G1};
     use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
     use ark_ec::{AffineRepr, CurveGroup};
@@ -68,10 +71,7 @@ mod tests {
     use ark_std::Zero;
     use ark_std::{test_rng, UniformRand};
     use askama::Template;
-    use crypto::digest::Digest;
-    use crypto::sha3::Sha3;
     use itertools::chain;
-    use num_bigint::BigUint;
     use rand::rngs::OsRng;
     use std::marker::PhantomData;
     use std::time::Instant;
@@ -104,7 +104,6 @@ mod tests {
     pub const FUNCTION_SELECTOR_KZG10_CHECK: [u8; 4] = [0x9e, 0x78, 0xcc, 0xf7];
     pub const FUNCTION_SELECTOR_GROTH16_VERIFY_PROOF: [u8; 4] = [0x43, 0x75, 0x3b, 0x4d];
 
-    // 4207684f
     type NOVACubicFCircuit =
         Nova<G1, GVar, G2, GVar2, CubicFCircuit<Fr>, KZG<'static, Bn254>, Pedersen<G2>>;
     type DECIDEREthCubicFCircuit = DeciderEth<
@@ -135,18 +134,6 @@ mod tests {
 
     /// Default setup length for testing.
     const DEFAULT_SETUP_LEN: usize = 5;
-
-    /// Formats call data from a vec of bytes to a hashmap
-    /// Useful for debugging directly on the EVM
-    /// !! Should follow the contract's function signature, we assuming the order of arguments is correct
-    pub fn get_formatted_calldata(calldata: Vec<u8>) -> Vec<String> {
-        let mut formatted_calldata = vec![];
-        for i in (4..calldata.len()).step_by(32) {
-            let val = BigUint::from_bytes_be(&calldata[i..i + 32]);
-            formatted_calldata.push(format!("{}", val));
-        }
-        formatted_calldata
-    }
 
     /// Test circuit used to test the Groth16 proof generation
     #[derive(Debug, Clone, Copy)]
@@ -786,31 +773,6 @@ mod tests {
         calldata[35] = prev_call_data_i;
 
         // change z_0 to make calldata invalid
-    }
-
-    /// Computes the function selector for the nova cyclefold verifier
-    /// It is computed on the fly since it depends on the length of the first parameter array
-    fn get_function_selector_for_nova_cyclefold_verifier(
-        first_param_array_length: usize,
-    ) -> [u8; 4] {
-        let mut hasher = Sha3::keccak256();
-        let fn_sig = format!("verifyNovaProof(uint256[{}],uint256[4],uint256[3],uint256[3],uint256[3],uint256[2],uint256[2][2],uint256[2],uint256[4],uint256[2][2])", first_param_array_length);
-        hasher.input_str(&fn_sig);
-        let hash = &mut [0u8; 32];
-        hasher.result(hash);
-        let selector = [hash[0], hash[1], hash[2], hash[3]];
-        selector
-    }
-
-    fn get_decider_template_for_cyclefold_decider(
-        nova_cyclefold_data: NovaCyclefoldData,
-    ) -> String {
-        let decider_template = HeaderInclusion::<NovaCyclefoldDecider>::builder()
-            .template(nova_cyclefold_data)
-            .build()
-            .render()
-            .unwrap();
-        decider_template
     }
 
     /// Initializes prover parameters. For testing purposes only!

@@ -109,7 +109,7 @@ impl Evm {
     ///
     /// # Panics
     /// Panics if execution reverts or halts unexpectedly.
-    pub(crate) fn create(&mut self, bytecode: Vec<u8>) -> Address {
+    pub fn create(&mut self, bytecode: Vec<u8>) -> Address {
         let (_, output) = self.transact_success_or_panic(TxEnv {
             gas_limit: u64::MAX,
             transact_to: TransactTo::Create(CreateScheme::Create),
@@ -127,7 +127,7 @@ impl Evm {
     ///
     /// # Panics
     /// Panics if execution reverts or halts unexpectedly.
-    pub(crate) fn call(&mut self, address: Address, calldata: Vec<u8>) -> (u64, Vec<u8>) {
+    pub fn call(&mut self, address: Address, calldata: Vec<u8>) -> (u64, Vec<u8>) {
         let (gas_used, output) = self.transact_success_or_panic(TxEnv {
             gas_limit: u64::MAX,
             transact_to: TransactTo::Call(address),

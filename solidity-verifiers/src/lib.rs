@@ -3,4 +3,7 @@ pub mod utils;
 pub mod verifiers;
 
 pub use verifiers::*;
-pub use verifiers::{Groth16Data, KzgData, NovaCyclefoldData, ProtocolData};
+pub use verifiers::{
+    get_decider_template_for_cyclefold_decider, Groth16Data, KzgData, NovaCyclefoldData,
+    ProtocolData,
+};

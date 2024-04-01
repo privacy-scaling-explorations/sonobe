@@ -16,7 +16,7 @@ mod nova_cyclefold;
 
 pub use g16::Groth16Data;
 pub use kzg::KzgData;
-pub use nova_cyclefold::NovaCyclefoldData;
+pub use nova_cyclefold::{get_decider_template_for_cyclefold_decider, NovaCyclefoldData};
 
 pub trait ProtocolData: CanonicalDeserialize + CanonicalSerialize {
     const PROTOCOL_NAME: &'static str;

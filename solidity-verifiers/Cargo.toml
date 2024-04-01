@@ -17,9 +17,9 @@ itertools = "0.12.1"
 ark-serialize = "0.4.1"
 revm = "3.5.0"
 rust-crypto = "0.2"
+num-bigint = "0.4.3"
 
 [dev-dependencies]
-num-bigint = "0.4.3"
 ark-crypto-primitives = "0.4.0"
 ark-r1cs-std = "0.4.0"
 ark-relations = "0.4.0"

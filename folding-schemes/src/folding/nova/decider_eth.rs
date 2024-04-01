@@ -82,11 +82,7 @@ where
     // constrain FS into Nova, since this is a Decider specifically for Nova
     Nova<C1, GC1, C2, GC2, FC, CS1, CS2>: From<FS>,
 {
-    type ProverParam = (
-        PoseidonConfig<C1::ScalarField>,
-        S::ProvingKey,
-        CS1::ProverParams,
-    );
+    type ProverParam = (S::ProvingKey, CS1::ProverParams);
     type Proof = Proof<C1, CS1, S>;
     type VerifierParam = (S::VerifyingKey, CS1::VerifierParams);
     type PublicInput = Vec<C1::ScalarField>;
@@ -98,11 +94,7 @@ where
         mut rng: impl RngCore + CryptoRng,
         folding_scheme: FS,
     ) -> Result<Self::Proof, Error> {
-        let (poseidon_config, snark_pk, cs_pk): (
-            PoseidonConfig<C1::ScalarField>,
-            S::ProvingKey,
-            CS1::ProverParams,
-        ) = pp;
+        let (snark_pk, cs_pk): (S::ProvingKey, CS1::ProverParams) = pp;
 
         let circuit = DeciderEthCircuit::<C1, GC1, C2, GC2, CS1, CS2>::from_nova::<FC>(
             folding_scheme.into(),
@@ -111,35 +103,9 @@ where
         let snark_proof = S::prove(&snark_pk, circuit.clone(), &mut rng)
             .map_err(|e| Error::Other(e.to_string()))?;
 
-        let U_i = circuit
-            .U_i
-            .clone()
-            .ok_or(Error::MissingValue("U_i".to_string()))?;
-        let W_i = circuit
-            .W_i
-            .clone()
-            .ok_or(Error::MissingValue("W_i".to_string()))?;
-        let u_i = circuit
-            .u_i
-            .clone()
-            .ok_or(Error::MissingValue("u_i".to_string()))?;
-        let w_i = circuit
-            .w_i
-            .clone()
-            .ok_or(Error::MissingValue("w_i".to_string()))?;
-
-        // compute NIFS.P((U_d, W_d), (u_d, w_d)) = (U_{d+1}, W_{d+1}, cmT)
-        let (T, cmT) = NIFS::<C1, CS1>::compute_cmT(&cs_pk, &circuit.r1cs, &w_i, &u_i, &W_i, &U_i)?;
-        let r_bits = ChallengeGadget::<C1>::get_challenge_native(
-            &poseidon_config,
-            U_i.clone(),
-            u_i.clone(),
-            cmT,
-        )?;
-        let r_Fr = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
-            .ok_or(Error::OutOfBounds)?;
-        let (W_i1, _): (Witness<C1>, CommittedInstance<C1>) =
-            NIFS::<C1, CS1>::fold_instances(r_Fr, &W_i, &U_i, &w_i, &u_i, &T, cmT)?;
+        let cmT = circuit.cmT.unwrap();
+        let r_Fr = circuit.r.unwrap();
+        let W_i1 = circuit.W_i1.unwrap();
 
         // get the challenges that have been already computed when preparing the circuit inputs in
         // the above `from_nova` call
@@ -332,7 +298,7 @@ pub mod tests {
 
         // decider proof generation
         let start = Instant::now();
-        let decider_pp = (poseidon_config.clone(), g16_pk, kzg_pk);
+        let decider_pp = (g16_pk, kzg_pk);
         let proof = DECIDER::prove(decider_pp, rng, nova.clone()).unwrap();
         println!("Decider prove, {:?}", start.elapsed());
 

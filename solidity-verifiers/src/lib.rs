@@ -1,8 +1,6 @@
-mod evm;
-mod utils;
-mod verifiers;
+pub mod evm;
+pub mod utils;
+pub mod verifiers;
 
-pub use evm::*;
-pub use utils::*;
 pub use verifiers::*;
 pub use verifiers::{Groth16Data, KzgData, NovaCyclefoldData, ProtocolData};

@@ -15,7 +15,7 @@ use std::{
 // from: https://github.com/privacy-scaling-explorations/halo2-solidity-verifier/blob/85cb77b171ce3ee493628007c7a1cfae2ea878e6/examples/separately.rs#L56
 pub fn save_solidity(name: impl AsRef<str>, solidity: &str) {
     let curdir = PathBuf::from(".");
-    let curdir_abs_path = fs::canonicalize(&curdir).expect("Failed to get current directory");
+    let curdir_abs_path = fs::canonicalize(curdir).expect("Failed to get current directory");
     let curdir_abs_path = curdir_abs_path
         .to_str()
         .expect("Failed to convert path to string");

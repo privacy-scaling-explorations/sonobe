@@ -184,7 +184,6 @@ where
             vec![proof.r],
         ]
         .concat();
-        dbg!(public_input.len());
 
         let snark_v = S::verify(&snark_vk, &public_input, &proof.snark_proof)
             .map_err(|e| Error::Other(e.to_string()))?;

@@ -26,8 +26,7 @@ pub fn get_function_selector_for_nova_cyclefold_verifier(
     hasher.input_str(&fn_sig);
     let hash = &mut [0u8; 32];
     hasher.result(hash);
-    let selector = [hash[0], hash[1], hash[2], hash[3]];
-    selector
+    [hash[0], hash[1], hash[2], hash[3]]
 }
 
 #[derive(Template)]

@@ -147,7 +147,7 @@ pub mod tests {
         assert_eq!(z_i1_var.value().unwrap(), vec![Fr::from(35u32)]);
     }
 
-    // Tests the WrapperCircuit with CircomFCircit.
+    // Tests the WrapperCircuit with CircomFCircuit.
     #[test]
     fn test_wrapper_circomtofcircuit() {
         let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit.r1cs");
@@ -156,7 +156,7 @@ pub mod tests {
 
         let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path));
 
-        /* 
+        /*
         let wrapper_circuit = crate::frontend::tests::WrapperCircuit {
             FC: circom_fcircuit,
             z_i: Some(vec![Fr::from(3u32)]),

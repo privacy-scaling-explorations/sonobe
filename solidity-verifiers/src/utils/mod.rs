@@ -32,7 +32,7 @@ pub fn get_function_selector_for_nova_cyclefold_verifier(
 
 #[derive(Template)]
 #[template(path = "header_template.askama.sol", ext = "sol")]
-pub(crate) struct HeaderInclusion<T: Template> {
+pub struct HeaderInclusion<T: Template> {
     /// SPDX-License-Identifier
     pub sdpx: String,
     /// The `pragma` statement.

@@ -307,7 +307,7 @@ fn pow_i<F: PrimeField>(i: usize, betas: &Vec<F>) -> F {
 
 /// calculates F[x] using the optimized binary-tree technique
 /// described in Claim 4.4
-/// of [Protogalaxy](https://eprint.iacr.org/2023/1106.pdf)
+/// of [ProtoGalaxy](https://eprint.iacr.org/2023/1106.pdf)
 fn calc_f_from_btree<F: PrimeField>(
     fw: &[F],
     betas: &[F],

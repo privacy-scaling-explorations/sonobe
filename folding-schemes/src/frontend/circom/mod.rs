@@ -156,7 +156,7 @@ pub mod tests {
 
         let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path));
 
-        /*
+        /* 
         let wrapper_circuit = crate::frontend::tests::WrapperCircuit {
             FC: circom_fcircuit,
             z_i: Some(vec![Fr::from(3u32)]),

@@ -1,6 +1,6 @@
 use ark_serialize::SerializationError;
 use clap::{Parser, ValueEnum};
-use solidity_verifiers::{Groth16Data, KzgData, NovaCyclefoldData, ProtocolData};
+use solidity_verifiers::{Groth16Data, KzgData, NovaCycleFoldData, ProtocolData};
 use std::{env, fmt::Display, path::PathBuf};
 
 fn get_default_out_path() -> PathBuf {
@@ -13,7 +13,7 @@ fn get_default_out_path() -> PathBuf {
 pub(crate) enum Protocol {
     Groth16,
     Kzg,
-    NovaCyclefold,
+    NovaCycleFold,
 }
 
 impl Display for Protocol {
@@ -36,8 +36,8 @@ impl Protocol {
             }
 
             Self::Kzg => Ok(KzgData::deserialize_protocol_data(data)?.render_as_template(pragma)),
-            Self::NovaCyclefold => {
-                Ok(NovaCyclefoldData::deserialize_protocol_data(data)?.render_as_template(pragma))
+            Self::NovaCycleFold => {
+                Ok(NovaCycleFoldData::deserialize_protocol_data(data)?.render_as_template(pragma))
             }
         }
     }

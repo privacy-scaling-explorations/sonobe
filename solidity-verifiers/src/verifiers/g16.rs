@@ -45,8 +45,8 @@ impl From<Groth16Data> for Groth16Verifier {
     }
 }
 
-// Ideally I would like to link this to the `Decider` trait in FoldingSchemes.
-// For now, this is the easiest as NovaCyclefold isn't clear target from where we can get all it's needed arguments.
+// Ideally this would be linked to the `Decider` trait in FoldingSchemes.
+// For now, this is the easiest as NovaCycleFold isn't clear target from where we can get all it's needed arguments.
 #[derive(CanonicalDeserialize, CanonicalSerialize, Clone, PartialEq, Debug)]
 pub struct Groth16Data(pub(crate) VerifyingKey<Bn254>);
 

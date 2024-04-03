@@ -2,7 +2,6 @@
 
 Experimental folding schemes library implemented in a joint effort by [0xPARC](https://0xparc.org/) and [PSE](https://pse.dev).
 
-
 <img align="left" style="width:30%;min-width:250px;" src="https://privacy-scaling-explorations.github.io/sonobe-docs/imgs/sonobe.png">
 
 <br>
@@ -33,16 +32,20 @@ Available frontends to define the folded circuit:
 - [Circom](https://github.com/iden3/circom), iden3, 0Kims Association
 
 ## Usage
+
+### Docs
 Usage and design documentation can be found at https://privacy-scaling-explorations.github.io/sonobe-docs/
 
 ### Folding Schemes introduction
 
-[introductory text here (TODO)]
+[one or two lines of introductory text here (TODO)]
 
 <img src="https://privacy-scaling-explorations.github.io/sonobe-docs/imgs/folding-main-idea-diagram.png" style="width:70%;" />
 
 ### Overview of sonobe
-Suppose that the user inputs a circuit that follows the IVC structure, chooses which Folding Scheme to use (eg. Nova), and which Decider (eg. Spartan over Pasta curve).
+[TODO explain the idea of sonobe, being a modular library to use different folding schemes]
+
+For example, suppose that the user inputs a circuit that follows the IVC structure, chooses which Folding Scheme to use (eg. Nova), and which Decider (eg. Spartan over Pasta curve).
 
 Later the user can for example change with few code changes the Folding Scheme being used (eg. switch to ProtoGalaxy) and also the Decider (eg. Groth16 over bn254), so the final proof can be verified in an Ethereum smart contract.
 

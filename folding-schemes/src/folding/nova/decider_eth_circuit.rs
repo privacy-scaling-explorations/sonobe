@@ -419,7 +419,7 @@ where
         )?;
         let zero_y = NonNativeFieldVar::<C1::BaseField, C1::ScalarField>::new_constant(
             cs.clone(),
-            C1::BaseField::one(),
+            C1::BaseField::zero(),
         )?;
         u_i.cmE.x.enforce_equal(&zero_x)?;
         u_i.cmE.y.enforce_equal(&zero_y)?;

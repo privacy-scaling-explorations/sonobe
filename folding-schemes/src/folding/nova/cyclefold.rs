@@ -378,7 +378,6 @@ fn point_to_bytes<C: CurveGroup>(p: C) -> Result<Vec<u8>, Error> {
     let mut b = Vec::new();
     p.serialize_uncompressed(&mut b)?;
     if p.is_zero() {
-        b[l / 2] = 1;
         b[l - 1] = 1;
     }
     Ok(b[..63].to_vec())

@@ -61,7 +61,7 @@ where
 // over bytes in order to have a logic that can be reproduced in-circuit.
 fn prepare_point<C: CurveGroup>(p: &C) -> Result<Vec<C::ScalarField>, Error> {
     let affine = p.into_affine();
-    let zero_point = (&C::BaseField::zero(), &C::BaseField::one());
+    let zero_point = (&C::BaseField::zero(), &C::BaseField::zero());
     let xy = affine.xy().unwrap_or(zero_point);
 
     let x_bi =

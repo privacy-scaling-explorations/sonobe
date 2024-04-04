@@ -4,7 +4,7 @@ use ark_r1cs_std::{
     fields::nonnative::{params::OptimizationType, AllocatedNonNativeFieldVar, NonNativeFieldVar},
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
-use ark_std::{One, Zero};
+use ark_std::Zero;
 use core::borrow::Borrow;
 
 /// NonNativeAffineVar represents an elliptic curve point in Affine representation in the non-native
@@ -33,7 +33,7 @@ where
             let cs = cs.into();
 
             let affine = val.borrow().into_affine();
-            let zero_point = (&C::BaseField::zero(), &C::BaseField::one());
+            let zero_point = (&C::BaseField::zero(), &C::BaseField::zero());
             let xy = affine.xy().unwrap_or(zero_point);
 
             let x = NonNativeFieldVar::<C::BaseField, C::ScalarField>::new_variable(
@@ -84,7 +84,7 @@ where
             )?;
         let y =
             AllocatedNonNativeFieldVar::<C::BaseField, C::ScalarField>::get_limbs_representations(
-                &C::BaseField::one(),
+                &C::BaseField::zero(),
                 optimization_type,
             )?;
         return Ok((x, y));

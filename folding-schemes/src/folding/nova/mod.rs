@@ -794,7 +794,7 @@ where
 /// returns the coordinates of a commitment point. This is compatible with the arkworks
 /// GC.to_constraint_field()[..2]
 pub(crate) fn get_cm_coordinates<C: CurveGroup>(cm: &C) -> Vec<C::BaseField> {
-    let zero = (&C::BaseField::zero(), &C::BaseField::one());
+    let zero = (&C::BaseField::zero(), &C::BaseField::zero());
     let cm = cm.into_affine();
     let (cm_x, cm_y) = cm.xy().unwrap_or(zero);
     vec![*cm_x, *cm_y]

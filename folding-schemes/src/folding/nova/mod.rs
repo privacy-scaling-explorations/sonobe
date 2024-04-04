@@ -5,7 +5,7 @@ use ark_crypto_primitives::{
     sponge::{poseidon::PoseidonConfig, Absorb},
 };
 use ark_ec::{AffineRepr, CurveGroup, Group};
-use ark_ff::{BigInteger, Field, PrimeField};
+use ark_ff::{BigInteger, Field, PrimeField, ToConstraintField};
 use ark_r1cs_std::{
     fields::nonnative::{params::OptimizationType, AllocatedNonNativeFieldVar},
     groups::GroupOpsBounds,
@@ -98,26 +98,45 @@ where
     }
 }
 
-impl<C: CurveGroup> CommittedInstance<C>
+// The out-circuit counterpart of `nonnative_field_var_to_constraint_field` in `nova/cyclefold.rs`
+fn nonnative_field_to_field_elements<TargetField: PrimeField, BaseField: PrimeField>(
+    f: &TargetField,
+) -> Vec<BaseField> {
+    let bits = f.into_bigint().to_bits_le();
+
+    let bits_per_limb = BaseField::MODULUS_BIT_SIZE as usize - 1;
+    let num_limbs = (TargetField::MODULUS_BIT_SIZE as usize).div_ceil(bits_per_limb);
+
+    let mut limbs = bits
+        .chunks(bits_per_limb)
+        .map(|chunk| {
+            let mut limb = BaseField::zero();
+            let mut w = BaseField::one();
+            for &b in chunk.iter() {
+                limb += BaseField::from(b) * w;
+                w.double_in_place();
+            }
+            limb
+        })
+        .collect::<Vec<BaseField>>();
+    limbs.resize(num_limbs, BaseField::zero());
+
+    limbs.reverse();
+
+    limbs
+}
+
+impl<C: CurveGroup> ToConstraintField<C::BaseField> for CommittedInstance<C>
 where
     <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField + Absorb,
 {
-    /// hash_cyclefold implements the committed instance hash compatible with the gadget implemented in
-    /// nova/cyclefold.rs::CycleFoldCommittedInstanceVar.hash.
-    /// Returns `H(U_i)`, where `U_i` is the `CommittedInstance` for CycleFold.
-    pub fn hash_cyclefold(
-        &self,
-        poseidon_config: &PoseidonConfig<C::BaseField>,
-    ) -> Result<C::BaseField, Error> {
-        let u =
-            AllocatedNonNativeFieldVar::<C::ScalarField, C::BaseField>::get_limbs_representations(
-                &self.u,
-                OptimizationType::Weight,
-            )?;
-        let x = self.x.iter().flat_map(|x| AllocatedNonNativeFieldVar::<C::ScalarField, C::BaseField>::get_limbs_representations(
-            x,
-            OptimizationType::Weight,
-        ).unwrap()).collect::<Vec<_>>();
+    fn to_field_elements(&self) -> Option<Vec<C::BaseField>> {
+        let u = nonnative_field_to_field_elements(&self.u);
+        let x = self
+            .x
+            .iter()
+            .flat_map(nonnative_field_to_field_elements)
+            .collect::<Vec<_>>();
         let (cmE_x, cmE_y, cmE_is_inf) = match self.cmE.into_affine().xy() {
             Some((&x, &y)) => (x, y, C::BaseField::zero()),
             None => (
@@ -137,11 +156,23 @@ where
         // Concatenate `cmE_is_inf` and `cmW_is_inf` to save constraints for CRHGadget::evaluate in the corresponding circuit
         let is_inf = cmE_is_inf.double() + cmW_is_inf;
 
-        CRH::<C::BaseField>::evaluate(
-            poseidon_config,
-            vec![u, x, vec![cmE_x, cmE_y, cmW_x, cmW_y, is_inf]].concat(),
-        )
-        .map_err(|e| Error::Other(e.to_string()))
+        Some(vec![u, x, vec![cmE_x, cmE_y, cmW_x, cmW_y, is_inf]].concat())
+    }
+}
+
+impl<C: CurveGroup> CommittedInstance<C>
+where
+    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField + Absorb,
+{
+    /// hash_cyclefold implements the committed instance hash compatible with the gadget implemented in
+    /// nova/cyclefold.rs::CycleFoldCommittedInstanceVar.hash.
+    /// Returns `H(U_i)`, where `U_i` is the `CommittedInstance` for CycleFold.
+    pub fn hash_cyclefold(
+        &self,
+        poseidon_config: &PoseidonConfig<C::BaseField>,
+    ) -> Result<C::BaseField, Error> {
+        CRH::<C::BaseField>::evaluate(poseidon_config, self.to_field_elements().unwrap())
+            .map_err(|e| Error::Other(e.to_string()))
     }
 }
 

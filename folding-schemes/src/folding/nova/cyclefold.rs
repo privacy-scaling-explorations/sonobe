@@ -10,11 +10,10 @@ use ark_crypto_primitives::{
         Absorb, CryptographicSponge,
     },
 };
-use ark_ec::CurveGroup;
-use ark_ff::{Field, PrimeField};
+use ark_ec::{AffineRepr, CurveGroup};
+use ark_ff::{Field, PrimeField, ToConstraintField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
-    bits::uint8::UInt8,
     boolean::Boolean,
     eq::EqGadget,
     fields::{
@@ -24,12 +23,11 @@ use ark_r1cs_std::{
     },
     groups::GroupOpsBounds,
     prelude::CurveVar,
-    R1CSVar, ToBytesGadget, ToConstraintFieldGadget,
+    R1CSVar, ToBitsGadget, ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{
     ConstraintSynthesizer, ConstraintSystemRef, LinearCombination, Namespace, SynthesisError,
 };
-use ark_serialize::CanonicalSerialize;
 use ark_std::fmt::Debug;
 use ark_std::{One, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
@@ -94,7 +92,7 @@ where
     }
 }
 
-impl<C, GC> CycleFoldCommittedInstanceVar<C, GC>
+fn curve_var_to_constraint_field<C, GC>(point: &GC) -> Result<Vec<FpVar<CF2<C>>>, SynthesisError>
 where
     C: CurveGroup,
     GC: CurveVar<C, CF2<C>>,
@@ -103,7 +101,7 @@ where
 {
     // This is copied from the internal logic of `Boolean::le_bits_to_fp_var`, but without the
     // `Boolean::enforce_in_field_le` check, as we already know that the bits are in the field.
-    fn le_bits_to_fp_var(bits: &[Boolean<CF2<C>>]) -> Result<FpVar<CF2<C>>, SynthesisError> {
+    fn le_bits_to_fp_var<F: PrimeField>(bits: &[Boolean<F>]) -> Result<FpVar<F>, SynthesisError> {
         let mut value = None;
         let cs = bits.cs();
         let should_construct_value = (!cs.is_in_setup_mode()) || bits.is_constant();
@@ -119,13 +117,13 @@ where
                     value
                 })
                 .collect::<Vec<_>>();
-            value = Some(C::BaseField::from_le_bytes_mod_order(&bytes));
+            value = Some(F::from_le_bytes_mod_order(&bytes));
         }
 
         if bits.is_constant() {
             Ok(FpVar::constant(value.unwrap()))
         } else {
-            let mut power = CF2::<C>::one();
+            let mut power = F::one();
             let mut combined_lc = LinearCombination::zero();
             bits.iter().for_each(|b| {
                 combined_lc = &combined_lc + (power, b.lc());
@@ -136,23 +134,87 @@ where
             Ok(AllocatedFp::new(value, variable, cs.clone()).into())
         }
     }
+    // `CurveVar` does not have a method to extract the coordinates, and below is a workaround
+    // that first convert the point to bits and then back to the field elements.
+    // TODO: This is not optimal as `to_bits_le` introduces extra constraints. Keep an eye on
+    // https://github.com/arkworks-rs/r1cs-std/pull/144. After this PR is merged, we can call
+    // `point.to_constraint_field()` directly.
+    let bit_size = CF2::<C>::MODULUS_BIT_SIZE as usize;
+    let mut bits = point.to_bits_le()?;
+    assert_eq!(bits.len(), bit_size * 2 + 1);
+    let is_inf = FpVar::from(bits.pop().unwrap());
+    let x = le_bits_to_fp_var(&bits[..bit_size])?;
+    let y = le_bits_to_fp_var(&bits[bit_size..])?;
+    Ok(vec![x, y, is_inf])
+}
 
-    fn extract_coordinates(
-        cm: &GC,
-    ) -> Result<(FpVar<CF2<C>>, FpVar<CF2<C>>, FpVar<CF2<C>>), SynthesisError> {
-        // `CurveVar` does not have a method to extract the coordinates, and below is a workaround
-        // that first convert the point to bits and then back to the field elements.
-        // TODO: This is not optimal as `to_bits_le` introduces extra constraints. To further
-        // reduce the circuit size, we may change the type of `cm` from `GC` to `ProjectiveVar`.
-        let bit_size = CF2::<C>::MODULUS_BIT_SIZE as usize;
-        let mut cm_bits = cm.to_bits_le()?;
-        assert_eq!(cm_bits.len(), bit_size * 2 + 1);
-        let is_inf = FpVar::from(cm_bits.pop().unwrap());
-        let x = Self::le_bits_to_fp_var(&cm_bits[..bit_size])?;
-        let y = Self::le_bits_to_fp_var(&cm_bits[bit_size..])?;
-        Ok((x, y, is_inf))
+// A more efficient version of `NonNativeFieldVar::to_constraint_field`
+fn nonnative_field_var_to_constraint_field<TargetField: PrimeField, BaseField: PrimeField>(
+    f: &NonNativeFieldVar<TargetField, BaseField>,
+) -> Result<Vec<FpVar<BaseField>>, SynthesisError> {
+    let bits = f.to_bits_le()?;
+
+    let bits_per_limb = BaseField::MODULUS_BIT_SIZE as usize - 1;
+    let num_limbs = (TargetField::MODULUS_BIT_SIZE as usize).div_ceil(bits_per_limb);
+
+    let mut limbs = bits
+        .chunks(bits_per_limb)
+        .map(|chunk| {
+            let mut limb = FpVar::<BaseField>::zero();
+            let mut w = BaseField::one();
+            for b in chunk.iter() {
+                limb += FpVar::from(b.clone()) * w;
+                w.double_in_place();
+            }
+            limb
+        })
+        .collect::<Vec<FpVar<BaseField>>>();
+    limbs.resize(num_limbs, FpVar::zero());
+
+    limbs.reverse();
+
+    Ok(limbs)
+}
+
+impl<C, GC> ToConstraintFieldGadget<CF2<C>> for CycleFoldCommittedInstanceVar<C, GC>
+where
+    C: CurveGroup,
+    GC: CurveVar<C, CF2<C>>,
+    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField + Absorb,
+    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
+{
+    // Extract the underlying field elements from `CycleFoldCommittedInstanceVar`, in the order of
+    // `u`, `x`, `cmE.x`, `cmE.y`, `cmW.x`, `cmW.y`, `cmE.is_inf || cmW.is_inf` (|| is for concat).
+    fn to_constraint_field(&self) -> Result<Vec<FpVar<CF2<C>>>, SynthesisError> {
+        let mut cmE_elems = curve_var_to_constraint_field(&self.cmE)?;
+        let mut cmW_elems = curve_var_to_constraint_field(&self.cmW)?;
+
+        let cmE_is_inf = cmE_elems.pop().unwrap();
+        let cmW_is_inf = cmW_elems.pop().unwrap();
+        // Concatenate `cmE_is_inf` and `cmW_is_inf` to save constraints for CRHGadget::evaluate
+        let is_inf = cmE_is_inf.double()? + cmW_is_inf;
+
+        Ok([
+            nonnative_field_var_to_constraint_field(&self.u)?,
+            self.x
+                .iter()
+                .flat_map(|i| nonnative_field_var_to_constraint_field(i).unwrap())
+                .collect::<Vec<_>>(),
+            cmE_elems,
+            cmW_elems,
+            vec![is_inf],
+        ]
+        .concat())
     }
+}
 
+impl<C, GC> CycleFoldCommittedInstanceVar<C, GC>
+where
+    C: CurveGroup,
+    GC: CurveVar<C, CF2<C>>,
+    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField + Absorb,
+    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
+{
     /// hash implements the committed instance hash compatible with the native implementation from
     /// CommittedInstance.hash_cyclefold.
     /// Returns `H(U_i)`, where `U` is the `CommittedInstance` for CycleFold.
@@ -162,21 +224,7 @@ where
         self,
         crh_params: &CRHParametersVar<CF2<C>>,
     ) -> Result<(FpVar<CF2<C>>, Vec<FpVar<CF2<C>>>), SynthesisError> {
-        // TODO: unify the logic with `CycleFoldChallengeGadget::get_challenge_gadget`
-        let (cmE_x, cmE_y, cmE_is_inf) = Self::extract_coordinates(&self.cmE)?;
-        let (cmW_x, cmW_y, cmW_is_inf) = Self::extract_coordinates(&self.cmW)?;
-
-        let is_inf = cmE_is_inf.double()? + cmW_is_inf;
-
-        let U_vec = [
-            self.u.to_constraint_field()?,
-            self.x
-                .iter()
-                .flat_map(|i| i.to_constraint_field().unwrap())
-                .collect::<Vec<_>>(),
-            vec![cmE_x, cmE_y, cmW_x, cmW_y, is_inf],
-        ]
-        .concat();
+        let U_vec = self.to_constraint_field()?;
         Ok((CRHGadget::evaluate(crh_params, &U_vec)?, U_vec))
     }
 }
@@ -296,39 +344,30 @@ where
     ) -> Result<Vec<bool>, Error> {
         let mut sponge = PoseidonSponge::<C::BaseField>::new(poseidon_config);
 
-        let U_i_cmE_bytes = point_to_bytes(U_i.cmE)?;
-        let U_i_cmW_bytes = point_to_bytes(U_i.cmW)?;
-        let u_i_cmE_bytes = point_to_bytes(u_i.cmE)?;
-        let u_i_cmW_bytes = point_to_bytes(u_i.cmW)?;
-        let cmT_bytes = point_to_bytes(cmT)?;
+        let mut U_vec = U_i.to_field_elements().unwrap();
+        let mut u_vec = u_i.to_field_elements().unwrap();
+        let (cmT_x, cmT_y, cmT_is_inf) = match cmT.into_affine().xy() {
+            Some((&x, &y)) => (x, y, C::BaseField::zero()),
+            None => (
+                C::BaseField::zero(),
+                C::BaseField::zero(),
+                C::BaseField::one(),
+            ),
+        };
 
-        let mut U_i_u_bytes = Vec::new();
-        U_i.u.serialize_uncompressed(&mut U_i_u_bytes)?;
-        let mut U_i_x_bytes = Vec::new();
-        U_i.x.serialize_uncompressed(&mut U_i_x_bytes)?;
-        U_i_x_bytes = U_i_x_bytes[8..].to_vec();
-        let mut u_i_u_bytes = Vec::new();
-        u_i.u.serialize_uncompressed(&mut u_i_u_bytes)?;
-        let mut u_i_x_bytes = Vec::new();
-        u_i.x.serialize_uncompressed(&mut u_i_x_bytes)?;
-        u_i_x_bytes = u_i_x_bytes[8..].to_vec();
+        let U_cm_is_inf = U_vec.pop().unwrap();
+        let u_cm_is_inf = u_vec.pop().unwrap();
 
-        let input: Vec<u8> = [
-            U_i_cmE_bytes,
-            U_i_u_bytes,
-            U_i_cmW_bytes,
-            U_i_x_bytes,
-            u_i_cmE_bytes,
-            u_i_u_bytes,
-            u_i_cmW_bytes,
-            u_i_x_bytes,
-            cmT_bytes,
-        ]
-        .concat();
+        // Concatenate `U_i.cmE_is_inf`, `U_i.cmW_is_inf`, `u_i.cmE_is_inf`, `u_i.cmW_is_inf`, `cmT_is_inf`
+        // to save constraints for sponge.squeeze_bits in the corresponding circuit
+        let is_inf = U_cm_is_inf * CF2::<C>::from(8u8) + u_cm_is_inf.double() + cmT_is_inf;
+
+        let input = [U_vec, u_vec, vec![cmT_x, cmT_y, is_inf]].concat();
         sponge.absorb(&input);
         let bits = sponge.squeeze_bits(N_BITS_RO);
         Ok(bits)
     }
+
     // compatible with the native get_challenge_native
     pub fn get_challenge_gadget(
         cs: ConstraintSystemRef<C::BaseField>,
@@ -339,54 +378,23 @@ where
     ) -> Result<Vec<Boolean<C::BaseField>>, SynthesisError> {
         let mut sponge = PoseidonSpongeVar::<C::BaseField>::new(cs, poseidon_config);
 
-        let U_i_x_bytes: Vec<UInt8<CF2<C>>> = U_i
-            .x
-            .iter()
-            .flat_map(|e| e.to_bytes().unwrap_or(vec![]))
-            .collect::<Vec<UInt8<CF2<C>>>>();
-        let u_i_x_bytes: Vec<UInt8<CF2<C>>> = u_i
-            .x
-            .iter()
-            .flat_map(|e| e.to_bytes().unwrap_or(vec![]))
-            .collect::<Vec<UInt8<CF2<C>>>>();
+        let mut U_vec = U_i.to_constraint_field()?;
+        let mut u_vec = u_i.to_constraint_field()?;
+        let mut cmT_vec = curve_var_to_constraint_field(&cmT)?;
 
-        let input: Vec<UInt8<CF2<C>>> = [
-            pointvar_to_bytes(U_i.cmE)?,
-            U_i.u.to_bytes()?,
-            pointvar_to_bytes(U_i.cmW)?,
-            U_i_x_bytes,
-            pointvar_to_bytes(u_i.cmE)?,
-            u_i.u.to_bytes()?,
-            pointvar_to_bytes(u_i.cmW)?,
-            u_i_x_bytes,
-            pointvar_to_bytes(cmT)?,
-        ]
-        .concat();
+        let U_cm_is_inf = U_vec.pop().unwrap();
+        let u_cm_is_inf = u_vec.pop().unwrap();
+        let cmT_is_inf = cmT_vec.pop().unwrap();
+
+        // Concatenate `U_i.cmE_is_inf`, `U_i.cmW_is_inf`, `u_i.cmE_is_inf`, `u_i.cmW_is_inf`, `cmT_is_inf`
+        // to save constraints for sponge.squeeze_bits
+        let is_inf = U_cm_is_inf * CF2::<C>::from(8u8) + u_cm_is_inf.double()? + cmT_is_inf;
+
+        let input = [U_vec, u_vec, cmT_vec, vec![is_inf]].concat();
         sponge.absorb(&input)?;
         let bits = sponge.squeeze_bits(N_BITS_RO)?;
         Ok(bits)
     }
-}
-
-/// returns the bytes being compatible with the pointvar_to_bytes method.
-/// These methods are temporary once arkworks has the fix to prevent different to_bytes behaviour
-/// across different curves. Eg, in pasta and bn254: pasta returns 65 bytes both native and gadget,
-/// whereas bn254 returns 64 bytes native and 65 in gadget, also the penultimate byte is different
-/// natively than in gadget.
-fn point_to_bytes<C: CurveGroup>(p: C) -> Result<Vec<u8>, Error> {
-    let l = p.uncompressed_size();
-    let mut b = Vec::new();
-    p.serialize_uncompressed(&mut b)?;
-    if p.is_zero() {
-        b[l - 1] = 1;
-    }
-    Ok(b[..63].to_vec())
-}
-fn pointvar_to_bytes<C: CurveGroup, GC: CurveVar<C, CF2<C>>>(
-    p: GC,
-) -> Result<Vec<UInt8<CF2<C>>>, SynthesisError> {
-    let b = p.to_bytes()?;
-    Ok(b[..63].to_vec())
 }
 
 /// CycleFoldCircuit contains the constraints that check the correct fold of the committed
@@ -460,7 +468,6 @@ pub mod tests {
     use super::*;
     use ark_bn254::{constraints::GVar, Fq, Fr, G1Projective as Projective};
     use ark_ff::BigInteger;
-    use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::UniformRand;
 
@@ -579,21 +586,6 @@ pub mod tests {
     }
 
     #[test]
-    fn test_point_bytes() {
-        let mut rng = ark_std::test_rng();
-
-        let p = Projective::rand(&mut rng);
-        let p_bytes = point_to_bytes(p).unwrap();
-
-        let cs = ConstraintSystem::<Fq>::new_ref();
-        let pVar = GVar::new_witness(cs.clone(), || Ok(p)).unwrap();
-        assert_eq!(pVar.value().unwrap(), p);
-
-        let p_bytesVar = &pointvar_to_bytes(pVar).unwrap();
-        assert_eq!(p_bytesVar.value().unwrap(), p_bytes);
-    }
-
-    #[test]
     fn test_cyclefold_challenge_gadget() {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_test_config::<Fq>();
@@ -676,11 +668,11 @@ pub mod tests {
                 Ok(U_i.clone())
             })
             .unwrap();
-        let (hVar, _) = U_iVar.hash(
-            &CRHParametersVar::new_constant(cs.clone(), poseidon_config).unwrap(),
-        )
-        .unwrap();
-        hVar.enforce_equal(&FpVar::new_witness(cs.clone(), || Ok(h)).unwrap()).unwrap();
+        let (hVar, _) = U_iVar
+            .hash(&CRHParametersVar::new_constant(cs.clone(), poseidon_config).unwrap())
+            .unwrap();
+        hVar.enforce_equal(&FpVar::new_witness(cs.clone(), || Ok(h)).unwrap())
+            .unwrap();
         assert!(cs.is_satisfied().unwrap());
     }
 }

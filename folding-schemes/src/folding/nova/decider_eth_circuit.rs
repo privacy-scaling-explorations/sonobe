@@ -425,7 +425,7 @@ where
         u_i.cmE.y.enforce_equal(&zero_y)?;
         (u_i.u.is_one()?).enforce_equal(&Boolean::TRUE)?;
 
-        // 3. u_i.x == H(i, z_0, z_i, U_i)
+        // 3.a u_i.x[0] == H(i, z_0, z_i, U_i)
         let (u_i_x, U_i_vec) =
             U_i.clone()
                 .hash(&crh_params, i.clone(), z_0.clone(), z_i.clone())?;
@@ -453,6 +453,12 @@ where
             let cf_W_i = CycleFoldWitnessVar::<C2>::new_witness(cs.clone(), || {
                 Ok(self.cf_W_i.unwrap_or(w_dummy_native.clone()))
             })?;
+
+            // 3.b u_i.x[1] == H(cf_U_i)
+            let (cf_u_i_x, _) =
+                cf_U_i.clone()
+                    .hash(&crh_params)?;
+            (u_i.x[1]).enforce_equal(&cf_u_i_x)?;
 
             // 4. check Pedersen commitments of cf_U_i.{cmE, cmW}
             let H = GC2::new_constant(cs.clone(), self.cf_pedersen_params.h)?;

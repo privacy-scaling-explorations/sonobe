@@ -1,25 +1,37 @@
 /// contains [CycleFold](https://eprint.iacr.org/2023/1192.pdf) related circuits
-use ark_crypto_primitives::sponge::{
-    constraints::CryptographicSpongeVar,
-    poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig, PoseidonSponge},
-    Absorb, CryptographicSponge,
+use ark_crypto_primitives::{
+    crh::{
+        poseidon::constraints::{CRHGadget, CRHParametersVar},
+        CRHSchemeGadget,
+    },
+    sponge::{
+        constraints::CryptographicSpongeVar,
+        poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig, PoseidonSponge},
+        Absorb, CryptographicSponge,
+    },
 };
 use ark_ec::CurveGroup;
-use ark_ff::PrimeField;
+use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     bits::uint8::UInt8,
     boolean::Boolean,
     eq::EqGadget,
-    fields::{fp::FpVar, nonnative::NonNativeFieldVar},
+    fields::{
+        fp::{AllocatedFp, FpVar},
+        nonnative::NonNativeFieldVar,
+        FieldVar,
+    },
     groups::GroupOpsBounds,
     prelude::CurveVar,
-    ToBytesGadget, ToConstraintFieldGadget,
+    R1CSVar, ToBytesGadget, ToConstraintFieldGadget,
 };
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
+use ark_relations::r1cs::{
+    ConstraintSynthesizer, ConstraintSystemRef, LinearCombination, Namespace, SynthesisError,
+};
 use ark_serialize::CanonicalSerialize;
 use ark_std::fmt::Debug;
-use ark_std::Zero;
+use ark_std::{One, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::circuits::CF2;
@@ -79,6 +91,93 @@ where
                 x,
             })
         })
+    }
+}
+
+impl<C, GC> CycleFoldCommittedInstanceVar<C, GC>
+where
+    C: CurveGroup,
+    GC: CurveVar<C, CF2<C>>,
+    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField + Absorb,
+    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
+{
+    // This is copied from the internal logic of `Boolean::le_bits_to_fp_var`, but without the
+    // `Boolean::enforce_in_field_le` check, as we already know that the bits are in the field.
+    fn le_bits_to_fp_var(bits: &[Boolean<CF2<C>>]) -> Result<FpVar<CF2<C>>, SynthesisError> {
+        let mut value = None;
+        let cs = bits.cs();
+        let should_construct_value = (!cs.is_in_setup_mode()) || bits.is_constant();
+        if should_construct_value {
+            let bits = bits.iter().map(|b| b.value().unwrap()).collect::<Vec<_>>();
+            let bytes = bits
+                .chunks(8)
+                .map(|c| {
+                    let mut value = 0u8;
+                    for (i, &bit) in c.iter().enumerate() {
+                        value += (bit as u8) << i;
+                    }
+                    value
+                })
+                .collect::<Vec<_>>();
+            value = Some(C::BaseField::from_le_bytes_mod_order(&bytes));
+        }
+
+        if bits.is_constant() {
+            Ok(FpVar::constant(value.unwrap()))
+        } else {
+            let mut power = CF2::<C>::one();
+            let mut combined_lc = LinearCombination::zero();
+            bits.iter().for_each(|b| {
+                combined_lc = &combined_lc + (power, b.lc());
+                power.double_in_place();
+            });
+            // Allocate the new variable as a SymbolicLc
+            let variable = cs.new_lc(combined_lc)?;
+            Ok(AllocatedFp::new(value, variable, cs.clone()).into())
+        }
+    }
+
+    fn extract_coordinates(
+        cm: &GC,
+    ) -> Result<(FpVar<CF2<C>>, FpVar<CF2<C>>, FpVar<CF2<C>>), SynthesisError> {
+        // `CurveVar` does not have a method to extract the coordinates, and below is a workaround
+        // that first convert the point to bits and then back to the field elements.
+        // TODO: This is not optimal as `to_bits_le` introduces extra constraints. To further
+        // reduce the circuit size, we may change the type of `cm` from `GC` to `ProjectiveVar`.
+        let bit_size = CF2::<C>::MODULUS_BIT_SIZE as usize;
+        let mut cm_bits = cm.to_bits_le()?;
+        assert_eq!(cm_bits.len(), bit_size * 2 + 1);
+        let is_inf = FpVar::from(cm_bits.pop().unwrap());
+        let x = Self::le_bits_to_fp_var(&cm_bits[..bit_size])?;
+        let y = Self::le_bits_to_fp_var(&cm_bits[bit_size..])?;
+        Ok((x, y, is_inf))
+    }
+
+    /// hash implements the committed instance hash compatible with the native implementation from
+    /// CommittedInstance.hash_cyclefold.
+    /// Returns `H(U_i)`, where `U` is the `CommittedInstance` for CycleFold.
+    /// Additionally it returns the vector of the field elements from the self parameters, so they
+    /// can be reused in other gadgets avoiding recalculating (reconstraining) them.
+    pub fn hash(
+        self,
+        crh_params: &CRHParametersVar<CF2<C>>,
+    ) -> Result<(FpVar<CF2<C>>, Vec<FpVar<CF2<C>>>), SynthesisError> {
+        // TODO: unify the logic with `CycleFoldChallengeGadget::get_challenge_gadget`
+        let (cmE_x, cmE_y, cmE_is_inf) = Self::extract_coordinates(&self.cmE)?;
+        let (cmW_x, cmW_y, cmW_is_inf) = Self::extract_coordinates(&self.cmW)?;
+
+        let is_inf = cmE_is_inf.double()? + cmW_is_inf;
+
+        let U_vec = [
+            self.u.to_constraint_field()?,
+            self.x
+                .iter()
+                .flat_map(|i| i.to_constraint_field().unwrap())
+                .collect::<Vec<_>>(),
+            vec![cmE_x, cmE_y, cmW_x, cmW_y, is_inf],
+        ]
+        .concat();
+        Ok((CRHGadget::evaluate(crh_params, &U_vec)?, U_vec))
     }
 }
 
@@ -555,5 +654,34 @@ pub mod tests {
         let r = Fq::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
         assert_eq!(rVar.value().unwrap(), r);
         assert_eq!(r_bitsVar.value().unwrap(), r_bits);
+    }
+
+    #[test]
+    fn test_cyclefold_hash_gadget() {
+        let mut rng = ark_std::test_rng();
+        let poseidon_config = poseidon_test_config::<Fq>();
+
+        let U_i = CommittedInstance::<Projective> {
+            cmE: Projective::rand(&mut rng),
+            u: Fr::rand(&mut rng),
+            cmW: Projective::rand(&mut rng),
+            x: std::iter::repeat_with(|| Fr::rand(&mut rng))
+                .take(CF_IO_LEN)
+                .collect(),
+        };
+        let h = U_i.hash_cyclefold(&poseidon_config).unwrap();
+
+        let cs = ConstraintSystem::<Fq>::new_ref();
+        let U_iVar =
+            CycleFoldCommittedInstanceVar::<Projective, GVar>::new_witness(cs.clone(), || {
+                Ok(U_i.clone())
+            })
+            .unwrap();
+        let (hVar, _) = U_iVar.hash(
+            &CRHParametersVar::new_constant(cs.clone(), poseidon_config).unwrap(),
+        )
+        .unwrap();
+        hVar.enforce_equal(&FpVar::new_witness(cs.clone(), || Ok(h)).unwrap()).unwrap();
+        assert!(cs.is_satisfied().unwrap());
     }
 }

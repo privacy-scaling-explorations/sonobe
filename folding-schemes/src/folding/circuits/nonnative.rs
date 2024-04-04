@@ -1,8 +1,7 @@
 use ark_ec::{AffineRepr, CurveGroup};
-use ark_r1cs_std::fields::nonnative::{params::OptimizationType, AllocatedNonNativeFieldVar};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
-    fields::nonnative::NonNativeFieldVar,
+    fields::nonnative::{params::OptimizationType, AllocatedNonNativeFieldVar, NonNativeFieldVar},
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
 use ark_std::{One, Zero};

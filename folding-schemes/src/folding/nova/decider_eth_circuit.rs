@@ -362,9 +362,9 @@ where
             Ok(self.z_i.unwrap_or(vec![CF1::<C1>::zero()]))
         })?;
 
-        let u_dummy_native = CommittedInstance::<C1>::dummy(1);
+        let u_dummy_native = CommittedInstance::<C1>::dummy(2);
         let w_dummy_native = Witness::<C1>::new(
-            vec![C1::ScalarField::zero(); self.r1cs.A.n_cols - 2 /* (2=1+1, since u_i.x.len=1) */],
+            vec![C1::ScalarField::zero(); self.r1cs.A.n_cols - 3 /* (3=2+1, since u_i.x.len=2) */],
             self.E_len,
         );
 

@@ -18,7 +18,6 @@ use ark_r1cs_std::{
     groups::GroupOpsBounds,
     prelude::CurveVar,
     ToBitsGadget, ToConstraintFieldGadget,
-    R1CSVar
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
 use ark_std::fmt::Debug;
@@ -447,6 +446,9 @@ where
             NonNativeFieldVar::<C1::BaseField, C1::ScalarField>::new_witness(cs.clone(), || {
                 Ok(self.cf2_r_nonnat.unwrap_or_else(C2::ScalarField::zero))
             })?;
+        let cf_x = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
+            Ok(self.cf_x.unwrap_or_else(C1::ScalarField::zero))
+        })?;
 
         let cfW_x: Vec<NonNativeFieldVar<C1::BaseField, C1::ScalarField>> = vec![
             r_nonnat.clone(),
@@ -471,11 +473,6 @@ where
 
         // 4.b u_{i+1}.x[1] = H(cf_U_{i+1}), this is the second output of F'
         let (cf_u_i1_x, _) = cf_U_i1.clone().hash(&crh_params)?;
-        let cf_x = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
-            // Trick: if cf_x is not provided, i.e., we are in the base case, we can just set it
-            // to cf_u_i1_x to pass the check below.
-            Ok(self.cf_x.unwrap_or(cf_u_i1_x.value()?))
-        })?;
         cf_u_i1_x.enforce_equal(&cf_x)?;
 
         // ensure that cf1_u & cf2_u have as public inputs the cmW & cmE from main instances U_i,

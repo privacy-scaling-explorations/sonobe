@@ -380,9 +380,10 @@ where
             z_i1.clone(),
         )?;
         // u_{i+1}.x[1] = H(cf_U_{i+1})
-        let mut cf_u_i1_x = C1::ScalarField::zero();
+        let cf_u_i1_x: C1::ScalarField;
 
         if self.i == C1::ScalarField::zero() {
+            cf_u_i1_x = self.cf_U_i.hash_cyclefold(&self.poseidon_config)?;
             // base case
             augmented_F_circuit = AugmentedFCircuit::<C1, C2, GC2, FC> {
                 _gc2: PhantomData,
@@ -407,7 +408,7 @@ where
                 cf2_cmT: None,
                 cf1_r_nonnat: None,
                 cf2_r_nonnat: None,
-                cf_x: None,
+                cf_x: Some(cf_u_i1_x),
             };
 
             #[cfg(test)]
@@ -511,14 +512,8 @@ where
 
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
         let (w_i1, x_i1) = extract_w_x::<C1::ScalarField>(&cs);
-        if x_i1[0] != u_i1_x {
+        if x_i1[0] != u_i1_x || x_i1[1] != cf_u_i1_x {
             return Err(Error::NotEqual);
-        }
-        // TODO: compute the "correct" cf_u_i1_x in base case to remove this if
-        if self.i != C1::ScalarField::zero() {
-            if x_i1[1] != cf_u_i1_x {
-                return Err(Error::NotEqual);
-            }
         }
 
         #[cfg(test)]

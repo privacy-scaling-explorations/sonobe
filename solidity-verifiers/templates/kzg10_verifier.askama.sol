@@ -1,7 +1,7 @@
 /**
  * @author  Privacy and Scaling Explorations team - pse.dev
  * @dev     Contains utility functions for ops in BN254; in G_1 mostly.
- * @notice  Forked from https://github.com/weijiekoh/libkzg/tree/master.
+ * @notice  Forked from https://github.com/weijiekoh/libkzg.
  * Among others, a few of the changes we did on this fork were:
  * - Templating the pragma version
  * - Removing type wrappers and use uints instead

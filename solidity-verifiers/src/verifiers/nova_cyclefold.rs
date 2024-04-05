@@ -265,9 +265,9 @@ mod tests {
     ) {
         let (fs_prover_params, kzg_vk, g16_pk, g16_vk) = params.clone();
 
-        pub type Nova_FCircuit<FC> =
+        pub type NOVA_FCircuit<FC> =
             Nova<G1, GVar, G2, GVar2, FC, KZG<'static, Bn254>, Pedersen<G2>>;
-        pub type DeciderEth_FCircuit<FC> = DeciderEth<
+        pub type DECIDERETH_FCircuit<FC> = DeciderEth<
             G1,
             GVar,
             G2,
@@ -276,28 +276,24 @@ mod tests {
             KZG<'static, Bn254>,
             Pedersen<G2>,
             Groth16<Bn254>,
-            Nova_FCircuit<FC>,
+            NOVA_FCircuit<FC>,
         >;
         let f_circuit = FC::new(());
 
-        let mut nova = Nova_FCircuit::init(&fs_prover_params, f_circuit, z_0).unwrap();
+        let mut nova = NOVA_FCircuit::init(&fs_prover_params, f_circuit, z_0).unwrap();
         for _ in 0..n_steps {
             nova.prove_step().unwrap();
         }
 
         let rng = rand::rngs::OsRng;
-        let proof = DeciderEth_FCircuit::prove(
-            (
-                fs_prover_params.poseidon_config.clone(),
-                g16_pk,
-                fs_prover_params.cs_params.clone(),
-            ),
+        let proof = DECIDERETH_FCircuit::prove(
+            (g16_pk, fs_prover_params.cs_params.clone()),
             rng,
             nova.clone(),
         )
         .unwrap();
 
-        let verified = DeciderEth_FCircuit::<FC>::verify(
+        let verified = DECIDERETH_FCircuit::<FC>::verify(
             (g16_vk.clone(), kzg_vk.clone()),
             nova.i,
             nova.z_0.clone(),
@@ -413,10 +409,10 @@ mod tests {
         println!("generated Nova params: {:?}", start.elapsed());
         let f_circuit = FC::new(());
 
-        pub type Nova_FCircuit<FC> =
+        pub type NOVA_FCircuit<FC> =
             Nova<G1, GVar, G2, GVar2, FC, KZG<'static, Bn254>, Pedersen<G2>>;
         let z_0 = vec![Fr::zero(); f_circuit.state_len()];
-        let nova = Nova_FCircuit::init(&fs_prover_params, f_circuit, z_0.clone()).unwrap();
+        let nova = NOVA_FCircuit::init(&fs_prover_params, f_circuit, z_0.clone()).unwrap();
 
         let decider_circuit =
             DeciderEthCircuit::<G1, GVar, G2, GVar2, KZG<Bn254>, Pedersen<G2>>::from_nova::<FC>(

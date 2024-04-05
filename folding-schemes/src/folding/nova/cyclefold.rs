@@ -16,18 +16,12 @@ use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
     eq::EqGadget,
-    fields::{
-        fp::{AllocatedFp, FpVar},
-        nonnative::NonNativeFieldVar,
-        FieldVar,
-    },
+    fields::{fp::FpVar, nonnative::NonNativeFieldVar, FieldVar},
     groups::GroupOpsBounds,
     prelude::CurveVar,
-    R1CSVar, ToBitsGadget, ToConstraintFieldGadget,
+    ToBitsGadget, ToConstraintFieldGadget,
 };
-use ark_relations::r1cs::{
-    ConstraintSynthesizer, ConstraintSystemRef, LinearCombination, Namespace, SynthesisError,
-};
+use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
 use ark_std::fmt::Debug;
 use ark_std::{One, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
@@ -92,62 +86,6 @@ where
     }
 }
 
-fn curve_var_to_constraint_field<C, GC>(point: &GC) -> Result<Vec<FpVar<CF2<C>>>, SynthesisError>
-where
-    C: CurveGroup,
-    GC: CurveVar<C, CF2<C>>,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField + Absorb,
-    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
-{
-    // This is copied from the internal logic of `Boolean::le_bits_to_fp_var`, but without the
-    // `Boolean::enforce_in_field_le` check, as we already know that the bits are in the field.
-    fn le_bits_to_fp_var<F: PrimeField>(bits: &[Boolean<F>]) -> Result<FpVar<F>, SynthesisError> {
-        let mut value = None;
-        let cs = bits.cs();
-        let should_construct_value = (!cs.is_in_setup_mode()) || bits.is_constant();
-        if should_construct_value {
-            let bits = bits.iter().map(|b| b.value().unwrap()).collect::<Vec<_>>();
-            let bytes = bits
-                .chunks(8)
-                .map(|c| {
-                    let mut value = 0u8;
-                    for (i, &bit) in c.iter().enumerate() {
-                        value += (bit as u8) << i;
-                    }
-                    value
-                })
-                .collect::<Vec<_>>();
-            value = Some(F::from_le_bytes_mod_order(&bytes));
-        }
-
-        if bits.is_constant() {
-            Ok(FpVar::constant(value.unwrap()))
-        } else {
-            let mut power = F::one();
-            let mut combined_lc = LinearCombination::zero();
-            bits.iter().for_each(|b| {
-                combined_lc = &combined_lc + (power, b.lc());
-                power.double_in_place();
-            });
-            // Allocate the new variable as a SymbolicLc
-            let variable = cs.new_lc(combined_lc)?;
-            Ok(AllocatedFp::new(value, variable, cs.clone()).into())
-        }
-    }
-    // `CurveVar` does not have a method to extract the coordinates, and below is a workaround
-    // that first convert the point to bits and then back to the field elements.
-    // TODO: This is not optimal as `to_bits_le` introduces extra constraints. Keep an eye on
-    // https://github.com/arkworks-rs/r1cs-std/pull/144. After this PR is merged, we can call
-    // `point.to_constraint_field()` directly.
-    let bit_size = CF2::<C>::MODULUS_BIT_SIZE as usize;
-    let mut bits = point.to_bits_le()?;
-    assert_eq!(bits.len(), bit_size * 2 + 1);
-    let is_inf = FpVar::from(bits.pop().unwrap());
-    let x = le_bits_to_fp_var(&bits[..bit_size])?;
-    let y = le_bits_to_fp_var(&bits[bit_size..])?;
-    Ok(vec![x, y, is_inf])
-}
-
 // A more efficient version of `NonNativeFieldVar::to_constraint_field`
 fn nonnative_field_var_to_constraint_field<TargetField: PrimeField, BaseField: PrimeField>(
     f: &NonNativeFieldVar<TargetField, BaseField>,
@@ -179,15 +117,15 @@ fn nonnative_field_var_to_constraint_field<TargetField: PrimeField, BaseField: P
 impl<C, GC> ToConstraintFieldGadget<CF2<C>> for CycleFoldCommittedInstanceVar<C, GC>
 where
     C: CurveGroup,
-    GC: CurveVar<C, CF2<C>>,
+    GC: CurveVar<C, CF2<C>> + ToConstraintFieldGadget<CF2<C>>,
     <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField + Absorb,
     for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
 {
     // Extract the underlying field elements from `CycleFoldCommittedInstanceVar`, in the order of
     // `u`, `x`, `cmE.x`, `cmE.y`, `cmW.x`, `cmW.y`, `cmE.is_inf || cmW.is_inf` (|| is for concat).
     fn to_constraint_field(&self) -> Result<Vec<FpVar<CF2<C>>>, SynthesisError> {
-        let mut cmE_elems = curve_var_to_constraint_field(&self.cmE)?;
-        let mut cmW_elems = curve_var_to_constraint_field(&self.cmW)?;
+        let mut cmE_elems = self.cmE.to_constraint_field()?;
+        let mut cmW_elems = self.cmW.to_constraint_field()?;
 
         let cmE_is_inf = cmE_elems.pop().unwrap();
         let cmW_is_inf = cmW_elems.pop().unwrap();
@@ -211,7 +149,7 @@ where
 impl<C, GC> CycleFoldCommittedInstanceVar<C, GC>
 where
     C: CurveGroup,
-    GC: CurveVar<C, CF2<C>>,
+    GC: CurveVar<C, CF2<C>> + ToConstraintFieldGadget<CF2<C>>,
     <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField + Absorb,
     for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
 {
@@ -331,7 +269,7 @@ pub struct CycleFoldChallengeGadget<C: CurveGroup, GC: CurveVar<C, CF2<C>>> {
 impl<C, GC> CycleFoldChallengeGadget<C, GC>
 where
     C: CurveGroup,
-    GC: CurveVar<C, CF2<C>>,
+    GC: CurveVar<C, CF2<C>> + ToConstraintFieldGadget<CF2<C>>,
     <C as CurveGroup>::BaseField: PrimeField,
     <C as CurveGroup>::BaseField: Absorb,
     for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
@@ -380,7 +318,7 @@ where
 
         let mut U_vec = U_i.to_constraint_field()?;
         let mut u_vec = u_i.to_constraint_field()?;
-        let mut cmT_vec = curve_var_to_constraint_field(&cmT)?;
+        let mut cmT_vec = cmT.to_constraint_field()?;
 
         let U_cm_is_inf = U_vec.pop().unwrap();
         let u_cm_is_inf = u_vec.pop().unwrap();
@@ -468,6 +406,7 @@ pub mod tests {
     use super::*;
     use ark_bn254::{constraints::GVar, Fq, Fr, G1Projective as Projective};
     use ark_ff::BigInteger;
+    use ark_r1cs_std::R1CSVar;
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::UniformRand;
 

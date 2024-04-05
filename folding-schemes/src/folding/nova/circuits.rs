@@ -21,7 +21,7 @@ use ark_r1cs_std::{
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
 use ark_std::fmt::Debug;
-use ark_std::{One, Zero};
+use ark_std::Zero;
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::{
@@ -310,7 +310,7 @@ impl<C1, C2, GC2, FC> ConstraintSynthesizer<CF1<C1>> for AugmentedFCircuit<C1, C
 where
     C1: CurveGroup,
     C2: CurveGroup,
-    GC2: CurveVar<C2, CF2<C2>>,
+    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
     FC: FCircuit<CF1<C1>>,
     <C1 as CurveGroup>::BaseField: PrimeField,
     <C2 as CurveGroup>::BaseField: PrimeField,
@@ -544,7 +544,7 @@ pub mod tests {
     use super::*;
     use ark_bn254::{Fr, G1Projective as Projective};
     use ark_ff::BigInteger;
-    use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
+    use ark_r1cs_std::R1CSVar;
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::UniformRand;
 

@@ -245,7 +245,7 @@ where
     C1: CurveGroup,
     C2: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
-    GC2: CurveVar<C2, CF2<C2>>,
+    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
     CS1: CommitmentScheme<C1>,
     // enforce that the CS2 is Pedersen commitment scheme, since we're at Ethereum's EVM decider
     CS2: CommitmentScheme<C2, ProverParams = PedersenParams<C2>>,
@@ -337,7 +337,7 @@ where
     C1: CurveGroup,
     C2: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>>,
-    GC2: CurveVar<C2, CF2<C2>>,
+    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
     CS1: CommitmentScheme<C1>,
     CS2: CommitmentScheme<C2>,
     <C1 as CurveGroup>::BaseField: PrimeField,

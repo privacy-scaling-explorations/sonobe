@@ -16,7 +16,7 @@ use ark_r1cs_std::{
     ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
-use ark_std::{log2, One, Zero};
+use ark_std::{log2, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::{circuits::ChallengeGadget, nifs::NIFS};
@@ -455,9 +455,7 @@ where
             })?;
 
             // 3.b u_i.x[1] == H(cf_U_i)
-            let (cf_u_i_x, _) =
-                cf_U_i.clone()
-                    .hash(&crh_params)?;
+            let (cf_u_i_x, _) = cf_U_i.clone().hash(&crh_params)?;
             (u_i.x[1]).enforce_equal(&cf_u_i_x)?;
 
             // 4. check Pedersen commitments of cf_U_i.{cmE, cmW}
@@ -621,16 +619,10 @@ pub mod tests {
         },
         CRHScheme, CRHSchemeGadget,
     };
-    use ark_ff::BigInteger;
     use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
-    use ark_r1cs_std::{
-        alloc::AllocVar,
-        bits::uint8::UInt8,
-        eq::EqGadget,
-        fields::{fp::FpVar, nonnative::NonNativeFieldVar},
-    };
+    use ark_r1cs_std::bits::uint8::UInt8;
     use ark_relations::r1cs::ConstraintSystem;
-    use ark_std::UniformRand;
+    use ark_std::{One, UniformRand};
     use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
 
     use crate::commitment::pedersen::Pedersen;
@@ -639,11 +631,8 @@ pub mod tests {
     use crate::transcript::poseidon::poseidon_test_config;
     use crate::FoldingScheme;
 
+    use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z};
     use crate::ccs::r1cs::{extract_r1cs, extract_w_x};
-    use crate::ccs::r1cs::{
-        tests::{get_test_r1cs, get_test_z},
-        R1CS,
-    };
 
     #[test]
     fn test_relaxed_r1cs_small_gadget_handcrafted() {

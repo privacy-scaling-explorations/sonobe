@@ -6,11 +6,7 @@ use ark_crypto_primitives::{
 };
 use ark_ec::{AffineRepr, CurveGroup, Group};
 use ark_ff::{BigInteger, Field, PrimeField, ToConstraintField};
-use ark_r1cs_std::{
-    groups::GroupOpsBounds,
-    prelude::CurveVar,
-    ToConstraintFieldGadget,
-};
+use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
 use ark_std::fmt::Debug;
 use ark_std::{One, Zero};
 use core::marker::PhantomData;
@@ -155,7 +151,7 @@ where
         // Concatenate `cmE_is_inf` and `cmW_is_inf` to save constraints for CRHGadget::evaluate in the corresponding circuit
         let is_inf = cmE_is_inf.double() + cmW_is_inf;
 
-        Some(vec![u, x, vec![cmE_x, cmE_y, cmW_x, cmW_y, is_inf]].concat())
+        Some([u, x, vec![cmE_x, cmE_y, cmW_x, cmW_y, is_inf]].concat())
     }
 }
 

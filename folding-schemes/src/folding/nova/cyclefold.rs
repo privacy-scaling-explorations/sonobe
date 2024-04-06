@@ -158,6 +158,7 @@ where
     /// Returns `H(U_i)`, where `U` is the `CommittedInstance` for CycleFold.
     /// Additionally it returns the vector of the field elements from the self parameters, so they
     /// can be reused in other gadgets avoiding recalculating (reconstraining) them.
+    #[allow(clippy::type_complexity)]
     pub fn hash(
         self,
         crh_params: &CRHParametersVar<CF2<C>>,

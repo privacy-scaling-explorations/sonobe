@@ -465,9 +465,6 @@ where
 
         // 1.b u_i.x[1] == H(cf_U_i)
         let (cf_u_i_x, _) = cf_U_i.clone().hash(&crh_params)?;
-        if self.x.is_some() {
-            assert!(cs.is_satisfied().unwrap());
-        }
         // check that h == u_i.x[1]
         (u_i.x[1]).conditional_enforce_equal(&cf_u_i_x, &is_not_basecase)?;
 

@@ -2,7 +2,6 @@
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{CurveGroup, Group};
 use ark_ff::PrimeField;
-use ark_r1cs_std::fields::nonnative::params::OptimizationType;
 use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
 use ark_snark::SNARK;
 use ark_std::rand::{CryptoRng, RngCore};
@@ -14,7 +13,7 @@ use super::{circuits::CF2, nifs::NIFS, CommittedInstance, Nova};
 use crate::commitment::{
     kzg::Proof as KZGProof, pedersen::Params as PedersenParams, CommitmentScheme,
 };
-use crate::folding::circuits::nonnative::point_to_nonnative_limbs_custom_opt;
+use crate::folding::circuits::nonnative::NonNativeAffineVar;
 use crate::frontend::FCircuit;
 use crate::Error;
 use crate::{Decider as DeciderTrait, FoldingScheme};
@@ -151,12 +150,9 @@ where
         // compute U = U_{d+1}= NIFS.V(U_d, u_d, cmT)
         let U = NIFS::<C1, CS1>::verify(proof.r, running_instance, incoming_instance, &proof.cmT);
 
-        let (cmE_x, cmE_y) =
-            point_to_nonnative_limbs_custom_opt::<C1>(U.cmE, OptimizationType::Constraints)?;
-        let (cmW_x, cmW_y) =
-            point_to_nonnative_limbs_custom_opt::<C1>(U.cmW, OptimizationType::Constraints)?;
-        let (cmT_x, cmT_y) =
-            point_to_nonnative_limbs_custom_opt::<C1>(proof.cmT, OptimizationType::Constraints)?;
+        let (cmE_x, cmE_y) = NonNativeAffineVar::inputize(U.cmE)?;
+        let (cmW_x, cmW_y) = NonNativeAffineVar::inputize(U.cmW)?;
+        let (cmT_x, cmT_y) = NonNativeAffineVar::inputize(proof.cmT)?;
 
         let public_input: Vec<C1::ScalarField> = vec![
             vec![i],

@@ -42,7 +42,6 @@ pub struct CycleFoldCommittedInstanceVar<C: CurveGroup, GC: CurveVar<C, CF2<C>>>
 where
     for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
 {
-    _c: PhantomData<C>,
     pub cmE: GC,
     pub u: NonNativeFieldVar<C::ScalarField, CF2<C>>,
     pub cmW: GC,
@@ -76,13 +75,7 @@ where
                 mode,
             )?;
 
-            Ok(Self {
-                _c: PhantomData,
-                cmE,
-                u,
-                cmW,
-                x,
-            })
+            Ok(Self { cmE, u, cmW, x })
         })
     }
 }
@@ -189,6 +182,7 @@ pub struct NIFSFullGadget<C: CurveGroup, GC: CurveVar<C, CF2<C>>> {
     _c: PhantomData<C>,
     _gc: PhantomData<GC>,
 }
+
 impl<C: CurveGroup, GC: CurveVar<C, CF2<C>>> NIFSFullGadget<C, GC>
 where
     C: CurveGroup,
@@ -196,6 +190,28 @@ where
     <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
     for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
 {
+    pub fn fold_committed_instance(
+        // assumes that r_bits is equal to r_nonnat just that in a different format
+        r_bits: Vec<Boolean<CF2<C>>>,
+        r_nonnat: NonNativeFieldVar<C::ScalarField, CF2<C>>,
+        cmT: GC,
+        // ci1 is assumed to be always with cmE=0, u=1 (checks done previous to this method)
+        ci1: CycleFoldCommittedInstanceVar<C, GC>,
+        ci2: CycleFoldCommittedInstanceVar<C, GC>,
+    ) -> Result<CycleFoldCommittedInstanceVar<C, GC>, SynthesisError> {
+        Ok(CycleFoldCommittedInstanceVar {
+            cmE: cmT.scalar_mul_le(r_bits.iter())? + ci1.cmE,
+            cmW: ci1.cmW + ci2.cmW.scalar_mul_le(r_bits.iter())?,
+            u: ci1.u + r_nonnat.clone(),
+            x: ci1
+                .x
+                .iter()
+                .zip(ci2.x)
+                .map(|(a, b)| a + &r_nonnat * &b)
+                .collect::<Vec<_>>(),
+        })
+    }
+
     pub fn verify(
         // assumes that r_bits is equal to r_nonnat just that in a different format
         r_bits: Vec<Boolean<CF2<C>>>,
@@ -205,33 +221,15 @@ where
         ci1: CycleFoldCommittedInstanceVar<C, GC>,
         ci2: CycleFoldCommittedInstanceVar<C, GC>,
         ci3: CycleFoldCommittedInstanceVar<C, GC>,
-    ) -> Result<Boolean<CF2<C>>, SynthesisError> {
-        // cm(E) check: ci3.cmE == ci1.cmE + r * cmT (ci2.cmE=0)
-        let first_check = ci3
-            .cmE
-            .is_eq(&(cmT.scalar_mul_le(r_bits.iter())? + ci1.cmE))?;
+    ) -> Result<(), SynthesisError> {
+        let ci = Self::fold_committed_instance(r_bits, r_nonnat, cmT, ci1, ci2)?;
 
-        // cm(W) check: ci3.cmW == ci1.cmW + r * ci2.cmW
-        let second_check = ci3
-            .cmW
-            .is_eq(&(ci1.cmW + ci2.cmW.scalar_mul_le(r_bits.iter())?))?;
+        ci.cmE.enforce_equal(&ci3.cmE)?;
+        ci.u.enforce_equal(&ci3.u)?;
+        ci.cmW.enforce_equal(&ci3.cmW)?;
+        ci.x.enforce_equal(&ci3.x)?;
 
-        let u_rlc: NonNativeFieldVar<C::ScalarField, CF2<C>> = ci1.u + r_nonnat.clone();
-        let third_check = u_rlc.is_eq(&ci3.u)?;
-
-        // ensure that: ci3.x == ci1.x + r * ci2.x
-        let x_rlc: Vec<NonNativeFieldVar<C::ScalarField, CF2<C>>> = ci1
-            .x
-            .iter()
-            .zip(ci2.x)
-            .map(|(a, b)| a + &r_nonnat * &b)
-            .collect::<Vec<NonNativeFieldVar<C::ScalarField, CF2<C>>>>();
-        let fourth_check = x_rlc.is_eq(&ci3.x)?;
-
-        first_check
-            .and(&second_check)?
-            .and(&third_check)?
-            .and(&fourth_check)
+        Ok(())
     }
 }
 
@@ -285,25 +283,24 @@ where
     pub fn get_challenge_gadget(
         cs: ConstraintSystemRef<C::BaseField>,
         poseidon_config: &PoseidonConfig<C::BaseField>,
-        U_i: CycleFoldCommittedInstanceVar<C, GC>,
+        mut U_i_vec: Vec<FpVar<C::BaseField>>,
         u_i: CycleFoldCommittedInstanceVar<C, GC>,
         cmT: GC,
     ) -> Result<Vec<Boolean<C::BaseField>>, SynthesisError> {
         let mut sponge = PoseidonSpongeVar::<C::BaseField>::new(cs, poseidon_config);
 
-        let mut U_vec = U_i.to_constraint_field()?;
-        let mut u_vec = u_i.to_constraint_field()?;
+        let mut u_i_vec = u_i.to_constraint_field()?;
         let mut cmT_vec = cmT.to_constraint_field()?;
 
-        let U_cm_is_inf = U_vec.pop().unwrap();
-        let u_cm_is_inf = u_vec.pop().unwrap();
+        let U_cm_is_inf = U_i_vec.pop().unwrap();
+        let u_cm_is_inf = u_i_vec.pop().unwrap();
         let cmT_is_inf = cmT_vec.pop().unwrap();
 
         // Concatenate `U_i.cmE_is_inf`, `U_i.cmW_is_inf`, `u_i.cmE_is_inf`, `u_i.cmW_is_inf`, `cmT_is_inf`
         // to save constraints for sponge.squeeze_bits
         let is_inf = U_cm_is_inf * CF2::<C>::from(8u8) + u_cm_is_inf.double()? + cmT_is_inf;
 
-        let input = [U_vec, u_vec, cmT_vec, vec![is_inf]].concat();
+        let input = [U_i_vec, u_i_vec, cmT_vec, vec![is_inf]].concat();
         sponge.absorb(&input)?;
         let bits = sponge.squeeze_bits(N_BITS_RO)?;
         Ok(bits)
@@ -486,7 +483,7 @@ pub mod tests {
             .unwrap();
         let cmTVar = GVar::new_witness(cs.clone(), || Ok(cmT)).unwrap();
 
-        let nifs_check = NIFSFullGadget::<Projective, GVar>::verify(
+        NIFSFullGadget::<Projective, GVar>::verify(
             r_bitsVar,
             r_nonnatVar,
             cmTVar,
@@ -495,7 +492,6 @@ pub mod tests {
             ci3Var,
         )
         .unwrap();
-        nifs_check.enforce_equal(&Boolean::<Fq>::TRUE).unwrap();
         assert!(cs.is_satisfied().unwrap());
     }
 
@@ -547,7 +543,7 @@ pub mod tests {
         let r_bitsVar = CycleFoldChallengeGadget::<Projective, GVar>::get_challenge_gadget(
             cs.clone(),
             &poseidon_config,
-            U_iVar,
+            U_iVar.to_constraint_field().unwrap(),
             u_iVar,
             cmTVar,
         )

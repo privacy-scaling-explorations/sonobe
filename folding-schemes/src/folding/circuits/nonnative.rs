@@ -2,16 +2,54 @@ use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
+    boolean::Boolean,
     fields::{
         fp::FpVar,
-        nonnative::{params::OptimizationType, AllocatedNonNativeFieldVar, NonNativeFieldVar},
+        nonnative::{
+            params::{get_params, OptimizationType},
+            AllocatedNonNativeFieldVar, NonNativeFieldVar,
+        },
         FieldVar,
     },
-    ToBitsGadget,
+    ToBitsGadget, ToConstraintFieldGadget,
 };
-use ark_relations::r1cs::{Namespace, SynthesisError};
+use ark_relations::r1cs::{ConstraintSystemRef, Namespace, OptimizationGoal, SynthesisError};
 use ark_std::Zero;
 use core::borrow::Borrow;
+use std::marker::PhantomData;
+
+/// Compose a vector boolean into a `NonNativeFieldVar`
+pub fn nonnative_field_var_from_le_bits<TargetField: PrimeField, BaseField: PrimeField>(
+    cs: ConstraintSystemRef<BaseField>,
+    bits: &[Boolean<BaseField>],
+) -> Result<NonNativeFieldVar<TargetField, BaseField>, SynthesisError> {
+    let params = get_params(
+        TargetField::MODULUS_BIT_SIZE as usize,
+        BaseField::MODULUS_BIT_SIZE as usize,
+        match cs.optimization_goal() {
+            OptimizationGoal::None => OptimizationType::Constraints,
+            OptimizationGoal::Constraints => OptimizationType::Constraints,
+            OptimizationGoal::Weight => OptimizationType::Weight,
+        },
+    );
+
+    // push the lower limbs first
+    let mut limbs = bits
+        .chunks(params.bits_per_limb)
+        .map(Boolean::le_bits_to_fp_var)
+        .collect::<Result<Vec<_>, _>>()?;
+    limbs.resize(params.num_limbs, FpVar::zero());
+    limbs.reverse();
+
+    Ok(AllocatedNonNativeFieldVar {
+        cs,
+        limbs,
+        num_of_additions_over_normal_form: BaseField::one(),
+        is_in_the_normal_form: false,
+        target_phantom: PhantomData,
+    }
+    .into())
+}
 
 /// A more efficient version of `NonNativeFieldVar::to_constraint_field`
 pub fn nonnative_field_var_to_constraint_field<TargetField: PrimeField, BaseField: PrimeField>(
@@ -112,23 +150,62 @@ where
     }
 }
 
-/// Wrapper on top of [`point_to_nonnative_limbs_custom_opt`] which always uses
-/// [`OptimizationType::Weight`].
+impl<C: CurveGroup> ToConstraintFieldGadget<C::ScalarField> for NonNativeAffineVar<C>
+where
+    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
+{
+    // A more efficient version of `point_to_nonnative_limbs_custom_opt`.
+    // Used for converting `NonNativeAffineVar` to a vector of `FpVar` with minimum length in
+    // the circuit.
+    fn to_constraint_field(&self) -> Result<Vec<FpVar<C::ScalarField>>, SynthesisError> {
+        let x = nonnative_field_var_to_constraint_field(&self.x)?;
+        let y = nonnative_field_var_to_constraint_field(&self.y)?;
+        Ok([x, y].concat())
+    }
+}
+
+/// The out-circuit counterpart of `NonNativeAffineVar::to_constraint_field`
 #[allow(clippy::type_complexity)]
-pub fn point_to_nonnative_limbs<C: CurveGroup>(
+pub fn nonnative_affine_to_field_elements<C: CurveGroup>(
     p: C,
 ) -> Result<(Vec<C::ScalarField>, Vec<C::ScalarField>), SynthesisError>
 where
     <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
 {
-    point_to_nonnative_limbs_custom_opt(p, OptimizationType::Weight)
+    let affine = p.into_affine();
+    if affine.is_zero() {
+        let x = nonnative_field_to_field_elements(&C::BaseField::zero());
+        let y = nonnative_field_to_field_elements(&C::BaseField::zero());
+        return Ok((x, y));
+    }
+
+    let (x, y) = affine.xy().unwrap();
+    let x = nonnative_field_to_field_elements(x);
+    let y = nonnative_field_to_field_elements(y);
+    Ok((x, y))
 }
 
-/// Used to compute (outside the circuit) the limbs representation of a point that matches the one
-/// used in-circuit, and in particular this method allows to specify which [`OptimizationType`] to
-/// use.
+impl<C: CurveGroup> NonNativeAffineVar<C>
+where
+    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
+{
+    // A wrapper of `point_to_nonnative_limbs_custom_opt` with constraints-focused optimization
+    // type (which is the default optimization type for arkworks' Groth16).
+    // Used for extracting a list of field elements of type `C::ScalarField` from the public input
+    // `p`, in exactly the same way as how `NonNativeAffineVar` is represented as limbs of type
+    // `FpVar` in-circuit.
+    pub fn inputize(p: C) -> Result<(Vec<C::ScalarField>, Vec<C::ScalarField>), SynthesisError> {
+        point_to_nonnative_limbs_custom_opt(p, OptimizationType::Constraints)
+    }
+}
+
+// Used to compute (outside the circuit) the limbs representation of a point.
+// For `OptimizationType::Constraints`, the result matches the one used in-circuit.
+// For `OptimizationType::Weight`, the result vector is more dense and is suitable for hashing.
+// It is possible to further optimize the length of the result vector (see
+// `nonnative_affine_to_field_elements`)
 #[allow(clippy::type_complexity)]
-pub fn point_to_nonnative_limbs_custom_opt<C: CurveGroup>(
+fn point_to_nonnative_limbs_custom_opt<C: CurveGroup>(
     p: C,
     optimization_type: OptimizationType,
 ) -> Result<(Vec<C::ScalarField>, Vec<C::ScalarField>), SynthesisError>
@@ -171,19 +248,58 @@ mod tests {
     use ark_std::{UniformRand, Zero};
 
     #[test]
-    fn test_alloc_nonnativeaffinevar() {
+    fn test_alloc_zero() {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         // dealing with the 'zero' point should not panic when doing the unwrap
         let p = Projective::zero();
-        NonNativeAffineVar::<Projective>::new_witness(cs.clone(), || Ok(p)).unwrap();
+        assert!(NonNativeAffineVar::<Projective>::new_witness(cs.clone(), || Ok(p)).is_ok());
+    }
+
+    #[test]
+    fn test_arkworks_to_constraint_field() {
+        let cs = ConstraintSystem::<Fr>::new_ref();
 
         // check that point_to_nonnative_limbs returns the expected values
         let mut rng = ark_std::test_rng();
         let p = Projective::rand(&mut rng);
         let pVar = NonNativeAffineVar::<Projective>::new_witness(cs.clone(), || Ok(p)).unwrap();
-        let (x, y) = point_to_nonnative_limbs(p).unwrap();
+        let (x, y) = point_to_nonnative_limbs_custom_opt(p, OptimizationType::Weight).unwrap();
         assert_eq!(pVar.x.to_constraint_field().unwrap().value().unwrap(), x);
         assert_eq!(pVar.y.to_constraint_field().unwrap().value().unwrap(), y);
+    }
+
+    #[test]
+    fn test_improved_to_constraint_field() {
+        let cs = ConstraintSystem::<Fr>::new_ref();
+
+        // check that point_to_nonnative_limbs returns the expected values
+        let mut rng = ark_std::test_rng();
+        let p = Projective::rand(&mut rng);
+        let pVar = NonNativeAffineVar::<Projective>::new_witness(cs.clone(), || Ok(p)).unwrap();
+        let (x, y) = nonnative_affine_to_field_elements(p).unwrap();
+        assert_eq!(
+            pVar.to_constraint_field().unwrap().value().unwrap(),
+            [x, y].concat()
+        );
+    }
+
+    #[test]
+    fn test_inputize() {
+        let cs = ConstraintSystem::<Fr>::new_ref();
+
+        // check that point_to_nonnative_limbs returns the expected values
+        let mut rng = ark_std::test_rng();
+        let p = Projective::rand(&mut rng);
+        let pVar = NonNativeAffineVar::<Projective>::new_witness(cs.clone(), || Ok(p)).unwrap();
+        let (x, y) = NonNativeAffineVar::inputize(p).unwrap();
+
+        match (pVar.x, pVar.y) {
+            (NonNativeFieldVar::Var(p_x), NonNativeFieldVar::Var(p_y)) => {
+                assert_eq!(p_x.limbs.value().unwrap(), x);
+                assert_eq!(p_y.limbs.value().unwrap(), y);
+            }
+            _ => unreachable!(),
+        }
     }
 }

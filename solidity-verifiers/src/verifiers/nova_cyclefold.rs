@@ -314,7 +314,7 @@ mod tests {
         let function_selector =
             get_function_selector_for_nova_cyclefold_verifier(nova.z_0.len() * 2 + 1);
 
-        let mut calldata: Vec<u8> = prepare_calldata(
+        let calldata: Vec<u8> = prepare_calldata(
             function_selector,
             nova.i,
             nova.z_0,
@@ -335,15 +335,23 @@ mod tests {
         let (_, output) = evm.call(verifier_address, calldata.clone());
         assert_eq!(*output.last().unwrap(), 1);
 
-        // change i to make calldata invalid
-        // first 4 bytes are the function signature + 32 bytes for i --> change byte at index 35
-        let prev_call_data_i = calldata[35];
-        calldata[35] = 0;
-        let (_, output) = evm.call(verifier_address, calldata.clone());
+        // change i to make calldata invalid, placed between bytes 4 - 35
+        let mut invalid_calldata = calldata.clone();
+        invalid_calldata[35] += 1;
+        let (_, output) = evm.call(verifier_address, invalid_calldata.clone());
         assert_eq!(*output.last().unwrap(), 0);
-        calldata[35] = prev_call_data_i;
 
-        // TODO: change z_0 to make the EVM check fail
+        // change z_0 to make the EVM check fail, placed between bytes 35 - 67
+        let mut invalid_calldata = calldata.clone();
+        invalid_calldata[67] += 1;
+        let (_, output) = evm.call(verifier_address, invalid_calldata.clone());
+        assert_eq!(*output.last().unwrap(), 0);
+
+        // change z_i to make the EVM check fail, placed between bytes 68 - 100
+        let mut invalid_calldata = calldata.clone();
+        invalid_calldata[99] += 1;
+        let (_, output) = evm.call(verifier_address, invalid_calldata.clone());
+        assert_eq!(*output.last().unwrap(), 0);
     }
 
     #[test]

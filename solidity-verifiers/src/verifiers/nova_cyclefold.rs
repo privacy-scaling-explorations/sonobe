@@ -84,8 +84,7 @@ impl NovaCycleFoldData {
     ) -> Self {
         Self {
             g16_data: Groth16Data::from(vkey_g16),
-            // TODO: Remove option from crs points
-            kzg_data: KzgData::from((vkey_kzg, Some(crs_points))),
+            kzg_data: KzgData::from((vkey_kzg, crs_points)),
             z_len,
         }
     }
@@ -217,7 +216,7 @@ mod tests {
     fn nova_cyclefold_data_serde_roundtrip() {
         let (kzg_pk, kzg_vk, _, g16_vk, _) = setup(DEFAULT_SETUP_LEN);
         let g16_data = Groth16Data::from(g16_vk);
-        let kzg_data = KzgData::from((kzg_vk, Some(kzg_pk.powers_of_g[0..3].to_vec())));
+        let kzg_data = KzgData::from((kzg_vk, kzg_pk.powers_of_g[0..3].to_vec()));
 
         let mut bytes = vec![];
         let nova_cyclefold_data = NovaCycleFoldData::from((g16_data, kzg_data, 1));
@@ -235,7 +234,7 @@ mod tests {
     fn nova_cyclefold_decider_template_renders() {
         let (kzg_pk, kzg_vk, _, g16_vk, _) = setup(DEFAULT_SETUP_LEN);
         let g16_data = Groth16Data::from(g16_vk);
-        let kzg_data = KzgData::from((kzg_vk, Some(kzg_pk.powers_of_g[0..3].to_vec())));
+        let kzg_data = KzgData::from((kzg_vk, kzg_pk.powers_of_g[0..3].to_vec()));
         let nova_cyclefold_data = NovaCycleFoldData::from((g16_data, kzg_data, 1));
 
         let decider_template = HeaderInclusion::<NovaCycleFoldDecider>::builder()
@@ -308,7 +307,7 @@ mod tests {
         let g16_data = Groth16Data::from(g16_vk);
         let kzg_data = KzgData::from((
             kzg_vk,
-            Some(fs_prover_params.cs_params.powers_of_g[0..3].to_vec()),
+            fs_prover_params.cs_params.powers_of_g[0..3].to_vec(),
         ));
         let nova_cyclefold_data = NovaCycleFoldData::from((g16_data, kzg_data, nova.z_0.len()));
 

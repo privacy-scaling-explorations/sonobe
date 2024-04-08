@@ -26,14 +26,13 @@ pub(crate) struct KZG10Verifier {
 
 impl From<KzgData> for KZG10Verifier {
     fn from(data: KzgData) -> Self {
-        let g1_crs_batch_points = data.g1_crs_batch_points.unwrap_or_default();
-
         Self {
             g1: g1_to_fq_repr(data.vk.g),
             g2: g2_to_fq_repr(data.vk.h),
             vk: g2_to_fq_repr(data.vk.beta_h),
-            g1_crs_len: g1_crs_batch_points.len(),
-            g1_crs: g1_crs_batch_points
+            g1_crs_len: data.g1_crs_batch_points.len(),
+            g1_crs: data
+                .g1_crs_batch_points
                 .iter()
                 .map(|g1| g1_to_fq_repr(*g1))
                 .collect(),
@@ -44,11 +43,11 @@ impl From<KzgData> for KZG10Verifier {
 #[derive(CanonicalDeserialize, CanonicalSerialize, Clone, PartialEq, Debug)]
 pub struct KzgData {
     pub(crate) vk: VerifierKey<Bn254>,
-    pub(crate) g1_crs_batch_points: Option<Vec<G1Affine>>,
+    pub(crate) g1_crs_batch_points: Vec<G1Affine>,
 }
 
-impl From<(VerifierKey<Bn254>, Option<Vec<G1Affine>>)> for KzgData {
-    fn from(value: (VerifierKey<Bn254>, Option<Vec<G1Affine>>)) -> Self {
+impl From<(VerifierKey<Bn254>, Vec<G1Affine>)> for KzgData {
+    fn from(value: (VerifierKey<Bn254>, Vec<G1Affine>)) -> Self {
         Self {
             vk: value.0,
             g1_crs_batch_points: value.1,
@@ -104,7 +103,7 @@ mod tests {
     fn kzg_data_serde_roundtrip() {
         let (pk, vk, _, _, _) = setup(DEFAULT_SETUP_LEN);
 
-        let kzg_data = KzgData::from((vk, Some(pk.powers_of_g[0..3].to_vec())));
+        let kzg_data = KzgData::from((vk, pk.powers_of_g[0..3].to_vec()));
         let mut bytes = vec![];
         kzg_data.serialize_protocol_data(&mut bytes).unwrap();
         let obtained_kzg_data = KzgData::deserialize_protocol_data(bytes.as_slice()).unwrap();
@@ -115,7 +114,7 @@ mod tests {
     #[test]
     fn kzg_verifier_template_renders() {
         let (kzg_pk, kzg_vk, _, _, _) = setup(DEFAULT_SETUP_LEN);
-        let kzg_data = KzgData::from((kzg_vk.clone(), Some(kzg_pk.powers_of_g[0..3].to_vec())));
+        let kzg_data = KzgData::from((kzg_vk.clone(), kzg_pk.powers_of_g[0..3].to_vec()));
 
         let res = HeaderInclusion::<KZG10Verifier>::builder()
             .template(kzg_data)
@@ -131,7 +130,7 @@ mod tests {
     #[test]
     fn kzg_verifier_compiles() {
         let (kzg_pk, kzg_vk, _, _, _) = setup(DEFAULT_SETUP_LEN);
-        let kzg_data = KzgData::from((kzg_vk.clone(), Some(kzg_pk.powers_of_g[0..3].to_vec())));
+        let kzg_data = KzgData::from((kzg_vk.clone(), kzg_pk.powers_of_g[0..3].to_vec()));
 
         let res = HeaderInclusion::<KZG10Verifier>::builder()
             .template(kzg_data)
@@ -152,7 +151,7 @@ mod tests {
         let transcript_v = &mut PoseidonTranscript::<G1>::new(&poseidon_config);
 
         let (kzg_pk, kzg_vk, _, _, _) = setup(DEFAULT_SETUP_LEN);
-        let kzg_data = KzgData::from((kzg_vk.clone(), Some(kzg_pk.powers_of_g[0..3].to_vec())));
+        let kzg_data = KzgData::from((kzg_vk.clone(), kzg_pk.powers_of_g[0..3].to_vec()));
 
         let v: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(&mut rng))
             .take(DEFAULT_SETUP_LEN)

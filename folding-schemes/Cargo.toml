@@ -36,6 +36,7 @@ tracing-subscriber = { version = "0.2" }
 
 [features]
 default = ["parallel"]
+light-test = []
 
 parallel = [ 
     "ark-std/parallel", 

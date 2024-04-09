@@ -41,29 +41,34 @@ Usage and design documentation can be found at https://privacy-scaling-explorati
 
 ### Folding Schemes introduction
 
-[one or two lines of introductory text on the folding/IVC concept (TODO)]
+Folding schemes are a family of SNARKs for iterative computations, allowing to prove that a function $F$ applied $n$ times to an initial input $z_0$ results in $z_n$.
 
 <img src="https://privacy-scaling-explorations.github.io/sonobe-docs/imgs/folding-main-idea-diagram.png" style="width:70%;" />
 
+Where $w_i$ are the external witnesses used at each iterative step.
+
+In other words, it allows to prove efficiently that $z_n = F(...~F(F(F(F(z_0, w_0), w_1), w_2), ...), w_{n-1})$.
+
 ### Overview of sonobe
 
-Sonobe is a modular library to fold R1CS instances in an Incremental Verifiable computation (IVC) style. It also provides the tools required to generate a zkSNARK out of an IVC proof and to verify it on Ethereum's EVM.
+Sonobe is a folding schemes modular library to fold R1CS instances in an Incremental Verifiable computation (IVC) style. It also provides the tools required to generate a zkSNARK out of an IVC proof and to verify it on Ethereum's EVM.
 
-All users have to do is to: 
+The development flow using Sonobe looks like:
 
-1. Design an input circuit
-2. Chooses a folding scheme (e.g. Nova)
-3. Pick a final decider (e.g. Spartan over Pasta curve).
-
-In fact, which folding scheme and decider is chosen *does not matter*. Indeed, with a few lines of code, users can always change their folding scheme and final decider (e.g. switching from a Decider that uses two Spartan proofs to a Decider that uses a single Groth16 to be verified in an Ethereum smart contract).
+1. Define a circuit to be folded
+2. Set which folding scheme to be used (eg. Nova)
+3. Set a final decider to generate the final proof (eg. Spartan over Pasta curves)
+4. Generate the the decider verifier
 
 ![](https://privacy-scaling-explorations.github.io/sonobe-docs/imgs/sonobe-lib-pipeline.png)
 
+The folding scheme and decider used can be swapped respectively with a few lines of code (eg. switching from a Decider that uses two Spartan proofs over a cycle of curves, to a Decider that uses a single Groth16 proof over the BN254 to be verified in an Ethereum smart contract).
+
+
+For more details, check out [Sonobe docs](https://privacy-scaling-explorations.github.io/sonobe-docs/) for more details on usage and design.
+
 Complete examples can be found at [folding-schemes/examples](https://github.com/privacy-scaling-explorations/sonobe/tree/main/folding-schemes/examples)
-[TODO: link also to the bitcoin example repo?]
 
-
-Check out [Sonobe docs](https://privacy-scaling-explorations.github.io/sonobe-docs/) for more details on usage and design.
 
 
 ## License
@@ -74,4 +79,4 @@ https://github.com/privacy-scaling-explorations/sonobe/blob/main/LICENSE
 This project builds on top of the [arkworks](https://github.com/arkworks-rs) libraries, and uses the Espresso's [virtual polynomial](https://github.com/EspressoSystems/hyperplonk/blob/main/arithmetic/src/virtual_polynomial.rs) abstraction and the [SumCheck](https://github.com/EspressoSystems/hyperplonk/tree/main/subroutines/src/poly_iop/sum_check) implementation.
 The Solidity templates used in the nova_cyclefold_verifier.sol, use a Groth16 Solidity template which comes from [iden3](https://github.com/iden3/snarkjs/blob/master/templates/verifier_groth16.sol.ejs), and a KZG10 Solidity template which is adapted from [weijiekoh/libkzg](https://github.com/weijiekoh/libkzg).
 
-Also, this project has been possible thanks to conversations with [Srinath Setty](https://github.com/srinathsetty), [Lev57](https://github.com/levs57), [Matej Penciak](https://github.com/mpenciak), [Adrian Hamelink](https://github.com/adr1anh), [François Garillot](https://github.com/huitseeker), [Daniel Marin](https://github.com/danielmarinq), [Wyatt Benno](https://github.com/wyattbenno777) and [Nikkolas Gailly](https://github.com/nikkolasg).
+Also, this project has been possible thanks to conversations with [Srinath Setty](https://github.com/srinathsetty), [Lev Soukhanov](https://github.com/levs57), [Matej Penciak](https://github.com/mpenciak), [Adrian Hamelink](https://github.com/adr1anh), [François Garillot](https://github.com/huitseeker), [Daniel Marin](https://github.com/danielmarinq), [Wyatt Benno](https://github.com/wyattbenno777) and [Nikkolas Gailly](https://github.com/nikkolasg).

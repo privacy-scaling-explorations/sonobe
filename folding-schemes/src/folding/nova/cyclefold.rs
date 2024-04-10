@@ -19,7 +19,7 @@ use ark_r1cs_std::{
     fields::{fp::FpVar, nonnative::NonNativeFieldVar, FieldVar},
     groups::GroupOpsBounds,
     prelude::CurveVar,
-    ToBitsGadget, ToConstraintFieldGadget,
+    ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
 use ark_std::fmt::Debug;
@@ -29,6 +29,7 @@ use core::{borrow::Borrow, marker::PhantomData};
 use super::circuits::CF2;
 use super::CommittedInstance;
 use crate::constants::N_BITS_RO;
+use crate::folding::circuits::nonnative::nonnative_field_var_to_constraint_field;
 use crate::Error;
 
 // public inputs length for the CycleFoldCircuit: |[r, p1.x,y, p2.x,y, p3.x,y]|
@@ -84,34 +85,6 @@ where
             })
         })
     }
-}
-
-// A more efficient version of `NonNativeFieldVar::to_constraint_field`
-fn nonnative_field_var_to_constraint_field<TargetField: PrimeField, BaseField: PrimeField>(
-    f: &NonNativeFieldVar<TargetField, BaseField>,
-) -> Result<Vec<FpVar<BaseField>>, SynthesisError> {
-    let bits = f.to_bits_le()?;
-
-    let bits_per_limb = BaseField::MODULUS_BIT_SIZE as usize - 1;
-    let num_limbs = (TargetField::MODULUS_BIT_SIZE as usize).div_ceil(bits_per_limb);
-
-    let mut limbs = bits
-        .chunks(bits_per_limb)
-        .map(|chunk| {
-            let mut limb = FpVar::<BaseField>::zero();
-            let mut w = BaseField::one();
-            for b in chunk.iter() {
-                limb += FpVar::from(b.clone()) * w;
-                w.double_in_place();
-            }
-            limb
-        })
-        .collect::<Vec<FpVar<BaseField>>>();
-    limbs.resize(num_limbs, FpVar::zero());
-
-    limbs.reverse();
-
-    Ok(limbs)
 }
 
 impl<C, GC> ToConstraintFieldGadget<CF2<C>> for CycleFoldCommittedInstanceVar<C, GC>

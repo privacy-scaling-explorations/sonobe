@@ -15,7 +15,9 @@ use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 
 use crate::ccs::r1cs::{extract_r1cs, extract_w_x, R1CS};
 use crate::commitment::CommitmentScheme;
-use crate::folding::circuits::nonnative::point_to_nonnative_limbs;
+use crate::folding::circuits::nonnative::{
+    nonnative_field_to_field_elements, point_to_nonnative_limbs,
+};
 use crate::frontend::FCircuit;
 use crate::utils::vec::is_zero_vec;
 use crate::Error;
@@ -91,34 +93,6 @@ where
         )
         .map_err(|e| Error::Other(e.to_string()))
     }
-}
-
-// The out-circuit counterpart of `nonnative_field_var_to_constraint_field` in `nova/cyclefold.rs`
-fn nonnative_field_to_field_elements<TargetField: PrimeField, BaseField: PrimeField>(
-    f: &TargetField,
-) -> Vec<BaseField> {
-    let bits = f.into_bigint().to_bits_le();
-
-    let bits_per_limb = BaseField::MODULUS_BIT_SIZE as usize - 1;
-    let num_limbs = (TargetField::MODULUS_BIT_SIZE as usize).div_ceil(bits_per_limb);
-
-    let mut limbs = bits
-        .chunks(bits_per_limb)
-        .map(|chunk| {
-            let mut limb = BaseField::zero();
-            let mut w = BaseField::one();
-            for &b in chunk.iter() {
-                limb += BaseField::from(b) * w;
-                w.double_in_place();
-            }
-            limb
-        })
-        .collect::<Vec<BaseField>>();
-    limbs.resize(num_limbs, BaseField::zero());
-
-    limbs.reverse();
-
-    limbs
 }
 
 impl<C: CurveGroup> ToConstraintField<C::BaseField> for CommittedInstance<C>

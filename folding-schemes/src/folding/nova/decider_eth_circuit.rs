@@ -32,6 +32,7 @@ use crate::transcript::{
     poseidon::{PoseidonTranscript, PoseidonTranscriptVar},
     Transcript, TranscriptVar,
 };
+use crate::utils::gadgets::nonnative_mat_vec_mul_sparse;
 use crate::utils::{
     gadgets::{hadamard, mat_vec_mul_sparse, vec_add, vec_scalar_mul, SparseMatrixVar},
     vec::poly_from_vec,
@@ -39,22 +40,36 @@ use crate::utils::{
 use crate::Error;
 
 #[derive(Debug, Clone)]
-pub struct RelaxedR1CSGadget<F: PrimeField, CF: PrimeField, FV: FieldVar<F, CF>> {
-    _f: PhantomData<F>,
-    _cf: PhantomData<CF>,
-    _fv: PhantomData<FV>,
-}
-impl<F: PrimeField, CF: PrimeField, FV: FieldVar<F, CF>> RelaxedR1CSGadget<F, CF, FV> {
-    /// performs the RelaxedR1CS check (Az∘Bz==uCz+E)
-    pub fn check(
-        r1cs: R1CSVar<F, CF, FV>,
-        E: Vec<FV>,
-        u: FV,
-        z: Vec<FV>,
+pub struct RelaxedR1CSGadget {}
+impl RelaxedR1CSGadget {
+    /// performs the RelaxedR1CS check for native variables (Az∘Bz==uCz+E)
+    pub fn check_native<F: PrimeField>(
+        r1cs: R1CSVar<F, F, FpVar<F>>,
+        E: Vec<FpVar<F>>,
+        u: FpVar<F>,
+        z: Vec<FpVar<F>>,
     ) -> Result<(), SynthesisError> {
         let Az = mat_vec_mul_sparse(r1cs.A, z.clone());
         let Bz = mat_vec_mul_sparse(r1cs.B, z.clone());
         let Cz = mat_vec_mul_sparse(r1cs.C, z.clone());
+        let uCz = vec_scalar_mul(&Cz, &u);
+        let uCzE = vec_add(&uCz, &E)?;
+        let AzBz = hadamard(&Az, &Bz)?;
+        for i in 0..AzBz.len() {
+            AzBz[i].enforce_equal(&uCzE[i].clone())?;
+        }
+        Ok(())
+    }
+    /// performs the RelaxedR1CS check for non-native variables (Az∘Bz==uCz+E)
+    pub fn check_nonnative<F: PrimeField, CF: PrimeField>(
+        r1cs: R1CSVar<F, CF, NonNativeFieldVar<F, CF>>,
+        E: Vec<NonNativeFieldVar<F, CF>>,
+        u: NonNativeFieldVar<F, CF>,
+        z: Vec<NonNativeFieldVar<F, CF>>,
+    ) -> Result<(), SynthesisError> {
+        let Az = nonnative_mat_vec_mul_sparse(r1cs.A, &z)?;
+        let Bz = nonnative_mat_vec_mul_sparse(r1cs.B, &z)?;
+        let Cz = nonnative_mat_vec_mul_sparse(r1cs.C, &z)?;
         let uCz = vec_scalar_mul(&Cz, &u);
         let uCzE = vec_add(&uCz, &E)?;
         let AzBz = hadamard(&Az, &Bz)?;
@@ -404,7 +419,7 @@ where
         // 1. check RelaxedR1CS of U_{i+1}
         let z_U1: Vec<FpVar<CF1<C1>>> =
             [vec![U_i1.u.clone()], U_i1.x.to_vec(), W_i1.W.to_vec()].concat();
-        RelaxedR1CSGadget::<C1::ScalarField, CF1<C1>, FpVar<CF1<C1>>>::check(
+        RelaxedR1CSGadget::check_native(
             r1cs,
             W_i1.E.clone(),
             U_i1.u.clone(),
@@ -479,11 +494,7 @@ where
             // 5. check RelaxedR1CS of cf_U_i
             let cf_z_U: Vec<NonNativeFieldVar<C2::ScalarField, CF1<C1>>> =
                 [vec![cf_U_i.u.clone()], cf_U_i.x.to_vec(), cf_W_i.W.to_vec()].concat();
-            RelaxedR1CSGadget::<
-                C2::ScalarField,
-                CF1<C1>,
-                NonNativeFieldVar<C2::ScalarField, CF1<C1>>,
-            >::check(cf_r1cs, cf_W_i.E, cf_U_i.u.clone(), cf_z_U)?;
+            RelaxedR1CSGadget::check_nonnative(cf_r1cs, cf_W_i.E, cf_U_i.u.clone(), cf_z_U)?;
         }
 
         // 6. check KZG challenges
@@ -632,7 +643,7 @@ pub mod tests {
         let uVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(rel_r1cs.u)).unwrap();
         let r1csVar = R1CSVar::<Fr, Fr, FpVar<Fr>>::new_witness(cs.clone(), || Ok(r1cs)).unwrap();
 
-        RelaxedR1CSGadget::<Fr, Fr, FpVar<Fr>>::check(r1csVar, EVar, uVar, zVar).unwrap();
+        RelaxedR1CSGadget::check_native(r1csVar, EVar, uVar, zVar).unwrap();
         assert!(cs.is_satisfied().unwrap());
     }
 
@@ -663,7 +674,7 @@ pub mod tests {
         let uVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(relaxed_r1cs.u)).unwrap();
         let r1csVar = R1CSVar::<Fr, Fr, FpVar<Fr>>::new_witness(cs.clone(), || Ok(r1cs)).unwrap();
 
-        RelaxedR1CSGadget::<Fr, Fr, FpVar<Fr>>::check(r1csVar, EVar, uVar, zVar).unwrap();
+        RelaxedR1CSGadget::check_native(r1csVar, EVar, uVar, zVar).unwrap();
         assert!(cs.is_satisfied().unwrap());
     }
 
@@ -752,7 +763,7 @@ pub mod tests {
         let uVar = FpVar::<Fq>::new_witness(cs.clone(), || Ok(relaxed_r1cs.u)).unwrap();
         let r1csVar =
             R1CSVar::<Fq, Fq, FpVar<Fq>>::new_witness(cs.clone(), || Ok(r1cs.clone())).unwrap();
-        RelaxedR1CSGadget::<Fq, Fq, FpVar<Fq>>::check(r1csVar, EVar, uVar, zVar).unwrap();
+        RelaxedR1CSGadget::check_native(r1csVar, EVar, uVar, zVar).unwrap();
 
         // non-natively
         let cs = ConstraintSystem::<Fr>::new_ref();
@@ -764,7 +775,7 @@ pub mod tests {
         let r1csVar =
             R1CSVar::<Fq, Fr, NonNativeFieldVar<Fq, Fr>>::new_witness(cs.clone(), || Ok(r1cs))
                 .unwrap();
-        RelaxedR1CSGadget::<Fq, Fr, NonNativeFieldVar<Fq, Fr>>::check(r1csVar, EVar, uVar, zVar)
+        RelaxedR1CSGadget::check_nonnative(r1csVar, EVar, uVar, zVar)
             .unwrap();
     }
 

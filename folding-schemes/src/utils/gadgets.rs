@@ -1,10 +1,7 @@
 use ark_ff::PrimeField;
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
-    fields::{
-        nonnative::{NonNativeFieldMulResultVar, NonNativeFieldVar},
-        FieldVar,
-    },
+    fields::FieldVar,
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
 use core::{borrow::Borrow, marker::PhantomData};
@@ -27,29 +24,6 @@ pub fn mat_vec_mul_sparse<F: PrimeField, CF: PrimeField, FV: FieldVar<F, CF>>(
         }
     }
     res
-}
-/// An optimized variant of `mat_vec_mul_sparse` for `NonNativeFieldVar`.
-/// Use this with caution, as this function assumes that no "overflow" will happen when summing
-/// up `NonNativeFieldMulResultVar`s.
-/// 
-/// The above condition holds for checking `cf_r1cs`, because it has only 1.4k columns, and the
-/// upper bound of each limb in the final sum is approx. `1.4k * 2^bits_per_limb * num_limbs`,
-/// where `bits_per_limb` and `num_limbs` are reasonably small.
-/// For a 254-bit `Fq` and 254-bit `Fr`, `bits_per_limb = 15`, `num_limbs = 17`, and the upper
-/// bound is `2^33`, which is by far less than `2^254`.
-pub fn nonnative_mat_vec_mul_sparse<F: PrimeField, CF: PrimeField>(
-    m: SparseMatrixVar<F, CF, NonNativeFieldVar<F, CF>>,
-    v: &[NonNativeFieldVar<F, CF>],
-) -> Result<Vec<NonNativeFieldVar<F, CF>>, SynthesisError> {
-    let mut res = vec![NonNativeFieldVar::zero(); m.n_rows];
-    for (row_i, row) in m.coeffs.iter().enumerate() {
-        let mut r = NonNativeFieldMulResultVar::<F, CF>::zero();
-        for (value, col_i) in row.iter() {
-            r += value.clone().mul_without_reduce(&v[*col_i].clone())?;
-        }
-        res[row_i] = r.reduce()?;
-    }
-    Ok(res)
 }
 pub fn vec_add<F: PrimeField, CF: PrimeField, FV: FieldVar<F, CF>>(
     a: &Vec<FV>,
@@ -89,7 +63,7 @@ pub fn hadamard<F: PrimeField, CF: PrimeField, FV: FieldVar<F, CF>>(
 }
 
 #[derive(Debug, Clone)]
-pub struct SparseMatrixVar<F: PrimeField, CF: PrimeField, FV: FieldVar<F, CF>> {
+pub struct SparseMatrixVar<F: PrimeField, CF: PrimeField, FV: AllocVar<F, CF>> {
     _f: PhantomData<F>,
     _cf: PhantomData<CF>,
     _fv: PhantomData<FV>,
@@ -103,7 +77,7 @@ impl<F, CF, FV> AllocVar<SparseMatrix<F>, CF> for SparseMatrixVar<F, CF, FV>
 where
     F: PrimeField,
     CF: PrimeField,
-    FV: FieldVar<F, CF>,
+    FV: AllocVar<F, CF>,
 {
     fn new_variable<T: Borrow<SparseMatrix<F>>>(
         cs: impl Into<Namespace<CF>>,

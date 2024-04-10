@@ -18,6 +18,7 @@ ark-circom = { git = "https://github.com/arnaucube/circom-compat.git" }
 thiserror = "1.0"
 rayon = "1.7.0"
 num-bigint = "0.4"
+num-integer = "0.1"
 color-eyre = "=0.6.2"
 
 # tmp imports for espresso's sumcheck

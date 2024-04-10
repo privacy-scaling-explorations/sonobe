@@ -9,7 +9,7 @@ use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
     eq::EqGadget,
-    fields::{fp::FpVar, nonnative::NonNativeFieldVar, FieldVar},
+    fields::{fp::FpVar, FieldVar},
     groups::GroupOpsBounds,
     poly::{domain::Radix2DomainVar, evaluations::univariate::EvaluationsVar},
     prelude::CurveVar,
@@ -22,7 +22,10 @@ use core::{borrow::Borrow, marker::PhantomData};
 use super::{circuits::ChallengeGadget, nifs::NIFS};
 use crate::ccs::r1cs::R1CS;
 use crate::commitment::{pedersen::Params as PedersenParams, CommitmentScheme};
-use crate::folding::circuits::nonnative::{nonnative_affine_to_field_elements, NonNativeAffineVar};
+use crate::folding::circuits::nonnative::{
+    affine::{nonnative_affine_to_field_elements, NonNativeAffineVar},
+    uint::NonNativeUintVar,
+};
 use crate::folding::nova::{
     circuits::{CommittedInstanceVar, CF1, CF2},
     CommittedInstance, Nova, Witness,
@@ -32,7 +35,6 @@ use crate::transcript::{
     poseidon::{PoseidonTranscript, PoseidonTranscriptVar},
     Transcript, TranscriptVar,
 };
-use crate::utils::gadgets::nonnative_mat_vec_mul_sparse;
 use crate::utils::{
     gadgets::{hadamard, mat_vec_mul_sparse, vec_add, vec_scalar_mul, SparseMatrixVar},
     vec::poly_from_vec,
@@ -62,26 +64,42 @@ impl RelaxedR1CSGadget {
     }
     /// performs the RelaxedR1CS check for non-native variables (Az∘Bz==uCz+E)
     pub fn check_nonnative<F: PrimeField, CF: PrimeField>(
-        r1cs: R1CSVar<F, CF, NonNativeFieldVar<F, CF>>,
-        E: Vec<NonNativeFieldVar<F, CF>>,
-        u: NonNativeFieldVar<F, CF>,
-        z: Vec<NonNativeFieldVar<F, CF>>,
+        r1cs: R1CSVar<F, CF, NonNativeUintVar<CF>>,
+        E: Vec<NonNativeUintVar<CF>>,
+        u: NonNativeUintVar<CF>,
+        z: Vec<NonNativeUintVar<CF>>,
     ) -> Result<(), SynthesisError> {
-        let Az = nonnative_mat_vec_mul_sparse(r1cs.A, &z)?;
-        let Bz = nonnative_mat_vec_mul_sparse(r1cs.B, &z)?;
-        let Cz = nonnative_mat_vec_mul_sparse(r1cs.C, &z)?;
-        let uCz = vec_scalar_mul(&Cz, &u);
-        let uCzE = vec_add(&uCz, &E)?;
-        let AzBz = hadamard(&Az, &Bz)?;
-        for i in 0..AzBz.len() {
-            AzBz[i].enforce_equal(&uCzE[i].clone())?;
+        for (((a, b), c), e) in r1cs
+            .A
+            .coeffs
+            .iter()
+            .zip(&r1cs.B.coeffs)
+            .zip(&r1cs.C.coeffs)
+            .zip(&E)
+        {
+            let mut az = NonNativeUintVar::new_constant(ConstraintSystemRef::None, F::zero())?;
+            for (value, col_i) in a.iter() {
+                az = az.add_no_reduce(&value.mul_no_reduce(&z[*col_i])?);
+            }
+            let mut bz = NonNativeUintVar::new_constant(ConstraintSystemRef::None, F::zero())?;
+            for (value, col_i) in b.iter() {
+                bz = bz.add_no_reduce(&value.mul_no_reduce(&z[*col_i])?);
+            }
+            let mut cz = NonNativeUintVar::new_constant(ConstraintSystemRef::None, F::zero())?;
+            for (value, col_i) in c.iter() {
+                cz = cz.add_no_reduce(&value.mul_no_reduce(&z[*col_i])?);
+            }
+
+            az.mul_no_reduce(&bz)?
+                .enforce_congruent::<F>(&cz.mul_no_reduce(&u)?.add_no_reduce(e))?;
         }
+
         Ok(())
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct R1CSVar<F: PrimeField, CF: PrimeField, FV: FieldVar<F, CF>> {
+pub struct R1CSVar<F: PrimeField, CF: PrimeField, FV: AllocVar<F, CF>> {
     _f: PhantomData<F>,
     _cf: PhantomData<CF>,
     _fv: PhantomData<FV>,
@@ -94,7 +112,7 @@ impl<F, CF, FV> AllocVar<R1CS<F>, CF> for R1CSVar<F, CF, FV>
 where
     F: PrimeField,
     CF: PrimeField,
-    FV: FieldVar<F, CF>,
+    FV: AllocVar<F, CF>,
 {
     fn new_variable<T: Borrow<R1CS<F>>>(
         cs: impl Into<Namespace<CF>>,
@@ -161,10 +179,10 @@ where
 /// non-native representation, since it is used to represent the CycleFold witness.
 #[derive(Debug, Clone)]
 pub struct CycleFoldWitnessVar<C: CurveGroup> {
-    pub E: Vec<NonNativeFieldVar<C::ScalarField, CF2<C>>>,
-    pub rE: NonNativeFieldVar<C::ScalarField, CF2<C>>,
-    pub W: Vec<NonNativeFieldVar<C::ScalarField, CF2<C>>>,
-    pub rW: NonNativeFieldVar<C::ScalarField, CF2<C>>,
+    pub E: Vec<NonNativeUintVar<CF2<C>>>,
+    pub rE: NonNativeUintVar<CF2<C>>,
+    pub W: Vec<NonNativeUintVar<CF2<C>>>,
+    pub rW: NonNativeUintVar<CF2<C>>,
 }
 
 impl<C> AllocVar<Witness<C>, CF2<C>> for CycleFoldWitnessVar<C>
@@ -180,21 +198,11 @@ where
         f().and_then(|val| {
             let cs = cs.into();
 
-            let E: Vec<NonNativeFieldVar<C::ScalarField, CF2<C>>> =
-                Vec::new_variable(cs.clone(), || Ok(val.borrow().E.clone()), mode)?;
-            let rE = NonNativeFieldVar::<C::ScalarField, CF2<C>>::new_variable(
-                cs.clone(),
-                || Ok(val.borrow().rE),
-                mode,
-            )?;
+            let E = Vec::new_variable(cs.clone(), || Ok(val.borrow().E.clone()), mode)?;
+            let rE = NonNativeUintVar::new_variable(cs.clone(), || Ok(val.borrow().rE), mode)?;
 
-            let W: Vec<NonNativeFieldVar<C::ScalarField, CF2<C>>> =
-                Vec::new_variable(cs.clone(), || Ok(val.borrow().W.clone()), mode)?;
-            let rW = NonNativeFieldVar::<C::ScalarField, CF2<C>>::new_variable(
-                cs.clone(),
-                || Ok(val.borrow().rW),
-                mode,
-            )?;
+            let W = Vec::new_variable(cs.clone(), || Ok(val.borrow().W.clone()), mode)?;
+            let rW = NonNativeUintVar::new_variable(cs.clone(), || Ok(val.borrow().rW), mode)?;
 
             Ok(Self { E, rE, W, rW })
         })
@@ -419,18 +427,13 @@ where
         // 1. check RelaxedR1CS of U_{i+1}
         let z_U1: Vec<FpVar<CF1<C1>>> =
             [vec![U_i1.u.clone()], U_i1.x.to_vec(), W_i1.W.to_vec()].concat();
-        RelaxedR1CSGadget::check_native(
-            r1cs,
-            W_i1.E.clone(),
-            U_i1.u.clone(),
-            z_U1,
-        )?;
+        RelaxedR1CSGadget::check_native(r1cs, W_i1.E.clone(), U_i1.u.clone(), z_U1)?;
 
         // 2. u_i.cmE==cm(0), u_i.u==1
         // Here zero is the x & y coordinates of the zero point affine representation.
-        let zero = NonNativeFieldVar::<C1::BaseField, C1::ScalarField>::zero();
-        u_i.cmE.x.enforce_equal(&zero)?;
-        u_i.cmE.y.enforce_equal(&zero)?;
+        let zero = NonNativeUintVar::new_constant(cs.clone(), C1::BaseField::zero())?;
+        u_i.cmE.x.enforce_equal_unaligned(&zero)?;
+        u_i.cmE.y.enforce_equal_unaligned(&zero)?;
         (u_i.u.is_one()?).enforce_equal(&Boolean::TRUE)?;
 
         // 3.a u_i.x[0] == H(i, z_0, z_i, U_i)
@@ -442,7 +445,7 @@ where
         // The following two checks (and their respective allocations) are disabled for normal
         // tests since they take several millions of constraints and would take several minutes
         // (and RAM) to run the test.
-        #[cfg(not(test))]
+        // #[cfg(not(test))]
         {
             // imports here instead of at the top of the file, so we avoid having multiple
             // `#[cfg(not(test))]`
@@ -485,15 +488,14 @@ where
                 PedersenGadget::<C2, GC2>::commit(H, G, cf_W_i_W_bits?, cf_W_i.rW.to_bits_le()?)?;
             cf_U_i.cmW.enforce_equal(&computed_cmW)?;
 
-            let cf_r1cs = R1CSVar::<
-                C1::BaseField,
-                CF1<C1>,
-                NonNativeFieldVar<C1::BaseField, CF1<C1>>,
-            >::new_witness(cs.clone(), || Ok(self.cf_r1cs.clone()))?;
+            let cf_r1cs =
+                R1CSVar::<C1::BaseField, CF1<C1>, NonNativeUintVar<CF1<C1>>>::new_witness(
+                    cs.clone(),
+                    || Ok(self.cf_r1cs.clone()),
+                )?;
 
             // 5. check RelaxedR1CS of cf_U_i
-            let cf_z_U: Vec<NonNativeFieldVar<C2::ScalarField, CF1<C1>>> =
-                [vec![cf_U_i.u.clone()], cf_U_i.x.to_vec(), cf_W_i.W.to_vec()].concat();
+            let cf_z_U = [vec![cf_U_i.u.clone()], cf_U_i.x.to_vec(), cf_W_i.W.to_vec()].concat();
             RelaxedR1CSGadget::check_nonnative(cf_r1cs, cf_W_i.E, cf_U_i.u.clone(), cf_z_U)?;
         }
 
@@ -767,16 +769,12 @@ pub mod tests {
 
         // non-natively
         let cs = ConstraintSystem::<Fr>::new_ref();
-        let zVar = Vec::<NonNativeFieldVar<Fq, Fr>>::new_witness(cs.clone(), || Ok(z)).unwrap();
-        let EVar = Vec::<NonNativeFieldVar<Fq, Fr>>::new_witness(cs.clone(), || Ok(relaxed_r1cs.E))
-            .unwrap();
-        let uVar =
-            NonNativeFieldVar::<Fq, Fr>::new_witness(cs.clone(), || Ok(relaxed_r1cs.u)).unwrap();
+        let zVar = Vec::new_witness(cs.clone(), || Ok(z)).unwrap();
+        let EVar = Vec::new_witness(cs.clone(), || Ok(relaxed_r1cs.E)).unwrap();
+        let uVar = NonNativeUintVar::<Fr>::new_witness(cs.clone(), || Ok(relaxed_r1cs.u)).unwrap();
         let r1csVar =
-            R1CSVar::<Fq, Fr, NonNativeFieldVar<Fq, Fr>>::new_witness(cs.clone(), || Ok(r1cs))
-                .unwrap();
-        RelaxedR1CSGadget::check_nonnative(r1csVar, EVar, uVar, zVar)
-            .unwrap();
+            R1CSVar::<Fq, Fr, NonNativeUintVar<Fr>>::new_witness(cs.clone(), || Ok(r1cs)).unwrap();
+        RelaxedR1CSGadget::check_nonnative(r1csVar, EVar, uVar, zVar).unwrap();
     }
 
     #[test]

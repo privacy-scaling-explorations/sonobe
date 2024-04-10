@@ -16,7 +16,7 @@ use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 use crate::ccs::r1cs::{extract_r1cs, extract_w_x, R1CS};
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::nonnative::{
-    nonnative_affine_to_field_elements, nonnative_field_to_field_elements,
+    affine::nonnative_affine_to_field_elements, uint::nonnative_field_to_field_elements,
 };
 use crate::frontend::FCircuit;
 use crate::utils::vec::is_zero_vec;

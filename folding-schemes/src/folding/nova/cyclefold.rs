@@ -109,8 +109,9 @@ where
             nonnative_field_var_to_constraint_field(&self.u)?,
             self.x
                 .iter()
-                .flat_map(|i| nonnative_field_var_to_constraint_field(i).unwrap())
-                .collect::<Vec<_>>(),
+                .map(|i| nonnative_field_var_to_constraint_field(i))
+                .collect::<Result<Vec<_>, _>>()?
+                .concat(),
             cmE_elems,
             cmW_elems,
             vec![is_inf],

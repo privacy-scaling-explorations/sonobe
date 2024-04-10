@@ -375,16 +375,8 @@ where
         (u_i.x[0]).conditional_enforce_equal(&u_i_x, &is_not_basecase)?;
 
         // 2. u_i.cmE==cm(0), u_i.u==1
-        let zero_x = NonNativeFieldVar::<C1::BaseField, C1::ScalarField>::new_constant(
-            cs.clone(),
-            C1::BaseField::zero(),
-        )?;
-        let zero_y = NonNativeFieldVar::<C1::BaseField, C1::ScalarField>::new_constant(
-            cs.clone(),
-            C1::BaseField::zero(),
-        )?;
-        (u_i.cmE.x.is_eq(&zero_x)?).conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
-        (u_i.cmE.y.is_eq(&zero_y)?).conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
+        (u_i.cmE.x.is_zero()?).conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
+        (u_i.cmE.y.is_zero()?).conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
         (u_i.u.is_one()?).conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
 
         // 3. nifs.verify, checks that folding u_i & U_i obtains U_{i+1}.

@@ -412,17 +412,10 @@ where
         )?;
 
         // 2. u_i.cmE==cm(0), u_i.u==1
-        // Here zero_x & zero_y are the x & y coordinates of the zero point affine representation.
-        let zero_x = NonNativeFieldVar::<C1::BaseField, C1::ScalarField>::new_constant(
-            cs.clone(),
-            C1::BaseField::zero(),
-        )?;
-        let zero_y = NonNativeFieldVar::<C1::BaseField, C1::ScalarField>::new_constant(
-            cs.clone(),
-            C1::BaseField::zero(),
-        )?;
-        u_i.cmE.x.enforce_equal(&zero_x)?;
-        u_i.cmE.y.enforce_equal(&zero_y)?;
+        // Here zero is the x & y coordinates of the zero point affine representation.
+        let zero = NonNativeFieldVar::<C1::BaseField, C1::ScalarField>::zero();
+        u_i.cmE.x.enforce_equal(&zero)?;
+        u_i.cmE.y.enforce_equal(&zero)?;
         (u_i.u.is_one()?).enforce_equal(&Boolean::TRUE)?;
 
         // 3.a u_i.x[0] == H(i, z_0, z_i, U_i)

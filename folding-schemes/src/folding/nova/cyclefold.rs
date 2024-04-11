@@ -195,8 +195,8 @@ where
         r_bits: Vec<Boolean<CF2<C>>>,
         r_nonnat: NonNativeFieldVar<C::ScalarField, CF2<C>>,
         cmT: GC,
-        // ci1 is assumed to be always with cmE=0, u=1 (checks done previous to this method)
         ci1: CycleFoldCommittedInstanceVar<C, GC>,
+        // ci2 is assumed to be always with cmE=0, u=1 (checks done previous to this method)
         ci2: CycleFoldCommittedInstanceVar<C, GC>,
     ) -> Result<CycleFoldCommittedInstanceVar<C, GC>, SynthesisError> {
         Ok(CycleFoldCommittedInstanceVar {
@@ -217,8 +217,8 @@ where
         r_bits: Vec<Boolean<CF2<C>>>,
         r_nonnat: NonNativeFieldVar<C::ScalarField, CF2<C>>,
         cmT: GC,
-        // ci1 is assumed to be always with cmE=0, u=1 (checks done previous to this method)
         ci1: CycleFoldCommittedInstanceVar<C, GC>,
+        // ci2 is assumed to be always with cmE=0, u=1 (checks done previous to this method)
         ci2: CycleFoldCommittedInstanceVar<C, GC>,
         ci3: CycleFoldCommittedInstanceVar<C, GC>,
     ) -> Result<(), SynthesisError> {

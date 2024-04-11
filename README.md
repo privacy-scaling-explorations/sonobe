@@ -1,6 +1,6 @@
 # sonobe
 
-Experimental folding schemes library implemented in a joint effort by [0xPARC](https://0xparc.org/) and [PSE](https://pse.dev).
+An experimental folding schemes library implemented jointly by [0xPARC](https://0xparc.org/) and [PSE](https://pse.dev).
 
 <span>
 <img align="left" style="width:30%;min-width:250px;margin-bottom:20px;" src="https://privacy-scaling-explorations.github.io/sonobe-docs/imgs/sonobe.png">
@@ -16,7 +16,7 @@ Sonobe is conceived as an exploratory effort with the aim to push forward the pr
 <br><br>
 
 > **Warning**: experimental code, do not use in production.<br>
-> The code has not been audited. Several optimizations are also pending. Our focus so far has been on implementing the Nova + CycleFold proving system and achieving onchain (EVM) verification.
+> The code has not been audited. Several optimizations are also pending. Our focus so far has been on (1) implementing the Nova + CycleFold proving system and (2) achieving onchain (EVM) verification. See the [schemes implemented]() section for more details.
 
 ## Schemes implemented
 
@@ -37,15 +37,63 @@ Available frontends to define the folded circuit:
 - [arkworks](https://github.com/arkworks-rs), arkworks contributors
 - [Circom](https://github.com/iden3/circom), iden3, 0Kims Association
 
-
 ## Usage
 
+Detailed usage and design documentation can be found [here](https://privacy-scaling-explorations.github.io/sonobe-docs/).
+
+With sonobe, developers can choose which folding scheme and decider to use. The following code snippet shows how to fold a circuit using the Nova folding scheme and an EVM-compatible decider:
+
+```rust
+// Initialize Nova as our IVC scheme
+// `BTCBlockCheckerFCircuit` is an R1CS checking the validity of a bitcoin block
+// This example is a provable light client for Bitcoin
+type NOVA = Nova<
+    Projective, // projective first curve points (required to form a curve cycle with `Projective2`)
+    GVar, // R1CS representation of the first curve points
+    Projective2, // projective second curve points
+    GVar2, // R1CS representation of second curve points
+    BTCBlockCheckerFCircuit<Fr>, // circuit being folded
+    KZG<'static, Bn254>, // sonobe is agnostic to the homomorphic commitment scheme used 
+    Pedersen<Projective2>, // sonobe is agnostic to the homomorphic commitment scheme used 
+>;
+
+// An EVM-compatible decider for our IVC proof, combining a KZG and a groth16 proof together 
+type DECIDER = Decider<
+    Projective,
+    GVar,
+    Projective2,
+    GVar2,
+    BTCBlockCheckerFCircuit<Fr>,
+    KZG<'static, Bn254>,
+    Pedersen<Projective2>,
+    Groth16<Bn254>, // to be evm-friendly, the final decider combines a groth16 proof with multiple kzg openings
+    NOVA,
+>;
+
+// Initializing Nova with the circuit and the initial state
+let mut nova = NOVA::init(&prover_params, circuit, z_0.clone()).unwrap();
+
+// Computing incremental steps, i.e. recursively verifying bitcoin blocks
+for i in 0..n_blocks_checked {
+    nova.prove_step().unwrap();
+}
+```
+
+See the full example for using sonobe to recursively check bitcoin blocks [here](https://github.com/dmpierre/folding-schemes-light-btc/tree/main).
+
+### Folding Schemes and IVC
+
+A folding scheme reduces the task of checking multiple instances in some relation to the task of checking a single one. The canonical definition of a folding scheme entailed computing a folded instance as a random linear combination of the original instances. 
+
+A folding scheme can also be used as a primitive to achieve incrementally verifiable computation (IVC). One such example is [Nova](https://eprint.iacr.org/2021/370.pdf), which showed an IVC scheme with interesting performance properties. Note that an IVC proof is neither succint nor zero-knowledge. Hence, a final ("decider") zkSNARK will be required to prove the correctness of an IVC result.
+
 ### Docs
-Usage and design documentation can be found at https://privacy-scaling-explorations.github.io/sonobe-docs/
+
+Usage and design documentation can be found [here](https://privacy-scaling-explorations.github.io/sonobe-docs/).
 
 ### Folding Schemes introduction
 
-Folding schemes are a family of SNARKs for iterative computations, allowing to prove that a function $F$ applied $n$ times to an initial input $z_0$ results in $z_n$.
+Folding schemes are used in the context of iterative computations, allowing to prove that a function $F$ applied $n$ times to an initial input $z_0$ results in $z_n$.
 
 <img src="https://privacy-scaling-explorations.github.io/sonobe-docs/imgs/folding-main-idea-diagram.png" style="width:70%;" />
 
@@ -68,14 +116,12 @@ The development flow using Sonobe looks like:
 
 The folding scheme and decider used can be swapped respectively with a few lines of code (eg. switching from a Decider that uses two Spartan proofs over a cycle of curves, to a Decider that uses a single Groth16 proof over the BN254 to be verified in an Ethereum smart contract).
 
-
-For more details, check out [Sonobe docs](https://privacy-scaling-explorations.github.io/sonobe-docs/) for more details on usage and design.
+For more details about usage and design, you can read Sonobe's [docs](https://privacy-scaling-explorations.github.io/sonobe-docs/).
 
 Complete examples can be found at [folding-schemes/examples](https://github.com/privacy-scaling-explorations/sonobe/tree/main/folding-schemes/examples)
 
-
-
 ## License
+
 https://github.com/privacy-scaling-explorations/sonobe/blob/main/LICENSE
 
 ## Acknowledgments

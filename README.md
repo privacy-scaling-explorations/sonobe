@@ -13,7 +13,7 @@ Sonobe is conceived as an exploratory effort with the aim to push forward the pr
 </span>
 </span>
 
-<br><br>
+<br>
 
 > **Warning**: experimental code, do not use in production.<br>
 > The code has not been audited. Several optimizations are also pending. Our focus so far has been on (1) implementing the Nova + CycleFold proving system and (2) achieving onchain (EVM) verification. See the [schemes implemented]() section for more details.
@@ -40,46 +40,6 @@ Available frontends to define the folded circuit:
 ## Usage
 
 Detailed usage and design documentation can be found [here](https://privacy-scaling-explorations.github.io/sonobe-docs/).
-
-With sonobe, developers can choose which folding scheme and decider to use. The following code snippet shows how to fold a circuit using the Nova folding scheme and an EVM-compatible decider:
-
-```rust
-// Initialize Nova as our IVC scheme
-// `BTCBlockCheckerFCircuit` is an R1CS checking the validity of a bitcoin block
-// This example is a provable light client for Bitcoin
-type NOVA = Nova<
-    Projective, // projective first curve points (required to form a curve cycle with `Projective2`)
-    GVar, // R1CS representation of the first curve points
-    Projective2, // projective second curve points
-    GVar2, // R1CS representation of second curve points
-    BTCBlockCheckerFCircuit<Fr>, // circuit being folded
-    KZG<'static, Bn254>, // sonobe is agnostic to the homomorphic commitment scheme used 
-    Pedersen<Projective2>, // sonobe is agnostic to the homomorphic commitment scheme used 
->;
-
-// An EVM-compatible decider for our IVC proof, combining a KZG and a groth16 proof together 
-type DECIDER = Decider<
-    Projective,
-    GVar,
-    Projective2,
-    GVar2,
-    BTCBlockCheckerFCircuit<Fr>,
-    KZG<'static, Bn254>,
-    Pedersen<Projective2>,
-    Groth16<Bn254>, // to be evm-friendly, the final decider combines a groth16 proof with multiple kzg openings
-    NOVA,
->;
-
-// Initializing Nova with the circuit and the initial state
-let mut nova = NOVA::init(&prover_params, circuit, z_0.clone()).unwrap();
-
-// Computing incremental steps, i.e. recursively verifying bitcoin blocks
-for i in 0..n_blocks_checked {
-    nova.prove_step().unwrap();
-}
-```
-
-See the full example for using sonobe to recursively check bitcoin blocks [here](https://github.com/dmpierre/folding-schemes-light-btc/tree/main).
 
 ### Folding Schemes and IVC
 

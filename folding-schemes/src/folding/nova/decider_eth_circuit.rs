@@ -77,21 +77,24 @@ impl RelaxedR1CSGadget {
             .zip(&r1cs.C.coeffs)
             .zip(&E)
         {
+            // First we do addition and multiplication without mod F's order
             let mut az = NonNativeUintVar::new_constant(ConstraintSystemRef::None, F::zero())?;
             for (value, col_i) in a.iter() {
-                az = az.add_no_reduce(&value.mul_no_reduce(&z[*col_i])?);
+                az = az.add_no_align(&value.mul_no_align(&z[*col_i])?);
             }
             let mut bz = NonNativeUintVar::new_constant(ConstraintSystemRef::None, F::zero())?;
             for (value, col_i) in b.iter() {
-                bz = bz.add_no_reduce(&value.mul_no_reduce(&z[*col_i])?);
+                bz = bz.add_no_align(&value.mul_no_align(&z[*col_i])?);
             }
             let mut cz = NonNativeUintVar::new_constant(ConstraintSystemRef::None, F::zero())?;
             for (value, col_i) in c.iter() {
-                cz = cz.add_no_reduce(&value.mul_no_reduce(&z[*col_i])?);
+                cz = cz.add_no_align(&value.mul_no_align(&z[*col_i])?);
             }
 
-            az.mul_no_reduce(&bz)?
-                .enforce_congruent::<F>(&cz.mul_no_reduce(&u)?.add_no_reduce(e))?;
+            // Then we compare the results by checking if they are congruent
+            // modulo the field order
+            az.mul_no_align(&bz)?
+                .enforce_congruent::<F>(&cz.mul_no_align(&u)?.add_no_align(e))?;
         }
 
         Ok(())

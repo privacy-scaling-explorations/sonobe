@@ -194,15 +194,14 @@ where
         Ok(CycleFoldCommittedInstanceVar {
             cmE: cmT.scalar_mul_le(r_bits.iter())? + ci1.cmE,
             cmW: ci1.cmW + ci2.cmW.scalar_mul_le(r_bits.iter())?,
-            // TODO: check if we can get avoid of `reduce` here
-            u: ci1.u.add_no_reduce(&r_nonnat).reduce::<C::ScalarField>()?,
+            u: ci1.u.add_no_align(&r_nonnat).modulo::<C::ScalarField>()?,
             x: ci1
                 .x
                 .iter()
                 .zip(ci2.x)
                 .map(|(a, b)| {
-                    a.add_no_reduce(&r_nonnat.mul_no_reduce(&b)?)
-                        .reduce::<C::ScalarField>()
+                    a.add_no_align(&r_nonnat.mul_no_align(&b)?)
+                        .modulo::<C::ScalarField>()
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         })

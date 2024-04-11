@@ -522,8 +522,6 @@ where
         })?;
         cf_x.enforce_equal(&is_basecase.select(&cf_u_i1_x_base, &cf_u_i1_x)?)?;
 
-        println!("Constraints: {}", cs.num_constraints());
-
         Ok(())
     }
 }

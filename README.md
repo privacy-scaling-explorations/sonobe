@@ -95,7 +95,9 @@ Usage and design documentation can be found [here](https://privacy-scaling-explo
 
 Folding schemes are used in the context of iterative computations, allowing to prove that a function $F$ applied $n$ times to an initial input $z_0$ results in $z_n$.
 
-<img src="https://privacy-scaling-explorations.github.io/sonobe-docs/imgs/folding-main-idea-diagram.png" style="width:70%;" />
+<p align="center">
+    <img src="https://privacy-scaling-explorations.github.io/sonobe-docs/imgs/folding-main-idea-diagram.png" style="width:70%;" />
+</p>
 
 Where $w_i$ are the external witnesses used at each iterative step.
 
@@ -112,7 +114,9 @@ The development flow using Sonobe looks like:
 3. Set a final decider to generate the final proof (eg. Spartan over Pasta curves)
 4. Generate the the decider verifier
 
-![](https://privacy-scaling-explorations.github.io/sonobe-docs/imgs/sonobe-lib-pipeline.png)
+<p align="center">
+    <img src="https://privacy-scaling-explorations.github.io/sonobe-docs/imgs/sonobe-lib-pipeline.png"/>
+</p>
 
 The folding scheme and decider used can be swapped respectively with a few lines of code (eg. switching from a Decider that uses two Spartan proofs over a cycle of curves, to a Decider that uses a single Groth16 proof over the BN254 to be verified in an Ethereum smart contract).
 
@@ -122,11 +126,12 @@ Complete examples can be found at [folding-schemes/examples](https://github.com/
 
 ## License
 
-https://github.com/privacy-scaling-explorations/sonobe/blob/main/LICENSE
+Sonobe is [MIT Licensed](https://github.com/privacy-scaling-explorations/sonobe/blob/main/LICENSE).
 
 ## Acknowledgments
 
-This project builds on top of the [arkworks](https://github.com/arkworks-rs) libraries, and uses the Espresso's [virtual polynomial](https://github.com/EspressoSystems/hyperplonk/blob/main/arithmetic/src/virtual_polynomial.rs) abstraction and the [SumCheck](https://github.com/EspressoSystems/hyperplonk/tree/main/subroutines/src/poly_iop/sum_check) implementation.
-The Solidity templates used in the nova_cyclefold_verifier.sol, use a Groth16 Solidity template which comes from [iden3](https://github.com/iden3/snarkjs/blob/master/templates/verifier_groth16.sol.ejs), and a KZG10 Solidity template which is adapted from [weijiekoh/libkzg](https://github.com/weijiekoh/libkzg).
+This project builds on top of multiple [arkworks](https://github.com/arkworks-rs) libraries. It uses Espresso system's [virtual polynomial](https://github.com/EspressoSystems/hyperplonk/blob/main/arithmetic/src/virtual_polynomial.rs) abstraction and its [SumCheck](https://github.com/EspressoSystems/hyperplonk/tree/main/subroutines/src/poly_iop/sum_check) implementation.
+
+Solidity templates used in `nova_cyclefold_verifier.sol`, use [iden3's](https://github.com/iden3/snarkjs/blob/master/templates/verifier_groth16.sol.ejs) Groth16 implementation and a KZG10 Solidity template adapted from [weijiekoh/libkzg](https://github.com/weijiekoh/libkzg).
 
 Also, this project has been possible thanks to conversations with [Srinath Setty](https://github.com/srinathsetty), [Lev Soukhanov](https://github.com/levs57), [Matej Penciak](https://github.com/mpenciak), [Adrian Hamelink](https://github.com/adr1anh), [François Garillot](https://github.com/huitseeker), [Daniel Marin](https://github.com/danielmarinq), [Wyatt Benno](https://github.com/wyattbenno777) and [Nikkolas Gailly](https://github.com/nikkolasg).

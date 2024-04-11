@@ -16,7 +16,7 @@ use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 use crate::ccs::r1cs::{extract_r1cs, extract_w_x, R1CS};
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::nonnative::{
-    nonnative_field_to_field_elements, nonnative_affine_to_field_elements,
+    nonnative_affine_to_field_elements, nonnative_field_to_field_elements,
 };
 use crate::frontend::FCircuit;
 use crate::utils::vec::is_zero_vec;
@@ -447,13 +447,12 @@ where
             };
 
             // fold self.cf_U_i + cfW_U -> folded running with cfW
-            let (_cfW_w_i, cfW_u_i, cfW_W_i1, cfW_U_i1, cfW_cmT, _) = self
-                .fold_cyclefold_circuit(
-                    self.cf_W_i.clone(), // CycleFold running instance witness
-                    self.cf_U_i.clone(), // CycleFold running instance
-                    cfW_u_i_x,
-                    cfW_circuit,
-                )?;
+            let (_cfW_w_i, cfW_u_i, cfW_W_i1, cfW_U_i1, cfW_cmT, _) = self.fold_cyclefold_circuit(
+                self.cf_W_i.clone(), // CycleFold running instance witness
+                self.cf_U_i.clone(), // CycleFold running instance
+                cfW_u_i_x,
+                cfW_circuit,
+            )?;
             // fold [the output from folding self.cf_U_i + cfW_U] + cfE_U = folded_running_with_cfW + cfE
             let (_cfE_w_i, cfE_u_i, cf_W_i1, cf_U_i1, cf_cmT, _) =
                 self.fold_cyclefold_circuit(cfW_W_i1, cfW_U_i1.clone(), cfE_u_i_x, cfE_circuit)?;

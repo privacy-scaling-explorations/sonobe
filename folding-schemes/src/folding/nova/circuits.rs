@@ -222,7 +222,7 @@ where
     ) -> Result<Vec<Boolean<C::ScalarField>>, SynthesisError> {
         let mut sponge = PoseidonSpongeVar::<C::ScalarField>::new(cs, poseidon_config);
 
-        let input: Vec<FpVar<C::ScalarField>> = vec![
+        let input: Vec<FpVar<C::ScalarField>> = [
             U_i_vec,
             vec![u_i.u.clone()],
             u_i.x.clone(),

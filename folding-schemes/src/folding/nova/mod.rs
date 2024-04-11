@@ -342,7 +342,7 @@ where
     fn prove_step(&mut self) -> Result<(), Error> {
         let augmented_F_circuit: AugmentedFCircuit<C1, C2, GC2, FC>;
 
-        if self.i > C1::ScalarField::from_le_bytes_mod_order(&std::usize::MAX.to_le_bytes()) {
+        if self.i > C1::ScalarField::from_le_bytes_mod_order(&usize::MAX.to_le_bytes()) {
             return Err(Error::MaxStep);
         }
         let mut i_bytes: [u8; 8] = [0; 8];
@@ -392,10 +392,10 @@ where
                 i_usize: Some(0),
                 z_0: Some(self.z_0.clone()), // = z_i
                 z_i: Some(self.z_i.clone()),
-                u_i_cmW: Some(self.u_i.cmW.clone()), // = dummy
-                U_i: Some(self.U_i.clone()),         // = dummy
-                U_i1_cmE: Some(U_i1.cmE.clone()),
-                U_i1_cmW: Some(U_i1.cmW.clone()),
+                u_i_cmW: Some(self.u_i.cmW), // = dummy
+                U_i: Some(self.U_i.clone()), // = dummy
+                U_i1_cmE: Some(U_i1.cmE),
+                U_i1_cmW: Some(U_i1.cmW),
                 cmT: Some(cmT),
                 F: self.F.clone(),
                 x: Some(u_i1_x),
@@ -466,16 +466,16 @@ where
                 i_usize: Some(i_usize),
                 z_0: Some(self.z_0.clone()),
                 z_i: Some(self.z_i.clone()),
-                u_i_cmW: Some(self.u_i.cmW.clone()),
+                u_i_cmW: Some(self.u_i.cmW),
                 U_i: Some(self.U_i.clone()),
-                U_i1_cmE: Some(U_i1.cmE.clone()),
-                U_i1_cmW: Some(U_i1.cmW.clone()),
+                U_i1_cmE: Some(U_i1.cmE),
+                U_i1_cmW: Some(U_i1.cmW),
                 cmT: Some(cmT),
                 F: self.F.clone(),
                 x: Some(u_i1_x),
                 // cyclefold values
-                cf1_u_i_cmW: Some(cfW_u_i.cmW.clone()),
-                cf2_u_i_cmW: Some(cfE_u_i.cmW.clone()),
+                cf1_u_i_cmW: Some(cfW_u_i.cmW),
+                cf2_u_i_cmW: Some(cfE_u_i.cmW),
                 cf_U_i: Some(self.cf_U_i.clone()),
                 cf1_cmT: Some(cfW_cmT),
                 cf2_cmT: Some(cf_cmT),
@@ -514,11 +514,11 @@ where
 
         // set values for next iteration
         self.i += C1::ScalarField::one();
-        self.z_i = z_i1.clone();
+        self.z_i = z_i1;
         self.w_i = Witness::<C1>::new(w_i1, self.r1cs.A.n_rows);
         self.u_i = self.w_i.commit::<CS1>(&self.cs_params, x_i1)?;
-        self.W_i = W_i1.clone();
-        self.U_i = U_i1.clone();
+        self.W_i = W_i1;
+        self.U_i = U_i1;
 
         #[cfg(test)]
         {

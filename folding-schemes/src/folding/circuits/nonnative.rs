@@ -194,6 +194,7 @@ where
     // Used for extracting a list of field elements of type `C::ScalarField` from the public input
     // `p`, in exactly the same way as how `NonNativeAffineVar` is represented as limbs of type
     // `FpVar` in-circuit.
+    #[allow(clippy::type_complexity)]
     pub fn inputize(p: C) -> Result<(Vec<C::ScalarField>, Vec<C::ScalarField>), SynthesisError> {
         point_to_nonnative_limbs_custom_opt(p, OptimizationType::Constraints)
     }
@@ -243,9 +244,9 @@ where
 mod tests {
     use super::*;
     use ark_pallas::{Fr, Projective};
-    use ark_r1cs_std::{alloc::AllocVar, R1CSVar, ToConstraintFieldGadget};
+    use ark_r1cs_std::R1CSVar;
     use ark_relations::r1cs::ConstraintSystem;
-    use ark_std::{UniformRand, Zero};
+    use ark_std::UniformRand;
 
     #[test]
     fn test_alloc_zero() {

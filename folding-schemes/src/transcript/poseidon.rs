@@ -7,7 +7,7 @@ use ark_ec::{AffineRepr, CurveGroup, Group};
 use ark_ff::{BigInteger, Field, PrimeField};
 use ark_r1cs_std::{boolean::Boolean, fields::fp::FpVar};
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
-use ark_std::{One, Zero};
+use ark_std::Zero;
 
 use crate::transcript::Transcript;
 use crate::Error;
@@ -61,7 +61,7 @@ where
 // over bytes in order to have a logic that can be reproduced in-circuit.
 fn prepare_point<C: CurveGroup>(p: &C) -> Result<Vec<C::ScalarField>, Error> {
     let affine = p.into_affine();
-    let zero_point = (&C::BaseField::zero(), &C::BaseField::one());
+    let zero_point = (&C::BaseField::zero(), &C::BaseField::zero());
     let xy = affine.xy().unwrap_or(zero_point);
 
     let x_bi =
@@ -145,7 +145,7 @@ pub fn poseidon_test_config<F: PrimeField>() -> PoseidonConfig<F> {
 pub mod tests {
     use super::*;
     use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
-    use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, groups::CurveVar, R1CSVar};
+    use ark_r1cs_std::{alloc::AllocVar, groups::CurveVar, R1CSVar};
     use ark_relations::r1cs::ConstraintSystem;
     use ark_vesta::Projective as E2Projective;
     use std::ops::Mul;

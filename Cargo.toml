@@ -8,11 +8,13 @@ resolver = "2"
 
 [patch.crates-io]
 # The following patch is to use a version of ark-r1cs-std compatible with
-# v0.4.0 but that includes a cherry-picked commit from after v0.4.0 which fixes
-# the in-circuit scalar multiplication of the zero point. The commit is from
-# https://github.com/arkworks-rs/r1cs-std/pull/124, without including other
+# v0.4.0 but that includes two cherry-picked commits from after v0.4.0 which
+# fixes the in-circuit scalar multiplication of the zero point and the
+# y-coordinate of the zero point. The commits are respectively from
+# https://github.com/arkworks-rs/r1cs-std/pull/124 and
+# https://github.com/arkworks-rs/r1cs-std/pull/126, without including other
 # changes done between v0.4.0 and this fix which would break compatibility.
-ark-r1cs-std = { git = "https://github.com/arnaucube/ark-r1cs-std-cherry-picked/" }
+ark-r1cs-std = { git = "https://github.com/winderica/r1cs-std", branch="cherry-pick" }
 # patch ark_curves to use a cherry-picked version which contains
 # bn254::constraints & grumpkin for v0.4.0 (once arkworks v0.5.0 is released
 # this will no longer be needed)

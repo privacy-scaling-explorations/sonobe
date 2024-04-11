@@ -16,7 +16,7 @@ use ark_r1cs_std::{
     ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
-use ark_std::{log2, One, Zero};
+use ark_std::{log2, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::{circuits::ChallengeGadget, nifs::NIFS};
@@ -245,7 +245,7 @@ where
     C1: CurveGroup,
     C2: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
-    GC2: CurveVar<C2, CF2<C2>>,
+    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
     CS1: CommitmentScheme<C1>,
     // enforce that the CS2 is Pedersen commitment scheme, since we're at Ethereum's EVM decider
     CS2: CommitmentScheme<C2, ProverParams = PedersenParams<C2>>,
@@ -337,7 +337,7 @@ where
     C1: CurveGroup,
     C2: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>>,
-    GC2: CurveVar<C2, CF2<C2>>,
+    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
     CS1: CommitmentScheme<C1>,
     CS2: CommitmentScheme<C2>,
     <C1 as CurveGroup>::BaseField: PrimeField,
@@ -362,9 +362,9 @@ where
             Ok(self.z_i.unwrap_or(vec![CF1::<C1>::zero()]))
         })?;
 
-        let u_dummy_native = CommittedInstance::<C1>::dummy(1);
+        let u_dummy_native = CommittedInstance::<C1>::dummy(2);
         let w_dummy_native = Witness::<C1>::new(
-            vec![C1::ScalarField::zero(); self.r1cs.A.n_cols - 2 /* (2=1+1, since u_i.x.len=1) */],
+            vec![C1::ScalarField::zero(); self.r1cs.A.n_cols - 3 /* (3=2+1, since u_i.x.len=2) */],
             self.E_len,
         );
 
@@ -412,20 +412,13 @@ where
         )?;
 
         // 2. u_i.cmE==cm(0), u_i.u==1
-        // Here zero_x & zero_y are the x & y coordinates of the zero point affine representation.
-        let zero_x = NonNativeFieldVar::<C1::BaseField, C1::ScalarField>::new_constant(
-            cs.clone(),
-            C1::BaseField::zero(),
-        )?;
-        let zero_y = NonNativeFieldVar::<C1::BaseField, C1::ScalarField>::new_constant(
-            cs.clone(),
-            C1::BaseField::one(),
-        )?;
-        u_i.cmE.x.enforce_equal(&zero_x)?;
-        u_i.cmE.y.enforce_equal(&zero_y)?;
+        // Here zero is the x & y coordinates of the zero point affine representation.
+        let zero = NonNativeFieldVar::<C1::BaseField, C1::ScalarField>::zero();
+        u_i.cmE.x.enforce_equal(&zero)?;
+        u_i.cmE.y.enforce_equal(&zero)?;
         (u_i.u.is_one()?).enforce_equal(&Boolean::TRUE)?;
 
-        // 3. u_i.x == H(i, z_0, z_i, U_i)
+        // 3.a u_i.x[0] == H(i, z_0, z_i, U_i)
         let (u_i_x, U_i_vec) =
             U_i.clone()
                 .hash(&crh_params, i.clone(), z_0.clone(), z_i.clone())?;
@@ -453,6 +446,10 @@ where
             let cf_W_i = CycleFoldWitnessVar::<C2>::new_witness(cs.clone(), || {
                 Ok(self.cf_W_i.unwrap_or(w_dummy_native.clone()))
             })?;
+
+            // 3.b u_i.x[1] == H(cf_U_i)
+            let (cf_u_i_x, _) = cf_U_i.clone().hash(&crh_params)?;
+            (u_i.x[1]).enforce_equal(&cf_u_i_x)?;
 
             // 4. check Pedersen commitments of cf_U_i.{cmE, cmW}
             let H = GC2::new_constant(cs.clone(), self.cf_pedersen_params.h)?;
@@ -615,16 +612,10 @@ pub mod tests {
         },
         CRHScheme, CRHSchemeGadget,
     };
-    use ark_ff::BigInteger;
     use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
-    use ark_r1cs_std::{
-        alloc::AllocVar,
-        bits::uint8::UInt8,
-        eq::EqGadget,
-        fields::{fp::FpVar, nonnative::NonNativeFieldVar},
-    };
+    use ark_r1cs_std::bits::uint8::UInt8;
     use ark_relations::r1cs::ConstraintSystem;
-    use ark_std::UniformRand;
+    use ark_std::{One, UniformRand};
     use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
 
     use crate::commitment::pedersen::Pedersen;
@@ -633,11 +624,8 @@ pub mod tests {
     use crate::transcript::poseidon::poseidon_test_config;
     use crate::FoldingScheme;
 
+    use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z};
     use crate::ccs::r1cs::{extract_r1cs, extract_w_x};
-    use crate::ccs::r1cs::{
-        tests::{get_test_r1cs, get_test_z},
-        R1CS,
-    };
 
     #[test]
     fn test_relaxed_r1cs_small_gadget_handcrafted() {

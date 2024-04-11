@@ -21,7 +21,7 @@ use ark_r1cs_std::{
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
 use ark_std::fmt::Debug;
-use ark_std::{One, Zero};
+use ark_std::Zero;
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::{
@@ -254,7 +254,7 @@ pub struct AugmentedFCircuit<
     pub r_nonnat: Option<CF2<C1>>,
     pub cmT: Option<C1>,
     pub F: FC,              // F circuit
-    pub x: Option<CF1<C1>>, // public inputs (u_{i+1}.x)
+    pub x: Option<CF1<C1>>, // public input (u_{i+1}.x[0])
 
     // cyclefold verifier on C1
     // Here 'cf1, cf2' are for each of the CycleFold circuits, corresponding to the fold of cmW and
@@ -268,6 +268,7 @@ pub struct AugmentedFCircuit<
     pub cf2_cmT: Option<C2>,
     pub cf1_r_nonnat: Option<C2::ScalarField>,
     pub cf2_r_nonnat: Option<C2::ScalarField>,
+    pub cf_x: Option<CF1<C1>>, // public input (u_{i+1}.x[1])
 }
 
 impl<C1: CurveGroup, C2: CurveGroup, GC2: CurveVar<C2, CF2<C2>>, FC: FCircuit<CF1<C1>>>
@@ -300,6 +301,7 @@ where
             cf2_cmT: None,
             cf1_r_nonnat: None,
             cf2_r_nonnat: None,
+            cf_x: None,
         }
     }
 }
@@ -308,7 +310,7 @@ impl<C1, C2, GC2, FC> ConstraintSynthesizer<CF1<C1>> for AugmentedFCircuit<C1, C
 where
     C1: CurveGroup,
     C2: CurveGroup,
-    GC2: CurveVar<C2, CF2<C2>>,
+    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
     FC: FCircuit<CF1<C1>>,
     <C1 as CurveGroup>::BaseField: PrimeField,
     <C2 as CurveGroup>::BaseField: PrimeField,
@@ -332,7 +334,7 @@ where
                 .unwrap_or(vec![CF1::<C1>::zero(); self.F.state_len()]))
         })?;
 
-        let u_dummy_native = CommittedInstance::<C1>::dummy(1);
+        let u_dummy_native = CommittedInstance::<C1>::dummy(2);
         let u_i = CommittedInstanceVar::<C1>::new_witness(cs.clone(), || {
             Ok(self.u_i.unwrap_or(u_dummy_native.clone()))
         })?;
@@ -365,24 +367,16 @@ where
         let zero = FpVar::<CF1<C1>>::new_constant(cs.clone(), CF1::<C1>::zero())?;
         let is_not_basecase = i.is_neq(&zero)?;
 
-        // 1. u_i.x == H(i, z_0, z_i, U_i)
+        // 1.a u_i.x[0] == H(i, z_0, z_i, U_i)
         let (u_i_x, U_i_vec) =
             U_i.clone()
                 .hash(&crh_params, i.clone(), z_0.clone(), z_i.clone())?;
-        // check that h == u_i.x
+        // check that h == u_i.x[0]
         (u_i.x[0]).conditional_enforce_equal(&u_i_x, &is_not_basecase)?;
 
         // 2. u_i.cmE==cm(0), u_i.u==1
-        let zero_x = NonNativeFieldVar::<C1::BaseField, C1::ScalarField>::new_constant(
-            cs.clone(),
-            C1::BaseField::zero(),
-        )?;
-        let zero_y = NonNativeFieldVar::<C1::BaseField, C1::ScalarField>::new_constant(
-            cs.clone(),
-            C1::BaseField::one(),
-        )?;
-        (u_i.cmE.x.is_eq(&zero_x)?).conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
-        (u_i.cmE.y.is_eq(&zero_y)?).conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
+        (u_i.cmE.x.is_zero()?).conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
+        (u_i.cmE.y.is_zero()?).conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
         (u_i.u.is_one()?).conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
 
         // 3. nifs.verify, checks that folding u_i & U_i obtains U_{i+1}.
@@ -406,7 +400,7 @@ where
         let nifs_check = NIFSGadget::<C1>::verify(r, U_i.clone(), u_i.clone(), U_i1.clone())?;
         nifs_check.conditional_enforce_equal(&Boolean::TRUE, &is_not_basecase)?;
 
-        // 4. u_{i+1}.x = H(i+1, z_0, z_i+1, U_{i+1}), this is the output of F'
+        // 4.a u_{i+1}.x[0] = H(i+1, z_0, z_i+1, U_{i+1}), this is the first output of F'
         let (u_i1_x, _) = U_i1.clone().hash(
             &crh_params,
             i + FpVar::<CF1<C1>>::one(),
@@ -444,6 +438,9 @@ where
             NonNativeFieldVar::<C1::BaseField, C1::ScalarField>::new_witness(cs.clone(), || {
                 Ok(self.cf2_r_nonnat.unwrap_or_else(C2::ScalarField::zero))
             })?;
+        let cf_x = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
+            Ok(self.cf_x.unwrap_or_else(C1::ScalarField::zero))
+        })?;
 
         let cfW_x: Vec<NonNativeFieldVar<C1::BaseField, C1::ScalarField>> = vec![
             r_nonnat.clone(),
@@ -457,6 +454,15 @@ where
         let cfE_x: Vec<NonNativeFieldVar<C1::BaseField, C1::ScalarField>> = vec![
             r_nonnat, U_i.cmE.x, U_i.cmE.y, cmT.x, cmT.y, U_i1.cmE.x, U_i1.cmE.y,
         ];
+
+        // 1.b u_i.x[1] == H(cf_U_i)
+        let (cf_u_i_x, _) = cf_U_i.clone().hash(&crh_params)?;
+        // check that h == u_i.x[1]
+        (u_i.x[1]).conditional_enforce_equal(&cf_u_i_x, &is_not_basecase)?;
+
+        // 4.b u_{i+1}.x[1] = H(cf_U_{i+1}), this is the second output of F'
+        let (cf_u_i1_x, _) = cf_U_i1.clone().hash(&crh_params)?;
+        cf_u_i1_x.enforce_equal(&cf_x)?;
 
         // ensure that cf1_u & cf2_u have as public inputs the cmW & cmE from main instances U_i,
         // u_i, U_i+1 coordinates of the commitments
@@ -527,7 +533,7 @@ pub mod tests {
     use super::*;
     use ark_bn254::{Fr, G1Projective as Projective};
     use ark_ff::BigInteger;
-    use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
+    use ark_r1cs_std::R1CSVar;
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::UniformRand;
 

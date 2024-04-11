@@ -5,7 +5,7 @@ use ark_crypto_primitives::{
     sponge::{poseidon::PoseidonConfig, Absorb},
 };
 use ark_ec::{AffineRepr, CurveGroup, Group};
-use ark_ff::{BigInteger, PrimeField};
+use ark_ff::{BigInteger, Field, PrimeField, ToConstraintField};
 use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
 use ark_std::fmt::Debug;
 use ark_std::{One, Zero};
@@ -15,7 +15,9 @@ use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 
 use crate::ccs::r1cs::{extract_r1cs, extract_w_x, R1CS};
 use crate::commitment::CommitmentScheme;
-use crate::folding::circuits::nonnative::point_to_nonnative_limbs;
+use crate::folding::circuits::nonnative::{
+    nonnative_field_to_field_elements, point_to_nonnative_limbs,
+};
 use crate::frontend::FCircuit;
 use crate::utils::vec::is_zero_vec;
 use crate::Error;
@@ -90,6 +92,56 @@ where
             .concat(),
         )
         .map_err(|e| Error::Other(e.to_string()))
+    }
+}
+
+impl<C: CurveGroup> ToConstraintField<C::BaseField> for CommittedInstance<C>
+where
+    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField + Absorb,
+{
+    fn to_field_elements(&self) -> Option<Vec<C::BaseField>> {
+        let u = nonnative_field_to_field_elements(&self.u);
+        let x = self
+            .x
+            .iter()
+            .flat_map(nonnative_field_to_field_elements)
+            .collect::<Vec<_>>();
+        let (cmE_x, cmE_y, cmE_is_inf) = match self.cmE.into_affine().xy() {
+            Some((&x, &y)) => (x, y, C::BaseField::zero()),
+            None => (
+                C::BaseField::zero(),
+                C::BaseField::zero(),
+                C::BaseField::one(),
+            ),
+        };
+        let (cmW_x, cmW_y, cmW_is_inf) = match self.cmW.into_affine().xy() {
+            Some((&x, &y)) => (x, y, C::BaseField::zero()),
+            None => (
+                C::BaseField::zero(),
+                C::BaseField::zero(),
+                C::BaseField::one(),
+            ),
+        };
+        // Concatenate `cmE_is_inf` and `cmW_is_inf` to save constraints for CRHGadget::evaluate in the corresponding circuit
+        let is_inf = cmE_is_inf.double() + cmW_is_inf;
+
+        Some([u, x, vec![cmE_x, cmE_y, cmW_x, cmW_y, is_inf]].concat())
+    }
+}
+
+impl<C: CurveGroup> CommittedInstance<C>
+where
+    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField + Absorb,
+{
+    /// hash_cyclefold implements the committed instance hash compatible with the gadget implemented in
+    /// nova/cyclefold.rs::CycleFoldCommittedInstanceVar.hash.
+    /// Returns `H(U_i)`, where `U_i` is the `CommittedInstance` for CycleFold.
+    pub fn hash_cyclefold(
+        &self,
+        poseidon_config: &PoseidonConfig<C::BaseField>,
+    ) -> Result<C::BaseField, Error> {
+        CRH::<C::BaseField>::evaluate(poseidon_config, self.to_field_elements().unwrap())
+            .map_err(|e| Error::Other(e.to_string()))
     }
 }
 
@@ -203,7 +255,7 @@ where
     C1: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
     C2: CurveGroup,
-    GC2: CurveVar<C2, CF2<C2>>,
+    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
     FC: FCircuit<C1::ScalarField>,
     CS1: CommitmentScheme<C1>,
     CS2: CommitmentScheme<C2>,
@@ -320,15 +372,18 @@ where
         )?;
 
         // folded instance output (public input, x)
-        // u_{i+1}.x = H(i+1, z_0, z_{i+1}, U_{i+1})
+        // u_{i+1}.x[0] = H(i+1, z_0, z_{i+1}, U_{i+1})
         let u_i1_x = U_i1.hash(
             &self.poseidon_config,
             self.i + C1::ScalarField::one(),
             self.z_0.clone(),
             z_i1.clone(),
         )?;
+        // u_{i+1}.x[1] = H(cf_U_{i+1})
+        let cf_u_i1_x: C1::ScalarField;
 
         if self.i == C1::ScalarField::zero() {
+            cf_u_i1_x = self.cf_U_i.hash_cyclefold(&self.poseidon_config)?;
             // base case
             augmented_F_circuit = AugmentedFCircuit::<C1, C2, GC2, FC> {
                 _gc2: PhantomData,
@@ -353,6 +408,7 @@ where
                 cf2_cmT: None,
                 cf1_r_nonnat: None,
                 cf2_r_nonnat: None,
+                cf_x: Some(cf_u_i1_x),
             };
 
             #[cfg(test)]
@@ -406,6 +462,8 @@ where
             let (_cfE_w_i, cfE_u_i, cf_W_i1, cf_U_i1, cf_cmT, cf_r2_Fq) =
                 self.fold_cyclefold_circuit(cfW_W_i1, cfW_U_i1.clone(), cfE_u_i_x, cfE_circuit)?;
 
+            cf_u_i1_x = cf_U_i1.hash_cyclefold(&self.poseidon_config)?;
+
             augmented_F_circuit = AugmentedFCircuit::<C1, C2, GC2, FC> {
                 _gc2: PhantomData,
                 poseidon_config: self.poseidon_config.clone(),
@@ -430,6 +488,7 @@ where
                 cf2_cmT: Some(cf_cmT),
                 cf1_r_nonnat: Some(cfW_r1_Fq),
                 cf2_r_nonnat: Some(cf_r2_Fq),
+                cf_x: Some(cf_u_i1_x),
             };
 
             self.cf_W_i = cf_W_i1.clone();
@@ -453,20 +512,20 @@ where
 
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
         let (w_i1, x_i1) = extract_w_x::<C1::ScalarField>(&cs);
-        if x_i1[0] != u_i1_x {
+        if x_i1[0] != u_i1_x || x_i1[1] != cf_u_i1_x {
             return Err(Error::NotEqual);
         }
 
         #[cfg(test)]
-        if x_i1.len() != 1 {
-            return Err(Error::NotExpectedLength(x_i1.len(), 1));
+        if x_i1.len() != 2 {
+            return Err(Error::NotExpectedLength(x_i1.len(), 2));
         }
 
         // set values for next iteration
         self.i += C1::ScalarField::one();
         self.z_i = z_i1.clone();
         self.w_i = Witness::<C1>::new(w_i1, self.r1cs.A.n_rows);
-        self.u_i = self.w_i.commit::<CS1>(&self.cs_params, vec![u_i1_x])?;
+        self.u_i = self.w_i.commit::<CS1>(&self.cs_params, x_i1)?;
         self.W_i = W_i1.clone();
         self.U_i = U_i1.clone();
 
@@ -511,14 +570,19 @@ where
         let (u_i, w_i) = incoming_instance;
         let (cf_U_i, cf_W_i) = cyclefold_instance;
 
-        if u_i.x.len() != 1 || U_i.x.len() != 1 {
+        if u_i.x.len() != 2 || U_i.x.len() != 2 {
             return Err(Error::IVCVerificationFail);
         }
 
         // check that u_i's output points to the running instance
-        // u_i.X == H(i, z_0, z_i, U_i)
+        // u_i.X[0] == H(i, z_0, z_i, U_i)
         let expected_u_i_x = U_i.hash(&vp.poseidon_config, num_steps, z_0, z_i.clone())?;
         if expected_u_i_x != u_i.x[0] {
+            return Err(Error::IVCVerificationFail);
+        }
+        // u_i.X[1] == H(cf_U_i)
+        let expected_cf_u_i_x = cf_U_i.hash_cyclefold(&vp.poseidon_config)?;
+        if expected_cf_u_i_x != u_i.x[1] {
             return Err(Error::IVCVerificationFail);
         }
 
@@ -589,7 +653,7 @@ where
     C1: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
     C2: CurveGroup,
-    GC2: CurveVar<C2, CF2<C2>>,
+    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
     FC: FCircuit<C1::ScalarField>,
     CS1: CommitmentScheme<C1>,
     CS2: CommitmentScheme<C2>,
@@ -680,7 +744,7 @@ where
     C1: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
     C2: CurveGroup,
-    GC2: CurveVar<C2, CF2<C2>>,
+    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
     FC: FCircuit<C1::ScalarField>,
     <C1 as CurveGroup>::BaseField: PrimeField,
     <C2 as CurveGroup>::BaseField: PrimeField,
@@ -708,7 +772,7 @@ where
     C1: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
     C2: CurveGroup,
-    GC2: CurveVar<C2, CF2<C2>>,
+    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
     FC: FCircuit<C1::ScalarField>,
     <C1 as CurveGroup>::BaseField: PrimeField,
     <C2 as CurveGroup>::BaseField: PrimeField,
@@ -725,7 +789,7 @@ where
 /// returns the coordinates of a commitment point. This is compatible with the arkworks
 /// GC.to_constraint_field()[..2]
 pub(crate) fn get_cm_coordinates<C: CurveGroup>(cm: &C) -> Vec<C::BaseField> {
-    let zero = (&C::BaseField::zero(), &C::BaseField::one());
+    let zero = (&C::BaseField::zero(), &C::BaseField::zero());
     let cm = cm.into_affine();
     let (cm_x, cm_y) = cm.xy().unwrap_or(zero);
     vec![*cm_x, *cm_y]

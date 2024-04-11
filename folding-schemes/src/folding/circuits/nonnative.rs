@@ -1,11 +1,71 @@
 use ark_ec::{AffineRepr, CurveGroup};
+use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
-    fields::nonnative::{params::OptimizationType, AllocatedNonNativeFieldVar, NonNativeFieldVar},
+    fields::{
+        fp::FpVar,
+        nonnative::{params::OptimizationType, AllocatedNonNativeFieldVar, NonNativeFieldVar},
+        FieldVar,
+    },
+    ToBitsGadget,
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
-use ark_std::{One, Zero};
+use ark_std::Zero;
 use core::borrow::Borrow;
+
+/// A more efficient version of `NonNativeFieldVar::to_constraint_field`
+pub fn nonnative_field_var_to_constraint_field<TargetField: PrimeField, BaseField: PrimeField>(
+    f: &NonNativeFieldVar<TargetField, BaseField>,
+) -> Result<Vec<FpVar<BaseField>>, SynthesisError> {
+    let bits = f.to_bits_le()?;
+
+    let bits_per_limb = BaseField::MODULUS_BIT_SIZE as usize - 1;
+    let num_limbs = (TargetField::MODULUS_BIT_SIZE as usize).div_ceil(bits_per_limb);
+
+    let mut limbs = bits
+        .chunks(bits_per_limb)
+        .map(|chunk| {
+            let mut limb = FpVar::<BaseField>::zero();
+            let mut w = BaseField::one();
+            for b in chunk.iter() {
+                limb += FpVar::from(b.clone()) * w;
+                w.double_in_place();
+            }
+            limb
+        })
+        .collect::<Vec<FpVar<BaseField>>>();
+    limbs.resize(num_limbs, FpVar::zero());
+    limbs.reverse();
+
+    Ok(limbs)
+}
+
+/// The out-circuit counterpart of `nonnative_field_var_to_constraint_field`
+pub fn nonnative_field_to_field_elements<TargetField: PrimeField, BaseField: PrimeField>(
+    f: &TargetField,
+) -> Vec<BaseField> {
+    let bits = f.into_bigint().to_bits_le();
+
+    let bits_per_limb = BaseField::MODULUS_BIT_SIZE as usize - 1;
+    let num_limbs = (TargetField::MODULUS_BIT_SIZE as usize).div_ceil(bits_per_limb);
+
+    let mut limbs = bits
+        .chunks(bits_per_limb)
+        .map(|chunk| {
+            let mut limb = BaseField::zero();
+            let mut w = BaseField::one();
+            for &b in chunk.iter() {
+                limb += BaseField::from(b) * w;
+                w.double_in_place();
+            }
+            limb
+        })
+        .collect::<Vec<BaseField>>();
+    limbs.resize(num_limbs, BaseField::zero());
+    limbs.reverse();
+
+    limbs
+}
 
 /// NonNativeAffineVar represents an elliptic curve point in Affine representation in the non-native
 /// field, over the constraint field. It is not intended to perform operations, but just to contain
@@ -33,7 +93,7 @@ where
             let cs = cs.into();
 
             let affine = val.borrow().into_affine();
-            let zero_point = (&C::BaseField::zero(), &C::BaseField::one());
+            let zero_point = (&C::BaseField::zero(), &C::BaseField::zero());
             let xy = affine.xy().unwrap_or(zero_point);
 
             let x = NonNativeFieldVar::<C::BaseField, C::ScalarField>::new_variable(
@@ -84,7 +144,7 @@ where
             )?;
         let y =
             AllocatedNonNativeFieldVar::<C::BaseField, C::ScalarField>::get_limbs_representations(
-                &C::BaseField::one(),
+                &C::BaseField::zero(),
                 optimization_type,
             )?;
         return Ok((x, y));

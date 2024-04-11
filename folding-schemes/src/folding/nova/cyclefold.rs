@@ -109,7 +109,7 @@ where
             nonnative_field_var_to_constraint_field(&self.u)?,
             self.x
                 .iter()
-                .map(|i| nonnative_field_var_to_constraint_field(i))
+                .map(nonnative_field_var_to_constraint_field)
                 .collect::<Result<Vec<_>, _>>()?
                 .concat(),
             cmE_elems,

@@ -434,7 +434,6 @@ where
                 r_bits: Some(r_bits.clone()),
                 p1: Some(self.U_i.clone().cmW),
                 p2: Some(self.u_i.clone().cmW),
-                p3: Some(U_i1.clone().cmW),
                 x: Some(cfW_u_i_x.clone()),
             };
             let cfE_circuit = CycleFoldCircuit::<C1, GC1> {
@@ -442,7 +441,6 @@ where
                 r_bits: Some(r_bits.clone()),
                 p1: Some(self.U_i.clone().cmE),
                 p2: Some(cmT),
-                p3: Some(U_i1.clone().cmE),
                 x: Some(cfE_u_i_x.clone()),
             };
 

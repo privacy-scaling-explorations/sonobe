@@ -313,7 +313,6 @@ pub struct CycleFoldCircuit<C: CurveGroup, GC: CurveVar<C, CF2<C>>> {
     pub r_bits: Option<Vec<bool>>,
     pub p1: Option<C>,
     pub p2: Option<C>,
-    pub p3: Option<C>,
     pub x: Option<Vec<CF2<C>>>, // public inputs (cf_u_{i+1}.x)
 }
 impl<C: CurveGroup, GC: CurveVar<C, CF2<C>>> CycleFoldCircuit<C, GC> {
@@ -323,7 +322,6 @@ impl<C: CurveGroup, GC: CurveVar<C, CF2<C>>> CycleFoldCircuit<C, GC> {
             r_bits: None,
             p1: None,
             p2: None,
-            p3: None,
             x: None,
         }
     }
@@ -341,7 +339,11 @@ where
         })?;
         let p1 = GC::new_witness(cs.clone(), || Ok(self.p1.unwrap_or(C::zero())))?;
         let p2 = GC::new_witness(cs.clone(), || Ok(self.p2.unwrap_or(C::zero())))?;
-        let p3 = GC::new_witness(cs.clone(), || Ok(self.p3.unwrap_or(C::zero())))?;
+        // Fold the original Nova instances natively in CycleFold
+        // For the cmW we're computing: U_i1.cmW = U_i.cmW + r * u_i.cmW
+        // For the cmE we're computing: U_i1.cmE = U_i.cmE + r * cmT + r^2 * u_i.cmE, where u_i.cmE
+        // is assumed to be 0, so, U_i1.cmE = U_i.cmE + r * cmT
+        let p3 = &p1 + p2.scalar_mul_le(r_bits.iter())?;
 
         let x = Vec::<FpVar<CF2<C>>>::new_input(cs.clone(), || {
             Ok(self.x.unwrap_or(vec![CF2::<C>::zero(); CF_IO_LEN]))
@@ -353,18 +355,12 @@ where
         let r: FpVar<CF2<C>> = Boolean::le_bits_to_fp_var(&r_bits)?;
         let points_coords: Vec<FpVar<CF2<C>>> = [
             vec![r],
-            p1.clone().to_constraint_field()?[..2].to_vec(),
-            p2.clone().to_constraint_field()?[..2].to_vec(),
-            p3.clone().to_constraint_field()?[..2].to_vec(),
+            p1.to_constraint_field()?[..2].to_vec(),
+            p2.to_constraint_field()?[..2].to_vec(),
+            p3.to_constraint_field()?[..2].to_vec(),
         ]
         .concat();
         points_coords.enforce_equal(&x)?;
-
-        // Fold the original Nova instances natively in CycleFold
-        // For the cmW we're checking: U_i1.cmW == U_i.cmW + r * u_i.cmW
-        // For the cmE we're checking: U_i1.cmE == U_i.cmE + r * cmT + r^2 * u_i.cmE, where u_i.cmE
-        // is assumed to be 0, so, U_i1.cmE == U_i.cmE + r * cmT
-        p3.enforce_equal(&(p1 + p2.scalar_mul_le(r_bits.iter())?))?;
 
         Ok(())
     }
@@ -426,7 +422,6 @@ pub mod tests {
             r_bits: Some(r_bits.clone()),
             p1: Some(ci1.clone().cmW),
             p2: Some(ci2.clone().cmW),
-            p3: Some(ci3.clone().cmW),
             x: Some(cfW_u_i_x.clone()),
         };
         cfW_circuit.generate_constraints(cs.clone()).unwrap();
@@ -446,7 +441,6 @@ pub mod tests {
             r_bits: Some(r_bits.clone()),
             p1: Some(ci1.clone().cmE),
             p2: Some(cmT),
-            p3: Some(ci3.clone().cmE),
             x: Some(cfE_u_i_x.clone()),
         };
         cfE_circuit.generate_constraints(cs.clone()).unwrap();

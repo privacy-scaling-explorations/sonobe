@@ -285,12 +285,14 @@ mod tests {
         }
 
         let rng = rand::rngs::OsRng;
+        let start = Instant::now();
         let proof = DECIDERETH_FCircuit::prove(
             (g16_pk, fs_prover_params.cs_params.clone()),
             rng,
             nova.clone(),
         )
         .unwrap();
+        println!("generated Decider proof: {:?}", start.elapsed());
 
         let verified = DECIDERETH_FCircuit::<FC>::verify(
             (g16_vk.clone(), kzg_vk.clone()),
@@ -413,7 +415,7 @@ mod tests {
         let mut rng = rand::rngs::OsRng;
         let start = Instant::now();
         let (fs_prover_params, kzg_vk) = init_test_prover_params::<FC>();
-        println!("generated Nova params: {:?}", start.elapsed());
+        println!("generated Nova folding params: {:?}", start.elapsed());
         let f_circuit = FC::new(());
 
         pub type NOVA_FCircuit<FC> =
@@ -429,7 +431,10 @@ mod tests {
         let start = Instant::now();
         let (g16_pk, g16_vk) =
             Groth16::<Bn254>::circuit_specific_setup(decider_circuit.clone(), &mut rng).unwrap();
-        println!("generated G16 (Decider) params: {:?}", start.elapsed());
+        println!(
+            "generated G16 (Decider circuit) params: {:?}",
+            start.elapsed()
+        );
         (fs_prover_params, kzg_vk, g16_pk, g16_vk)
     }
 }

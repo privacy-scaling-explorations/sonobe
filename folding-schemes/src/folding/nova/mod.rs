@@ -16,7 +16,7 @@ use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 use crate::ccs::r1cs::{extract_r1cs, extract_w_x, R1CS};
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::nonnative::{
-    nonnative_field_to_field_elements, point_to_nonnative_limbs,
+    nonnative_affine_to_field_elements, nonnative_field_to_field_elements,
 };
 use crate::frontend::FCircuit;
 use crate::utils::vec::is_zero_vec;
@@ -73,8 +73,8 @@ where
         z_0: Vec<C::ScalarField>,
         z_i: Vec<C::ScalarField>,
     ) -> Result<C::ScalarField, Error> {
-        let (cmE_x, cmE_y) = point_to_nonnative_limbs::<C>(self.cmE)?;
-        let (cmW_x, cmW_y) = point_to_nonnative_limbs::<C>(self.cmW)?;
+        let (cmE_x, cmE_y) = nonnative_affine_to_field_elements::<C>(self.cmE)?;
+        let (cmW_x, cmW_y) = nonnative_affine_to_field_elements::<C>(self.cmW)?;
 
         CRH::<C::ScalarField>::evaluate(
             poseidon_config,
@@ -342,7 +342,7 @@ where
     fn prove_step(&mut self) -> Result<(), Error> {
         let augmented_F_circuit: AugmentedFCircuit<C1, C2, GC2, FC>;
 
-        if self.i > C1::ScalarField::from_le_bytes_mod_order(&std::usize::MAX.to_le_bytes()) {
+        if self.i > C1::ScalarField::from_le_bytes_mod_order(&usize::MAX.to_le_bytes()) {
             return Err(Error::MaxStep);
         }
         let mut i_bytes: [u8; 8] = [0; 8];
@@ -392,22 +392,18 @@ where
                 i_usize: Some(0),
                 z_0: Some(self.z_0.clone()), // = z_i
                 z_i: Some(self.z_i.clone()),
-                u_i: Some(self.u_i.clone()), // = dummy
+                u_i_cmW: Some(self.u_i.cmW), // = dummy
                 U_i: Some(self.U_i.clone()), // = dummy
-                U_i1: Some(U_i1.clone()),
-                r_nonnat: Some(r_Fq),
+                U_i1_cmE: Some(U_i1.cmE),
+                U_i1_cmW: Some(U_i1.cmW),
                 cmT: Some(cmT),
                 F: self.F.clone(),
                 x: Some(u_i1_x),
-                cf1_u_i: None,
-                cf2_u_i: None,
+                cf1_u_i_cmW: None,
+                cf2_u_i_cmW: None,
                 cf_U_i: None,
-                cf1_U_i1: None,
-                cf_U_i1: None,
                 cf1_cmT: None,
                 cf2_cmT: None,
-                cf1_r_nonnat: None,
-                cf2_r_nonnat: None,
                 cf_x: Some(cf_u_i1_x),
             };
 
@@ -451,15 +447,14 @@ where
             };
 
             // fold self.cf_U_i + cfW_U -> folded running with cfW
-            let (_cfW_w_i, cfW_u_i, cfW_W_i1, cfW_U_i1, cfW_cmT, cfW_r1_Fq) = self
-                .fold_cyclefold_circuit(
-                    self.cf_W_i.clone(), // CycleFold running instance witness
-                    self.cf_U_i.clone(), // CycleFold running instance
-                    cfW_u_i_x,
-                    cfW_circuit,
-                )?;
+            let (_cfW_w_i, cfW_u_i, cfW_W_i1, cfW_U_i1, cfW_cmT, _) = self.fold_cyclefold_circuit(
+                self.cf_W_i.clone(), // CycleFold running instance witness
+                self.cf_U_i.clone(), // CycleFold running instance
+                cfW_u_i_x,
+                cfW_circuit,
+            )?;
             // fold [the output from folding self.cf_U_i + cfW_U] + cfE_U = folded_running_with_cfW + cfE
-            let (_cfE_w_i, cfE_u_i, cf_W_i1, cf_U_i1, cf_cmT, cf_r2_Fq) =
+            let (_cfE_w_i, cfE_u_i, cf_W_i1, cf_U_i1, cf_cmT, _) =
                 self.fold_cyclefold_circuit(cfW_W_i1, cfW_U_i1.clone(), cfE_u_i_x, cfE_circuit)?;
 
             cf_u_i1_x = cf_U_i1.hash_cyclefold(&self.poseidon_config)?;
@@ -471,23 +466,19 @@ where
                 i_usize: Some(i_usize),
                 z_0: Some(self.z_0.clone()),
                 z_i: Some(self.z_i.clone()),
-                u_i: Some(self.u_i.clone()),
+                u_i_cmW: Some(self.u_i.cmW),
                 U_i: Some(self.U_i.clone()),
-                U_i1: Some(U_i1.clone()),
-                r_nonnat: Some(r_Fq),
+                U_i1_cmE: Some(U_i1.cmE),
+                U_i1_cmW: Some(U_i1.cmW),
                 cmT: Some(cmT),
                 F: self.F.clone(),
                 x: Some(u_i1_x),
                 // cyclefold values
-                cf1_u_i: Some(cfW_u_i.clone()),
-                cf2_u_i: Some(cfE_u_i.clone()),
+                cf1_u_i_cmW: Some(cfW_u_i.cmW),
+                cf2_u_i_cmW: Some(cfE_u_i.cmW),
                 cf_U_i: Some(self.cf_U_i.clone()),
-                cf1_U_i1: Some(cfW_U_i1.clone()),
-                cf_U_i1: Some(cf_U_i1.clone()),
                 cf1_cmT: Some(cfW_cmT),
                 cf2_cmT: Some(cf_cmT),
-                cf1_r_nonnat: Some(cfW_r1_Fq),
-                cf2_r_nonnat: Some(cf_r2_Fq),
                 cf_x: Some(cf_u_i1_x),
             };
 
@@ -523,11 +514,11 @@ where
 
         // set values for next iteration
         self.i += C1::ScalarField::one();
-        self.z_i = z_i1.clone();
+        self.z_i = z_i1;
         self.w_i = Witness::<C1>::new(w_i1, self.r1cs.A.n_rows);
         self.u_i = self.w_i.commit::<CS1>(&self.cs_params, x_i1)?;
-        self.W_i = W_i1.clone();
-        self.U_i = U_i1.clone();
+        self.W_i = W_i1;
+        self.U_i = U_i1;
 
         #[cfg(test)]
         {

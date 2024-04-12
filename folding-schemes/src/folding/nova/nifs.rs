@@ -203,14 +203,13 @@ pub mod tests {
     use ark_crypto_primitives::sponge::poseidon::PoseidonConfig;
     use ark_ff::{BigInteger, PrimeField};
     use ark_pallas::{Fr, Projective};
-    use ark_std::{ops::Mul, UniformRand, Zero};
+    use ark_std::{ops::Mul, UniformRand};
 
     use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z};
     use crate::commitment::pedersen::{Params as PedersenParams, Pedersen};
     use crate::folding::nova::circuits::ChallengeGadget;
     use crate::folding::nova::traits::NovaR1CS;
     use crate::transcript::poseidon::{poseidon_test_config, PoseidonTranscript};
-    use crate::utils::vec::vec_scalar_mul;
 
     #[allow(clippy::type_complexity)]
     pub(crate) fn prepare_simple_fold_inputs<C>() -> (

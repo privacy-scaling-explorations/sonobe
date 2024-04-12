@@ -22,7 +22,7 @@ use core::{borrow::Borrow, marker::PhantomData};
 use super::{circuits::ChallengeGadget, nifs::NIFS};
 use crate::ccs::r1cs::R1CS;
 use crate::commitment::{pedersen::Params as PedersenParams, CommitmentScheme};
-use crate::folding::circuits::nonnative::{point_to_nonnative_limbs, NonNativeAffineVar};
+use crate::folding::circuits::nonnative::{nonnative_affine_to_field_elements, NonNativeAffineVar};
 use crate::folding::nova::{
     circuits::{CommittedInstanceVar, CF1, CF2},
     CommittedInstance, Nova, Witness,
@@ -560,10 +560,8 @@ where
         poseidon_config: &PoseidonConfig<C::ScalarField>,
         U_i: CommittedInstance<C>,
     ) -> Result<(C::ScalarField, C::ScalarField), Error> {
-        let (cmE_x_limbs, cmE_y_limbs): (Vec<C::ScalarField>, Vec<C::ScalarField>) =
-            point_to_nonnative_limbs::<C>(U_i.cmE)?;
-        let (cmW_x_limbs, cmW_y_limbs): (Vec<C::ScalarField>, Vec<C::ScalarField>) =
-            point_to_nonnative_limbs::<C>(U_i.cmW)?;
+        let (cmE_x_limbs, cmE_y_limbs) = nonnative_affine_to_field_elements(U_i.cmE)?;
+        let (cmW_x_limbs, cmW_y_limbs) = nonnative_affine_to_field_elements(U_i.cmW)?;
 
         let transcript = &mut PoseidonTranscript::<C>::new(poseidon_config);
         // compute the KZG challenges, which are computed in-circuit and checked that it matches
@@ -586,16 +584,10 @@ where
         let mut transcript =
             PoseidonTranscriptVar::<CF1<C>>::new(cs.clone(), &poseidon_config.clone());
 
-        let cmW_x_limbs = U_i.cmW.x.to_constraint_field()?;
-        let cmW_y_limbs = U_i.cmW.y.to_constraint_field()?;
-        transcript.absorb_vec(&cmW_x_limbs)?;
-        transcript.absorb_vec(&cmW_y_limbs)?;
+        transcript.absorb_vec(&U_i.cmW.to_constraint_field()?[..])?;
         let challenge_W = transcript.get_challenge()?;
 
-        let cmE_x_limbs = U_i.cmE.x.to_constraint_field()?;
-        let cmE_y_limbs = U_i.cmE.y.to_constraint_field()?;
-        transcript.absorb_vec(&cmE_x_limbs)?;
-        transcript.absorb_vec(&cmE_y_limbs)?;
+        transcript.absorb_vec(&U_i.cmE.to_constraint_field()?[..])?;
         let challenge_E = transcript.get_challenge()?;
 
         Ok((challenge_W, challenge_E))

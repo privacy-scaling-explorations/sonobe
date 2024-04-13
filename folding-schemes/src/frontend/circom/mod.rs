@@ -44,7 +44,9 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
         let witness = self
             .circom_wrapper
             .extract_witness(&[("ivc_input".to_string(), input_num_bigint)])
-            .map_err(|e| Error::Other(format!("Circom computation failed: {}", e)))?;
+            .map_err(|e| {
+                Error::WitnessCalculationError(format!("Failed to calculate witness: {}", e))
+            })?;
 
         // Extracts the z_i1(next state) from the witness vector.
         let z_i1 = witness[1..1 + self.state_len()].to_vec();
@@ -107,7 +109,7 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use ark_bn254::Fr;
+    use ark_pallas::Fr;
     use ark_r1cs_std::alloc::AllocVar;
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 
@@ -155,14 +157,6 @@ pub mod tests {
             PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
         let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path));
-
-        /*
-        let wrapper_circuit = crate::frontend::tests::WrapperCircuit {
-            FC: circom_fcircuit,
-            z_i: Some(vec![Fr::from(3u32)]),
-            z_i1: Some(vec![Fr::from(35u32)]),
-        };
-        */
 
         // Allocates z_i1 by using step_native function.
         let z_i = vec![Fr::from(3_u32)];

@@ -66,20 +66,23 @@ impl<F: PrimeField> CircomWrapper<F> {
         &self,
         inputs: &[(String, Vec<BigInt>)],
     ) -> Result<Vec<BigInt>, Error> {
-        let mut calculator = WitnessCalculator::new(&self.wasm_filepath)
-            .map_err(|_| Error::Other("Could not create new WitnessCalculator".to_string()))?;
+        let mut calculator = WitnessCalculator::new(&self.wasm_filepath).map_err(|e| {
+            Error::WitnessCalculationError(format!("Failed to create WitnessCalculator: {}", e))
+        })?;
         calculator
             .calculate_witness(inputs.iter().cloned(), true)
-            .map_err(|_| Error::Other("Failed to calculate witness".to_string()))
+            .map_err(|e| {
+                Error::WitnessCalculationError(format!("Failed to calculate witness: {}", e))
+            })
     }
 
     // Converts a num_bigint::BigInt to a PrimeField::BigInt.
     pub fn num_bigint_to_ark_bigint(&self, value: &BigInt) -> Result<F::BigInt, Error> {
         let big_uint = value
             .to_biguint()
-            .ok_or(Error::Other("BigInt is negative".to_string()))?;
+            .ok_or_else(|| Error::BigIntConversionError("BigInt is negative".to_string()))?;
         F::BigInt::try_from(big_uint).map_err(|_| {
-            Error::Other("Failed to convert num_bigint::BigInt to PrimeField::BigInt".to_string())
+            Error::BigIntConversionError("Failed to convert to PrimeField::BigInt".to_string())
         })
     }
 

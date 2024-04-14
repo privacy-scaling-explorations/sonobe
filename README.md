@@ -5,7 +5,8 @@ An experimental folding schemes library implemented jointly by [0xPARC](https://
 <span>
 <img align="left" style="width:30%;min-width:250px;margin-bottom:20px;" src="https://privacy-scaling-explorations.github.io/sonobe-docs/imgs/sonobe.png">
 <span align="right" style="width:65%;">
-<b>Sonobe</b> is a modular library to fold circuit instances in an Incremental Verifiable computation (IVC) style. It features multiple folding schemes and decider setups, allowing users to pick the scheme which best fit their needs. <b>Sonobe</b> also provides a way for developers to generate an EVM-verifiable zkSNARK proof of correct folding.
+<b>Sonobe</b> is a modular library to fold circuit instances in an Incremental Verifiable computation (IVC) style. It features multiple folding schemes and decider setups, allowing users to pick the scheme which best fit their needs.
+<!-- <b>Sonobe</b> also provides a way for developers to generate an EVM-verifiable zkSNARK proof of correct folding. -->
 <br><br>
 Sonobe is conceived as an exploratory effort with the aim to push forward the practical side of folding schemes and advancing towards onchain (EVM) verification.
 <br><br>
@@ -13,10 +14,10 @@ Sonobe is conceived as an exploratory effort with the aim to push forward the pr
 </span>
 </span>
 
-<br>
+<br><br>
 
 > **Warning**: experimental code, do not use in production.<br>
-> The code has not been audited. Several optimizations are also pending. Our focus so far has been on (1) implementing the Nova + CycleFold proving system and (2) achieving onchain (EVM) verification. See the [schemes implemented]() section for more details.
+> The code has not been audited. Several optimizations are also pending. Our focus so far has been on implementing the Nova and CycleFold schemes and achieving onchain (EVM) verification.
 
 ## Schemes implemented
 
@@ -39,21 +40,15 @@ Available frontends to define the folded circuit:
 
 ## Usage
 
-Detailed usage and design documentation can be found [here](https://privacy-scaling-explorations.github.io/sonobe-docs/).
-
-### Folding Schemes and IVC
-
-A folding scheme reduces the task of checking multiple instances in some relation to the task of checking a single one. The canonical definition of a folding scheme entailed computing a folded instance as a random linear combination of the original instances. 
-
-A folding scheme can also be used as a primitive to achieve incrementally verifiable computation (IVC). One such example is [Nova](https://eprint.iacr.org/2021/370.pdf), which showed an IVC scheme with interesting performance properties. Note that an IVC proof is neither succint nor zero-knowledge. Hence, a final ("decider") zkSNARK will be required to prove the correctness of an IVC result.
-
 ### Docs
 
-Usage and design documentation can be found [here](https://privacy-scaling-explorations.github.io/sonobe-docs/).
+Detailed usage and design documentation can be found at [Sonobe docs](https://privacy-scaling-explorations.github.io/sonobe-docs/).
 
 ### Folding Schemes introduction
 
-Folding schemes are used in the context of iterative computations, allowing to prove that a function $F$ applied $n$ times to an initial input $z_0$ results in $z_n$.
+Folding schemes efficitently achieve incrementally verifiable computation (IVC), where the prover recursively proves the correct execution of the incremental computations.
+Once the IVC iterations are completed, the IVC proof is compressed into the Decider proof, generating a zkSNARK proof which proves that applying $n$ times the $F$ function (the circuit being folded) to the initial state ($z_0$) results in the final state ($z_n$).
+
 
 <p align="center">
     <img src="https://privacy-scaling-explorations.github.io/sonobe-docs/imgs/folding-main-idea-diagram.png" style="width:70%;" />
@@ -63,14 +58,15 @@ Where $w_i$ are the external witnesses used at each iterative step.
 
 In other words, it allows to prove efficiently that $z_n = F(...~F(F(F(F(z_0, w_0), w_1), w_2), ...), w_{n-1})$.
 
+
 ### Overview of sonobe
 
-Sonobe is a folding schemes modular library to fold R1CS instances in an Incremental Verifiable computation (IVC) style. It also provides the tools required to generate a zkSNARK out of an IVC proof and to verify it on Ethereum's EVM.
+Sonobe is a folding schemes modular library to fold arithmetic circuit instances in an incremental verifiable computation (IVC) style. It also provides the tools required to generate a zkSNARK proof out of an IVC proof and to verify it on Ethereum's EVM.
 
 The development flow using Sonobe looks like:
 
 1. Define a circuit to be folded
-2. Set which folding scheme to be used (eg. Nova)
+2. Set which folding scheme to be used (eg. Nova with CycleFold)
 3. Set a final decider to generate the final proof (eg. Spartan over Pasta curves)
 4. Generate the the decider verifier
 
@@ -80,7 +76,7 @@ The development flow using Sonobe looks like:
 
 The folding scheme and decider used can be swapped respectively with a few lines of code (eg. switching from a Decider that uses two Spartan proofs over a cycle of curves, to a Decider that uses a single Groth16 proof over the BN254 to be verified in an Ethereum smart contract).
 
-For more details about usage and design, you can read Sonobe's [docs](https://privacy-scaling-explorations.github.io/sonobe-docs/).
+For more details about usage and design, you can read [Sonobe docs](https://privacy-scaling-explorations.github.io/sonobe-docs/).
 
 Complete examples can be found at [folding-schemes/examples](https://github.com/privacy-scaling-explorations/sonobe/tree/main/folding-schemes/examples)
 
@@ -92,6 +88,6 @@ Sonobe is [MIT Licensed](https://github.com/privacy-scaling-explorations/sonobe/
 
 This project builds on top of multiple [arkworks](https://github.com/arkworks-rs) libraries. It uses Espresso system's [virtual polynomial](https://github.com/EspressoSystems/hyperplonk/blob/main/arithmetic/src/virtual_polynomial.rs) abstraction and its [SumCheck](https://github.com/EspressoSystems/hyperplonk/tree/main/subroutines/src/poly_iop/sum_check) implementation.
 
-Solidity templates used in `nova_cyclefold_verifier.sol`, use [iden3's](https://github.com/iden3/snarkjs/blob/master/templates/verifier_groth16.sol.ejs) Groth16 implementation and a KZG10 Solidity template adapted from [weijiekoh/libkzg](https://github.com/weijiekoh/libkzg).
+The Solidity templates used in `nova_cyclefold_verifier.sol`, use [iden3's](https://github.com/iden3/snarkjs/blob/master/templates/verifier_groth16.sol.ejs) Groth16 implementation and a KZG10 Solidity template adapted from [weijiekoh/libkzg](https://github.com/weijiekoh/libkzg).
 
 Also, this project has been possible thanks to conversations with [Srinath Setty](https://github.com/srinathsetty), [Lev Soukhanov](https://github.com/levs57), [Matej Penciak](https://github.com/mpenciak), [Adrian Hamelink](https://github.com/adr1anh), [François Garillot](https://github.com/huitseeker), [Daniel Marin](https://github.com/danielmarinq), [Wyatt Benno](https://github.com/wyattbenno777) and [Nikkolas Gailly](https://github.com/nikkolasg).

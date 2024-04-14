@@ -16,6 +16,8 @@ use ark_relations::r1cs::{ConstraintSystemRef, Namespace, SynthesisError};
 use num_bigint::BigUint;
 use num_integer::Integer;
 
+use crate::utils::gadgets::{MatrixGadget, SparseMatrixVar, VectorGadget};
+
 /// `LimbVar` represents a single limb of a non-native unsigned integer in the
 /// circuit.
 /// The limb value `v` should be small enough to fit into `FpVar`, and we also
@@ -83,6 +85,26 @@ impl<F: PrimeField> LimbVar<F> {
         if ubound < F::MODULUS_MINUS_ONE_DIV_TWO.into() {
             Some(Self {
                 v: &self.v + &other.v,
+                ub: ubound,
+            })
+        } else {
+            None
+        }
+    }
+
+    /// Add multiple `LimbVar`s.
+    /// Returns `None` if the upper bound of the sum is too large, i.e.,
+    /// greater than `F::MODULUS_MINUS_ONE_DIV_TWO`.
+    /// Otherwise, returns the sum as a `LimbVar`.
+    pub fn add_many(limbs: &[Self]) -> Option<Self> {
+        let ubound = limbs.iter().map(|l| &l.ub).sum();
+        if ubound < F::MODULUS_MINUS_ONE_DIV_TWO.into() {
+            Some(Self {
+                v: if limbs.is_constant() {
+                    FpVar::constant(limbs.value().unwrap_or_default().into_iter().sum())
+                } else {
+                    limbs.iter().map(|l| &l.v).sum()
+                },
                 ub: ubound,
             })
         } else {
@@ -169,8 +191,8 @@ impl<F: PrimeField> NonNativeUintVar<F> {
         // = 248.7 bits and is less than the native field `Fr`.
         // Thus, 55 allows us to compute `Az∘Bz` without the expensive alignment
         // operation.
-        // 
-        // TODO (@winderica): either make it a global const, or compute an 
+        //
+        // TODO (@winderica): either make it a global const, or compute an
         // optimal value based on the modulus size
         55
     }
@@ -563,12 +585,18 @@ impl<F: PrimeField> NonNativeUintVar<F> {
         if self.is_constant() || other.is_constant() {
             // Use the naive approach for constant operands, which costs no
             // constraints.
-            let mut z = vec![LimbVar::zero(); len];
-            for i in 0..self.0.len() {
-                for j in 0..other.0.len() {
-                    z[i + j] = z[i + j].add(&self.0[i].mul(&other.0[j]).unwrap()).unwrap();
-                }
-            }
+            let z = (0..len)
+                .map(|i| {
+                    let start = max(i + 1, other.0.len()) - other.0.len();
+                    let end = min(i + 1, self.0.len());
+                    LimbVar::add_many(
+                        &(start..end)
+                            .map(|j| self.0[j].mul(&other.0[i - j]))
+                            .collect::<Option<Vec<_>>>()?,
+                    )
+                })
+                .collect::<Option<Vec<_>>>()
+                .unwrap();
             return Ok(Self(z));
         }
         let cs = self.cs().or(other.cs());
@@ -590,6 +618,7 @@ impl<F: PrimeField> NonNativeUintVar<F> {
             }
             z.into_iter()
                 .map(|(v, ub)| {
+                    assert!(ub < F::MODULUS_MINUS_ONE_DIV_TWO.into());
                     Ok(LimbVar {
                         v: FpVar::new_variable(cs.clone(), || Ok(v), mode)?,
                         ub,
@@ -598,25 +627,39 @@ impl<F: PrimeField> NonNativeUintVar<F> {
                 .collect::<Result<Vec<_>, _>>()?
         };
         for c in 1..=len {
-            // `l = Σ self[i] c^i`
-            let mut l = FpVar::<F>::zero();
-            // `r = Σ other[i] c^i`
-            let mut r = FpVar::<F>::zero();
-            // `o = Σ z[i] c^i`
-            let mut o = FpVar::<F>::zero();
-            // `t` stores the current power of `c`
+            let c = F::from(c as u64);
             let mut t = F::one();
-            #[allow(clippy::needless_range_loop)]
-            for i in 0..len {
-                if i < self.0.len() {
-                    l += &self.0[i].v * t;
-                }
-                if i < other.0.len() {
-                    r += &other.0[i].v * t;
-                }
-                o += &z[i].v * t;
-                t *= F::from(c as u64);
+            let mut c_powers = vec![];
+            for _ in 0..len {
+                c_powers.push(t);
+                t *= c;
             }
+            // `l = Σ self[i] c^i`
+            let l = self
+                .0
+                .iter()
+                .zip(&c_powers)
+                .map(|(v, t)| (&v.v * *t))
+                .collect::<Vec<_>>()
+                .iter()
+                .sum::<FpVar<_>>();
+            // `r = Σ other[i] c^i`
+            let r = other
+                .0
+                .iter()
+                .zip(&c_powers)
+                .map(|(v, t)| (&v.v * *t))
+                .collect::<Vec<_>>()
+                .iter()
+                .sum::<FpVar<_>>();
+            // `o = Σ z[i] c^i`
+            let o = z
+                .iter()
+                .zip(&c_powers)
+                .map(|(v, t)| &v.v * *t)
+                .collect::<Vec<_>>()
+                .iter()
+                .sum::<FpVar<_>>();
             // Enforce `o = l * r`
             l.mul_equals(&r, &o)?;
         }
@@ -739,6 +782,66 @@ pub fn nonnative_field_to_field_elements<TargetField: PrimeField, BaseField: Pri
     limbs
 }
 
+impl<F: PrimeField> VectorGadget<NonNativeUintVar<F>> for [NonNativeUintVar<F>] {
+    fn add(&self, other: &Self) -> Result<Vec<NonNativeUintVar<F>>, SynthesisError> {
+        Ok(self
+            .iter()
+            .zip(other.iter())
+            .map(|(x, y)| x.add_no_align(y))
+            .collect())
+    }
+
+    fn hadamard(&self, other: &Self) -> Result<Vec<NonNativeUintVar<F>>, SynthesisError> {
+        self.iter()
+            .zip(other.iter())
+            .map(|(x, y)| x.mul_no_align(y))
+            .collect()
+    }
+
+    fn mul_scalar(
+        &self,
+        other: &NonNativeUintVar<F>,
+    ) -> Result<Vec<NonNativeUintVar<F>>, SynthesisError> {
+        self.iter().map(|x| x.mul_no_align(other)).collect()
+    }
+}
+
+impl<F: PrimeField, CF: PrimeField> MatrixGadget<NonNativeUintVar<CF>>
+    for SparseMatrixVar<F, CF, NonNativeUintVar<CF>>
+{
+    fn mul_vector(
+        &self,
+        v: &[NonNativeUintVar<CF>],
+    ) -> Result<Vec<NonNativeUintVar<CF>>, SynthesisError> {
+        Ok(self
+            .coeffs
+            .iter()
+            .map(|row| {
+                let len = row
+                    .iter()
+                    .map(|(value, col_i)| value.0.len() + v[*col_i].0.len() - 1)
+                    .max()
+                    .unwrap_or(0);
+                let limbs = (0..len)
+                    .map(|i| {
+                        LimbVar::add_many(
+                            &row.iter()
+                                .flat_map(|(value, col_i)| {
+                                    let start = max(i + 1, v[*col_i].0.len()) - v[*col_i].0.len();
+                                    let end = min(i + 1, value.0.len());
+                                    (start..end).map(|j| value.0[j].mul(&v[*col_i].0[i - j]))
+                                })
+                                .collect::<Option<Vec<_>>>()?,
+                        )
+                    })
+                    .collect::<Option<Vec<_>>>()
+                    .unwrap();
+                NonNativeUintVar(limbs)
+            })
+            .collect())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::error::Error;
@@ -852,7 +955,8 @@ mod tests {
         let b_var = Vec::<NonNativeUintVar<Fr>>::new_witness(cs.clone(), || Ok(b))?;
         let c_var = NonNativeUintVar::new_witness(cs.clone(), || Ok(c))?;
 
-        let mut r_var = NonNativeUintVar::new_constant(cs.clone(), BoundedBigUint(BigUint::zero(), 0))?;
+        let mut r_var =
+            NonNativeUintVar::new_constant(cs.clone(), BoundedBigUint(BigUint::zero(), 0))?;
         for (a, b) in a_var.into_iter().zip(b_var.into_iter()) {
             r_var = r_var.add_no_align(&a.mul_no_align(&b)?);
         }

@@ -1,65 +1,44 @@
 use ark_ff::PrimeField;
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
-    fields::FieldVar,
+    fields::{fp::FpVar, FieldVar},
+    R1CSVar,
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
 use core::{borrow::Borrow, marker::PhantomData};
 
 use crate::utils::vec::SparseMatrix;
 
-pub fn mat_vec_mul_sparse<F: PrimeField, CF: PrimeField, FV: FieldVar<F, CF>>(
-    m: SparseMatrixVar<F, CF, FV>,
-    v: Vec<FV>,
-) -> Vec<FV> {
-    let mut res = vec![FV::zero(); m.n_rows];
-    for (row_i, row) in m.coeffs.iter().enumerate() {
-        for (value, col_i) in row.iter() {
-            if value.value().unwrap() == F::one() {
-                // no need to multiply by 1
-                res[row_i] += v[*col_i].clone();
-                continue;
-            }
-            res[row_i] += value.clone().mul(&v[*col_i].clone());
+pub trait MatrixGadget<FV> {
+    fn mul_vector(&self, v: &[FV]) -> Result<Vec<FV>, SynthesisError>;
+}
+
+pub trait VectorGadget<FV> {
+    fn add(&self, other: &Self) -> Result<Vec<FV>, SynthesisError>;
+
+    fn mul_scalar(&self, other: &FV) -> Result<Vec<FV>, SynthesisError>;
+
+    fn hadamard(&self, other: &Self) -> Result<Vec<FV>, SynthesisError>;
+}
+
+impl<F: PrimeField> VectorGadget<FpVar<F>> for [FpVar<F>] {
+    fn add(&self, other: &Self) -> Result<Vec<FpVar<F>>, SynthesisError> {
+        if self.len() != other.len() {
+            return Err(SynthesisError::Unsatisfiable);
         }
+        Ok(self.iter().zip(other.iter()).map(|(a, b)| a + b).collect())
     }
-    res
-}
-pub fn vec_add<F: PrimeField, CF: PrimeField, FV: FieldVar<F, CF>>(
-    a: &Vec<FV>,
-    b: &Vec<FV>,
-) -> Result<Vec<FV>, SynthesisError> {
-    if a.len() != b.len() {
-        return Err(SynthesisError::Unsatisfiable);
+
+    fn mul_scalar(&self, c: &FpVar<F>) -> Result<Vec<FpVar<F>>, SynthesisError> {
+        Ok(self.iter().map(|a| a * c).collect())
     }
-    let mut r: Vec<FV> = vec![FV::zero(); a.len()];
-    for i in 0..a.len() {
-        r[i] = a[i].clone() + b[i].clone();
+
+    fn hadamard(&self, other: &Self) -> Result<Vec<FpVar<F>>, SynthesisError> {
+        if self.len() != other.len() {
+            return Err(SynthesisError::Unsatisfiable);
+        }
+        Ok(self.iter().zip(other.iter()).map(|(a, b)| a * b).collect())
     }
-    Ok(r)
-}
-pub fn vec_scalar_mul<F: PrimeField, CF: PrimeField, FV: FieldVar<F, CF>>(
-    vec: &Vec<FV>,
-    c: &FV,
-) -> Vec<FV> {
-    let mut result = vec![FV::zero(); vec.len()];
-    for (i, a) in vec.iter().enumerate() {
-        result[i] = a.clone() * c;
-    }
-    result
-}
-pub fn hadamard<F: PrimeField, CF: PrimeField, FV: FieldVar<F, CF>>(
-    a: &Vec<FV>,
-    b: &Vec<FV>,
-) -> Result<Vec<FV>, SynthesisError> {
-    if a.len() != b.len() {
-        return Err(SynthesisError::Unsatisfiable);
-    }
-    let mut r: Vec<FV> = vec![FV::zero(); a.len()];
-    for i in 0..a.len() {
-        r[i] = a[i].clone() * b[i].clone();
-    }
-    Ok(r)
 }
 
 #[derive(Debug, Clone)]
@@ -106,5 +85,25 @@ where
                 coeffs,
             })
         })
+    }
+}
+
+impl<F: PrimeField> MatrixGadget<FpVar<F>> for SparseMatrixVar<F, F, FpVar<F>> {
+    fn mul_vector(&self, v: &[FpVar<F>]) -> Result<Vec<FpVar<F>>, SynthesisError> {
+        Ok(self
+            .coeffs
+            .iter()
+            .map(|row| {
+                let products = row
+                    .iter()
+                    .map(|(value, col_i)| value * &v[*col_i])
+                    .collect::<Vec<_>>();
+                if products.is_constant() {
+                    FpVar::constant(products.value().unwrap_or_default().into_iter().sum())
+                } else {
+                    products.iter().sum()
+                }
+            })
+            .collect())
     }
 }

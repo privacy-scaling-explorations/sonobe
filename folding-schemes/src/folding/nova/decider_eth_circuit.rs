@@ -36,7 +36,7 @@ use crate::transcript::{
     Transcript, TranscriptVar,
 };
 use crate::utils::{
-    gadgets::{hadamard, mat_vec_mul_sparse, vec_add, vec_scalar_mul, SparseMatrixVar},
+    gadgets::{MatrixGadget, SparseMatrixVar, VectorGadget},
     vec::poly_from_vec,
 };
 use crate::Error;
@@ -51,17 +51,15 @@ impl RelaxedR1CSGadget {
         u: FpVar<F>,
         z: Vec<FpVar<F>>,
     ) -> Result<(), SynthesisError> {
-        let Az = mat_vec_mul_sparse(r1cs.A, z.clone());
-        let Bz = mat_vec_mul_sparse(r1cs.B, z.clone());
-        let Cz = mat_vec_mul_sparse(r1cs.C, z.clone());
-        let uCz = vec_scalar_mul(&Cz, &u);
-        let uCzE = vec_add(&uCz, &E)?;
-        let AzBz = hadamard(&Az, &Bz)?;
-        for i in 0..AzBz.len() {
-            AzBz[i].enforce_equal(&uCzE[i].clone())?;
-        }
+        let Az = r1cs.A.mul_vector(&z)?;
+        let Bz = r1cs.B.mul_vector(&z)?;
+        let Cz = r1cs.C.mul_vector(&z)?;
+        let uCzE = Cz.mul_scalar(&u)?.add(&E)?;
+        let AzBz = Az.hadamard(&Bz)?;
+        AzBz.enforce_equal(&uCzE)?;
         Ok(())
     }
+
     /// performs the RelaxedR1CS check for non-native variables (Az∘Bz==uCz+E)
     pub fn check_nonnative<F: PrimeField, CF: PrimeField>(
         r1cs: R1CSVar<F, CF, NonNativeUintVar<CF>>,
@@ -69,35 +67,18 @@ impl RelaxedR1CSGadget {
         u: NonNativeUintVar<CF>,
         z: Vec<NonNativeUintVar<CF>>,
     ) -> Result<(), SynthesisError> {
-        for (((a, b), c), e) in r1cs
-            .A
-            .coeffs
-            .iter()
-            .zip(&r1cs.B.coeffs)
-            .zip(&r1cs.C.coeffs)
-            .zip(&E)
-        {
-            // First we do addition and multiplication without mod F's order
-            let mut az = NonNativeUintVar::new_constant(ConstraintSystemRef::None, F::zero())?;
-            for (value, col_i) in a.iter() {
-                az = az.add_no_align(&value.mul_no_align(&z[*col_i])?);
-            }
-            let mut bz = NonNativeUintVar::new_constant(ConstraintSystemRef::None, F::zero())?;
-            for (value, col_i) in b.iter() {
-                bz = bz.add_no_align(&value.mul_no_align(&z[*col_i])?);
-            }
-            let mut cz = NonNativeUintVar::new_constant(ConstraintSystemRef::None, F::zero())?;
-            for (value, col_i) in c.iter() {
-                cz = cz.add_no_align(&value.mul_no_align(&z[*col_i])?);
-            }
+        // First we do addition and multiplication without mod F's order
+        let Az = r1cs.A.mul_vector(&z)?;
+        let Bz = r1cs.B.mul_vector(&z)?;
+        let Cz = r1cs.C.mul_vector(&z)?;
+        let uCzE = Cz.mul_scalar(&u)?.add(&E)?;
+        let AzBz = Az.hadamard(&Bz)?;
 
-            // Then we compare the results by checking if they are congruent
-            // modulo the field order
-            az.mul_no_align(&bz)?
-                .enforce_congruent::<F>(&cz.mul_no_align(&u)?.add_no_align(e))?;
-        }
-
-        Ok(())
+        // Then we compare the results by checking if they are congruent
+        // modulo the field order
+        AzBz.into_iter()
+            .zip(uCzE)
+            .try_for_each(|(a, b)| a.enforce_congruent::<F>(&b))
     }
 }
 

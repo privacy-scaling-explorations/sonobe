@@ -1,5 +1,0 @@
-{
-    "rust-analyzer.cargo.extraEnv": {
-        "LIBCLANG_PATH": "/Library/Developer/CommandLineTools/usr/lib/"
-    }
-}

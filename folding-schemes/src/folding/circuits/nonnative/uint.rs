@@ -411,16 +411,28 @@ impl<F: PrimeField> NonNativeUintVar<F> {
                 // Start the next group
                 i = j;
             }
-            let mut rest = LimbVar::zero();
-            for v in &(if i < self.0.len() { self } else { other }).0[i..] {
-                // Add the remaining limbs to `rest`.
-                // Note that there should be at most one remaining non-zero limb
-                // in `self` or `other`, and all the following limbs should be
-                // zero.
-                // TODO (@winderica): prove this?
-                rest = rest.add(v).unwrap();
-            }
-            (steps, x_grouped, y_grouped, rest.v)
+            let remaining_limbs = &(if i < self.0.len() { self } else { other }).0[i..];
+            let rest = if remaining_limbs.is_empty() {
+                FpVar::zero()
+            } else {
+                // If there is any remaining limb, the first one should be the
+                // final carry (which will be checked later), and the following
+                // ones should be zero.
+
+                // Enforce the remaining limbs to be zero.
+                // Instead of doing that one by one, we check if their sum is
+                // zero using a single constraint.
+                // This is sound, as the upper bounds of the limbs and their sum
+                // are guaranteed to be less than `F::MODULUS_MINUS_ONE_DIV_TWO`
+                // (i.e., all of them are "non-negative"), implying that all
+                // limbs should be zero to make the sum zero.
+                LimbVar::add_many(&remaining_limbs[1..])
+                    .unwrap()
+                    .v
+                    .enforce_equal(&FpVar::zero())?;
+                remaining_limbs[0].v.clone()
+            };
+            (steps, x_grouped, y_grouped, rest)
         };
         let n = steps.len();
         // `c` stores the current carry of `x_i - y_i`

@@ -1,4 +1,4 @@
-# sonobe
+# sonobe [![](https://img.shields.io/badge/Sonobe-Docs-blue)](https://privacy-scaling-explorations.github.io/sonobe-docs/)
 
 An experimental folding schemes library implemented jointly by [0xPARC](https://0xparc.org/) and [PSE](https://pse.dev).
 
@@ -6,7 +6,6 @@ An experimental folding schemes library implemented jointly by [0xPARC](https://
 <img align="left" style="width:30%;min-width:250px;margin-bottom:20px;" src="https://privacy-scaling-explorations.github.io/sonobe-docs/imgs/sonobe.png">
 <span align="right" style="width:65%;">
 <b>Sonobe</b> is a modular library to fold circuit instances in an Incremental Verifiable computation (IVC) style. It features multiple folding schemes and decider setups, allowing users to pick the scheme which best fit their needs.
-<!-- <b>Sonobe</b> also provides a way for developers to generate an EVM-verifiable zkSNARK proof of correct folding. -->
 <br><br>
 Sonobe is conceived as an exploratory effort with the aim to push forward the practical side of folding schemes and advancing towards onchain (EVM) verification.
 <br><br>
@@ -76,7 +75,7 @@ The development flow using Sonobe looks like:
 
 The folding scheme and decider used can be swapped respectively with a few lines of code (eg. switching from a Decider that uses two Spartan proofs over a cycle of curves, to a Decider that uses a single Groth16 proof over the BN254 to be verified in an Ethereum smart contract).
 
-For more details about usage and design, you can read [Sonobe docs](https://privacy-scaling-explorations.github.io/sonobe-docs/).
+The [Sonobe docs](https://privacy-scaling-explorations.github.io/sonobe-docs/) contain more details about the usage and design of the library.
 
 Complete examples can be found at [folding-schemes/examples](https://github.com/privacy-scaling-explorations/sonobe/tree/main/folding-schemes/examples)
 
@@ -88,6 +87,6 @@ Sonobe is [MIT Licensed](https://github.com/privacy-scaling-explorations/sonobe/
 
 This project builds on top of multiple [arkworks](https://github.com/arkworks-rs) libraries. It uses Espresso system's [virtual polynomial](https://github.com/EspressoSystems/hyperplonk/blob/main/arithmetic/src/virtual_polynomial.rs) abstraction and its [SumCheck](https://github.com/EspressoSystems/hyperplonk/tree/main/subroutines/src/poly_iop/sum_check) implementation.
 
-The Solidity templates used in `nova_cyclefold_verifier.sol`, use [iden3's](https://github.com/iden3/snarkjs/blob/master/templates/verifier_groth16.sol.ejs) Groth16 implementation and a KZG10 Solidity template adapted from [weijiekoh/libkzg](https://github.com/weijiekoh/libkzg).
+The Solidity templates used in `nova_cyclefold_verifier.sol`, use [iden3](https://github.com/iden3/snarkjs/blob/master/templates/verifier_groth16.sol.ejs)'s Groth16 implementation and a KZG10 Solidity template adapted from [weijiekoh/libkzg](https://github.com/weijiekoh/libkzg).
 
-Also, this project has been possible thanks to conversations with [Srinath Setty](https://github.com/srinathsetty), [Lev Soukhanov](https://github.com/levs57), [Matej Penciak](https://github.com/mpenciak), [Adrian Hamelink](https://github.com/adr1anh), [François Garillot](https://github.com/huitseeker), [Daniel Marin](https://github.com/danielmarinq), [Wyatt Benno](https://github.com/wyattbenno777) and [Nikkolas Gailly](https://github.com/nikkolasg).
+In addition to the direct code contributors who make this repository possible, this project has been made possible by many conversations with [Srinath Setty](https://github.com/srinathsetty), [Lev Soukhanov](https://github.com/levs57), [Matej Penciak](https://github.com/mpenciak), [Adrian Hamelink](https://github.com/adr1anh), [François Garillot](https://github.com/huitseeker), [Daniel Marin](https://github.com/danielmarinq), [Han Jian](https://github.com/han0110), [Wyatt Benno](https://github.com/wyattbenno777), [Nikkolas Gailly](https://github.com/nikkolasg) and [Nalin Bhardwaj](https://github.com/nalinbhardwaj), to whom we are grateful.

@@ -429,7 +429,7 @@ where
         // The following two checks (and their respective allocations) are disabled for normal
         // tests since they take several millions of constraints and would take several minutes
         // (and RAM) to run the test.
-        // #[cfg(not(test))]
+        #[cfg(not(test))]
         {
             // imports here instead of at the top of the file, so we avoid having multiple
             // `#[cfg(not(test))]`

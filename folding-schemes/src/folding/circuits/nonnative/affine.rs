@@ -96,19 +96,17 @@ where
         let affine = p.into_affine();
         if affine.is_zero() {
             let x = NonNativeUintVar::inputize(
-                &(C::ScalarField::zero()).into(),
-                C::ScalarField::MODULUS_BIT_SIZE as usize,
+                C::BaseField::zero()
             );
             let y = NonNativeUintVar::inputize(
-                &(C::ScalarField::zero()).into(),
-                C::ScalarField::MODULUS_BIT_SIZE as usize,
+                C::BaseField::zero()
             );
             return Ok((x, y));
         }
 
         let (x, y) = affine.xy().unwrap();
-        let x = NonNativeUintVar::inputize(&(*x).into(), C::ScalarField::MODULUS_BIT_SIZE as usize);
-        let y = NonNativeUintVar::inputize(&(*y).into(), C::ScalarField::MODULUS_BIT_SIZE as usize);
+        let x = NonNativeUintVar::inputize(*x);
+        let y = NonNativeUintVar::inputize(*y);
         Ok((x, y))
     }
 }

@@ -256,10 +256,8 @@ impl<F: PrimeField, G: PrimeField> AllocVar<G, F> for NonNativeUintVar<F> {
 }
 
 impl<F: PrimeField> NonNativeUintVar<F> {
-    pub fn inputize(x: &BigUint, l: usize) -> Vec<F> {
-        (0..l)
-            .map(|i| x.bit(i as u64))
-            .collect::<Vec<_>>()
+    pub fn inputize<T: PrimeField>(x: T) -> Vec<F> {
+        x.into_bigint().to_bits_le()
             .chunks(Self::bits_per_limb())
             .map(|chunk| F::from_bigint(F::BigInt::from_bits_le(chunk)).unwrap())
             .collect()

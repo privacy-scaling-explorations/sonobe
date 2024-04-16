@@ -1,11 +1,13 @@
 /// This file implements the onchain (Ethereum's EVM) decider.
+use ark_bn254::Bn254;
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{AffineRepr, CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
+use ark_groth16::Groth16;
 use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
 use ark_snark::SNARK;
 use ark_std::rand::{CryptoRng, RngCore};
-use ark_std::Zero;
+use ark_std::{One, Zero};
 use core::marker::PhantomData;
 
 pub use super::decider_eth_circuit::{DeciderEthCircuit, KZGChallengesGadget};
@@ -19,9 +21,6 @@ use crate::folding::circuits::nonnative::affine::NonNativeAffineVar;
 use crate::frontend::FCircuit;
 use crate::Error;
 use crate::{Decider as DeciderTrait, FoldingScheme};
-use ark_bn254::Bn254;
-use ark_ff::Field;
-use ark_groth16::Groth16;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Proof<C1, CS1, S>
@@ -150,12 +149,13 @@ where
         incoming_instance: &Self::CommittedInstance,
         proof: &Self::Proof,
     ) -> Result<bool, Error> {
-        let (snark_vk, cs_vk): (S::VerifyingKey, CS1::VerifierParams) = vp;
+        if i <= C1::ScalarField::one() {
+            return Err(Error::Other(
+                "The number of folded steps must be greater than 1".to_string(),
+            ));
+        }
 
-        assert!(
-            i > C1::ScalarField::ONE,
-            "The number of folded steps must be greater than 1"
-        );
+        let (snark_vk, cs_vk): (S::VerifyingKey, CS1::VerifierParams) = vp;
 
         // compute U = U_{d+1}= NIFS.V(U_d, u_d, cmT)
         let U = NIFS::<C1, CS1>::verify(proof.r, running_instance, incoming_instance, &proof.cmT);
@@ -385,8 +385,5 @@ pub mod tests {
         .unwrap();
         assert!(verified);
         println!("Decider verify, {:?}", start.elapsed());
-
-        // let calldata =
-        //     prepare_calldata(nova.i, nova.z_0, nova.z_i, &nova.U_i, &nova.u_i, proof).unwrap();
     }
 }

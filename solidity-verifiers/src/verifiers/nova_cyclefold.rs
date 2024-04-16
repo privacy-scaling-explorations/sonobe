@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 
-use ark_bn254::{Bn254, Fr, G1Affine};
+use ark_bn254::{Bn254, Fq, G1Affine};
 use ark_groth16::VerifyingKey;
 use ark_poly_commit::kzg10::VerifierKey;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -40,7 +40,7 @@ impl From<NovaCycleFoldData> for NovaCycleFoldDecider {
     fn from(value: NovaCycleFoldData) -> Self {
         let groth16_verifier = Groth16Verifier::from(value.g16_data);
         let public_inputs_len = groth16_verifier.gamma_abc_len;
-        let bits_per_limb = NonNativeUintVar::<Fr>::bits_per_limb();
+        let bits_per_limb = NonNativeUintVar::<Fq>::bits_per_limb();
         Self {
             groth16_verifier,
             kzg10_verifier: KZG10Verifier::from(value.kzg_data),

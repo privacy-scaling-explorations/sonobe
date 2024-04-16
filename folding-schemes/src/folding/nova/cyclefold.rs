@@ -16,7 +16,7 @@ use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
     eq::EqGadget,
-    fields::{fp::FpVar, nonnative::NonNativeFieldVar, FieldVar},
+    fields::{fp::FpVar, FieldVar},
     groups::GroupOpsBounds,
     prelude::CurveVar,
     ToConstraintFieldGadget,
@@ -29,7 +29,7 @@ use core::{borrow::Borrow, marker::PhantomData};
 use super::circuits::CF2;
 use super::CommittedInstance;
 use crate::constants::N_BITS_RO;
-use crate::folding::circuits::nonnative::nonnative_field_var_to_constraint_field;
+use crate::folding::circuits::nonnative::uint::NonNativeUintVar;
 use crate::Error;
 
 // public inputs length for the CycleFoldCircuit: |[r, p1.x,y, p2.x,y, p3.x,y]|
@@ -43,9 +43,9 @@ where
     for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
 {
     pub cmE: GC,
-    pub u: NonNativeFieldVar<C::ScalarField, CF2<C>>,
+    pub u: NonNativeUintVar<CF2<C>>,
     pub cmW: GC,
-    pub x: Vec<NonNativeFieldVar<C::ScalarField, CF2<C>>>,
+    pub x: Vec<NonNativeUintVar<CF2<C>>>,
 }
 impl<C, GC> AllocVar<CommittedInstance<C>, CF2<C>> for CycleFoldCommittedInstanceVar<C, GC>
 where
@@ -64,16 +64,8 @@ where
 
             let cmE = GC::new_variable(cs.clone(), || Ok(val.borrow().cmE), mode)?;
             let cmW = GC::new_variable(cs.clone(), || Ok(val.borrow().cmW), mode)?;
-            let u = NonNativeFieldVar::<C::ScalarField, CF2<C>>::new_variable(
-                cs.clone(),
-                || Ok(val.borrow().u),
-                mode,
-            )?;
-            let x = Vec::<NonNativeFieldVar<C::ScalarField, CF2<C>>>::new_variable(
-                cs.clone(),
-                || Ok(val.borrow().x.clone()),
-                mode,
-            )?;
+            let u = NonNativeUintVar::new_variable(cs.clone(), || Ok(val.borrow().u), mode)?;
+            let x = Vec::new_variable(cs.clone(), || Ok(val.borrow().x.clone()), mode)?;
 
             Ok(Self { cmE, u, cmW, x })
         })
@@ -99,10 +91,10 @@ where
         let is_inf = cmE_is_inf.double()? + cmW_is_inf;
 
         Ok([
-            nonnative_field_var_to_constraint_field(&self.u)?,
+            self.u.to_constraint_field()?,
             self.x
                 .iter()
-                .map(nonnative_field_var_to_constraint_field)
+                .map(|i| i.to_constraint_field())
                 .collect::<Result<Vec<_>, _>>()?
                 .concat(),
             cmE_elems,
@@ -193,7 +185,7 @@ where
     pub fn fold_committed_instance(
         // assumes that r_bits is equal to r_nonnat just that in a different format
         r_bits: Vec<Boolean<CF2<C>>>,
-        r_nonnat: NonNativeFieldVar<C::ScalarField, CF2<C>>,
+        r_nonnat: NonNativeUintVar<CF2<C>>,
         cmT: GC,
         ci1: CycleFoldCommittedInstanceVar<C, GC>,
         // ci2 is assumed to be always with cmE=0, u=1 (checks done previous to this method)
@@ -202,20 +194,23 @@ where
         Ok(CycleFoldCommittedInstanceVar {
             cmE: cmT.scalar_mul_le(r_bits.iter())? + ci1.cmE,
             cmW: ci1.cmW + ci2.cmW.scalar_mul_le(r_bits.iter())?,
-            u: ci1.u + r_nonnat.clone(),
+            u: ci1.u.add_no_align(&r_nonnat).modulo::<C::ScalarField>()?,
             x: ci1
                 .x
                 .iter()
                 .zip(ci2.x)
-                .map(|(a, b)| a + &r_nonnat * &b)
-                .collect::<Vec<_>>(),
+                .map(|(a, b)| {
+                    a.add_no_align(&r_nonnat.mul_no_align(&b)?)
+                        .modulo::<C::ScalarField>()
+                })
+                .collect::<Result<Vec<_>, _>>()?,
         })
     }
 
     pub fn verify(
         // assumes that r_bits is equal to r_nonnat just that in a different format
         r_bits: Vec<Boolean<CF2<C>>>,
-        r_nonnat: NonNativeFieldVar<C::ScalarField, CF2<C>>,
+        r_nonnat: NonNativeUintVar<CF2<C>>,
         cmT: GC,
         ci1: CycleFoldCommittedInstanceVar<C, GC>,
         // ci2 is assumed to be always with cmE=0, u=1 (checks done previous to this method)
@@ -225,9 +220,11 @@ where
         let ci = Self::fold_committed_instance(r_bits, r_nonnat, cmT, ci1, ci2)?;
 
         ci.cmE.enforce_equal(&ci3.cmE)?;
-        ci.u.enforce_equal(&ci3.u)?;
+        ci.u.enforce_equal_unaligned(&ci3.u)?;
         ci.cmW.enforce_equal(&ci3.cmW)?;
-        ci.x.enforce_equal(&ci3.x)?;
+        for (x, y) in ci.x.iter().zip(ci3.x.iter()) {
+            x.enforce_equal_unaligned(y)?;
+        }
 
         Ok(())
     }
@@ -316,7 +313,6 @@ pub struct CycleFoldCircuit<C: CurveGroup, GC: CurveVar<C, CF2<C>>> {
     pub r_bits: Option<Vec<bool>>,
     pub p1: Option<C>,
     pub p2: Option<C>,
-    pub p3: Option<C>,
     pub x: Option<Vec<CF2<C>>>, // public inputs (cf_u_{i+1}.x)
 }
 impl<C: CurveGroup, GC: CurveVar<C, CF2<C>>> CycleFoldCircuit<C, GC> {
@@ -326,7 +322,6 @@ impl<C: CurveGroup, GC: CurveVar<C, CF2<C>>> CycleFoldCircuit<C, GC> {
             r_bits: None,
             p1: None,
             p2: None,
-            p3: None,
             x: None,
         }
     }
@@ -344,7 +339,11 @@ where
         })?;
         let p1 = GC::new_witness(cs.clone(), || Ok(self.p1.unwrap_or(C::zero())))?;
         let p2 = GC::new_witness(cs.clone(), || Ok(self.p2.unwrap_or(C::zero())))?;
-        let p3 = GC::new_witness(cs.clone(), || Ok(self.p3.unwrap_or(C::zero())))?;
+        // Fold the original Nova instances natively in CycleFold
+        // For the cmW we're computing: U_i1.cmW = U_i.cmW + r * u_i.cmW
+        // For the cmE we're computing: U_i1.cmE = U_i.cmE + r * cmT + r^2 * u_i.cmE, where u_i.cmE
+        // is assumed to be 0, so, U_i1.cmE = U_i.cmE + r * cmT
+        let p3 = &p1 + p2.scalar_mul_le(r_bits.iter())?;
 
         let x = Vec::<FpVar<CF2<C>>>::new_input(cs.clone(), || {
             Ok(self.x.unwrap_or(vec![CF2::<C>::zero(); CF_IO_LEN]))
@@ -356,18 +355,12 @@ where
         let r: FpVar<CF2<C>> = Boolean::le_bits_to_fp_var(&r_bits)?;
         let points_coords: Vec<FpVar<CF2<C>>> = [
             vec![r],
-            p1.clone().to_constraint_field()?[..2].to_vec(),
-            p2.clone().to_constraint_field()?[..2].to_vec(),
-            p3.clone().to_constraint_field()?[..2].to_vec(),
+            p1.to_constraint_field()?[..2].to_vec(),
+            p2.to_constraint_field()?[..2].to_vec(),
+            p3.to_constraint_field()?[..2].to_vec(),
         ]
         .concat();
         points_coords.enforce_equal(&x)?;
-
-        // Fold the original Nova instances natively in CycleFold
-        // For the cmW we're checking: U_i1.cmW == U_i.cmW + r * u_i.cmW
-        // For the cmE we're checking: U_i1.cmE == U_i.cmE + r * cmT + r^2 * u_i.cmE, where u_i.cmE
-        // is assumed to be 0, so, U_i1.cmE == U_i.cmE + r * cmT
-        p3.enforce_equal(&(p1 + p2.scalar_mul_le(r_bits.iter())?))?;
 
         Ok(())
     }
@@ -429,7 +422,6 @@ pub mod tests {
             r_bits: Some(r_bits.clone()),
             p1: Some(ci1.clone().cmW),
             p2: Some(ci2.clone().cmW),
-            p3: Some(ci3.clone().cmW),
             x: Some(cfW_u_i_x.clone()),
         };
         cfW_circuit.generate_constraints(cs.clone()).unwrap();
@@ -449,7 +441,6 @@ pub mod tests {
             r_bits: Some(r_bits.clone()),
             p1: Some(ci1.clone().cmE),
             p2: Some(cmT),
-            p3: Some(ci3.clone().cmE),
             x: Some(cfE_u_i_x.clone()),
         };
         cfE_circuit.generate_constraints(cs.clone()).unwrap();
@@ -462,8 +453,7 @@ pub mod tests {
 
         let cs = ConstraintSystem::<Fq>::new_ref();
 
-        let r_nonnatVar =
-            NonNativeFieldVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(r_Fr)).unwrap();
+        let r_nonnatVar = NonNativeUintVar::<Fq>::new_witness(cs.clone(), || Ok(r_Fr)).unwrap();
         let r_bitsVar = Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(r_bits)).unwrap();
 
         let ci1Var =

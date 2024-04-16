@@ -14,13 +14,13 @@ use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
     eq::EqGadget,
-    fields::{fp::FpVar, nonnative::NonNativeFieldVar, FieldVar},
+    fields::{fp::FpVar, FieldVar},
     groups::GroupOpsBounds,
     prelude::CurveVar,
     R1CSVar, ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
-use ark_std::{fmt::Debug, Zero};
+use ark_std::{fmt::Debug, One, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::{
@@ -29,9 +29,12 @@ use super::{
     },
     CommittedInstance,
 };
-use crate::folding::circuits::nonnative::{nonnative_affine_to_field_elements, NonNativeAffineVar};
+use crate::constants::N_BITS_RO;
+use crate::folding::circuits::nonnative::{
+    affine::{nonnative_affine_to_field_elements, NonNativeAffineVar},
+    uint::NonNativeUintVar,
+};
 use crate::frontend::FCircuit;
-use crate::{constants::N_BITS_RO, folding::circuits::nonnative::nonnative_field_var_from_le_bits};
 
 /// CF1 represents the ConstraintField used for the main Nova circuit which is over E1::Fr, where
 /// E1 is the main curve where we do the folding.
@@ -402,7 +405,11 @@ where
         )?;
         let r = Boolean::le_bits_to_fp_var(&r_bits)?;
         // Also convert r_bits to a `NonNativeFieldVar`
-        let r_nonnat = nonnative_field_var_from_le_bits(cs.clone(), &r_bits)?;
+        let r_nonnat = {
+            let mut bits = r_bits;
+            bits.resize(C1::BaseField::MODULUS_BIT_SIZE as usize, Boolean::FALSE);
+            NonNativeUintVar::from(&bits)
+        };
 
         // Notice that NIFSGadget::fold_committed_instance does not fold cmE & cmW.
         // We set `U_i1.cmE` and `U_i1.cmW` to unconstrained witnesses `U_i1_cmE` and `U_i1_cmW`
@@ -452,7 +459,7 @@ where
             // cf1_u_i.cmE = 0
             cmE: GC2::zero(),
             // cf1_u_i.u = 1
-            u: NonNativeFieldVar::one(),
+            u: NonNativeUintVar::new_constant(cs.clone(), C1::BaseField::one())?,
             // cf1_u_i.cmW is provided by the prover as witness
             cmW: GC2::new_witness(cs.clone(), || Ok(self.cf1_u_i_cmW.unwrap_or(C2::zero())))?,
             // cf1_u_i.x is computed in step 1
@@ -462,7 +469,7 @@ where
             // cf2_u_i.cmE = 0
             cmE: GC2::zero(),
             // cf2_u_i.u = 1
-            u: NonNativeFieldVar::one(),
+            u: NonNativeUintVar::new_constant(cs.clone(), C1::BaseField::one())?,
             // cf2_u_i.cmW is provided by the prover as witness
             cmW: GC2::new_witness(cs.clone(), || Ok(self.cf2_u_i_cmW.unwrap_or(C2::zero())))?,
             // cf2_u_i.x is computed in step 1
@@ -482,7 +489,11 @@ where
             cf1_cmT.clone(),
         )?;
         // Convert cf1_r_bits to a `NonNativeFieldVar`
-        let cf1_r_nonnat = nonnative_field_var_from_le_bits(cs.clone(), &cf1_r_bits)?;
+        let cf1_r_nonnat = {
+            let mut bits = cf1_r_bits.clone();
+            bits.resize(C1::BaseField::MODULUS_BIT_SIZE as usize, Boolean::FALSE);
+            NonNativeUintVar::from(&bits)
+        };
         // Fold cf1_u_i & cf_U_i into cf1_U_{i+1}
         let cf1_U_i1 = NIFSFullGadget::<C2, GC2>::fold_committed_instance(
             cf1_r_bits,
@@ -500,7 +511,11 @@ where
             cf2_u_i.clone(),
             cf2_cmT.clone(),
         )?;
-        let cf2_r_nonnat = nonnative_field_var_from_le_bits(cs.clone(), &cf2_r_bits)?;
+        let cf2_r_nonnat = {
+            let mut bits = cf2_r_bits.clone();
+            bits.resize(C1::BaseField::MODULUS_BIT_SIZE as usize, Boolean::FALSE);
+            NonNativeUintVar::from(&bits)
+        };
         let cf_U_i1 = NIFSFullGadget::<C2, GC2>::fold_committed_instance(
             cf2_r_bits,
             cf2_r_nonnat,

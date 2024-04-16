@@ -13,7 +13,7 @@ use super::{circuits::CF2, nifs::NIFS, CommittedInstance, Nova};
 use crate::commitment::{
     kzg::Proof as KZGProof, pedersen::Params as PedersenParams, CommitmentScheme,
 };
-use crate::folding::circuits::nonnative::NonNativeAffineVar;
+use crate::folding::circuits::nonnative::affine::NonNativeAffineVar;
 use crate::frontend::FCircuit;
 use crate::Error;
 use crate::{Decider as DeciderTrait, FoldingScheme};

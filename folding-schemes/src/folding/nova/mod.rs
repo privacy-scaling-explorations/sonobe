@@ -16,7 +16,7 @@ use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 use crate::ccs::r1cs::{extract_r1cs, extract_w_x, R1CS};
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::nonnative::{
-    nonnative_affine_to_field_elements, nonnative_field_to_field_elements,
+    affine::nonnative_affine_to_field_elements, uint::nonnative_field_to_field_elements,
 };
 use crate::frontend::FCircuit;
 use crate::utils::vec::is_zero_vec;
@@ -434,7 +434,6 @@ where
                 r_bits: Some(r_bits.clone()),
                 p1: Some(self.U_i.clone().cmW),
                 p2: Some(self.u_i.clone().cmW),
-                p3: Some(U_i1.clone().cmW),
                 x: Some(cfW_u_i_x.clone()),
             };
             let cfE_circuit = CycleFoldCircuit::<C1, GC1> {
@@ -442,7 +441,6 @@ where
                 r_bits: Some(r_bits.clone()),
                 p1: Some(self.U_i.clone().cmE),
                 p2: Some(cmT),
-                p3: Some(U_i1.clone().cmE),
                 x: Some(cfE_u_i_x.clone()),
             };
 
@@ -482,8 +480,8 @@ where
                 cf_x: Some(cf_u_i1_x),
             };
 
-            self.cf_W_i = cf_W_i1.clone();
-            self.cf_U_i = cf_U_i1.clone();
+            self.cf_W_i = cf_W_i1;
+            self.cf_U_i = cf_U_i1;
 
             #[cfg(test)]
             {

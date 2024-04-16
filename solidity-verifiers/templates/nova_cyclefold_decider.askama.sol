@@ -1,10 +1,33 @@
-{{ groth16_verifier }}
+/*
+    Sonobe's Nova + CycleFold decider verifier.
+    Joint effort by 0xPARC & PSE.
 
+    More details at https://github.com/privacy-scaling-explorations/sonobe
+    Usage and design documentation at https://privacy-scaling-explorations.github.io/sonobe-docs/
+
+    Uses the https://github.com/iden3/snarkjs/blob/master/templates/verifier_groth16.sol.ejs
+    Groth16 verifier implementation and a KZG10 Solidity template adapted from
+    https://github.com/weijiekoh/libkzg.
+    Additionally we implement the NovaDecider contract, which combines the
+    Groth16 and KZG10 verifiers to verify the zkSNARK proofs coming from
+    Nova+CycleFold folding.
+*/
+
+
+/* =============================== */
+/* KZG10 verifier methods */
 {{ kzg10_verifier }}
 
+/* =============================== */
+/* Groth16 verifier methods */
+{{ groth16_verifier }}
+
+
+/* =============================== */
+/* Nova+CycleFold Decider verifier */
 /**
  * @notice  Computes the decomposition of a `uint256` into num_limbs limbs of bits_per_limb bits each.
- * @dev     Compatible with folding-schemes::folding::circuits::nonnative::nonnative_field_to_field_elements.
+ * @dev     Compatible with sonobe::folding-schemes::folding::circuits::nonnative::nonnative_field_to_field_elements.
  */
 library LimbsDecomposition {
     function decompose(uint256 x) internal pure returns (uint256[{{num_limbs}}] memory) {
@@ -19,14 +42,14 @@ library LimbsDecomposition {
 /**
  * @author  PSE & 0xPARC
  * @title   NovaDecider contract, for verifying Nova IVC SNARK proofs.
- * @dev     This is an askama template which, when templated, features a snarkjs groth16 and a kzg10 verifier from which this contract inherits.
+ * @dev     This is an askama template which, when templated, features a Groth16 and KZG10 verifiers from which this contract inherits.
  */
 contract NovaDecider is Groth16Verifier, KZG10Verifier {
     /**
      * @notice  Computes the linear combination of a and b with r as the coefficient.
      * @dev     All ops are done mod the BN254 scalar field prime
      */
-    function rlCombination(uint256 a, uint256 r, uint256 b) internal pure returns (uint256 result) {
+    function rlc(uint256 a, uint256 r, uint256 b) internal pure returns (uint256 result) {
         assembly {
             result := addmod(a, mulmod(r, b, BN254_SCALAR_FIELD), BN254_SCALAR_FIELD)
         }
@@ -63,10 +86,10 @@ contract NovaDecider is Groth16Verifier, KZG10Verifier {
 
         {
             // U_i.u + r * u_i.u
-            uint256 u = rlCombination(U_i_u_u_i_u_r[0], U_i_u_u_i_u_r[2], U_i_u_u_i_u_r[1]);
+            uint256 u = rlc(U_i_u_u_i_u_r[0], U_i_u_u_i_u_r[2], U_i_u_u_i_u_r[1]);
             // U_i.x + r * u_i.x
-            uint256 x0 = rlCombination(U_i_x_u_i_cmW[0], U_i_u_u_i_u_r[2], u_i_x_cmT[0]);
-            uint256 x1 = rlCombination(U_i_x_u_i_cmW[1], U_i_u_u_i_u_r[2], u_i_x_cmT[1]);
+            uint256 x0 = rlc(U_i_x_u_i_cmW[0], U_i_u_u_i_u_r[2], u_i_x_cmT[0]);
+            uint256 x1 = rlc(U_i_x_u_i_cmW[1], U_i_u_u_i_u_r[2], u_i_x_cmT[1]);
 
             public_inputs[{{ z_len * 2 + 1 }}] = u;
             public_inputs[{{ z_len * 2 + 2 }}] = x0;

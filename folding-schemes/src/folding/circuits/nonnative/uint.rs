@@ -372,8 +372,21 @@ impl<F: PrimeField> NonNativeUintVar<F> {
     pub fn enforce_equal_unaligned(&self, other: &Self) -> Result<(), SynthesisError> {
         let len = min(self.0.len(), other.0.len());
 
-        // Group (i.e., concat) the limbs of `self` and `other` so that each
-        // group nearly reaches the capacity `F::MODULUS_MINUS_ONE_DIV_TWO`.
+        // Group the limbs of `self` and `other` so that each group nearly
+        // reaches the capacity `F::MODULUS_MINUS_ONE_DIV_TWO`.
+        // By saying group, we mean the operation `Σ x_i 2^{i * W}`, where `W`
+        // is the initial number of bits in a limb, just as what we do in grade
+        // school arithmetic, e.g.,
+        //         5   9
+        // x       7   3
+        // -------------
+        //        15  27
+        //    35  63
+        // -------------  <- When grouping 35, 15 + 63, and 27, we are computing
+        // 4   3   0   7     35 * 100 + (15 + 63) * 10 + 27 = 4307
+        // Note that this is different from the concatenation `x_0 || x_1 ...`,
+        // since the bit-length of each limb is not necessarily the initial size
+        // `W`.
         let (steps, x, y, rest) = {
             // `steps` stores the size of each grouped limb.
             let mut steps = vec![];
@@ -392,7 +405,7 @@ impl<F: PrimeField> NonNativeUintVar<F> {
                     assert!(shift < F::MODULUS_MINUS_ONE_DIV_TWO.into());
                     let shift = LimbVar::constant(shift.into());
                     match (
-                        // Try to compute `xx || x` and `yy || y` (little-endian)
+                        // Try to group `x` and `y` into `xx` and `yy`.
                         self.0[j].mul(&shift).and_then(|x| xx.add(&x)),
                         other.0[j].mul(&shift).and_then(|y| yy.add(&y)),
                     ) {

@@ -1,8 +1,6 @@
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 
-use crate::utils::HeaderInclusion;
-use crate::{Groth16Data, KzgData, ProtocolData, PRAGMA_GROTH16_VERIFIER};
 use ark_bn254::{Bn254, G1Affine};
 use ark_groth16::VerifyingKey;
 use ark_poly_commit::kzg10::VerifierKey;
@@ -11,6 +9,8 @@ use askama::Template;
 
 use super::g16::Groth16Verifier;
 use super::kzg::KZG10Verifier;
+use crate::utils::HeaderInclusion;
+use crate::{Groth16Data, KzgData, ProtocolData, PRAGMA_GROTH16_VERIFIER};
 
 pub fn get_decider_template_for_cyclefold_decider(
     nova_cyclefold_data: NovaCycleFoldData,
@@ -27,6 +27,7 @@ pub fn get_decider_template_for_cyclefold_decider(
 pub(crate) struct NovaCycleFoldDecider {
     groth16_verifier: Groth16Verifier,
     kzg10_verifier: KZG10Verifier,
+    // z_len denotes the FCircuit state (z_i) length
     z_len: usize,
     public_inputs_len: usize,
 }
@@ -279,6 +280,14 @@ mod tests {
         >;
         let f_circuit = FC::new(());
 
+        let g16_data = Groth16Data::from(g16_vk.clone());
+        let kzg_data = KzgData::from((
+            kzg_vk.clone(),
+            fs_prover_params.cs_params.powers_of_g[0..3].to_vec(),
+        ));
+        let nova_cyclefold_data =
+            NovaCycleFoldData::from((g16_data, kzg_data, f_circuit.state_len()));
+
         let mut nova = NOVA_FCircuit::init(&fs_prover_params, f_circuit, z_0).unwrap();
         for _ in 0..n_steps {
             nova.prove_step().unwrap();
@@ -295,7 +304,7 @@ mod tests {
         println!("generated Decider proof: {:?}", start.elapsed());
 
         let verified = DECIDERETH_FCircuit::<FC>::verify(
-            (g16_vk.clone(), kzg_vk.clone()),
+            (g16_vk, kzg_vk),
             nova.i,
             nova.z_0.clone(),
             nova.z_i.clone(),
@@ -305,13 +314,6 @@ mod tests {
         )
         .unwrap();
         assert!(verified);
-
-        let g16_data = Groth16Data::from(g16_vk);
-        let kzg_data = KzgData::from((
-            kzg_vk,
-            fs_prover_params.cs_params.powers_of_g[0..3].to_vec(),
-        ));
-        let nova_cyclefold_data = NovaCycleFoldData::from((g16_data, kzg_data, nova.z_0.len()));
 
         let function_selector =
             get_function_selector_for_nova_cyclefold_verifier(nova.z_0.len() * 2 + 1);

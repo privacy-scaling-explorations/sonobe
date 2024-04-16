@@ -219,7 +219,6 @@ pub fn prepare_calldata(
     incoming_instance: &CommittedInstance<ark_bn254::G1Projective>,
     proof: Proof<ark_bn254::G1Projective, KZG<'static, Bn254>, Groth16<Bn254>>,
 ) -> Result<Vec<u8>, Error> {
-    // each additional comment below links each vector element to the contract's function signature
     Ok(vec![
         function_signature_check.to_vec(),
         i.into_bigint().to_bytes_be(), // i
@@ -229,8 +228,8 @@ pub fn prepare_calldata(
         z_i.iter()
             .flat_map(|v| v.into_bigint().to_bytes_be())
             .collect::<Vec<u8>>(), // z_i
-        point_to_eth_format(running_instance.cmW.into_affine())?, // U_i_cmW compute limbs
-        point_to_eth_format(running_instance.cmE.into_affine())?, // U_i_cmE compute limbs
+        point_to_eth_format(running_instance.cmW.into_affine())?, // U_i_cmW
+        point_to_eth_format(running_instance.cmE.into_affine())?, // U_i_cmE
         running_instance.u.into_bigint().to_bytes_be(), // U_i_u
         incoming_instance.u.into_bigint().to_bytes_be(), // u_i_u
         proof.r.into_bigint().to_bytes_be(), // r
@@ -239,13 +238,13 @@ pub fn prepare_calldata(
             .iter()
             .flat_map(|v| v.into_bigint().to_bytes_be())
             .collect::<Vec<u8>>(), // U_i_x
-        point_to_eth_format(incoming_instance.cmW.into_affine())?, // u_i_cmW compute limbs
+        point_to_eth_format(incoming_instance.cmW.into_affine())?, // u_i_cmW
         incoming_instance
             .x
             .iter()
             .flat_map(|v| v.into_bigint().to_bytes_be())
             .collect::<Vec<u8>>(), // u_i_x
-        point_to_eth_format(proof.cmT.into_affine())?, // cmT compute limbs
+        point_to_eth_format(proof.cmT.into_affine())?, // cmT
         point_to_eth_format(proof.snark_proof.a)?, // pA
         point2_to_eth_format(proof.snark_proof.b)?, // pB
         point_to_eth_format(proof.snark_proof.c)?, // pC
@@ -270,7 +269,8 @@ where
     Ok([x.into_bigint().to_bytes_be(), y.into_bigint().to_bytes_be()].concat())
 }
 fn point2_to_eth_format(p: ark_bn254::G2Affine) -> Result<Vec<u8>, Error> {
-    let (x, y) = p.xy().ok_or(Error::Other("TODO".to_string()))?;
+    let zero_point = (&ark_bn254::Fq2::zero(), &ark_bn254::Fq2::zero());
+    let (x, y) = p.xy().unwrap_or(zero_point);
 
     Ok([
         x.c1.into_bigint().to_bytes_be(),

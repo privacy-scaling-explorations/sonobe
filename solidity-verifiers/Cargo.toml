@@ -17,6 +17,7 @@ ark-serialize = "0.4.1"
 revm = "3.5.0"
 rust-crypto = "0.2"
 num-bigint = "0.4.3"
+folding-schemes = { path = "../folding-schemes/"} # without 'light-test' enabled
 
 [dev-dependencies]
 ark-crypto-primitives = "0.4.0"

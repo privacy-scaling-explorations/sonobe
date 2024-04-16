@@ -368,7 +368,10 @@ impl<F: PrimeField> NonNativeUintVar<F> {
 
     /// Enforce `self` to be equal to `other`, where `self` and `other` are not
     /// necessarily aligned.
+    /// 
     /// Adapted from https://github.com/akosba/jsnark/blob/0955389d0aae986ceb25affc72edf37a59109250/JsnarkCircuitBuilder/src/circuit/auxiliary/LongElement.java#L562-L798
+    /// Similar implementations can also be found in https://github.com/alex-ozdemir/bellman-bignat/blob/0585b9d90154603a244cba0ac80b9aafe1d57470/src/mp/bignat.rs#L566-L661
+    /// and https://github.com/arkworks-rs/r1cs-std/blob/4020fbc22625621baa8125ede87abaeac3c1ca26/src/fields/emulated_fp/reduce.rs#L201-L323
     pub fn enforce_equal_unaligned(&self, other: &Self) -> Result<(), SynthesisError> {
         let len = min(self.0.len(), other.0.len());
 
@@ -465,6 +468,9 @@ impl<F: PrimeField> NonNativeUintVar<F> {
             c = (&x[i].v - &y[i].v + &c)
                 .mul_by_inverse_unchecked(&FpVar::constant(F::from(BigUint::one() << step)))?;
             if i != n - 1 {
+                // Unlike the code mentioned above which add some offset to the
+                // diff `x_i - y_i + c` to make it always positive, we directly
+                // check if the absolute value of the diff is small.
                 Self::enforce_abs_bit_length(
                     &c,
                     (max(&x[i].ub, &y[i].ub).bits() as usize)
@@ -586,6 +592,22 @@ impl<F: PrimeField> NonNativeUintVar<F> {
 
         // Below is equivalent to but more efficient than
         // `Boolean::le_bits_to_fp_var(&bits)?.enforce_equal(&is_neg.select(&x.negate()?, &x)?)?`
+        // Note that this enforces:
+        // 1. The claimed absolute value `is_neg.select(&x.negate()?, &x)?` has
+        //    exactly `length` bits.
+        // 2. `is_neg` is indeed the sign of `x`, i.e., `is_neg = false` when
+        //    `0 <= x < (|F| - 1) / 2`, and `is_neg = true` when
+        //    `(|F| - 1) / 2 <= x < F`, thus the claimed absolute value is
+        //    correct.
+        //    If `is_neg` is incorrect, then:
+        //        a. `0 <= x < (|F| - 1) / 2`, but `is_neg = true`, then
+        //           `is_neg.select(&x.negate()?, &x)?` returns `|F| - x`,
+        //           which is greater than `(|F| - 1) / 2` and cannot fit in
+        //           `length` bits (given that `length` is small).
+        //        b. `(|F| - 1) / 2 <= x < F`, but `is_neg = false`, then
+        //           `is_neg.select(&x.negate()?, &x)?` returns `x`, which is
+        //           greater than `(|F| - 1) / 2` and cannot fit in `length`
+        //           bits.
         FpVar::from(is_neg).mul_equals(&x.double()?, &(x - Boolean::le_bits_to_fp_var(&bits)?))?;
 
         Ok(bits)

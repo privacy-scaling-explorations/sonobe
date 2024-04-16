@@ -14,7 +14,7 @@ ark-bn254 = "0.4.0"
 ark-poly-commit = "0.4.0"
 itertools = "0.12.1"
 ark-serialize = "0.4.1"
-revm = "3.5.0"
+revm = {version="3.5.0", default-features=false, features=["std"]}
 rust-crypto = "0.2"
 num-bigint = "0.4.3"
 folding-schemes = { path = "../folding-schemes/"} # without 'light-test' enabled

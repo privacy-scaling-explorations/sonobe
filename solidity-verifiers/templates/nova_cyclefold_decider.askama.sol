@@ -2,20 +2,15 @@
 
 {{ kzg10_verifier }}
 
-
 /**
- * @notice  Computes the decomposition of a `uint256` into NUM_LIMBS limbs of BITS_PER_LIMB bits each.
+ * @notice  Computes the decomposition of a `uint256` into num_limbs limbs of bits_per_limb bits each.
  * @dev     Compatible with folding-schemes::folding::circuits::nonnative::nonnative_field_to_field_elements.
  */
 library LimbsDecomposition {
-    // limbs parameters for BN254
-    uint8 constant NUM_LIMBS = 5;
-    uint8 constant BITS_PER_LIMB = 55;
-
-    function decompose(uint256 x) internal pure returns (uint256[NUM_LIMBS] memory) {
-        uint256[NUM_LIMBS] memory limbs;
-        for (uint8 i = 0; i < NUM_LIMBS; i++) {
-            limbs[i] = (x >> (BITS_PER_LIMB * i)) & ((1 << BITS_PER_LIMB) - 1);
+    function decompose(uint256 x) internal pure returns (uint256[{{num_limbs}}] memory) {
+        uint256[{{num_limbs}}] memory limbs;
+        for (uint8 i = 0; i < {{num_limbs}}; i++) {
+            limbs[i] = (x >> ({{bits_per_limb}} * i)) & ((1 << {{bits_per_limb}}) - 1);
         }
         return limbs;
     }
@@ -27,8 +22,6 @@ library LimbsDecomposition {
  * @dev     This is an askama template which, when templated, features a snarkjs groth16 and a kzg10 verifier from which this contract inherits.
  */
 contract NovaDecider is Groth16Verifier, KZG10Verifier {
-    uint8 constant NUM_LIMBS = 5;
-
     /**
      * @notice  Computes the linear combination of a and b with r as the coefficient.
      * @dev     All ops are done mod the BN254 scalar field prime
@@ -86,12 +79,12 @@ contract NovaDecider is Groth16Verifier, KZG10Verifier {
             uint256[2] memory cmE = super.add([U_i_cmW_U_i_cmE[2], U_i_cmW_U_i_cmE[3]], mulScalarPoint);
 
             {
-                uint256[NUM_LIMBS] memory cmE_x_limbs = LimbsDecomposition.decompose(cmE[0]);
-                uint256[NUM_LIMBS] memory cmE_y_limbs = LimbsDecomposition.decompose(cmE[1]);
+                uint256[{{num_limbs}}] memory cmE_x_limbs = LimbsDecomposition.decompose(cmE[0]);
+                uint256[{{num_limbs}}] memory cmE_y_limbs = LimbsDecomposition.decompose(cmE[1]);
             
-                for (uint8 k = 0; k < NUM_LIMBS; k++) {
+                for (uint8 k = 0; k < {{num_limbs}}; k++) {
                     public_inputs[{{ z_len * 2 + 4 }} + k] = cmE_x_limbs[k];
-                    public_inputs[{{ z_len * 2 + 4 }} + NUM_LIMBS + k] = cmE_y_limbs[k];
+                    public_inputs[{{ z_len * 2 + 4 + num_limbs }} + k] = cmE_y_limbs[k];
                 }
             }
 
@@ -104,12 +97,12 @@ contract NovaDecider is Groth16Verifier, KZG10Verifier {
             uint256[2] memory cmW = super.add([U_i_cmW_U_i_cmE[0], U_i_cmW_U_i_cmE[1]], mulScalarPoint);
         
             {
-                uint256[NUM_LIMBS] memory cmW_x_limbs = LimbsDecomposition.decompose(cmW[0]);
-                uint256[NUM_LIMBS] memory cmW_y_limbs = LimbsDecomposition.decompose(cmW[1]);
+                uint256[{{num_limbs}}] memory cmW_x_limbs = LimbsDecomposition.decompose(cmW[0]);
+                uint256[{{num_limbs}}] memory cmW_y_limbs = LimbsDecomposition.decompose(cmW[1]);
         
-                for (uint8 k = 0; k < NUM_LIMBS; k++) {
-                    public_inputs[{{ z_len * 2 + 4}} + NUM_LIMBS*2  + k] = cmW_x_limbs[k];
-                    public_inputs[{{ z_len * 2 + 4}} + NUM_LIMBS*3  + k] = cmW_y_limbs[k];
+                for (uint8 k = 0; k < {{num_limbs}}; k++) {
+                    public_inputs[{{ z_len * 2 + 4 + num_limbs * 2 }} + k] = cmW_x_limbs[k];
+                    public_inputs[{{ z_len * 2 + 4 + num_limbs * 3 }} + k] = cmW_y_limbs[k];
                 }
             }
         
@@ -118,20 +111,20 @@ contract NovaDecider is Groth16Verifier, KZG10Verifier {
 
         {
             // add challenges
-            public_inputs[{{ z_len * 2 + 4 }} +NUM_LIMBS*4] = challenge_W_challenge_E_kzg_evals[0];
-            public_inputs[{{ z_len * 2 + 4 }} +NUM_LIMBS*4 +1] = challenge_W_challenge_E_kzg_evals[1];
-            public_inputs[{{ z_len * 2 + 4 }} +NUM_LIMBS*4 +2] = challenge_W_challenge_E_kzg_evals[2];
-            public_inputs[{{ z_len * 2 + 4 }} +NUM_LIMBS*4 +3] = challenge_W_challenge_E_kzg_evals[3];
+            public_inputs[{{ z_len * 2 + 4 + num_limbs * 4 }}] = challenge_W_challenge_E_kzg_evals[0];
+            public_inputs[{{ z_len * 2 + 4 + num_limbs * 4 + 1 }}] = challenge_W_challenge_E_kzg_evals[1];
+            public_inputs[{{ z_len * 2 + 4 + num_limbs * 4 + 2 }}] = challenge_W_challenge_E_kzg_evals[2];
+            public_inputs[{{ z_len * 2 + 4 + num_limbs * 4 + 3 }}] = challenge_W_challenge_E_kzg_evals[3];
         
-            uint256[NUM_LIMBS] memory cmT_x_limbs;
-            uint256[NUM_LIMBS] memory cmT_y_limbs;
+            uint256[{{num_limbs}}] memory cmT_x_limbs;
+            uint256[{{num_limbs}}] memory cmT_y_limbs;
         
             cmT_x_limbs = LimbsDecomposition.decompose(u_i_x_cmT[2]);
             cmT_y_limbs = LimbsDecomposition.decompose(u_i_x_cmT[3]);
         
-            for (uint8 k = 0; k < NUM_LIMBS; k++) {
-                public_inputs[{{ z_len * 2 + 4 }} +NUM_LIMBS*4+ 4 + k] = cmT_x_limbs[k]; 
-                public_inputs[{{ z_len * 2 + 4 }} +NUM_LIMBS*4+ 4 + k + NUM_LIMBS] = cmT_y_limbs[k];
+            for (uint8 k = 0; k < {{num_limbs}}; k++) {
+                public_inputs[{{ z_len * 2 + 4 + num_limbs * 4 }} + 4 + k] = cmT_x_limbs[k]; 
+                public_inputs[{{ z_len * 2 + 4 + num_limbs * 5}} + 4 + k] = cmT_y_limbs[k];
             }
         
             // last element of the groth16 proof's public inputs is `r`

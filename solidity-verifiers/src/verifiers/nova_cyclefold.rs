@@ -1,11 +1,13 @@
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 
-use ark_bn254::{Bn254, G1Affine};
+use ark_bn254::{Bn254, Fr, G1Affine};
 use ark_groth16::VerifyingKey;
 use ark_poly_commit::kzg10::VerifierKey;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use askama::Template;
+
+use folding_schemes::folding::circuits::nonnative::uint::NonNativeUintVar;
 
 use super::g16::Groth16Verifier;
 use super::kzg::KZG10Verifier;
@@ -30,17 +32,22 @@ pub(crate) struct NovaCycleFoldDecider {
     // z_len denotes the FCircuit state (z_i) length
     z_len: usize,
     public_inputs_len: usize,
+    num_limbs: usize,
+    bits_per_limb: usize,
 }
 
 impl From<NovaCycleFoldData> for NovaCycleFoldDecider {
     fn from(value: NovaCycleFoldData) -> Self {
         let groth16_verifier = Groth16Verifier::from(value.g16_data);
         let public_inputs_len = groth16_verifier.gamma_abc_len;
+        let bits_per_limb = NonNativeUintVar::<Fr>::bits_per_limb();
         Self {
             groth16_verifier,
             kzg10_verifier: KZG10Verifier::from(value.kzg_data),
             z_len: value.z_len,
             public_inputs_len,
+            num_limbs: (250_f32 / (bits_per_limb as f32)).ceil() as usize,
+            bits_per_limb,
         }
     }
 }

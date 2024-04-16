@@ -847,6 +847,10 @@ impl<F: PrimeField, CF: PrimeField> MatrixGadget<NonNativeUintVar<CF>>
                     .map(|(value, col_i)| value.0.len() + v[*col_i].0.len() - 1)
                     .max()
                     .unwrap_or(0);
+                // This is a combination of `mul_no_align` and `add_no_align`
+                // that results in more flattened `LinearCombination`s.
+                // Consequently, `ConstraintSystem::inline_all_lcs` costs less
+                // time, thus making trusted setup and proof generation faster.
                 let limbs = (0..len)
                     .map(|i| {
                         LimbVar::add_many(

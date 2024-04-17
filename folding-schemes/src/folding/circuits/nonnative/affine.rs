@@ -1,5 +1,4 @@
 use ark_ec::{AffineRepr, CurveGroup};
-use ark_ff::PrimeField;
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     fields::fp::FpVar,
@@ -95,20 +94,14 @@ where
     pub fn inputize(p: C) -> Result<(Vec<C::ScalarField>, Vec<C::ScalarField>), SynthesisError> {
         let affine = p.into_affine();
         if affine.is_zero() {
-            let x = NonNativeUintVar::inputize(
-                &(C::ScalarField::zero()).into(),
-                C::ScalarField::MODULUS_BIT_SIZE as usize,
-            );
-            let y = NonNativeUintVar::inputize(
-                &(C::ScalarField::zero()).into(),
-                C::ScalarField::MODULUS_BIT_SIZE as usize,
-            );
+            let x = NonNativeUintVar::inputize(C::BaseField::zero());
+            let y = NonNativeUintVar::inputize(C::BaseField::zero());
             return Ok((x, y));
         }
 
         let (x, y) = affine.xy().unwrap();
-        let x = NonNativeUintVar::inputize(&(*x).into(), C::ScalarField::MODULUS_BIT_SIZE as usize);
-        let y = NonNativeUintVar::inputize(&(*y).into(), C::ScalarField::MODULUS_BIT_SIZE as usize);
+        let x = NonNativeUintVar::inputize(*x);
+        let y = NonNativeUintVar::inputize(*y);
         Ok((x, y))
     }
 }

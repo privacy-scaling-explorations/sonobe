@@ -4,12 +4,12 @@
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/privacy-scaling-explorations/sonobe/blob/main/LICENSE)
 [![](https://img.shields.io/badge/Sonobe-Docs-blue)](https://privacy-scaling-explorations.github.io/sonobe-docs/)
 
-An experimental folding schemes library implemented jointly by [0xPARC](https://0xparc.org/) and [PSE](https://pse.dev).
+Experimental folding schemes library implemented jointly by [0xPARC](https://0xparc.org/) and [PSE](https://pse.dev).
 
 <span>
 <img align="left" style="width:30%;min-width:250px;margin-bottom:20px;" src="https://privacy-scaling-explorations.github.io/sonobe-docs/imgs/sonobe.png">
 <span align="right" style="width:65%;">
-<b>Sonobe</b> is a modular library to fold circuit instances in an Incremental Verifiable computation (IVC) style. It features multiple folding schemes and decider setups, allowing users to pick the scheme which best fit their needs.
+<b>Sonobe</b> is a modular library to fold arithmetic circuit instances in an Incremental Verifiable computation (IVC) style. It features multiple folding schemes and decider setups, allowing users to pick the scheme which best fit their needs.
 <br><br>
 Sonobe is conceived as an exploratory effort with the aim to push forward the practical side of folding schemes and advancing towards onchain (EVM) verification.
 <br><br>
@@ -50,7 +50,7 @@ Detailed usage and design documentation can be found at [Sonobe docs](https://pr
 ### Folding Schemes introduction
 
 Folding schemes efficitently achieve incrementally verifiable computation (IVC), where the prover recursively proves the correct execution of the incremental computations.
-Once the IVC iterations are completed, the IVC proof is compressed into the Decider proof, generating a zkSNARK proof which proves that applying $n$ times the $F$ function (the circuit being folded) to the initial state ($z_0$) results in the final state ($z_n$).
+Once the IVC iterations are completed, the IVC proof is compressed into the Decider proof, a zkSNARK proof which proves that applying $n$ times the $F$ function (the circuit being folded) to the initial state ($z_0$) results in the final state ($z_n$).
 
 
 <p align="center">
@@ -77,7 +77,7 @@ The development flow using Sonobe looks like:
     <img src="https://privacy-scaling-explorations.github.io/sonobe-docs/imgs/sonobe-lib-pipeline.png"/>
 </p>
 
-The folding scheme and decider used can be swapped respectively with a few lines of code (eg. switching from a Decider that uses two Spartan proofs over a cycle of curves, to a Decider that uses a single Groth16 proof over the BN254 to be verified in an Ethereum smart contract).
+The folding scheme and decider used can be swapped with a few lines of code (eg. switching from a Decider that uses two Spartan proofs over a cycle of curves, to a Decider that uses a single Groth16 proof over the BN254 to be verified in an Ethereum smart contract).
 
 The [Sonobe docs](https://privacy-scaling-explorations.github.io/sonobe-docs/) contain more details about the usage and design of the library.
 

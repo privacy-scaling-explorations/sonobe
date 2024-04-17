@@ -1,23 +1,23 @@
-# sonobe
+# sonobe <a style="float:right;" href="https://privacy-scaling-explorations.github.io/sonobe-docs/"><img src="https://img.shields.io/badge/Sonobe-Docs-blue"/></a>
 
+
+<!--
 [![CI](https://github.com/privacy-scaling-explorations/sonobe/actions/workflows/ci.yml/badge.svg)](https://github.com/privacy-scaling-explorations/sonobe/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/privacy-scaling-explorations/sonobe/blob/main/LICENSE)
 [![](https://img.shields.io/badge/Sonobe-Docs-blue)](https://privacy-scaling-explorations.github.io/sonobe-docs/)
+-->
 
 Experimental folding schemes library implemented jointly by [0xPARC](https://0xparc.org/) and [PSE](https://pse.dev).
 
-<span>
-<img align="left" style="width:30%;min-width:250px;margin-bottom:20px;" src="https://privacy-scaling-explorations.github.io/sonobe-docs/imgs/sonobe.png">
-<span align="right" style="width:65%;">
+<img align="right" style="width:30%;min-width:250px;margin-bottom:20px;" src="https://privacy-scaling-explorations.github.io/sonobe-docs/imgs/sonobe.png">
+
 <b>Sonobe</b> is a modular library to fold arithmetic circuit instances in an Incremental Verifiable computation (IVC) style. It features multiple folding schemes and decider setups, allowing users to pick the scheme which best fit their needs.
 <br><br>
 Sonobe is conceived as an exploratory effort with the aim to push forward the practical side of folding schemes and advancing towards onchain (EVM) verification.
 <br><br>
 <i>"The <a href="https://en.wikipedia.org/wiki/Sonobe">Sonobe module</a> is one of the many units used to build modular origami. The popularity of Sonobe modular origami models derives from the simplicity of folding the modules, the sturdy and easy assembly, and the flexibility of the system."</i>
-</span>
-</span>
 
-<br><br>
+<br>
 
 > **Warning**: experimental code, do not use in production.<br>
 > The code has not been audited. Several optimizations are also pending. Our focus so far has been on implementing the Nova and CycleFold schemes and achieving onchain (EVM) verification.

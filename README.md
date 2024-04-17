@@ -1,11 +1,4 @@
-# sonobe <a style="float:right;" href="https://privacy-scaling-explorations.github.io/sonobe-docs/"><img src="https://img.shields.io/badge/Sonobe-Docs-blue"/></a>
-
-
-<!--
-[![CI](https://github.com/privacy-scaling-explorations/sonobe/actions/workflows/ci.yml/badge.svg)](https://github.com/privacy-scaling-explorations/sonobe/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/privacy-scaling-explorations/sonobe/blob/main/LICENSE)
-[![](https://img.shields.io/badge/Sonobe-Docs-blue)](https://privacy-scaling-explorations.github.io/sonobe-docs/)
--->
+# sonobe
 
 Experimental folding schemes library implemented jointly by [0xPARC](https://0xparc.org/) and [PSE](https://pse.dev).
 

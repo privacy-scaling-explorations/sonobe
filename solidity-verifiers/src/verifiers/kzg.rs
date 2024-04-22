@@ -11,7 +11,7 @@ use super::PRAGMA_KZG10_VERIFIER;
 
 #[derive(Template, Default)]
 #[template(path = "kzg10_verifier.askama.sol", ext = "sol")]
-pub(crate) struct KZG10Verifier {
+pub struct KZG10Verifier {
     /// The generator of `G1`.
     pub(crate) g1: G1Repr,
     /// The generator of `G2`.
@@ -42,8 +42,8 @@ impl From<KZG10VerifierKey> for KZG10Verifier {
 
 #[derive(CanonicalDeserialize, CanonicalSerialize, Clone, PartialEq, Debug)]
 pub struct KZG10VerifierKey {
-    pub(crate) vk: VerifierKey<Bn254>,
-    pub(crate) g1_crs_batch_points: Vec<G1Affine>,
+    pub vk: VerifierKey<Bn254>,
+    pub g1_crs_batch_points: Vec<G1Affine>,
 }
 
 impl From<(VerifierKey<Bn254>, Vec<G1Affine>)> for KZG10VerifierKey {

@@ -79,6 +79,10 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
+      - name: Download solc
+        run: |
+          curl -sSfL https://github.com/ethereum/solidity/releases/download/v0.8.4/solc-static-linux -o /usr/local/bin/solc
+          chmod +x /usr/local/bin/solc
       - name: Run examples tests
         run: cargo test --examples
       - name: Run examples

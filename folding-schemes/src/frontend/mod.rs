@@ -52,10 +52,9 @@ pub mod tests {
     use core::marker::PhantomData;
 
     /// CubicFCircuit is a struct that implements the FCircuit trait, for the R1CS example circuit
-    /// from https://www.vitalik.ca/general/2016/12/10/qap.html, which checks `x^3 + x + 5 = y`. It
-    /// has 2 public inputs which are used as the state. `z_i` is used as `x`, and `z_{i+1}` is
-    /// used as `y`, and at the next step, `z_{i+1}` will be assigned to `z_i`, and a new `z+{i+1}`
-    /// will be computted.
+    /// from https://www.vitalik.ca/general/2016/12/10/qap.html, which checks `x^3 + x + 5 = y`.
+    /// `z_i` is used as `x`, and `z_{i+1}` is used as `y`, and at the next step, `z_{i+1}` will be
+    /// assigned to `z_i`, and a new `z+{i+1}` will be computted.
     #[derive(Clone, Copy, Debug)]
     pub struct CubicFCircuit<F: PrimeField> {
         _f: PhantomData<F>,

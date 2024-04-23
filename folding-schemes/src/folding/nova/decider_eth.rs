@@ -150,9 +150,7 @@ where
         proof: &Self::Proof,
     ) -> Result<bool, Error> {
         if i <= C1::ScalarField::one() {
-            return Err(Error::Other(
-                "The number of folded steps must be greater than 1".to_string(),
-            ));
+            return Err(Error::NotEnoughSteps);
         }
 
         let (snark_vk, cs_vk): (S::VerifyingKey, CS1::VerifierParams) = vp;

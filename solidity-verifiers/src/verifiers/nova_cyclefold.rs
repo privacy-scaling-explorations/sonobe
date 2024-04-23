@@ -252,6 +252,61 @@ mod tests {
         save_solidity("NovaDecider.sol", &decider_template.render().unwrap());
     }
 
+    #[allow(clippy::type_complexity)]
+    fn init_test_prover_params<FC: FCircuit<Fr, Params = ()>>() -> (
+        ProverParams<G1, G2, KZG<'static, Bn254>, Pedersen<G2>>,
+        KZGVerifierKey<Bn254>,
+    ) {
+        let mut rng = ark_std::test_rng();
+        let poseidon_config = poseidon_test_config::<Fr>();
+        let f_circuit = FC::new(());
+        let (cs_len, cf_cs_len) =
+            get_cs_params_len::<G1, GVar, G2, GVar2, FC>(&poseidon_config, f_circuit).unwrap();
+        let (kzg_pk, kzg_vk): (KZGProverKey<G1>, KZGVerifierKey<Bn254>) =
+            KZG::<Bn254>::setup(&mut rng, cs_len).unwrap();
+        let (cf_pedersen_params, _) = Pedersen::<G2>::setup(&mut rng, cf_cs_len).unwrap();
+        let fs_prover_params = ProverParams::<G1, G2, KZG<Bn254>, Pedersen<G2>> {
+            poseidon_config: poseidon_config.clone(),
+            cs_params: kzg_pk.clone(),
+            cf_cs_params: cf_pedersen_params,
+        };
+        (fs_prover_params, kzg_vk)
+    }
+
+    /// Initializes Nova parameters and DeciderEth parameters. Only for test purposes.
+    #[allow(clippy::type_complexity)]
+    fn init_params<FC: FCircuit<Fr, Params = ()>>() -> (
+        ProverParams<G1, G2, KZG<'static, Bn254>, Pedersen<G2>>,
+        KZGVerifierKey<Bn254>,
+        ProvingKey<Bn254>,
+        G16VerifierKey<Bn254>,
+    ) {
+        let mut rng = rand::rngs::OsRng;
+        let start = Instant::now();
+        let (fs_prover_params, kzg_vk) = init_test_prover_params::<FC>();
+        println!("generated Nova folding params: {:?}", start.elapsed());
+        let f_circuit = FC::new(());
+
+        pub type NOVA_FCircuit<FC> =
+            Nova<G1, GVar, G2, GVar2, FC, KZG<'static, Bn254>, Pedersen<G2>>;
+        let z_0 = vec![Fr::zero(); f_circuit.state_len()];
+        let nova = NOVA_FCircuit::init(&fs_prover_params, f_circuit, z_0.clone()).unwrap();
+
+        let decider_circuit =
+            DeciderEthCircuit::<G1, GVar, G2, GVar2, KZG<Bn254>, Pedersen<G2>>::from_nova::<FC>(
+                nova.clone(),
+            )
+            .unwrap();
+        let start = Instant::now();
+        let (g16_pk, g16_vk) =
+            Groth16::<Bn254>::circuit_specific_setup(decider_circuit.clone(), &mut rng).unwrap();
+        println!(
+            "generated G16 (Decider circuit) params: {:?}",
+            start.elapsed()
+        );
+        (fs_prover_params, kzg_vk, g16_pk, g16_vk)
+    }
+
     /// This function allows to define which FCircuit to use for the test, and how many prove_step
     /// rounds to perform.
     /// Actions performed by this test:
@@ -390,60 +445,5 @@ mod tests {
             z_0.clone(),
             3,
         );
-    }
-
-    #[allow(clippy::type_complexity)]
-    fn init_test_prover_params<FC: FCircuit<Fr, Params = ()>>() -> (
-        ProverParams<G1, G2, KZG<'static, Bn254>, Pedersen<G2>>,
-        KZGVerifierKey<Bn254>,
-    ) {
-        let mut rng = ark_std::test_rng();
-        let poseidon_config = poseidon_test_config::<Fr>();
-        let f_circuit = FC::new(());
-        let (cs_len, cf_cs_len) =
-            get_cs_params_len::<G1, GVar, G2, GVar2, FC>(&poseidon_config, f_circuit).unwrap();
-        let (kzg_pk, kzg_vk): (KZGProverKey<G1>, KZGVerifierKey<Bn254>) =
-            KZG::<Bn254>::setup(&mut rng, cs_len).unwrap();
-        let (cf_pedersen_params, _) = Pedersen::<G2>::setup(&mut rng, cf_cs_len).unwrap();
-        let fs_prover_params = ProverParams::<G1, G2, KZG<Bn254>, Pedersen<G2>> {
-            poseidon_config: poseidon_config.clone(),
-            cs_params: kzg_pk.clone(),
-            cf_cs_params: cf_pedersen_params,
-        };
-        (fs_prover_params, kzg_vk)
-    }
-
-    /// Initializes Nova parameters and DeciderEth parameters. Only for test purposes.
-    #[allow(clippy::type_complexity)]
-    fn init_params<FC: FCircuit<Fr, Params = ()>>() -> (
-        ProverParams<G1, G2, KZG<'static, Bn254>, Pedersen<G2>>,
-        KZGVerifierKey<Bn254>,
-        ProvingKey<Bn254>,
-        G16VerifierKey<Bn254>,
-    ) {
-        let mut rng = rand::rngs::OsRng;
-        let start = Instant::now();
-        let (fs_prover_params, kzg_vk) = init_test_prover_params::<FC>();
-        println!("generated Nova folding params: {:?}", start.elapsed());
-        let f_circuit = FC::new(());
-
-        pub type NOVA_FCircuit<FC> =
-            Nova<G1, GVar, G2, GVar2, FC, KZG<'static, Bn254>, Pedersen<G2>>;
-        let z_0 = vec![Fr::zero(); f_circuit.state_len()];
-        let nova = NOVA_FCircuit::init(&fs_prover_params, f_circuit, z_0.clone()).unwrap();
-
-        let decider_circuit =
-            DeciderEthCircuit::<G1, GVar, G2, GVar2, KZG<Bn254>, Pedersen<G2>>::from_nova::<FC>(
-                nova.clone(),
-            )
-            .unwrap();
-        let start = Instant::now();
-        let (g16_pk, g16_vk) =
-            Groth16::<Bn254>::circuit_specific_setup(decider_circuit.clone(), &mut rng).unwrap();
-        println!(
-            "generated G16 (Decider circuit) params: {:?}",
-            start.elapsed()
-        );
-        (fs_prover_params, kzg_vk, g16_pk, g16_vk)
     }
 }

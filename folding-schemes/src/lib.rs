@@ -34,8 +34,6 @@ pub enum Error {
     ProtoGalaxy(folding::protogalaxy::ProtoGalaxyError),
     #[error("std::io::Error")]
     IOError(#[from] std::io::Error),
-    #[error("{0}")]
-    Other(String),
 
     // Relation errors
     #[error("Relation not satisfied")]
@@ -68,6 +66,8 @@ pub enum Error {
     OutOfBounds,
     #[error("Could not construct the Evaluation Domain")]
     NewDomainFail,
+    #[error("The number of folded steps must be greater than 1")]
+    NotEnoughSteps,
 
     // Commitment errors
     #[error("Pedersen parameters length is not sufficient (generators.len={0} < vector.len={1} unsatisfied)")]
@@ -78,6 +78,8 @@ pub enum Error {
     CommitmentVerificationFail,
 
     // Other
+    #[error("{0}")]
+    Other(String),
     #[error("Randomness for blinding not found")]
     MissingRandomness,
     #[error("Missing value: {0}")]

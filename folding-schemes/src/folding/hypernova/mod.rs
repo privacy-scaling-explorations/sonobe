@@ -1,5 +1,8 @@
 /// Implements the scheme described in [HyperNova](https://eprint.iacr.org/2023/573.pdf)
-use ark_crypto_primitives::sponge::{poseidon::PoseidonConfig, Absorb};
+use ark_crypto_primitives::sponge::{
+    poseidon::{PoseidonConfig, PoseidonSponge},
+    Absorb, CryptographicSponge,
+};
 use ark_ec::{CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
@@ -18,6 +21,10 @@ use cccs::CCCS;
 use lcccs::LCCCS;
 use nimfs::NIMFS;
 
+use crate::arith::{
+    ccs::CCS,
+    r1cs::{extract_w_x, R1CS},
+};
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::{
     cyclefold::{fold_cyclefold_circuit, CycleFoldCircuit},
@@ -31,13 +38,6 @@ use crate::frontend::FCircuit;
 use crate::utils::{get_cm_coordinates, pp_hash};
 use crate::Error;
 use crate::FoldingScheme;
-use crate::{
-    arith::{
-        ccs::CCS,
-        r1cs::{extract_w_x, R1CS},
-    },
-    transcript::{poseidon::PoseidonTranscript, Transcript},
-};
 
 /// Witness for the LCCCS & CCCS, containing the w vector, and the r_w used as randomness in the Pedersen commitment.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -377,18 +377,19 @@ where
                 cf_cmT: None,
             };
         } else {
-            let mut transcript_p: PoseidonTranscript<C1> =
-                PoseidonTranscript::<C1>::new(&self.poseidon_config);
+            let mut transcript_p: PoseidonSponge<C1::ScalarField> =
+                PoseidonSponge::<C1::ScalarField>::new(&self.poseidon_config);
             transcript_p.absorb(&self.pp_hash);
             let (rho_bits, nimfs_proof);
-            (nimfs_proof, U_i1, W_i1, rho_bits) = NIMFS::<C1, PoseidonTranscript<C1>>::prove(
-                &mut transcript_p,
-                &self.ccs,
-                &[self.U_i.clone()],
-                &[self.u_i.clone()],
-                &[self.W_i.clone()],
-                &[self.w_i.clone()],
-            )?;
+            (nimfs_proof, U_i1, W_i1, rho_bits) =
+                NIMFS::<C1, PoseidonSponge<C1::ScalarField>>::prove(
+                    &mut transcript_p,
+                    &self.ccs,
+                    &[self.U_i.clone()],
+                    &[self.u_i.clone()],
+                    &[self.W_i.clone()],
+                    &[self.w_i.clone()],
+                )?;
 
             // sanity check: check the folded instance relation
             #[cfg(test)]

@@ -1,7 +1,7 @@
 use crate::utils::encoding::{g1_to_fq_repr, g2_to_fq_repr};
 use crate::utils::encoding::{G1Repr, G2Repr};
 use crate::utils::HeaderInclusion;
-use crate::{ProtocolData, MIT_SDPX_IDENTIFIER};
+use crate::{ProtocolVerifierKey, MIT_SDPX_IDENTIFIER};
 use ark_bn254::{Bn254, G1Affine};
 use ark_poly_commit::kzg10::VerifierKey;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -24,8 +24,8 @@ pub(crate) struct KZG10Verifier {
     pub(crate) g1_crs: Vec<G1Repr>,
 }
 
-impl From<KzgData> for KZG10Verifier {
-    fn from(data: KzgData) -> Self {
+impl From<KZG10VerifierKey> for KZG10Verifier {
+    fn from(data: KZG10VerifierKey) -> Self {
         Self {
             g1: g1_to_fq_repr(data.vk.g),
             g2: g2_to_fq_repr(data.vk.h),
@@ -41,12 +41,12 @@ impl From<KzgData> for KZG10Verifier {
 }
 
 #[derive(CanonicalDeserialize, CanonicalSerialize, Clone, PartialEq, Debug)]
-pub struct KzgData {
+pub struct KZG10VerifierKey {
     pub(crate) vk: VerifierKey<Bn254>,
     pub(crate) g1_crs_batch_points: Vec<G1Affine>,
 }
 
-impl From<(VerifierKey<Bn254>, Vec<G1Affine>)> for KzgData {
+impl From<(VerifierKey<Bn254>, Vec<G1Affine>)> for KZG10VerifierKey {
     fn from(value: (VerifierKey<Bn254>, Vec<G1Affine>)) -> Self {
         Self {
             vk: value.0,
@@ -55,7 +55,7 @@ impl From<(VerifierKey<Bn254>, Vec<G1Affine>)> for KzgData {
     }
 }
 
-impl ProtocolData for KzgData {
+impl ProtocolVerifierKey for KZG10VerifierKey {
     const PROTOCOL_NAME: &'static str = "KZG";
 
     fn render_as_template(self, pragma: Option<String>) -> Vec<u8> {
@@ -72,10 +72,11 @@ impl ProtocolData for KzgData {
 
 #[cfg(test)]
 mod tests {
+    use super::KZG10VerifierKey;
     use crate::{
         evm::{compile_solidity, Evm},
         utils::HeaderInclusion,
-        KzgData, ProtocolData,
+        ProtocolVerifierKey,
     };
     use ark_bn254::{Bn254, Fr, G1Projective as G1};
     use ark_ec::{AffineRepr, CurveGroup};
@@ -100,40 +101,25 @@ mod tests {
     const FUNCTION_SELECTOR_KZG10_CHECK: [u8; 4] = [0x9e, 0x78, 0xcc, 0xf7];
 
     #[test]
-    fn kzg_data_serde_roundtrip() {
+    fn kzg_vk_serde_roundtrip() {
         let (pk, vk, _, _, _) = setup(DEFAULT_SETUP_LEN);
 
-        let kzg_data = KzgData::from((vk, pk.powers_of_g[0..3].to_vec()));
+        let kzg_vk = KZG10VerifierKey::from((vk, pk.powers_of_g[0..3].to_vec()));
         let mut bytes = vec![];
-        kzg_data.serialize_protocol_data(&mut bytes).unwrap();
-        let obtained_kzg_data = KzgData::deserialize_protocol_data(bytes.as_slice()).unwrap();
+        kzg_vk.serialize_protocol_verifier_key(&mut bytes).unwrap();
+        let obtained_kzg_vk =
+            KZG10VerifierKey::deserialize_protocol_verifier_key(bytes.as_slice()).unwrap();
 
-        assert_eq!(kzg_data, obtained_kzg_data)
-    }
-
-    #[test]
-    fn kzg_verifier_template_renders() {
-        let (kzg_pk, kzg_vk, _, _, _) = setup(DEFAULT_SETUP_LEN);
-        let kzg_data = KzgData::from((kzg_vk.clone(), kzg_pk.powers_of_g[0..3].to_vec()));
-
-        let res = HeaderInclusion::<KZG10Verifier>::builder()
-            .template(kzg_data)
-            .build()
-            .render()
-            .unwrap();
-
-        // TODO: Unsure what this is testing. If we want to test correct rendering,
-        // we should first check that it COMPLETELY renders to what we expect.
-        assert!(res.contains(&kzg_vk.g.x.to_string()));
+        assert_eq!(kzg_vk, obtained_kzg_vk)
     }
 
     #[test]
     fn kzg_verifier_compiles() {
         let (kzg_pk, kzg_vk, _, _, _) = setup(DEFAULT_SETUP_LEN);
-        let kzg_data = KzgData::from((kzg_vk.clone(), kzg_pk.powers_of_g[0..3].to_vec()));
+        let kzg_vk = KZG10VerifierKey::from((kzg_vk.clone(), kzg_pk.powers_of_g[0..3].to_vec()));
 
         let res = HeaderInclusion::<KZG10Verifier>::builder()
-            .template(kzg_data)
+            .template(kzg_vk)
             .build()
             .render()
             .unwrap();
@@ -151,7 +137,7 @@ mod tests {
         let transcript_v = &mut PoseidonTranscript::<G1>::new(&poseidon_config);
 
         let (kzg_pk, kzg_vk, _, _, _) = setup(DEFAULT_SETUP_LEN);
-        let kzg_data = KzgData::from((kzg_vk.clone(), kzg_pk.powers_of_g[0..3].to_vec()));
+        let kzg_vk = KZG10VerifierKey::from((kzg_vk.clone(), kzg_pk.powers_of_g[0..3].to_vec()));
 
         let v: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(&mut rng))
             .take(DEFAULT_SETUP_LEN)
@@ -159,7 +145,7 @@ mod tests {
         let cm = KZG::<Bn254>::commit(&kzg_pk, &v, &Fr::zero()).unwrap();
         let proof = KZG::<Bn254>::prove(&kzg_pk, transcript_p, &cm, &v, &Fr::zero(), None).unwrap();
         let template = HeaderInclusion::<KZG10Verifier>::builder()
-            .template(kzg_data)
+            .template(kzg_vk)
             .build()
             .render()
             .unwrap();

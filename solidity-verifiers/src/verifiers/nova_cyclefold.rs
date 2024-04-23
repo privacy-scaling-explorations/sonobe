@@ -12,13 +12,13 @@ use folding_schemes::folding::circuits::nonnative::uint::NonNativeUintVar;
 use super::g16::Groth16Verifier;
 use super::kzg::KZG10Verifier;
 use crate::utils::HeaderInclusion;
-use crate::{Groth16Data, KzgData, ProtocolData, PRAGMA_GROTH16_VERIFIER};
+use crate::{Groth16VerifierKey, KZG10VerifierKey, ProtocolVerifierKey, PRAGMA_GROTH16_VERIFIER};
 
 pub fn get_decider_template_for_cyclefold_decider(
-    nova_cyclefold_data: NovaCycleFoldData,
+    nova_cyclefold_vk: NovaCycleFoldVerifierKey,
 ) -> String {
     HeaderInclusion::<NovaCycleFoldDecider>::builder()
-        .template(nova_cyclefold_data)
+        .template(nova_cyclefold_vk)
         .build()
         .render()
         .unwrap()
@@ -36,14 +36,14 @@ pub(crate) struct NovaCycleFoldDecider {
     bits_per_limb: usize,
 }
 
-impl From<NovaCycleFoldData> for NovaCycleFoldDecider {
-    fn from(value: NovaCycleFoldData) -> Self {
-        let groth16_verifier = Groth16Verifier::from(value.g16_data);
+impl From<NovaCycleFoldVerifierKey> for NovaCycleFoldDecider {
+    fn from(value: NovaCycleFoldVerifierKey) -> Self {
+        let groth16_verifier = Groth16Verifier::from(value.g16_vk);
         let public_inputs_len = groth16_verifier.gamma_abc_len;
         let bits_per_limb = NonNativeUintVar::<Fq>::bits_per_limb();
         Self {
             groth16_verifier,
-            kzg10_verifier: KZG10Verifier::from(value.kzg_data),
+            kzg10_verifier: KZG10Verifier::from(value.kzg_vk),
             z_len: value.z_len,
             public_inputs_len,
             num_limbs: (250_f32 / (bits_per_limb as f32)).ceil() as usize,
@@ -53,13 +53,13 @@ impl From<NovaCycleFoldData> for NovaCycleFoldDecider {
 }
 
 #[derive(CanonicalDeserialize, CanonicalSerialize, PartialEq, Debug, Clone)]
-pub struct NovaCycleFoldData {
-    g16_data: Groth16Data,
-    kzg_data: KzgData,
+pub struct NovaCycleFoldVerifierKey {
+    g16_vk: Groth16VerifierKey,
+    kzg_vk: KZG10VerifierKey,
     z_len: usize,
 }
 
-impl ProtocolData for NovaCycleFoldData {
+impl ProtocolVerifierKey for NovaCycleFoldVerifierKey {
     const PROTOCOL_NAME: &'static str = "NovaCycleFold";
 
     fn render_as_template(self, pragma: Option<String>) -> Vec<u8> {
@@ -73,17 +73,17 @@ impl ProtocolData for NovaCycleFoldData {
     }
 }
 
-impl From<(Groth16Data, KzgData, usize)> for NovaCycleFoldData {
-    fn from(value: (Groth16Data, KzgData, usize)) -> Self {
+impl From<(Groth16VerifierKey, KZG10VerifierKey, usize)> for NovaCycleFoldVerifierKey {
+    fn from(value: (Groth16VerifierKey, KZG10VerifierKey, usize)) -> Self {
         Self {
-            g16_data: value.0,
-            kzg_data: value.1,
+            g16_vk: value.0,
+            kzg_vk: value.1,
             z_len: value.2,
         }
     }
 }
 
-impl NovaCycleFoldData {
+impl NovaCycleFoldVerifierKey {
     pub fn new(
         vkey_g16: VerifyingKey<Bn254>,
         vkey_kzg: VerifierKey<Bn254>,
@@ -91,8 +91,8 @@ impl NovaCycleFoldData {
         z_len: usize,
     ) -> Self {
         Self {
-            g16_data: Groth16Data::from(vkey_g16),
-            kzg_data: KzgData::from((vkey_kzg, crs_points)),
+            g16_vk: Groth16VerifierKey::from(vkey_g16),
+            kzg_vk: KZG10VerifierKey::from((vkey_kzg, crs_points)),
             z_len,
         }
     }
@@ -137,7 +137,7 @@ mod tests {
         evm::{compile_solidity, save_solidity, Evm},
         utils::{get_function_selector_for_nova_cyclefold_verifier, HeaderInclusion},
         verifiers::nova_cyclefold::get_decider_template_for_cyclefold_decider,
-        Groth16Data, KzgData, NovaCycleFoldData, ProtocolData,
+        Groth16VerifierKey, KZG10VerifierKey, NovaCycleFoldVerifierKey, ProtocolVerifierKey,
     };
 
     /// Test circuit to be folded
@@ -221,35 +221,35 @@ mod tests {
     }
 
     #[test]
-    fn nova_cyclefold_data_serde_roundtrip() {
+    fn nova_cyclefold_vk_serde_roundtrip() {
         let (kzg_pk, kzg_vk, _, g16_vk, _) = setup(DEFAULT_SETUP_LEN);
-        let g16_data = Groth16Data::from(g16_vk);
-        let kzg_data = KzgData::from((kzg_vk, kzg_pk.powers_of_g[0..3].to_vec()));
+        let g16_vk = Groth16VerifierKey::from(g16_vk);
+        let kzg_vk = KZG10VerifierKey::from((kzg_vk, kzg_pk.powers_of_g[0..3].to_vec()));
 
         let mut bytes = vec![];
-        let nova_cyclefold_data = NovaCycleFoldData::from((g16_data, kzg_data, 1));
+        let nova_cyclefold_vk = NovaCycleFoldVerifierKey::from((g16_vk, kzg_vk, 1));
 
-        nova_cyclefold_data
-            .serialize_protocol_data(&mut bytes)
+        nova_cyclefold_vk
+            .serialize_protocol_verifier_key(&mut bytes)
             .unwrap();
-        let obtained_nova_cyclefold_data =
-            NovaCycleFoldData::deserialize_protocol_data(bytes.as_slice()).unwrap();
+        let obtained_nova_cyclefold_vk =
+            NovaCycleFoldVerifierKey::deserialize_protocol_verifier_key(bytes.as_slice()).unwrap();
 
-        assert_eq!(nova_cyclefold_data, obtained_nova_cyclefold_data)
+        assert_eq!(nova_cyclefold_vk, obtained_nova_cyclefold_vk)
     }
 
     #[test]
     fn nova_cyclefold_decider_template_renders() {
         let (kzg_pk, kzg_vk, _, g16_vk, _) = setup(DEFAULT_SETUP_LEN);
-        let g16_data = Groth16Data::from(g16_vk);
-        let kzg_data = KzgData::from((kzg_vk, kzg_pk.powers_of_g[0..3].to_vec()));
-        let nova_cyclefold_data = NovaCycleFoldData::from((g16_data, kzg_data, 1));
+        let g16_vk = Groth16VerifierKey::from(g16_vk);
+        let kzg_vk = KZG10VerifierKey::from((kzg_vk, kzg_pk.powers_of_g[0..3].to_vec()));
+        let nova_cyclefold_vk = NovaCycleFoldVerifierKey::from((g16_vk, kzg_vk, 1));
 
-        let decider_template = HeaderInclusion::<NovaCycleFoldDecider>::builder()
-            .template(nova_cyclefold_data)
+        let decider_solidity_code = HeaderInclusion::<NovaCycleFoldDecider>::builder()
+            .template(nova_cyclefold_vk)
             .build();
 
-        save_solidity("NovaDecider.sol", &decider_template.render().unwrap());
+        save_solidity("NovaDecider.sol", &decider_solidity_code.render().unwrap());
     }
 
     #[allow(clippy::type_complexity)]
@@ -342,13 +342,13 @@ mod tests {
         >;
         let f_circuit = FC::new(());
 
-        let g16_data = Groth16Data::from(g16_vk.clone());
-        let kzg_data = KzgData::from((
+        let g16_vk_sol = Groth16VerifierKey::from(g16_vk.clone());
+        let kzg_vk_sol = KZG10VerifierKey::from((
             kzg_vk.clone(),
             fs_prover_params.cs_params.powers_of_g[0..3].to_vec(),
         ));
-        let nova_cyclefold_data =
-            NovaCycleFoldData::from((g16_data, kzg_data, f_circuit.state_len()));
+        let nova_cyclefold_vk =
+            NovaCycleFoldVerifierKey::from((g16_vk_sol, kzg_vk_sol, f_circuit.state_len()));
 
         let mut nova = NOVA_FCircuit::init(&fs_prover_params, f_circuit, z_0).unwrap();
         for _ in 0..n_steps {
@@ -391,9 +391,10 @@ mod tests {
         )
         .unwrap();
 
-        let decider_template = get_decider_template_for_cyclefold_decider(nova_cyclefold_data);
+        let decider_solidity_code = get_decider_template_for_cyclefold_decider(nova_cyclefold_vk);
 
-        let nova_cyclefold_verifier_bytecode = compile_solidity(decider_template, "NovaDecider");
+        let nova_cyclefold_verifier_bytecode =
+            compile_solidity(decider_solidity_code, "NovaDecider");
 
         let mut evm = Evm::default();
         let verifier_address = evm.create(nova_cyclefold_verifier_bytecode);

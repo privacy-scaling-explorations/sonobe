@@ -14,11 +14,11 @@ mod g16;
 mod kzg;
 mod nova_cyclefold;
 
-pub use g16::Groth16Data;
-pub use kzg::KzgData;
-pub use nova_cyclefold::{get_decider_template_for_cyclefold_decider, NovaCycleFoldData};
+pub use g16::Groth16VerifierKey;
+pub use kzg::KZG10VerifierKey;
+pub use nova_cyclefold::{get_decider_template_for_cyclefold_decider, NovaCycleFoldVerifierKey};
 
-pub trait ProtocolData: CanonicalDeserialize + CanonicalSerialize {
+pub trait ProtocolVerifierKey: CanonicalDeserialize + CanonicalSerialize {
     const PROTOCOL_NAME: &'static str;
 
     fn serialize_name<W: Write>(&self, writer: &mut W) -> Result<(), SerializationError> {
@@ -27,11 +27,14 @@ pub trait ProtocolData: CanonicalDeserialize + CanonicalSerialize {
             .serialize_uncompressed(writer)
     }
 
-    fn serialize_protocol_data<W: Write>(&self, writer: &mut W) -> Result<(), SerializationError> {
+    fn serialize_protocol_verifier_key<W: Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<(), SerializationError> {
         self.serialize_name(writer)?;
         self.serialize_compressed(writer)
     }
-    fn deserialize_protocol_data<R: Read + Copy>(
+    fn deserialize_protocol_verifier_key<R: Read + Copy>(
         mut reader: R,
     ) -> Result<Self, SerializationError> {
         let name: String = String::deserialize_uncompressed(&mut reader)?;

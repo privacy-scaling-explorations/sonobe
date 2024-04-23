@@ -83,6 +83,21 @@ impl From<(Groth16VerifierKey, KZG10VerifierKey, usize)> for NovaCycleFoldVerifi
     }
 }
 
+// implements From assuming that the 'batchCheck' method from the KZG10 template will not be used
+// in the NovaCycleFoldDecider verifier contract
+impl From<(VerifyingKey<Bn254>, VerifierKey<Bn254>, usize)> for NovaCycleFoldVerifierKey {
+    fn from(value: (VerifyingKey<Bn254>, VerifierKey<Bn254>, usize)) -> Self {
+        let g16_vk = Groth16VerifierKey::from(value.0);
+        // pass `Vec::new()` since batchCheck will not be used
+        let kzg_vk = KZG10VerifierKey::from((value.1, Vec::new()));
+        Self {
+            g16_vk,
+            kzg_vk,
+            z_len: value.2,
+        }
+    }
+}
+
 impl NovaCycleFoldVerifierKey {
     pub fn new(
         vkey_g16: VerifyingKey<Bn254>,
@@ -137,7 +152,7 @@ mod tests {
         evm::{compile_solidity, save_solidity, Evm},
         utils::{get_function_selector_for_nova_cyclefold_verifier, HeaderInclusion},
         verifiers::nova_cyclefold::get_decider_template_for_cyclefold_decider,
-        Groth16VerifierKey, KZG10VerifierKey, NovaCycleFoldVerifierKey, ProtocolVerifierKey,
+        NovaCycleFoldVerifierKey, ProtocolVerifierKey,
     };
 
     /// Test circuit to be folded
@@ -222,9 +237,7 @@ mod tests {
 
     #[test]
     fn nova_cyclefold_vk_serde_roundtrip() {
-        let (kzg_pk, kzg_vk, _, g16_vk, _) = setup(DEFAULT_SETUP_LEN);
-        let g16_vk = Groth16VerifierKey::from(g16_vk);
-        let kzg_vk = KZG10VerifierKey::from((kzg_vk, kzg_pk.powers_of_g[0..3].to_vec()));
+        let (_, kzg_vk, _, g16_vk, _) = setup(DEFAULT_SETUP_LEN);
 
         let mut bytes = vec![];
         let nova_cyclefold_vk = NovaCycleFoldVerifierKey::from((g16_vk, kzg_vk, 1));
@@ -240,9 +253,7 @@ mod tests {
 
     #[test]
     fn nova_cyclefold_decider_template_renders() {
-        let (kzg_pk, kzg_vk, _, g16_vk, _) = setup(DEFAULT_SETUP_LEN);
-        let g16_vk = Groth16VerifierKey::from(g16_vk);
-        let kzg_vk = KZG10VerifierKey::from((kzg_vk, kzg_pk.powers_of_g[0..3].to_vec()));
+        let (_, kzg_vk, _, g16_vk, _) = setup(DEFAULT_SETUP_LEN);
         let nova_cyclefold_vk = NovaCycleFoldVerifierKey::from((g16_vk, kzg_vk, 1));
 
         let decider_solidity_code = HeaderInclusion::<NovaCycleFoldDecider>::builder()
@@ -342,13 +353,8 @@ mod tests {
         >;
         let f_circuit = FC::new(());
 
-        let g16_vk_sol = Groth16VerifierKey::from(g16_vk.clone());
-        let kzg_vk_sol = KZG10VerifierKey::from((
-            kzg_vk.clone(),
-            fs_prover_params.cs_params.powers_of_g[0..3].to_vec(),
-        ));
         let nova_cyclefold_vk =
-            NovaCycleFoldVerifierKey::from((g16_vk_sol, kzg_vk_sol, f_circuit.state_len()));
+            NovaCycleFoldVerifierKey::from((g16_vk.clone(), kzg_vk.clone(), f_circuit.state_len()));
 
         let mut nova = NOVA_FCircuit::init(&fs_prover_params, f_circuit, z_0).unwrap();
         for _ in 0..n_steps {

@@ -73,7 +73,7 @@ impl<C: CurveGroup, const H: bool> CommitmentScheme<C, H> for Pedersen<C, H> {
 
     fn prove(
         params: &Self::ProverParams,
-        transcript: &mut impl Transcript<C>,
+        transcript: &mut impl Transcript<C::ScalarField>,
         cm: &C,
         v: &[C::ScalarField],
         r: &C::ScalarField, // blinding factor
@@ -125,7 +125,7 @@ impl<C: CurveGroup, const H: bool> CommitmentScheme<C, H> for Pedersen<C, H> {
 
     fn verify(
         params: &Self::VerifierParams,
-        transcript: &mut impl Transcript<C>,
+        transcript: &mut impl Transcript<C::ScalarField>,
         cm: &C,
         proof: &Proof<C>,
     ) -> Result<(), Error> {
@@ -209,14 +209,14 @@ where
 
 #[cfg(test)]
 mod tests {
+    use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, CryptographicSponge};
     use ark_ff::{BigInteger, PrimeField};
     use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
     use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget};
     use ark_relations::r1cs::ConstraintSystem;
-    use ark_std::UniformRand;
 
     use super::*;
-    use crate::transcript::poseidon::{poseidon_test_config, PoseidonTranscript};
+    use crate::transcript::poseidon::poseidon_test_config;
 
     #[test]
     fn test_pedersen() {
@@ -232,9 +232,9 @@ mod tests {
         let poseidon_config = poseidon_test_config::<Fr>();
 
         // init Prover's transcript
-        let mut transcript_p = PoseidonTranscript::<Projective>::new(&poseidon_config);
+        let mut transcript_p = PoseidonSponge::<Fr>::new(&poseidon_config);
         // init Verifier's transcript
-        let mut transcript_v = PoseidonTranscript::<Projective>::new(&poseidon_config);
+        let mut transcript_v = PoseidonSponge::<Fr>::new(&poseidon_config);
 
         let v: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(&mut rng))
             .take(n)

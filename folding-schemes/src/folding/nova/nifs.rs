@@ -1,7 +1,9 @@
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{CurveGroup, Group};
-use ark_std::Zero;
+use ark_std::{cfg_iter, Zero};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use std::marker::PhantomData;
+use std::{sync::Arc, thread};
 
 use super::{CommittedInstance, Witness};
 use crate::ccs::r1cs::R1CS;
@@ -31,18 +33,48 @@ where
     ) -> Result<Vec<C::ScalarField>, Error> {
         let (A, B, C) = (r1cs.A.clone(), r1cs.B.clone(), r1cs.C.clone());
 
-        // this is parallelizable (for the future)
-        let Az1 = mat_vec_mul_sparse(&A, z1)?;
-        let Bz1 = mat_vec_mul_sparse(&B, z1)?;
-        let Cz1 = mat_vec_mul_sparse(&C, z1)?;
-        let Az2 = mat_vec_mul_sparse(&A, z2)?;
-        let Bz2 = mat_vec_mul_sparse(&B, z2)?;
-        let Cz2 = mat_vec_mul_sparse(&C, z2)?;
+        // compute the matrix-vector operations in parallel
+        let A_arc = Arc::from(A.clone());
+        let B_arc = Arc::from(B.clone());
+        let C_arc = Arc::from(C.clone());
+        let z1_arc = Arc::from(z1);
+        let z2_arc = Arc::from(z2);
 
-        let Az1_Bz2 = hadamard(&Az1, &Bz2)?;
-        let Az2_Bz1 = hadamard(&Az2, &Bz1)?;
-        let u1Cz2 = vec_scalar_mul(&Cz2, &u1);
-        let u2Cz1 = vec_scalar_mul(&Cz1, &u2);
+        let t0 = thread::spawn(move || mat_vec_mul_sparse(&A_arc, &z1_arc));
+        let z1_arc = Arc::from(z1);
+        let t1 = thread::spawn(move || mat_vec_mul_sparse(&B_arc, &z1_arc));
+        let z1_arc = Arc::from(z1);
+        let t2 = thread::spawn(move || mat_vec_mul_sparse(&C_arc, &z1_arc));
+        let A_arc = Arc::from(A.clone());
+        let B_arc = Arc::from(B.clone());
+        let C_arc = Arc::from(C.clone());
+        let t3 = thread::spawn(move || mat_vec_mul_sparse(&A_arc, &z2_arc));
+        let z2_arc = Arc::from(z2);
+        let t4 = thread::spawn(move || mat_vec_mul_sparse(&B_arc, &z2_arc));
+        let z2_arc = Arc::from(z2);
+        let t5 = thread::spawn(move || mat_vec_mul_sparse(&C_arc, &z2_arc));
+
+        let Az1 = t0.join().unwrap()?;
+        let Bz1 = t1.join().unwrap()?;
+        let Cz1 = t2.join().unwrap()?;
+        let Az2 = t3.join().unwrap()?;
+        let Bz2 = t4.join().unwrap()?;
+        let Cz2 = t5.join().unwrap()?;
+
+        let Az1_arc = Arc::from(Az1);
+        let Az2_arc = Arc::from(Az2);
+        let Bz1_arc = Arc::from(Bz1);
+        let Bz2_arc = Arc::from(Bz2);
+
+        let Az1_Bz2 = thread::spawn(move || hadamard(&Az1_arc, &Bz2_arc));
+        let Az2_Bz1 = thread::spawn(move || hadamard(&Az2_arc, &Bz1_arc));
+        let u1Cz2 = thread::spawn(move || vec_scalar_mul(&Cz2, &u1));
+        let u2Cz1 = thread::spawn(move || vec_scalar_mul(&Cz1, &u2));
+
+        let Az1_Bz2 = Az1_Bz2.join().unwrap()?;
+        let Az2_Bz1 = Az2_Bz1.join().unwrap()?;
+        let u1Cz2 = u1Cz2.join().unwrap();
+        let u2Cz1 = u2Cz1.join().unwrap();
 
         vec_sub(&vec_sub(&vec_add(&Az1_Bz2, &Az2_Bz1)?, &u1Cz2)?, &u2Cz1)
     }
@@ -60,7 +92,10 @@ where
             &vec_scalar_mul(&w2.E, &r2),
         )?;
         let rE = w1.rE + r * rT + r2 * w2.rE;
-        let W: Vec<C::ScalarField> = w1.W.iter().zip(&w2.W).map(|(a, b)| *a + (r * b)).collect();
+        let W: Vec<C::ScalarField> = cfg_iter!(w1.W)
+            .zip(&w2.W)
+            .map(|(a, b)| *a + (r * b))
+            .collect();
 
         let rW = w1.rW + r * w2.rW;
         Ok(Witness::<C> { E, rE, W, rW })
@@ -86,7 +121,7 @@ where
         CommittedInstance::<C> { cmE, u, cmW, x }
     }
 
-    /// NIFS.P is the consecutive combination of compute_cmT with fold_instances
+    /// NIFS.P is the consecutive combination of compute_cmT with fold_instances.
 
     /// compute_cmT is part of the NIFS.P logic
     pub fn compute_cmT(

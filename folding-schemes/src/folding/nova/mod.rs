@@ -812,6 +812,7 @@ pub mod tests {
     use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as Projective};
     use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
     use ark_poly_commit::kzg10::VerifierKey as KZGVerifierKey;
+    use std::time::Instant;
 
     use crate::commitment::pedersen::Pedersen;
     use crate::frontend::tests::CubicFCircuit;
@@ -875,7 +876,9 @@ pub mod tests {
 
         let num_steps: usize = 3;
         for _ in 0..num_steps {
+            let start = Instant::now();
             nova.prove_step(vec![]).unwrap();
+            println!("prove_step, {:?}", start.elapsed());
         }
         assert_eq!(Fr::from(num_steps as u32), nova.i);
 

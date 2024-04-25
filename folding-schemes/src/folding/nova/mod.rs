@@ -342,6 +342,14 @@ where
     fn prove_step(&mut self, external_inputs: Vec<C1::ScalarField>) -> Result<(), Error> {
         let augmented_F_circuit: AugmentedFCircuit<C1, C2, GC2, FC>;
 
+        if self.z_i.len() != self.F.state_len() {
+            return Err(Error::NotSameLength(
+                "z_i.len()".to_string(),
+                self.z_i.len(),
+                "F.state_len()".to_string(),
+                self.F.state_len(),
+            ));
+        }
         if external_inputs.len() != self.F.external_inputs_len() {
             return Err(Error::NotSameLength(
                 "F.external_inputs_len()".to_string(),
@@ -360,7 +368,7 @@ where
 
         let z_i1 = self
             .F
-            .step_native(i_usize, self.z_i.clone(), external_inputs.clone())?; // TODO external_inputs instead of vec![]
+            .step_native(i_usize, self.z_i.clone(), external_inputs.clone())?;
 
         // compute T and cmT for AugmentedFCircuit
         let (T, cmT) = self.compute_cmT()?;

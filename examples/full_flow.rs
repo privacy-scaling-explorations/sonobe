@@ -58,7 +58,15 @@ impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
     fn state_len(&self) -> usize {
         1
     }
-    fn step_native(&self, _i: usize, z_i: Vec<F>) -> Result<Vec<F>, Error> {
+    fn external_inputs_len(&self) -> usize {
+        0
+    }
+    fn step_native(
+        &self,
+        _i: usize,
+        z_i: Vec<F>,
+        _external_inputs: Vec<F>,
+    ) -> Result<Vec<F>, Error> {
         Ok(vec![z_i[0] * z_i[0] * z_i[0] + z_i[0] + F::from(5_u32)])
     }
     fn generate_step_constraints(
@@ -66,6 +74,7 @@ impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
         cs: ConstraintSystemRef<F>,
         _i: usize,
         z_i: Vec<FpVar<F>>,
+        _external_inputs: Vec<FpVar<F>>,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let five = FpVar::<F>::new_constant(cs.clone(), F::from(5u32))?;
         let z_i = z_i[0].clone();
@@ -153,7 +162,7 @@ fn main() {
     // run n steps of the folding iteration
     for i in 0..n_steps {
         let start = Instant::now();
-        nova.prove_step().unwrap();
+        nova.prove_step(vec![]).unwrap();
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
 

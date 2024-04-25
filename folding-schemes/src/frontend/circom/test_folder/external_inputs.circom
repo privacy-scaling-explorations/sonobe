@@ -18,4 +18,3 @@ template Example () {
 }
 
 component main {public [ivc_input]} = Example();
-/* component main {public [ivc_input, external_inputs]} = Example(); */

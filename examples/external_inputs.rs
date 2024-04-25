@@ -76,29 +76,36 @@ where
 {
     _f: PhantomData<F>,
     poseidon_config: PoseidonConfig<F>,
-    external_inputs: Vec<F>,
+    // external_inputs: Vec<F>,
 }
 impl<F: PrimeField> FCircuit<F> for ExternalInputsCircuits<F>
 where
     F: Absorb,
 {
-    type Params = (PoseidonConfig<F>, Vec<F>); // where Vec<F> contains the external inputs
+    type Params = PoseidonConfig<F>;
 
     fn new(params: Self::Params) -> Self {
         Self {
             _f: PhantomData,
-            poseidon_config: params.0,
-            external_inputs: params.1,
+            poseidon_config: params,
         }
     }
     fn state_len(&self) -> usize {
         2
     }
+    fn external_inputs_len(&self) -> usize {
+        1
+    }
 
     /// computes the next state values in place, assigning z_{i+1} into z_i, and computing the new
     /// z_{i+1}
-    fn step_native(&self, i: usize, z_i: Vec<F>) -> Result<Vec<F>, Error> {
-        let input: [F; 2] = [z_i[0], self.external_inputs[i]];
+    fn step_native(
+        &self,
+        _i: usize,
+        z_i: Vec<F>,
+        external_inputs: Vec<F>,
+    ) -> Result<Vec<F>, Error> {
+        let input: [F; 2] = [z_i[0], external_inputs[0]];
         let h = CRH::<F>::evaluate(&self.poseidon_config, input).unwrap();
         Ok(vec![h, F::zero()])
     }
@@ -107,14 +114,13 @@ where
     fn generate_step_constraints(
         &self,
         cs: ConstraintSystemRef<F>,
-        i: usize,
+        _i: usize,
         z_i: Vec<FpVar<F>>,
+        external_inputs: Vec<FpVar<F>>,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let crh_params =
             CRHParametersVar::<F>::new_constant(cs.clone(), self.poseidon_config.clone())?;
-        let external_inputVar =
-            FpVar::<F>::new_witness(cs.clone(), || Ok(self.external_inputs[i])).unwrap();
-        let input: [FpVar<F>; 2] = [z_i[0].clone(), external_inputVar.clone()];
+        let input: [FpVar<F>; 2] = [z_i[0].clone(), external_inputs[0].clone()];
         let h = CRHGadget::<F>::evaluate(&crh_params, &input)?;
         Ok(vec![h, FpVar::<F>::zero()])
     }
@@ -136,12 +142,16 @@ pub mod tests {
 
         let circuit = ExternalInputsCircuits::<Fr>::new((poseidon_config, vec![Fr::from(3_u32)]));
         let z_i = vec![Fr::from(1_u32), Fr::zero()];
+        let external_inputs = vec![Fr::from(3_u32)];
 
         let z_i1 = circuit.step_native(0, z_i.clone()).unwrap();
 
         let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i)).unwrap();
+        let external_inputsVar =
+            Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(external_inputs)).unwrap();
+
         let computed_z_i1Var = circuit
-            .generate_step_constraints(cs.clone(), 0, z_iVar.clone())
+            .generate_step_constraints(cs.clone(), 0, z_iVar, external_inputsVar)
             .unwrap();
         assert_eq!(computed_z_i1Var.value().unwrap(), z_i1);
     }
@@ -152,18 +162,18 @@ fn main() {
     let num_steps = 5;
     let initial_state = vec![Fr::from(1_u32), Fr::zero()];
 
-    // set the external inputs to be used at each folding step
+    // prepare the external inputs to be used at each folding step
     let external_inputs = vec![
-        Fr::from(3_u32),
-        Fr::from(33_u32),
-        Fr::from(73_u32),
-        Fr::from(103_u32),
-        Fr::from(125_u32),
+        vec![Fr::from(3_u32)],
+        vec![Fr::from(33_u32)],
+        vec![Fr::from(73_u32)],
+        vec![Fr::from(103_u32)],
+        vec![Fr::from(125_u32)],
     ];
     assert_eq!(external_inputs.len(), num_steps);
 
     let poseidon_config = poseidon_test_config::<Fr>();
-    let F_circuit = ExternalInputsCircuits::<Fr>::new((poseidon_config, external_inputs));
+    let F_circuit = ExternalInputsCircuits::<Fr>::new(poseidon_config);
 
     println!("Prepare Nova ProverParams & VerifierParams");
     let (prover_params, verifier_params) =
@@ -188,7 +198,9 @@ fn main() {
     // compute a step of the IVC
     for i in 0..num_steps {
         let start = Instant::now();
-        folding_scheme.prove_step().unwrap();
+        folding_scheme
+            .prove_step(external_inputs[i].clone())
+            .unwrap();
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
     println!(

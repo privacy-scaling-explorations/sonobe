@@ -38,10 +38,18 @@ impl<F: PrimeField> FCircuit<F> for MultiInputsFCircuit<F> {
     fn state_len(&self) -> usize {
         5
     }
+    fn external_inputs_len(&self) -> usize {
+        0
+    }
 
     /// computes the next state values in place, assigning z_{i+1} into z_i, and computing the new
     /// z_{i+1}
-    fn step_native(&self, _i: usize, z_i: Vec<F>) -> Result<Vec<F>, Error> {
+    fn step_native(
+        &self,
+        _i: usize,
+        z_i: Vec<F>,
+        _external_inputs: Vec<F>,
+    ) -> Result<Vec<F>, Error> {
         let a = z_i[0] + F::from(4_u32);
         let b = z_i[1] + F::from(40_u32);
         let c = z_i[2] * F::from(4_u32);
@@ -57,6 +65,7 @@ impl<F: PrimeField> FCircuit<F> for MultiInputsFCircuit<F> {
         cs: ConstraintSystemRef<F>,
         _i: usize,
         z_i: Vec<FpVar<F>>,
+        _external_inputs: Vec<FpVar<F>>,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let four = FpVar::<F>::new_constant(cs.clone(), F::from(4u32))?;
         let forty = FpVar::<F>::new_constant(cs.clone(), F::from(40u32))?;
@@ -137,7 +146,7 @@ fn main() {
     // compute a step of the IVC
     for i in 0..num_steps {
         let start = Instant::now();
-        folding_scheme.prove_step().unwrap();
+        folding_scheme.prove_step(vec![]).unwrap();
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
 

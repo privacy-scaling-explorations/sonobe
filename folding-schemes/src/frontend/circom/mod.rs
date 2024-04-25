@@ -31,10 +31,10 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
     }
 
     fn state_len(&self) -> usize {
-        1 // TODO adapt
+        1 // TODO adapt from ivc_input.len()
     }
     fn external_inputs_len(&self) -> usize {
-        1 // TODO adapt
+        1 // TODO adapt from external_inputs.len()
     }
 
     fn step_native(

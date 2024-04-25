@@ -25,12 +25,12 @@ fn main() {
     // Fetch the exact protocol for which we need to generate the Decider verifier contract.
     let protocol = cli.protocol;
     // Fetch the protocol data passed by the user from the file.
-    let protocol_data = std::fs::read(cli.protocol_data).unwrap();
+    let protocol_vk = std::fs::read(cli.protocol_vk).unwrap();
 
     // Generate the Solidity Verifier contract for the selected protocol with the given data.
     create_or_open_then_write(
         &out_path,
-        &protocol.render(&protocol_data, cli.pragma).unwrap(),
+        &protocol.render(&protocol_vk, cli.pragma).unwrap(),
     )
     .unwrap();
 }

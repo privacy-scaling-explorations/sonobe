@@ -245,7 +245,7 @@ pub mod tests {
     /// - M(01) = 4*eq_00(r) + 3*eq_10(r) + 9*eq_01(r) + 2*eq_11(r)
     /// - M(11) = 4*eq_00(r) + 2*eq_10(r) + 2*eq_01(r) + 0*eq_11(r)
     ///
-    /// This is used by Hypernova in LCCCS to perform a verifier-chosen random linear combination between the columns
+    /// This is used by HyperNova in LCCCS to perform a verifier-chosen random linear combination between the columns
     /// of the matrix and the z vector. This technique is also used extensively in "An Algebraic Framework for
     /// Universal and Updatable SNARKs".
     #[test]

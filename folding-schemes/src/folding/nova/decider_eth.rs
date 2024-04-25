@@ -1,17 +1,21 @@
 /// This file implements the onchain (Ethereum's EVM) decider.
+use ark_bn254::Bn254;
 use ark_crypto_primitives::sponge::Absorb;
-use ark_ec::{CurveGroup, Group};
-use ark_ff::PrimeField;
+use ark_ec::{AffineRepr, CurveGroup, Group};
+use ark_ff::{BigInteger, PrimeField};
+use ark_groth16::Groth16;
 use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
 use ark_snark::SNARK;
 use ark_std::rand::{CryptoRng, RngCore};
-use ark_std::Zero;
+use ark_std::{One, Zero};
 use core::marker::PhantomData;
 
 pub use super::decider_eth_circuit::{DeciderEthCircuit, KZGChallengesGadget};
 use super::{circuits::CF2, nifs::NIFS, CommittedInstance, Nova};
 use crate::commitment::{
-    kzg::Proof as KZGProof, pedersen::Params as PedersenParams, CommitmentScheme,
+    kzg::{Proof as KZGProof, KZG},
+    pedersen::Params as PedersenParams,
+    CommitmentScheme,
 };
 use crate::folding::circuits::nonnative::affine::NonNativeAffineVar;
 use crate::frontend::FCircuit;
@@ -143,8 +147,12 @@ where
         z_i: Vec<C1::ScalarField>,
         running_instance: &Self::CommittedInstance,
         incoming_instance: &Self::CommittedInstance,
-        proof: Self::Proof,
+        proof: &Self::Proof,
     ) -> Result<bool, Error> {
+        if i <= C1::ScalarField::one() {
+            return Err(Error::NotEnoughSteps);
+        }
+
         let (snark_vk, cs_vk): (S::VerifyingKey, CS1::VerifierParams) = vp;
 
         // compute U = U_{d+1}= NIFS.V(U_d, u_d, cmT)
@@ -197,6 +205,78 @@ where
 
         Ok(true)
     }
+}
+
+/// Prepares solidity calldata for calling the NovaDecider contract
+pub fn prepare_calldata(
+    function_signature_check: [u8; 4],
+    i: ark_bn254::Fr,
+    z_0: Vec<ark_bn254::Fr>,
+    z_i: Vec<ark_bn254::Fr>,
+    running_instance: &CommittedInstance<ark_bn254::G1Projective>,
+    incoming_instance: &CommittedInstance<ark_bn254::G1Projective>,
+    proof: Proof<ark_bn254::G1Projective, KZG<'static, Bn254>, Groth16<Bn254>>,
+) -> Result<Vec<u8>, Error> {
+    Ok(vec![
+        function_signature_check.to_vec(),
+        i.into_bigint().to_bytes_be(), // i
+        z_0.iter()
+            .flat_map(|v| v.into_bigint().to_bytes_be())
+            .collect::<Vec<u8>>(), // z_0
+        z_i.iter()
+            .flat_map(|v| v.into_bigint().to_bytes_be())
+            .collect::<Vec<u8>>(), // z_i
+        point_to_eth_format(running_instance.cmW.into_affine())?, // U_i_cmW
+        point_to_eth_format(running_instance.cmE.into_affine())?, // U_i_cmE
+        running_instance.u.into_bigint().to_bytes_be(), // U_i_u
+        incoming_instance.u.into_bigint().to_bytes_be(), // u_i_u
+        proof.r.into_bigint().to_bytes_be(), // r
+        running_instance
+            .x
+            .iter()
+            .flat_map(|v| v.into_bigint().to_bytes_be())
+            .collect::<Vec<u8>>(), // U_i_x
+        point_to_eth_format(incoming_instance.cmW.into_affine())?, // u_i_cmW
+        incoming_instance
+            .x
+            .iter()
+            .flat_map(|v| v.into_bigint().to_bytes_be())
+            .collect::<Vec<u8>>(), // u_i_x
+        point_to_eth_format(proof.cmT.into_affine())?, // cmT
+        point_to_eth_format(proof.snark_proof.a)?, // pA
+        point2_to_eth_format(proof.snark_proof.b)?, // pB
+        point_to_eth_format(proof.snark_proof.c)?, // pC
+        proof.kzg_challenges[0].into_bigint().to_bytes_be(), // challenge_W
+        proof.kzg_challenges[1].into_bigint().to_bytes_be(), // challenge_E
+        proof.kzg_proofs[0].eval.into_bigint().to_bytes_be(), // eval W
+        proof.kzg_proofs[1].eval.into_bigint().to_bytes_be(), // eval E
+        point_to_eth_format(proof.kzg_proofs[0].proof.into_affine())?, // W kzg_proof
+        point_to_eth_format(proof.kzg_proofs[1].proof.into_affine())?, // E kzg_proof
+    ]
+    .concat())
+}
+
+fn point_to_eth_format<C: AffineRepr>(p: C) -> Result<Vec<u8>, Error>
+where
+    C::BaseField: PrimeField,
+{
+    // the encoding of the additive identity is [0, 0] on the EVM
+    let zero_point = (&C::BaseField::zero(), &C::BaseField::zero());
+    let (x, y) = p.xy().unwrap_or(zero_point);
+
+    Ok([x.into_bigint().to_bytes_be(), y.into_bigint().to_bytes_be()].concat())
+}
+fn point2_to_eth_format(p: ark_bn254::G2Affine) -> Result<Vec<u8>, Error> {
+    let zero_point = (&ark_bn254::Fq2::zero(), &ark_bn254::Fq2::zero());
+    let (x, y) = p.xy().unwrap_or(zero_point);
+
+    Ok([
+        x.c1.into_bigint().to_bytes_be(),
+        x.c0.into_bigint().to_bytes_be(),
+        y.c1.into_bigint().to_bytes_be(),
+        y.c0.into_bigint().to_bytes_be(),
+    ]
+    .concat())
 }
 
 #[cfg(test)]
@@ -298,7 +378,7 @@ pub mod tests {
         let start = Instant::now();
         let decider_vp = (g16_vk, kzg_vk);
         let verified = DECIDER::verify(
-            decider_vp, nova.i, nova.z_0, nova.z_i, &nova.U_i, &nova.u_i, proof,
+            decider_vp, nova.i, nova.z_0, nova.z_i, &nova.U_i, &nova.u_i, &proof,
         )
         .unwrap();
         assert!(verified);

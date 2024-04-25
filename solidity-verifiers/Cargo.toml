@@ -12,19 +12,23 @@ ark-groth16 = "0.4"
 askama = { version = "0.12.0", features = ["config"], default-features = false }
 ark-bn254 = "0.4.0"
 ark-poly-commit = "0.4.0"
-folding-schemes = { path = "../folding-schemes/" }
 itertools = "0.12.1"
 ark-serialize = "0.4.1"
-revm = "3.5.0"
+revm = {version="3.5.0", default-features=false, features=["std"]}
+rust-crypto = "0.2"
+num-bigint = "0.4.3"
+folding-schemes = { path = "../folding-schemes/"} # without 'light-test' enabled
 
 [dev-dependencies]
 ark-crypto-primitives = "0.4.0"
-ark-groth16 = "0.4"
 ark-r1cs-std = "0.4.0"
 ark-relations = "0.4.0"
-revm = "3.5.0"
 tracing = { version = "0.1", default-features = false, features = [ "attributes" ] }
 tracing-subscriber = { version = "0.2" }
+ark-bn254 = {version="0.4.0", features=["r1cs"]}
+ark-grumpkin = {version="0.4.0", features=["r1cs"]}
+rand = "0.8.5"
+folding-schemes = { path = "../folding-schemes/", features=["light-test"]}
 
 [features]
 default = ["parallel"]

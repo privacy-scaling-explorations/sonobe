@@ -136,6 +136,7 @@ contract KZG10Verifier {
         ]
     ];
 
+    {% if g1_crs_len>0 %} // only enabled if g1_crs_len>0, for batch_check
     uint256[2][{{ g1_crs_len }}] G1_CRS = [
     {%- for (i, point) in g1_crs.iter().enumerate() %}
         [ 
@@ -148,6 +149,7 @@ contract KZG10Verifier {
         {%- endif -%}
     {% endfor -%}    
     ];
+    {%~ endif %}
 
     /**
      * @notice  Verifies a single point evaluation proof. Function name follows `ark-poly`.
@@ -198,6 +200,7 @@ contract KZG10Verifier {
         return result;
     }
 
+    {% if g1_crs_len>0 %} // only enabled if g1_crs_len>0, for batch_check
     /**
      * @notice  Ensures that z(x) == 0 and l(x) == y for all x in x_vals and y in y_vals. It returns the commitment to z(x) and l(x).
      * @param   z_coeffs  coefficients of the zero polynomial z(x) = (x - x_1)(x - x_2)...(x - x_n).
@@ -268,4 +271,5 @@ contract KZG10Verifier {
         uint256[2] memory neg_commit = negate(c);
         return pairing(z_commit, pi, add(l_commit, neg_commit), G_2);
     }
+    {%~ endif %}
 }

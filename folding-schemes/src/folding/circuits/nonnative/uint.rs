@@ -174,7 +174,7 @@ impl<F: PrimeField> ToBitsGadget<F> for LimbVar<F> {
 pub struct NonNativeUintVar<F: PrimeField>(pub Vec<LimbVar<F>>);
 
 impl<F: PrimeField> NonNativeUintVar<F> {
-    const fn bits_per_limb() -> usize {
+    pub const fn bits_per_limb() -> usize {
         assert!(F::MODULUS_BIT_SIZE > 250);
         // For a `F` with order > 250 bits, 55 is chosen for optimizing the most
         // expensive part `Az∘Bz` when checking the R1CS relation for CycleFold.

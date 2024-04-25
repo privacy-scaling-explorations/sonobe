@@ -20,6 +20,8 @@ rayon = "1.7.0"
 num-bigint = "0.4"
 num-integer = "0.1"
 color-eyre = "=0.6.2"
+ark-bn254 = {version="0.4.0"}
+ark-groth16 = { version = "^0.4.0" }
 
 # tmp imports for espresso's sumcheck
 espresso_subroutines = {git="https://github.com/EspressoSystems/hyperplonk", package="subroutines"}
@@ -29,13 +31,13 @@ ark-pallas = {version="0.4.0", features=["r1cs"]}
 ark-vesta = {version="0.4.0", features=["r1cs"]}
 ark-bn254 = {version="0.4.0", features=["r1cs"]}
 ark-grumpkin = {version="0.4.0", features=["r1cs"]}
-ark-groth16 = { version = "^0.4.0" }
 rand = "0.8.5"
 tracing = { version = "0.1", default-features = false, features = [ "attributes" ] }
 tracing-subscriber = { version = "0.2" }
 
 [features]
 default = ["parallel"]
+light-test = []
 
 parallel = [ 
     "ark-std/parallel", 

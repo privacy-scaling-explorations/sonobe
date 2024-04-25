@@ -64,10 +64,10 @@ jobs:
       - name: Build
         # This build will be reused by nextest,
         # and also checks (--all-targets) that benches don't bit-rot
-        run: cargo build --release --all-targets --no-default-features --features "${{ matrix.feature }}"
+        run: cargo build --release --all-targets --no-default-features --features "light-test,${{ matrix.feature }}"
       - name: Test
         run: |
-          cargo nextest run --profile ci --release --workspace --no-default-features --features "${{ matrix.feature }}"
+          cargo nextest run --profile ci --release --workspace --no-default-features --features "light-test,${{ matrix.feature }}"
       - name: Doctests # nextest does not support doc tests
         run: |
           cargo test --doc

@@ -119,7 +119,7 @@ impl<C: CurveGroup> SumCheckVerifier<C> for IOPVerifierState<C> {
             .clone()
             .into_iter()
             .zip(self.challenges.clone().into_iter())
-            .map(|(evaluations, challenge)| {
+            .map(|(coeffs, challenge)| {
                 // Removed check on number of evaluations here since verifier receives polynomial in coeffs form
                 let prover_poly = DensePolynomial::from_coefficients_slice(&coeffs);
                 Ok(prover_poly.evaluate(&challenge))

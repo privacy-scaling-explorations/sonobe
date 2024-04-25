@@ -5,17 +5,23 @@ use revm::{
 };
 use std::{
     fmt::{self, Debug, Formatter},
-    fs::{create_dir_all, File},
+    fs::{self, create_dir_all, File},
     io::{self, Write},
+    path::PathBuf,
     process::{Command, Stdio},
     str,
 };
 
 // from: https://github.com/privacy-scaling-explorations/halo2-solidity-verifier/blob/85cb77b171ce3ee493628007c7a1cfae2ea878e6/examples/separately.rs#L56
-pub(crate) fn save_solidity(name: impl AsRef<str>, solidity: &str) {
-    const DIR_GENERATED: &str = "./generated";
-    create_dir_all(DIR_GENERATED).unwrap();
-    File::create(format!("{DIR_GENERATED}/{}", name.as_ref()))
+pub fn save_solidity(name: impl AsRef<str>, solidity: &str) {
+    let curdir = PathBuf::from(".");
+    let curdir_abs_path = fs::canonicalize(curdir).expect("Failed to get current directory");
+    let curdir_abs_path = curdir_abs_path
+        .to_str()
+        .expect("Failed to convert path to string");
+    let dir_generated = format!("{curdir_abs_path}/generated");
+    create_dir_all(dir_generated.clone()).unwrap();
+    File::create(format!("{}/{}", dir_generated, name.as_ref()))
         .unwrap()
         .write_all(solidity.as_bytes())
         .unwrap();
@@ -25,7 +31,7 @@ pub(crate) fn save_solidity(name: impl AsRef<str>, solidity: &str) {
 ///
 /// # Panics
 /// Panics if executable `solc` can not be found, or compilation fails.
-pub(crate) fn compile_solidity(solidity: impl AsRef<[u8]>, contract_name: &str) -> Vec<u8> {
+pub fn compile_solidity(solidity: impl AsRef<[u8]>, contract_name: &str) -> Vec<u8> {
     let mut process = match Command::new("solc")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -72,7 +78,7 @@ fn find_binary(stdout: &str, contract_name: &str) -> Option<Vec<u8>> {
 }
 
 /// Evm runner.
-pub(crate) struct Evm {
+pub struct Evm {
     evm: EVM<InMemoryDB>,
 }
 
@@ -103,7 +109,7 @@ impl Evm {
     ///
     /// # Panics
     /// Panics if execution reverts or halts unexpectedly.
-    pub(crate) fn create(&mut self, bytecode: Vec<u8>) -> Address {
+    pub fn create(&mut self, bytecode: Vec<u8>) -> Address {
         let (_, output) = self.transact_success_or_panic(TxEnv {
             gas_limit: u64::MAX,
             transact_to: TransactTo::Create(CreateScheme::Create),
@@ -121,7 +127,7 @@ impl Evm {
     ///
     /// # Panics
     /// Panics if execution reverts or halts unexpectedly.
-    pub(crate) fn call(&mut self, address: Address, calldata: Vec<u8>) -> (u64, Vec<u8>) {
+    pub fn call(&mut self, address: Address, calldata: Vec<u8>) -> (u64, Vec<u8>) {
         let (gas_used, output) = self.transact_success_or_panic(TxEnv {
             gas_limit: u64::MAX,
             transact_to: TransactTo::Call(address),

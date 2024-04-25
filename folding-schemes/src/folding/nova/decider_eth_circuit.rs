@@ -426,10 +426,14 @@ where
                 .hash(&crh_params, i.clone(), z_0.clone(), z_i.clone())?;
         (u_i.x[0]).enforce_equal(&u_i_x)?;
 
+        #[cfg(feature = "light-test")]
+        println!("[WARNING]: Running with the 'light-test' feature, skipping the big part of the DeciderEthCircuit.\n           Only for testing purposes.");
+
         // The following two checks (and their respective allocations) are disabled for normal
         // tests since they take several millions of constraints and would take several minutes
-        // (and RAM) to run the test.
-        #[cfg(not(test))]
+        // (and RAM) to run the test. It is active by default, and not active only when
+        // 'light-test' feature is used.
+        #[cfg(not(feature = "light-test"))]
         {
             // imports here instead of at the top of the file, so we avoid having multiple
             // `#[cfg(not(test))]`

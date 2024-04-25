@@ -18,23 +18,29 @@ use utils::CircomWrapper;
 #[derive(Clone, Debug)]
 pub struct CircomFCircuit<F: PrimeField> {
     circom_wrapper: CircomWrapper<F>,
+    state_len: usize,
+    external_inputs_len: usize,
 }
 
 impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
-    /// (r1cs_path, wasm_path)
-    type Params = (PathBuf, PathBuf);
+    /// (r1cs_path, wasm_path, state_len, external_inputs_len)
+    type Params = (PathBuf, PathBuf, usize, usize);
 
     fn new(params: Self::Params) -> Self {
-        let (r1cs_path, wasm_path) = params;
+        let (r1cs_path, wasm_path, state_len, external_inputs_len) = params;
         let circom_wrapper = CircomWrapper::new(r1cs_path, wasm_path);
-        Self { circom_wrapper }
+        Self {
+            circom_wrapper,
+            state_len,
+            external_inputs_len,
+        }
     }
 
     fn state_len(&self) -> usize {
-        1 // TODO adapt from ivc_input.len()
+        self.state_len
     }
     fn external_inputs_len(&self) -> usize {
-        1 // TODO adapt from external_inputs.len()
+        self.external_inputs_len
     }
 
     fn step_native(
@@ -148,7 +154,7 @@ pub mod tests {
         let wasm_path =
             PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
-        let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path));
+        let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path, 1, 0)); // state_len:1, external_inputs_len:0
 
         let z_i = vec![Fr::from(3u32)];
         let z_i1 = circom_fcircuit.step_native(1, z_i, vec![]).unwrap();
@@ -162,7 +168,7 @@ pub mod tests {
         let wasm_path =
             PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
-        let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path));
+        let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path, 1, 0)); // state_len:1, external_inputs_len:0
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
@@ -184,7 +190,7 @@ pub mod tests {
         let wasm_path =
             PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
-        let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path));
+        let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path, 1, 0)); // state_len:1, external_inputs_len:0
 
         // Allocates z_i1 by using step_native function.
         let z_i = vec![Fr::from(3_u32)];
@@ -210,7 +216,7 @@ pub mod tests {
             "./src/frontend/circom/test_folder/external_inputs_js/external_inputs.wasm",
         );
 
-        let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path));
+        let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path, 1, 2)); // state_len:1, external_inputs_len:2
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 

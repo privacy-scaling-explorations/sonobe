@@ -10,4 +10,3 @@ template Example () {
 }
 
 component main {public [ivc_input]} = Example();
-

@@ -349,7 +349,7 @@ where
         i_bytes.copy_from_slice(&self.i.into_bigint().to_bytes_le()[..8]);
         let i_usize: usize = usize::from_le_bytes(i_bytes);
 
-        let z_i1 = self.F.step_native(i_usize, self.z_i.clone())?;
+        let z_i1 = self.F.step_native(i_usize, self.z_i.clone(), vec![])?; // TODO external_inputs instead of vec![]
 
         // compute T and cmT for AugmentedFCircuit
         let (T, cmT) = self.compute_cmT()?;

@@ -366,7 +366,7 @@ where
         let i_usize = self.i_usize.unwrap_or(0);
         let z_i1 = self
             .F
-            .generate_step_constraints(cs.clone(), i_usize, z_i.clone())?;
+            .generate_step_constraints(cs.clone(), i_usize, z_i.clone(), vec![])?; // TODO external_inputs instead of vec![]
 
         let is_basecase = i.is_zero()?;
 

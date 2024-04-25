@@ -258,6 +258,7 @@ pub struct AugmentedFCircuit<
     pub i_usize: Option<usize>,
     pub z_0: Option<Vec<C1::ScalarField>>,
     pub z_i: Option<Vec<C1::ScalarField>>,
+    pub external_inputs: Option<Vec<C1::ScalarField>>,
     pub u_i_cmW: Option<C1>,
     pub U_i: Option<CommittedInstance<C1>>,
     pub U_i1_cmE: Option<C1>,
@@ -290,6 +291,7 @@ where
             i_usize: None,
             z_0: None,
             z_i: None,
+            external_inputs: None,
             u_i_cmW: None,
             U_i: None,
             U_i1_cmE: None,
@@ -335,6 +337,11 @@ where
                 .z_i
                 .unwrap_or(vec![CF1::<C1>::zero(); self.F.state_len()]))
         })?;
+        let external_inputs = Vec::<FpVar<CF1<C1>>>::new_witness(cs.clone(), || {
+            Ok(self
+                .external_inputs
+                .unwrap_or(vec![CF1::<C1>::zero(); self.F.external_inputs_len()]))
+        })?;
 
         let u_dummy = CommittedInstance::dummy(2);
         let U_i = CommittedInstanceVar::<C1>::new_witness(cs.clone(), || {
@@ -364,9 +371,9 @@ where
 
         // get z_{i+1} from the F circuit
         let i_usize = self.i_usize.unwrap_or(0);
-        let z_i1 = self
-            .F
-            .generate_step_constraints(cs.clone(), i_usize, z_i.clone(), vec![])?; // TODO external_inputs instead of vec![]
+        let z_i1 =
+            self.F
+                .generate_step_constraints(cs.clone(), i_usize, z_i.clone(), external_inputs)?; // TODO external_inputs instead of vec![]
 
         let is_basecase = i.is_zero()?;
 

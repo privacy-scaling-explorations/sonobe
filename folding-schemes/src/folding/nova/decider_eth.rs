@@ -347,9 +347,9 @@ pub mod tests {
         let mut nova = NOVA::init(&prover_params, F_circuit, z_0.clone()).unwrap();
         println!("Nova initialized, {:?}", start.elapsed());
         let start = Instant::now();
-        nova.prove_step().unwrap();
+        nova.prove_step(vec![]).unwrap();
         println!("prove_step, {:?}", start.elapsed());
-        nova.prove_step().unwrap(); // do a 2nd step
+        nova.prove_step(vec![]).unwrap(); // do a 2nd step
 
         // generate Groth16 setup
         let circuit = DeciderEthCircuit::<

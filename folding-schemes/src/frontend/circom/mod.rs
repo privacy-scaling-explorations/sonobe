@@ -31,7 +31,10 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
     }
 
     fn state_len(&self) -> usize {
-        1
+        1 // TODO adapt
+    }
+    fn external_inputs_len(&self) -> usize {
+        1 // TODO adapt
     }
 
     fn step_native(

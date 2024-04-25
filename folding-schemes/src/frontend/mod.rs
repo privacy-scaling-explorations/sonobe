@@ -20,6 +20,10 @@ pub trait FCircuit<F: PrimeField>: Clone + Debug {
     /// FCircuit inputs.
     fn state_len(&self) -> usize;
 
+    /// returns the number of elements in the external inputs used by the FCircuit. External inputs
+    /// are optional, and in case no external inputs are used, this method should return 0.
+    fn external_inputs_len(&self) -> usize;
+
     /// computes the next state values in place, assigning z_{i+1} into z_i, and computing the new
     /// z_{i+1}
     fn step_native(
@@ -69,6 +73,9 @@ pub mod tests {
         fn state_len(&self) -> usize {
             1
         }
+        fn external_inputs_len(&self) -> usize {
+            0
+        }
         fn step_native(
             &self,
             _i: usize,
@@ -109,6 +116,9 @@ pub mod tests {
         }
         fn state_len(&self) -> usize {
             1
+        }
+        fn external_inputs_len(&self) -> usize {
+            0
         }
         fn step_native(
             &self,

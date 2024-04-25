@@ -802,7 +802,7 @@ pub mod tests {
 
         // generate a Nova instance and do a step of it
         let mut nova = NOVA::init(&prover_params, F_circuit, z_0.clone()).unwrap();
-        nova.prove_step().unwrap();
+        nova.prove_step(vec![]).unwrap();
         let ivc_v = nova.clone();
         let verifier_params = VerifierParams::<Projective, Projective2> {
             poseidon_config: poseidon_config.clone(),

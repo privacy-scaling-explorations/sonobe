@@ -49,6 +49,11 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
         z_i: Vec<F>,
         external_inputs: Vec<F>,
     ) -> Result<Vec<F>, Error> {
+        #[cfg(test)]
+        assert_eq!(z_i.len(), self.state_len());
+        #[cfg(test)]
+        assert_eq!(external_inputs.len(), self.external_inputs_len());
+
         let inputs_bi = z_i
             .iter()
             .map(|val| self.circom_wrapper.ark_primefield_to_num_bigint(*val))
@@ -83,9 +88,15 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
         z_i: Vec<FpVar<F>>,
         external_inputs: Vec<FpVar<F>>,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
+        #[cfg(test)]
+        assert_eq!(z_i.len(), self.state_len());
+        #[cfg(test)]
+        assert_eq!(external_inputs.len(), self.external_inputs_len());
+
         let input_values = self.fpvars_to_bigints(z_i)?;
         let mut inputs_map = vec![("ivc_input".to_string(), input_values)];
-        if external_inputs.len() > 0 {
+        // if external_inputs.len() > 0 {
+        if self.external_inputs_len() > 0 {
             let external_inputs_bi = self.fpvars_to_bigints(external_inputs)?;
             inputs_map.push(("external_inputs".to_string(), external_inputs_bi));
         }
@@ -104,9 +115,7 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
         };
 
         // Generates the constraints for the circom_circuit.
-        circom_circuit
-            .generate_constraints(cs.clone())
-            .map_err(|_| SynthesisError::AssignmentMissing)?;
+        circom_circuit.generate_constraints(cs.clone())?;
 
         // Checks for constraint satisfaction.
         if !cs.is_satisfied().unwrap() {

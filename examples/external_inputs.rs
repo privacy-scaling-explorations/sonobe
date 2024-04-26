@@ -3,6 +3,7 @@
 #![allow(non_camel_case_types)]
 #![allow(clippy::upper_case_acronyms)]
 
+use ark_bn254::{constraints::GVar, Fr, Projective};
 use ark_crypto_primitives::{
     crh::{
         poseidon::constraints::{CRHGadget, CRHParametersVar},
@@ -12,12 +13,11 @@ use ark_crypto_primitives::{
     sponge::{poseidon::PoseidonConfig, Absorb},
 };
 use ark_ff::PrimeField;
-use ark_pallas::{constraints::GVar, Fr, Projective};
+use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_r1cs_std::{alloc::AllocVar, fields::FieldVar};
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 use ark_std::Zero;
-use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
 use core::marker::PhantomData;
 use std::time::Instant;
 

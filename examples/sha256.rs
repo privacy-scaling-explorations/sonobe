@@ -16,8 +16,8 @@ use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 use core::marker::PhantomData;
 use std::time::Instant;
 
-use ark_pallas::{constraints::GVar, Fr, Projective};
-use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
+use ark_bn254::{constraints::GVar, Fr, Projective};
+use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
 
 use folding_schemes::commitment::pedersen::Pedersen;
 use folding_schemes::folding::nova::Nova;

@@ -2,17 +2,17 @@
 //! We use askama for templating and define which variables are required for each template.
 
 // Pragma statements for verifiers
-pub(crate) const PRAGMA_GROTH16_VERIFIER: &str = "pragma solidity >=0.7.0 <0.9.0;"; // from snarkjs, avoid changing
-pub(crate) const PRAGMA_KZG10_VERIFIER: &str = "pragma solidity >=0.8.1 <=0.8.4;";
+pub const PRAGMA_GROTH16_VERIFIER: &str = "pragma solidity >=0.7.0 <0.9.0;"; // from snarkjs, avoid changing
+pub const PRAGMA_KZG10_VERIFIER: &str = "pragma solidity >=0.8.1 <=0.8.4;";
 
 /// Default SDPX License identifier
-pub(crate) const GPL3_SDPX_IDENTIFIER: &str = "// SPDX-License-Identifier: GPL-3.0";
-pub(crate) const MIT_SDPX_IDENTIFIER: &str = "// SPDX-License-Identifier: MIT";
+pub const GPL3_SDPX_IDENTIFIER: &str = "// SPDX-License-Identifier: GPL-3.0";
+pub const MIT_SDPX_IDENTIFIER: &str = "// SPDX-License-Identifier: MIT";
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write};
 
-mod g16;
-mod kzg;
-mod nova_cyclefold;
+pub mod g16;
+pub mod kzg;
+pub mod nova_cyclefold;
 
 pub use g16::Groth16VerifierKey;
 pub use kzg::KZG10VerifierKey;

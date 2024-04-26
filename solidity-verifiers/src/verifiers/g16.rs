@@ -11,19 +11,19 @@ use super::PRAGMA_GROTH16_VERIFIER;
 
 #[derive(Template, Default)]
 #[template(path = "groth16_verifier.askama.sol", ext = "sol")]
-pub(crate) struct Groth16Verifier {
+pub struct Groth16Verifier {
     /// The `alpha * G`, where `G` is the generator of `G1`.
-    pub(crate) vkey_alpha_g1: G1Repr,
+    pub vkey_alpha_g1: G1Repr,
     /// The `alpha * H`, where `H` is the generator of `G2`.
-    pub(crate) vkey_beta_g2: G2Repr,
+    pub vkey_beta_g2: G2Repr,
     /// The `gamma * H`, where `H` is the generator of `G2`.
-    pub(crate) vkey_gamma_g2: G2Repr,
+    pub vkey_gamma_g2: G2Repr,
     /// The `delta * H`, where `H` is the generator of `G2`.
-    pub(crate) vkey_delta_g2: G2Repr,
+    pub vkey_delta_g2: G2Repr,
     /// Length of the `gamma_abc_g1` vector.
-    pub(crate) gamma_abc_len: usize,
+    pub gamma_abc_len: usize,
     /// The `gamma^{-1} * (beta * a_i + alpha * b_i + c_i) * H`, where `H` is the generator of `E::G1`.
-    pub(crate) gamma_abc_g1: Vec<G1Repr>,
+    pub gamma_abc_g1: Vec<G1Repr>,
 }
 
 impl From<Groth16VerifierKey> for Groth16Verifier {

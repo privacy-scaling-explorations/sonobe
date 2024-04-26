@@ -83,7 +83,7 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
         let circom_circuit = CircomCircuit {
             r1cs,
             witness: witness.clone(),
-            inputs_already_computed: true,
+            inputs_already_allocated: true,
         };
 
         // Generates the constraints for the circom_circuit.

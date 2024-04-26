@@ -40,4 +40,7 @@ parallel = [
     ]
 
 
-
+[[example]]
+name = "full_flow"
+path = "../examples/full_flow.rs"
+# required-features = ["light-test"]

@@ -140,7 +140,7 @@ mod tests {
         let circom_circuit = CircomCircuit {
             r1cs,
             witness,
-            inputs_already_computed: false,
+            inputs_already_allocated: false,
         };
 
         circom_circuit.generate_constraints(cs.clone()).unwrap();

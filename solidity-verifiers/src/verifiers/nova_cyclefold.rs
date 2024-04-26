@@ -26,7 +26,7 @@ pub fn get_decider_template_for_cyclefold_decider(
 
 #[derive(Template, Default)]
 #[template(path = "nova_cyclefold_decider.askama.sol", ext = "sol")]
-pub(crate) struct NovaCycleFoldDecider {
+pub struct NovaCycleFoldDecider {
     groth16_verifier: Groth16Verifier,
     kzg10_verifier: KZG10Verifier,
     // z_len denotes the FCircuit state (z_i) length

@@ -60,7 +60,7 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
             .collect::<Vec<BigInt>>();
         let mut inputs_map = vec![("ivc_input".to_string(), inputs_bi)];
 
-        if external_inputs.len() > 0 {
+        if !external_inputs.is_empty() {
             let external_inputs_bi = external_inputs
                 .iter()
                 .map(|val| self.circom_wrapper.ark_primefield_to_num_bigint(*val))

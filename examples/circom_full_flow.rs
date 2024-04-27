@@ -10,33 +10,21 @@
 /// - verify the proof in the EVM
 ///
 use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as G1};
-use ark_crypto_primitives::snark::SNARK;
-use ark_ff::PrimeField;
-use ark_groth16::{Groth16, ProvingKey, VerifyingKey as G16VerifierKey};
+
+use ark_groth16::Groth16;
 use ark_grumpkin::{constraints::GVar as GVar2, Projective as G2};
-use ark_poly_commit::kzg10::VerifierKey as KZGVerifierKey;
-use ark_r1cs_std::alloc::AllocVar;
-use ark_r1cs_std::fields::fp::FpVar;
-use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
-use ark_std::Zero;
-use std::marker::PhantomData;
+
 use std::path::PathBuf;
 use std::time::Instant;
 
 use folding_schemes::{
-    commitment::{
-        kzg::{ProverKey as KZGProverKey, KZG},
-        pedersen::Pedersen,
-        CommitmentScheme,
-    },
+    commitment::{kzg::KZG, pedersen::Pedersen},
     folding::nova::{
         decider_eth::{prepare_calldata, Decider as DeciderEth},
-        decider_eth_circuit::DeciderEthCircuit,
-        get_cs_params_len, Nova, ProverParams,
+        Nova,
     },
     frontend::{circom::CircomFCircuit, FCircuit},
-    transcript::poseidon::poseidon_test_config,
-    Decider, Error, FoldingScheme,
+    Decider, FoldingScheme,
 };
 use solidity_verifiers::{
     evm::{compile_solidity, Evm},
@@ -46,14 +34,14 @@ use solidity_verifiers::{
 };
 
 mod utils;
-use utils::{init_params, init_test_prover_params};
+use utils::init_ivc_and_decider_params;
 
 fn main() {
-    let n_steps = 10;
     // set the initial state
     let z_0 = vec![Fr::from(3_u32)];
 
-    // set the external inputs to be used at each step of the IVC
+    // set the external inputs to be used at each step of the IVC, it has length of 10 since this
+    // is the number of steps that we will do
     let external_inputs = vec![
         vec![Fr::from(6u32), Fr::from(7u32)],
         vec![Fr::from(8u32), Fr::from(9u32)],
@@ -78,7 +66,7 @@ fn main() {
     let f_circuit = CircomFCircuit::<Fr>::new(f_circuit_params);
 
     let (fs_prover_params, kzg_vk, g16_pk, g16_vk) =
-        init_params::<CircomFCircuit<Fr>>(f_circuit.clone());
+        init_ivc_and_decider_params::<CircomFCircuit<Fr>>(f_circuit.clone());
 
     pub type NOVA =
         Nova<G1, GVar, G2, GVar2, CircomFCircuit<Fr>, KZG<'static, Bn254>, Pedersen<G2>>;
@@ -97,9 +85,9 @@ fn main() {
     // initialize the folding scheme engine, in our case we use Nova
     let mut nova = NOVA::init(&fs_prover_params, f_circuit.clone(), z_0).unwrap();
     // run n steps of the folding iteration
-    for i in 0..n_steps {
+    for (i, external_inputs_at_step) in external_inputs.iter().enumerate() {
         let start = Instant::now();
-        nova.prove_step(external_inputs[i].clone()).unwrap();
+        nova.prove_step(external_inputs_at_step.clone()).unwrap();
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
 

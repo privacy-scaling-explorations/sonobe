@@ -10,15 +10,15 @@ use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 use core::marker::PhantomData;
 use std::time::Instant;
 
-use ark_bn254::{constraints::GVar, Fr, Projective};
+use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as Projective};
 use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
 
-use folding_schemes::commitment::pedersen::Pedersen;
+use folding_schemes::commitment::{kzg::KZG, pedersen::Pedersen};
 use folding_schemes::folding::nova::Nova;
 use folding_schemes::frontend::FCircuit;
 use folding_schemes::{Error, FoldingScheme};
 mod utils;
-use utils::test_nova_setup;
+use utils::init_nova_ivc_params;
 
 /// This is the circuit that we want to fold, it implements the FCircuit trait. The parameter z_i
 /// denotes the current state which contains 5 elements, and z_{i+1} denotes the next state which
@@ -125,7 +125,8 @@ fn main() {
     let F_circuit = MultiInputsFCircuit::<Fr>::new(());
 
     println!("Prepare Nova ProverParams & VerifierParams");
-    let (prover_params, verifier_params) = test_nova_setup::<MultiInputsFCircuit<Fr>>(F_circuit);
+    let (prover_params, verifier_params, _) =
+        init_nova_ivc_params::<MultiInputsFCircuit<Fr>>(F_circuit);
 
     /// The idea here is that eventually we could replace the next line chunk that defines the
     /// `type NOVA = Nova<...>` by using another folding scheme that fulfills the `FoldingScheme`
@@ -136,7 +137,7 @@ fn main() {
         Projective2,
         GVar2,
         MultiInputsFCircuit<Fr>,
-        Pedersen<Projective>,
+        KZG<'static, Bn254>,
         Pedersen<Projective2>,
     >;
 

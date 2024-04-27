@@ -3,7 +3,7 @@
 #![allow(non_camel_case_types)]
 #![allow(clippy::upper_case_acronyms)]
 
-use ark_bn254::{constraints::GVar, Fr, Projective};
+use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as Projective};
 use ark_crypto_primitives::{
     crh::{
         poseidon::constraints::{CRHGadget, CRHParametersVar},
@@ -21,13 +21,13 @@ use ark_std::Zero;
 use core::marker::PhantomData;
 use std::time::Instant;
 
-use folding_schemes::commitment::pedersen::Pedersen;
+use folding_schemes::commitment::{kzg::KZG, pedersen::Pedersen};
 use folding_schemes::folding::nova::Nova;
 use folding_schemes::frontend::FCircuit;
 use folding_schemes::{Error, FoldingScheme};
 mod utils;
 use folding_schemes::transcript::poseidon::poseidon_test_config;
-use utils::test_nova_setup;
+use utils::init_nova_ivc_params;
 
 /// This is the circuit that we want to fold, it implements the FCircuit trait. The parameter z_i
 /// denotes the current state which contains 2 elements, and z_{i+1} denotes the next state which
@@ -176,8 +176,8 @@ fn main() {
     let F_circuit = ExternalInputsCircuits::<Fr>::new(poseidon_config);
 
     println!("Prepare Nova ProverParams & VerifierParams");
-    let (prover_params, verifier_params) =
-        test_nova_setup::<ExternalInputsCircuits<Fr>>(F_circuit.clone());
+    let (prover_params, verifier_params, _) =
+        init_nova_ivc_params::<ExternalInputsCircuits<Fr>>(F_circuit.clone());
 
     /// The idea here is that eventually we could replace the next line chunk that defines the
     /// `type NOVA = Nova<...>` by using another folding scheme that fulfills the `FoldingScheme`
@@ -188,7 +188,7 @@ fn main() {
         Projective2,
         GVar2,
         ExternalInputsCircuits<Fr>,
-        Pedersen<Projective>,
+        KZG<'static, Bn254>,
         Pedersen<Projective2>,
     >;
 
@@ -196,10 +196,10 @@ fn main() {
     let mut folding_scheme = NOVA::init(&prover_params, F_circuit, initial_state.clone()).unwrap();
 
     // compute a step of the IVC
-    for i in 0..num_steps {
+    for (i, external_inputs_at_step) in external_inputs.iter().enumerate() {
         let start = Instant::now();
         folding_scheme
-            .prove_step(external_inputs[i].clone())
+            .prove_step(external_inputs_at_step.clone())
             .unwrap();
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }

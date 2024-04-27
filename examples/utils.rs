@@ -18,9 +18,7 @@ use folding_schemes::{
         CommitmentScheme,
     },
     folding::nova::{
-        decider_eth::{prepare_calldata, Decider as DeciderEth},
-        decider_eth_circuit::DeciderEthCircuit,
-        get_cs_params_len, get_r1cs, Nova, ProverParams, VerifierParams,
+        decider_eth_circuit::DeciderEthCircuit, get_r1cs, Nova, ProverParams, VerifierParams,
     },
     frontend::FCircuit,
     transcript::poseidon::poseidon_test_config,
@@ -31,61 +29,42 @@ use folding_schemes::{
 // Warning: this method is only for testing purposes. For a real world use case those parameters
 // should be generated carefully (both the PoseidonConfig and the PedersenParams).
 #[allow(clippy::type_complexity)]
-pub(crate) fn test_nova_setup<FC: FCircuit<Fr>>(
+pub(crate) fn init_nova_ivc_params<FC: FCircuit<Fr>>(
     F_circuit: FC,
 ) -> (
-    ProverParams<G1, G2, Pedersen<G1>, Pedersen<G2>>,
+    ProverParams<G1, G2, KZG<'static, Bn254>, Pedersen<G2>>,
     VerifierParams<G1, G2>,
+    KZGVerifierKey<Bn254>,
 ) {
     let mut rng = ark_std::test_rng();
     let poseidon_config = poseidon_test_config::<Fr>();
 
     // get the CM & CF_CM len
     let (r1cs, cf_r1cs) = get_r1cs::<G1, GVar, G2, GVar2, FC>(&poseidon_config, F_circuit).unwrap();
-    let cf_len = r1cs.A.n_rows;
-    let cf_cf_len = cf_r1cs.A.n_rows;
+    let cs_len = r1cs.A.n_rows;
+    let cf_cs_len = cf_r1cs.A.n_rows;
 
-    let (pedersen_params, _) = Pedersen::<G1>::setup(&mut rng, cf_len).unwrap();
-    let (cf_pedersen_params, _) = Pedersen::<G2>::setup(&mut rng, cf_cf_len).unwrap();
-
-    let prover_params = ProverParams::<G1, G2, Pedersen<G1>, Pedersen<G2>> {
-        poseidon_config: poseidon_config.clone(),
-        cs_params: pedersen_params,
-        cf_cs_params: cf_pedersen_params,
-    };
-    let verifier_params = VerifierParams::<G1, G2> {
-        poseidon_config: poseidon_config.clone(),
-        r1cs,
-        cf_r1cs,
-    };
-    (prover_params, verifier_params)
-}
-
-#[allow(clippy::type_complexity)]
-pub(crate) fn init_test_prover_params<FC: FCircuit<Fr>>(
-    f_circuit: FC,
-) -> (
-    ProverParams<G1, G2, KZG<'static, Bn254>, Pedersen<G2>>,
-    KZGVerifierKey<Bn254>,
-) {
-    let mut rng = ark_std::test_rng();
-    let poseidon_config = poseidon_test_config::<Fr>();
-    let (cs_len, cf_cs_len) =
-        get_cs_params_len::<G1, GVar, G2, GVar2, FC>(&poseidon_config, f_circuit).unwrap();
+    // let (pedersen_params, _) = Pedersen::<G1>::setup(&mut rng, cf_len).unwrap();
     let (kzg_pk, kzg_vk): (KZGProverKey<G1>, KZGVerifierKey<Bn254>) =
         KZG::<Bn254>::setup(&mut rng, cs_len).unwrap();
     let (cf_pedersen_params, _) = Pedersen::<G2>::setup(&mut rng, cf_cs_len).unwrap();
+
     let fs_prover_params = ProverParams::<G1, G2, KZG<Bn254>, Pedersen<G2>> {
         poseidon_config: poseidon_config.clone(),
         cs_params: kzg_pk.clone(),
         cf_cs_params: cf_pedersen_params,
     };
-    (fs_prover_params, kzg_vk)
+    let fs_verifier_params = VerifierParams::<G1, G2> {
+        poseidon_config: poseidon_config.clone(),
+        r1cs,
+        cf_r1cs,
+    };
+    (fs_prover_params, fs_verifier_params, kzg_vk)
 }
 
 /// Initializes Nova parameters and DeciderEth parameters. Only for test purposes.
 #[allow(clippy::type_complexity)]
-pub(crate) fn init_params<FC: FCircuit<Fr>>(
+pub(crate) fn init_ivc_and_decider_params<FC: FCircuit<Fr>>(
     f_circuit: FC,
 ) -> (
     ProverParams<G1, G2, KZG<'static, Bn254>, Pedersen<G2>>,
@@ -95,7 +74,7 @@ pub(crate) fn init_params<FC: FCircuit<Fr>>(
 ) {
     let mut rng = rand::rngs::OsRng;
     let start = Instant::now();
-    let (fs_prover_params, kzg_vk) = init_test_prover_params::<FC>(f_circuit.clone());
+    let (fs_prover_params, _, kzg_vk) = init_nova_ivc_params::<FC>(f_circuit.clone());
     println!("generated Nova folding params: {:?}", start.elapsed());
 
     pub type NOVA<FC> = Nova<G1, GVar, G2, GVar2, FC, KZG<'static, Bn254>, Pedersen<G2>>;

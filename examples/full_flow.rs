@@ -10,35 +10,25 @@
 /// - verify the proof in the EVM
 ///
 use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as G1};
-use ark_crypto_primitives::snark::SNARK;
 use ark_ff::PrimeField;
-use ark_groth16::VerifyingKey as G16VerifierKey;
-use ark_groth16::{Groth16, ProvingKey};
+use ark_groth16::Groth16;
 use ark_grumpkin::{constraints::GVar as GVar2, Projective as G2};
-use ark_poly_commit::kzg10::VerifierKey as KZGVerifierKey;
 use ark_r1cs_std::alloc::AllocVar;
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
-use ark_std::Zero;
 use std::marker::PhantomData;
 use std::time::Instant;
 
 mod utils;
-use utils::{init_params, init_test_prover_params};
+use utils::init_ivc_and_decider_params;
 
 use folding_schemes::{
-    commitment::{
-        kzg::{ProverKey as KZGProverKey, KZG},
-        pedersen::Pedersen,
-        CommitmentScheme,
-    },
+    commitment::{kzg::KZG, pedersen::Pedersen},
     folding::nova::{
         decider_eth::{prepare_calldata, Decider as DeciderEth},
-        decider_eth_circuit::DeciderEthCircuit,
-        get_cs_params_len, Nova, ProverParams,
+        Nova,
     },
     frontend::FCircuit,
-    transcript::poseidon::poseidon_test_config,
     Decider, Error, FoldingScheme,
 };
 use solidity_verifiers::{
@@ -92,7 +82,8 @@ fn main() {
     let z_0 = vec![Fr::from(3_u32)];
 
     let f_circuit = CubicFCircuit::<Fr>::new(());
-    let (fs_prover_params, kzg_vk, g16_pk, g16_vk) = init_params::<CubicFCircuit<Fr>>(f_circuit);
+    let (fs_prover_params, kzg_vk, g16_pk, g16_vk) =
+        init_ivc_and_decider_params::<CubicFCircuit<Fr>>(f_circuit);
 
     pub type NOVA = Nova<G1, GVar, G2, GVar2, CubicFCircuit<Fr>, KZG<'static, Bn254>, Pedersen<G2>>;
     pub type DECIDERETH_FCircuit = DeciderEth<

@@ -38,8 +38,8 @@ pub struct Sha256FCircuit<F: PrimeField> {
 impl<F: PrimeField> FCircuit<F> for Sha256FCircuit<F> {
     type Params = ();
 
-    fn new(_params: Self::Params) -> Self {
-        Self { _f: PhantomData }
+    fn new(_params: Self::Params) -> Result<Self, Error> {
+        Ok(Self { _f: PhantomData })
     }
     fn state_len(&self) -> usize {
         1
@@ -89,14 +89,14 @@ pub mod tests {
     fn test_f_circuit() {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        let circuit = Sha256FCircuit::<Fr>::new(());
+        let circuit = Sha256FCircuit::<Fr>::new(()).unwrap();
         let z_i = vec![Fr::from(1_u32)];
 
-        let z_i1 = circuit.step_native(0, z_i.clone()).unwrap();
+        let z_i1 = circuit.step_native(0, z_i.clone(), vec![]).unwrap();
 
         let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i)).unwrap();
         let computed_z_i1Var = circuit
-            .generate_step_constraints(cs.clone(), 0, z_iVar.clone())
+            .generate_step_constraints(cs.clone(), 0, z_iVar.clone(), vec![])
             .unwrap();
         assert_eq!(computed_z_i1Var.value().unwrap(), z_i1);
     }
@@ -107,7 +107,7 @@ fn main() {
     let num_steps = 10;
     let initial_state = vec![Fr::from(1_u32)];
 
-    let F_circuit = Sha256FCircuit::<Fr>::new(());
+    let F_circuit = Sha256FCircuit::<Fr>::new(()).unwrap();
 
     println!("Prepare Nova ProverParams & VerifierParams");
     let (prover_params, verifier_params, _) = init_nova_ivc_params::<Sha256FCircuit<Fr>>(F_circuit);

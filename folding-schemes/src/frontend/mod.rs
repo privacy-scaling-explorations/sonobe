@@ -14,7 +14,7 @@ pub trait FCircuit<F: PrimeField>: Clone + Debug {
     type Params: Debug;
 
     /// returns a new FCircuit instance
-    fn new(params: Self::Params) -> Self;
+    fn new(params: Self::Params) -> Result<Self, Error>;
 
     /// returns the number of elements in the state of the FCircuit, which corresponds to the
     /// FCircuit inputs.
@@ -67,8 +67,8 @@ pub mod tests {
     }
     impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
         type Params = ();
-        fn new(_params: Self::Params) -> Self {
-            Self { _f: PhantomData }
+        fn new(_params: Self::Params) -> Result<Self, Error> {
+            Ok(Self { _f: PhantomData })
         }
         fn state_len(&self) -> usize {
             1
@@ -108,11 +108,11 @@ pub mod tests {
     impl<F: PrimeField> FCircuit<F> for CustomFCircuit<F> {
         type Params = usize;
 
-        fn new(params: Self::Params) -> Self {
-            Self {
+        fn new(params: Self::Params) -> Result<Self, Error> {
+            Ok(Self {
                 _f: PhantomData,
                 n_constraints: params,
-            }
+            })
         }
         fn state_len(&self) -> usize {
             1
@@ -182,7 +182,7 @@ pub mod tests {
     #[test]
     fn test_testfcircuit() {
         let cs = ConstraintSystem::<Fr>::new_ref();
-        let F_circuit = CubicFCircuit::<Fr>::new(());
+        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
 
         let wrapper_circuit = WrapperCircuit::<Fr, CubicFCircuit<Fr>> {
             FC: F_circuit,
@@ -197,7 +197,7 @@ pub mod tests {
     fn test_customtestfcircuit() {
         let cs = ConstraintSystem::<Fr>::new_ref();
         let n_constraints = 1000;
-        let custom_circuit = CustomFCircuit::<Fr>::new(n_constraints);
+        let custom_circuit = CustomFCircuit::<Fr>::new(n_constraints).unwrap();
         let z_i = vec![Fr::from(5_u32)];
         let wrapper_circuit = WrapperCircuit::<Fr, CustomFCircuit<Fr>> {
             FC: custom_circuit,

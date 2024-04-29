@@ -162,8 +162,8 @@ mod tests {
     }
     impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
         type Params = ();
-        fn new(_params: Self::Params) -> Self {
-            Self { _f: PhantomData }
+        fn new(_params: Self::Params) -> Result<Self, Error> {
+            Ok(Self { _f: PhantomData })
         }
         fn state_len(&self) -> usize {
             1
@@ -205,8 +205,8 @@ mod tests {
     impl<F: PrimeField> FCircuit<F> for MultiInputsFCircuit<F> {
         type Params = ();
 
-        fn new(_params: Self::Params) -> Self {
-            Self { _f: PhantomData }
+        fn new(_params: Self::Params) -> Result<Self, Error> {
+            Ok(Self { _f: PhantomData })
         }
         fn state_len(&self) -> usize {
             5
@@ -288,7 +288,7 @@ mod tests {
     ) {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_test_config::<Fr>();
-        let f_circuit = FC::new(());
+        let f_circuit = FC::new(()).unwrap();
         let (cs_len, cf_cs_len) =
             get_cs_params_len::<G1, GVar, G2, GVar2, FC>(&poseidon_config, f_circuit).unwrap();
         let (kzg_pk, kzg_vk): (KZGProverKey<G1>, KZGVerifierKey<Bn254>) =
@@ -314,7 +314,7 @@ mod tests {
         let start = Instant::now();
         let (fs_prover_params, kzg_vk) = init_test_prover_params::<FC>();
         println!("generated Nova folding params: {:?}", start.elapsed());
-        let f_circuit = FC::new(());
+        let f_circuit = FC::new(()).unwrap();
 
         pub type NOVA_FCircuit<FC> =
             Nova<G1, GVar, G2, GVar2, FC, KZG<'static, Bn254>, Pedersen<G2>>;
@@ -369,7 +369,7 @@ mod tests {
             Groth16<Bn254>,
             NOVA_FCircuit<FC>,
         >;
-        let f_circuit = FC::new(());
+        let f_circuit = FC::new(()).unwrap();
 
         let nova_cyclefold_vk =
             NovaCycleFoldVerifierKey::from((g16_vk.clone(), kzg_vk.clone(), f_circuit.state_len()));

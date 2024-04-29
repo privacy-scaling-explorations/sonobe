@@ -32,8 +32,8 @@ pub struct MultiInputsFCircuit<F: PrimeField> {
 impl<F: PrimeField> FCircuit<F> for MultiInputsFCircuit<F> {
     type Params = ();
 
-    fn new(_params: Self::Params) -> Self {
-        Self { _f: PhantomData }
+    fn new(_params: Self::Params) -> Result<Self, Error> {
+        Ok(Self { _f: PhantomData })
     }
     fn state_len(&self) -> usize {
         5
@@ -92,7 +92,7 @@ pub mod tests {
     fn test_f_circuit() {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        let circuit = MultiInputsFCircuit::<Fr>::new(());
+        let circuit = MultiInputsFCircuit::<Fr>::new(()).unwrap();
         let z_i = vec![
             Fr::from(1_u32),
             Fr::from(1_u32),
@@ -101,11 +101,11 @@ pub mod tests {
             Fr::from(1_u32),
         ];
 
-        let z_i1 = circuit.step_native(0, z_i.clone()).unwrap();
+        let z_i1 = circuit.step_native(0, z_i.clone(), vec![]).unwrap();
 
         let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i)).unwrap();
         let computed_z_i1Var = circuit
-            .generate_step_constraints(cs.clone(), 0, z_iVar.clone())
+            .generate_step_constraints(cs.clone(), 0, z_iVar.clone(), vec![])
             .unwrap();
         assert_eq!(computed_z_i1Var.value().unwrap(), z_i1);
     }
@@ -122,7 +122,7 @@ fn main() {
         Fr::from(1_u32),
     ];
 
-    let F_circuit = MultiInputsFCircuit::<Fr>::new(());
+    let F_circuit = MultiInputsFCircuit::<Fr>::new(()).unwrap();
 
     println!("Prepare Nova ProverParams & VerifierParams");
     let (prover_params, verifier_params, _) =

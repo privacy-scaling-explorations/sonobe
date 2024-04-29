@@ -45,8 +45,8 @@ pub struct CubicFCircuit<F: PrimeField> {
 }
 impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
     type Params = ();
-    fn new(_params: Self::Params) -> Self {
-        Self { _f: PhantomData }
+    fn new(_params: Self::Params) -> Result<Self, Error> {
+        Ok(Self { _f: PhantomData })
     }
     fn state_len(&self) -> usize {
         1
@@ -81,7 +81,7 @@ fn main() {
     // set the initial state
     let z_0 = vec![Fr::from(3_u32)];
 
-    let f_circuit = CubicFCircuit::<Fr>::new(());
+    let f_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
     let (fs_prover_params, kzg_vk, g16_pk, g16_vk) =
         init_ivc_and_decider_params::<CubicFCircuit<Fr>>(f_circuit);
 

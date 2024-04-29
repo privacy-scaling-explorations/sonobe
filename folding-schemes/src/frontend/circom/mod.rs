@@ -1,4 +1,4 @@
-use ark_circom::circom::CircomCircuit;
+use ark_circom::circom::{CircomCircuit, R1CS as CircomR1CS};
 use ark_ff::PrimeField;
 use ark_r1cs_std::alloc::AllocVar;
 use ark_r1cs_std::fields::fp::FpVar;
@@ -20,20 +20,24 @@ pub struct CircomFCircuit<F: PrimeField> {
     circom_wrapper: CircomWrapper<F>,
     state_len: usize,
     external_inputs_len: usize,
+    r1cs: CircomR1CS<F>,
 }
 
 impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
     /// (r1cs_path, wasm_path, state_len, external_inputs_len)
     type Params = (PathBuf, PathBuf, usize, usize);
 
-    fn new(params: Self::Params) -> Self {
+    fn new(params: Self::Params) -> Result<Self, Error> {
         let (r1cs_path, wasm_path, state_len, external_inputs_len) = params;
         let circom_wrapper = CircomWrapper::new(r1cs_path, wasm_path);
-        Self {
+
+        let r1cs = circom_wrapper.extract_r1cs()?;
+        Ok(Self {
             circom_wrapper,
             state_len,
             external_inputs_len,
-        }
+            r1cs,
+        })
     }
 
     fn state_len(&self) -> usize {
@@ -60,7 +64,7 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
             .collect::<Vec<BigInt>>();
         let mut inputs_map = vec![("ivc_input".to_string(), inputs_bi)];
 
-        if !external_inputs.is_empty() {
+        if self.external_inputs_len() > 0 {
             let external_inputs_bi = external_inputs
                 .iter()
                 .map(|val| self.circom_wrapper.ark_primefield_to_num_bigint(*val))
@@ -95,22 +99,21 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
 
         let input_values = self.fpvars_to_bigints(z_i)?;
         let mut inputs_map = vec![("ivc_input".to_string(), input_values)];
-        // if external_inputs.len() > 0 {
+
         if self.external_inputs_len() > 0 {
             let external_inputs_bi = self.fpvars_to_bigints(external_inputs)?;
             inputs_map.push(("external_inputs".to_string(), external_inputs_bi));
         }
 
-        // Extracts R1CS and witness.
-        let (r1cs, witness) = self
+        let witness = self
             .circom_wrapper
-            .extract_r1cs_and_witness(&inputs_map)
+            .extract_witness(&inputs_map)
             .map_err(|_| SynthesisError::AssignmentMissing)?;
 
         // Initializes the CircomCircuit.
         let circom_circuit = CircomCircuit {
-            r1cs,
-            witness: witness.clone(),
+            r1cs: self.r1cs.clone(),
+            witness: Some(witness.clone()),
             inputs_already_allocated: true,
         };
 
@@ -122,11 +125,10 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
             return Err(SynthesisError::Unsatisfiable);
         }
 
-        let w = witness.ok_or(SynthesisError::Unsatisfiable)?;
-
         // Extracts the z_i1(next state) from the witness vector.
-        let z_i1: Vec<FpVar<F>> =
-            Vec::<FpVar<F>>::new_witness(cs.clone(), || Ok(w[1..1 + self.state_len()].to_vec()))?;
+        let z_i1: Vec<FpVar<F>> = Vec::<FpVar<F>>::new_witness(cs.clone(), || {
+            Ok(witness[1..1 + self.state_len()].to_vec())
+        })?;
 
         Ok(z_i1)
     }
@@ -163,7 +165,7 @@ pub mod tests {
         let wasm_path =
             PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
-        let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path, 1, 0)); // state_len:1, external_inputs_len:0
+        let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path, 1, 0)).unwrap(); // state_len:1, external_inputs_len:0
 
         let z_i = vec![Fr::from(3u32)];
         let z_i1 = circom_fcircuit.step_native(1, z_i, vec![]).unwrap();
@@ -177,7 +179,7 @@ pub mod tests {
         let wasm_path =
             PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
-        let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path, 1, 0)); // state_len:1, external_inputs_len:0
+        let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path, 1, 0)).unwrap(); // state_len:1, external_inputs_len:0
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
@@ -199,7 +201,7 @@ pub mod tests {
         let wasm_path =
             PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
-        let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path, 1, 0)); // state_len:1, external_inputs_len:0
+        let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path, 1, 0)).unwrap(); // state_len:1, external_inputs_len:0
 
         // Allocates z_i1 by using step_native function.
         let z_i = vec![Fr::from(3_u32)];
@@ -225,7 +227,7 @@ pub mod tests {
             "./src/frontend/circom/test_folder/external_inputs_js/external_inputs.wasm",
         );
 
-        let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path, 1, 2)); // state_len:1, external_inputs_len:2
+        let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path, 1, 2)).unwrap(); // state_len:1, external_inputs_len:2
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
@@ -243,7 +245,6 @@ pub mod tests {
         let external_inputs_var =
             Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(external_inputs)).unwrap();
 
-        let cs = ConstraintSystem::<Fr>::new_ref();
         let z_i1_var = circom_fcircuit
             .generate_step_constraints(cs.clone(), 1, z_i_var, external_inputs_var)
             .unwrap();

@@ -84,11 +84,11 @@ where
 {
     type Params = PoseidonConfig<F>;
 
-    fn new(params: Self::Params) -> Self {
-        Self {
+    fn new(params: Self::Params) -> Result<Self, Error> {
+        Ok(Self {
             _f: PhantomData,
             poseidon_config: params,
-        }
+        })
     }
     fn state_len(&self) -> usize {
         2
@@ -140,11 +140,13 @@ pub mod tests {
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        let circuit = ExternalInputsCircuits::<Fr>::new((poseidon_config, vec![Fr::from(3_u32)]));
+        let circuit = ExternalInputsCircuits::<Fr>::new(poseidon_config).unwrap();
         let z_i = vec![Fr::from(1_u32), Fr::zero()];
         let external_inputs = vec![Fr::from(3_u32)];
 
-        let z_i1 = circuit.step_native(0, z_i.clone()).unwrap();
+        let z_i1 = circuit
+            .step_native(0, z_i.clone(), external_inputs.clone())
+            .unwrap();
 
         let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i)).unwrap();
         let external_inputsVar =
@@ -173,7 +175,7 @@ fn main() {
     assert_eq!(external_inputs.len(), num_steps);
 
     let poseidon_config = poseidon_test_config::<Fr>();
-    let F_circuit = ExternalInputsCircuits::<Fr>::new(poseidon_config);
+    let F_circuit = ExternalInputsCircuits::<Fr>::new(poseidon_config).unwrap();
 
     println!("Prepare Nova ProverParams & VerifierParams");
     let (prover_params, verifier_params, _) =

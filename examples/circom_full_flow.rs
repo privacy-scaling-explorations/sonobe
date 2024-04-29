@@ -63,7 +63,7 @@ fn main() {
     );
 
     let f_circuit_params = (r1cs_path, wasm_path, 1, 2);
-    let f_circuit = CircomFCircuit::<Fr>::new(f_circuit_params);
+    let f_circuit = CircomFCircuit::<Fr>::new(f_circuit_params).unwrap();
 
     let (fs_prover_params, kzg_vk, g16_pk, g16_vk) =
         init_ivc_and_decider_params::<CircomFCircuit<Fr>>(f_circuit.clone());

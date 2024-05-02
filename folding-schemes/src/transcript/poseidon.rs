@@ -18,10 +18,9 @@ use crate::{
 use super::{Transcript, TranscriptVar};
 
 impl<F: PrimeField + Absorb> Transcript<F> for PoseidonSponge<F> {
-    fn absorb_point<C: CurveGroup<ScalarField = F>>(&mut self, p: &C) -> Result<(), Error> {
-        let (x, y) = nonnative_affine_to_field_elements(*p)?;
+    fn absorb_point<C: CurveGroup<ScalarField = F>>(&mut self, p: &C) {
+        let (x, y) = nonnative_affine_to_field_elements(*p);
         self.absorb(&[x, y].concat());
-        Ok(())
     }
     fn get_challenge(&mut self) -> F {
         let c = self.squeeze_field_elements(1);
@@ -111,7 +110,7 @@ pub mod tests {
         let rng = &mut test_rng();
 
         let p = Projective::rand(rng);
-        tr.absorb_point(&p).unwrap();
+        tr.absorb_point(&p);
         let c = tr.get_challenge();
 
         // use 'gadget' transcript

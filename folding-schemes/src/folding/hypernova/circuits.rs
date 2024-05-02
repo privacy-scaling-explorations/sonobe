@@ -227,7 +227,7 @@ where
         cs: ConstraintSystemRef<CF1<C>>,
         // only used the CCS params, not the matrices
         ccs: &CCS<C::ScalarField>,
-        mut transcript: T,
+        transcript: &mut T,
         running_instances: &[LCCCSVar<C>],
         new_instances: &[CCCSVar<C>],
         proof: ProofVar<C>,
@@ -285,7 +285,7 @@ where
         let (e_vars, r_vars) = SumCheckVerifierGadget::<C::ScalarField>::verify(
             &proof.sc_proof,
             &vp_aux_info,
-            &mut transcript,
+            transcript,
             enabled.clone(),
         )?;
 
@@ -713,7 +713,7 @@ where
         let (mut U_i1, rho_bits) = NIMFSGadget::<C1>::verify(
             cs.clone(),
             &self.ccs.clone(),
-            transcript,
+            &mut transcript,
             &[U_i.clone()],
             &[u_i.clone()],
             nimfs_proof,
@@ -771,8 +771,7 @@ where
         // compute cf_r = H(cf_u_i, cf_U_i, cf_cmT)
         // cf_r_bits is denoted by rho* in the paper.
         let cf_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_gadget(
-            cs.clone(),
-            &self.poseidon_config,
+            &mut transcript,
             pp_hash.clone(),
             cf_U_i_vec,
             cf_u_i.clone(),
@@ -1021,13 +1020,13 @@ mod tests {
                 .unwrap();
         let proofVar =
             ProofVar::<Projective>::new_witness(cs.clone(), || Ok(proof.clone())).unwrap();
-        let transcriptVar = PoseidonSpongeVar::<Fr>::new(cs.clone(), &poseidon_config);
+        let mut transcriptVar = PoseidonSpongeVar::<Fr>::new(cs.clone(), &poseidon_config);
 
         let enabled = Boolean::<Fr>::new_witness(cs.clone(), || Ok(true)).unwrap();
         let (folded_lcccsVar, _) = NIMFSGadget::<Projective>::verify(
             cs.clone(),
             &ccs,
-            transcriptVar,
+            &mut transcriptVar,
             &lcccs_instancesVar,
             &cccs_instancesVar,
             proofVar,
@@ -1089,6 +1088,8 @@ mod tests {
     pub fn test_augmented_f_circuit() {
         let mut rng = test_rng();
         let poseidon_config = poseidon_canonical_config::<Fr>();
+        // `sponge` is for digest computation.
+        let sponge = PoseidonSponge::<Fr>::new(&poseidon_config);
 
         let start = Instant::now();
         let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
@@ -1149,7 +1150,7 @@ mod tests {
                 z_0.clone(),
                 z_i.clone(),
             ),
-            cf_U_i.hash_cyclefold(&poseidon_config, pp_hash),
+            cf_U_i.hash_cyclefold(&sponge, pp_hash),
         ];
 
         let n_steps: usize = 4;
@@ -1175,7 +1176,7 @@ mod tests {
 
                 // hash the initial (dummy) CycleFold instance, which is used as the 2nd public
                 // input in the AugmentedFCircuit
-                let cf_u_i1_x = cf_U_i.hash_cyclefold(&poseidon_config, pp_hash);
+                let cf_u_i1_x = cf_U_i.hash_cyclefold(&sponge, pp_hash);
 
                 augmented_f_circuit =
                     AugmentedFCircuit::<Projective, Projective2, GVar2, CubicFCircuit<Fr>> {
@@ -1258,7 +1259,7 @@ mod tests {
                     Pedersen<Projective>,
                     Pedersen<Projective2>,
                 >(
-                    &poseidon_config,
+                    &mut transcript_p,
                     cf_r1cs.clone(),
                     cf_pedersen_params.clone(),
                     pp_hash,
@@ -1271,7 +1272,7 @@ mod tests {
 
                 // hash the CycleFold folded instance, which is used as the 2nd public input in the
                 // AugmentedFCircuit
-                let cf_u_i1_x = cf_U_i1.hash_cyclefold(&poseidon_config, pp_hash);
+                let cf_u_i1_x = cf_U_i1.hash_cyclefold(&sponge, pp_hash);
 
                 augmented_f_circuit =
                     AugmentedFCircuit::<Projective, Projective2, GVar2, CubicFCircuit<Fr>> {
@@ -1329,7 +1330,7 @@ mod tests {
                 z_0.clone(),
                 z_i1.clone(),
             );
-            let expected_cf_U_i1_x = cf_U_i.hash_cyclefold(&poseidon_config, pp_hash);
+            let expected_cf_U_i1_x = cf_U_i.hash_cyclefold(&sponge, pp_hash);
             // u_i is already u_i1 at this point, check that has the expected value at x[0]
             assert_eq!(u_i.x[0], expected_u_i1_x);
             assert_eq!(u_i.x[1], expected_cf_U_i1_x);

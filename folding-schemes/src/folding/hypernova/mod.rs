@@ -233,6 +233,8 @@ where
         z_0: Vec<C1::ScalarField>,
     ) -> Result<Self, Error> {
         let (pp, vp) = params;
+        // `sponge` is for digest computation.
+        let sponge = PoseidonSponge::<C1::ScalarField>::new(&pp.poseidon_config);
 
         // prepare the HyperNova's AugmentedFCircuit and CycleFold's circuits and obtain its CCS
         // and R1CS respectively
@@ -264,7 +266,7 @@ where
                 z_0.clone(),
                 z_0.clone(),
             ),
-            cf_U_dummy.hash_cyclefold(&pp.poseidon_config, pp_hash),
+            cf_U_dummy.hash_cyclefold(&sponge, pp_hash),
         ];
 
         // W_dummy=W_0 is a 'dummy witness', all zeroes, but with the size corresponding to the
@@ -299,6 +301,9 @@ where
         mut rng: impl RngCore,
         external_inputs: Vec<C1::ScalarField>,
     ) -> Result<(), Error> {
+        // `sponge` is for digest computation.
+        let sponge = PoseidonSponge::<C1::ScalarField>::new(&self.poseidon_config);
+
         let augmented_f_circuit: AugmentedFCircuit<C1, C2, GC2, FC>;
 
         if self.z_i.len() != self.F.state_len() {
@@ -348,9 +353,7 @@ where
 
             // hash the initial (dummy) CycleFold instance, which is used as the 2nd public
             // input in the AugmentedFCircuit
-            cf_u_i1_x = self
-                .cf_U_i
-                .hash_cyclefold(&self.poseidon_config, self.pp_hash);
+            cf_u_i1_x = self.cf_U_i.hash_cyclefold(&sponge, self.pp_hash);
 
             augmented_f_circuit = AugmentedFCircuit::<C1, C2, GC2, FC> {
                 _c2: PhantomData,
@@ -426,7 +429,7 @@ where
 
             let (_cf_w_i, cf_u_i, cf_W_i1, cf_U_i1, cf_cmT, _) =
                 fold_cyclefold_circuit::<C1, GC1, C2, GC2, FC, CS1, CS2>(
-                    &self.poseidon_config,
+                    &mut transcript_p,
                     self.cf_r1cs.clone(),
                     self.cf_cs_params.clone(),
                     self.pp_hash,
@@ -436,7 +439,7 @@ where
                     cf_circuit,
                 )?;
 
-            cf_u_i1_x = cf_U_i1.hash_cyclefold(&self.poseidon_config, self.pp_hash);
+            cf_u_i1_x = cf_U_i1.hash_cyclefold(&sponge, self.pp_hash);
 
             augmented_f_circuit = AugmentedFCircuit::<C1, C2, GC2, FC> {
                 _c2: PhantomData,
@@ -542,6 +545,8 @@ where
             }
             return Ok(());
         }
+        // `sponge` is for digest computation.
+        let sponge = PoseidonSponge::<C1::ScalarField>::new(&vp.poseidon_config);
 
         let (U_i, W_i) = running_instance;
         let (u_i, w_i) = incoming_instance;
@@ -559,7 +564,7 @@ where
             return Err(Error::IVCVerificationFail);
         }
         // u_i.X[1] == H(cf_U_i)
-        let expected_cf_u_i_x = cf_U_i.hash_cyclefold(&vp.poseidon_config, pp_hash);
+        let expected_cf_u_i_x = cf_U_i.hash_cyclefold(&sponge, pp_hash);
         if expected_cf_u_i_x != u_i.x[1] {
             return Err(Error::IVCVerificationFail);
         }

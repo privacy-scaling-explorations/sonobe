@@ -1,7 +1,7 @@
 /// contains [CycleFold](https://eprint.iacr.org/2023/1192.pdf) related circuits
 use ark_crypto_primitives::sponge::{
     constraints::CryptographicSpongeVar,
-    poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig, PoseidonSponge},
+    poseidon::{constraints::PoseidonSpongeVar, PoseidonSponge},
     Absorb, CryptographicSponge,
 };
 use ark_ec::CurveGroup;
@@ -240,31 +240,28 @@ where
     for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
 {
     pub fn get_challenge_native(
-        poseidon_config: &PoseidonConfig<C::BaseField>,
+        transcript: &mut PoseidonSponge<C::BaseField>,
         U_i: CommittedInstance<C>,
         u_i: CommittedInstance<C>,
         cmT: C,
     ) -> Vec<bool> {
-        let mut sponge = PoseidonSponge::<C::BaseField>::new(poseidon_config);
-        sponge.absorb_nonnative(&U_i);
-        sponge.absorb_nonnative(&u_i);
-        sponge.absorb_point(&cmT);
-        sponge.squeeze_bits(N_BITS_RO)
+        transcript.absorb_nonnative(&U_i);
+        transcript.absorb_nonnative(&u_i);
+        transcript.absorb_point(&cmT);
+        transcript.squeeze_bits(N_BITS_RO)
     }
 
     // compatible with the native get_challenge_native
     pub fn get_challenge_gadget(
-        cs: ConstraintSystemRef<C::BaseField>,
-        poseidon_config: &PoseidonConfig<C::BaseField>,
+        transcript: &mut PoseidonSpongeVar<C::BaseField>,
         U_i_vec: Vec<FpVar<C::BaseField>>,
         u_i: CycleFoldCommittedInstanceVar<C, GC>,
         cmT: GC,
     ) -> Result<Vec<Boolean<C::BaseField>>, SynthesisError> {
-        let mut sponge = PoseidonSpongeVar::<C::BaseField>::new(cs, poseidon_config);
-        sponge.absorb(&U_i_vec)?;
-        sponge.absorb_nonnative(&u_i)?;
-        sponge.absorb_point(&cmT)?;
-        sponge.squeeze_bits(N_BITS_RO)
+        transcript.absorb(&U_i_vec)?;
+        transcript.absorb_nonnative(&u_i)?;
+        transcript.absorb_point(&cmT)?;
+        transcript.squeeze_bits(N_BITS_RO)
     }
 }
 
@@ -453,6 +450,7 @@ pub mod tests {
     fn test_cyclefold_challenge_gadget() {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_test_config::<Fq>();
+        let mut transcript = PoseidonSponge::<Fq>::new(&poseidon_config);
 
         let u_i = CommittedInstance::<Projective> {
             cmE: Projective::zero(), // zero on purpose, so we test also the zero point case
@@ -474,7 +472,7 @@ pub mod tests {
 
         // compute the challenge natively
         let r_bits = CycleFoldChallengeGadget::<Projective, GVar>::get_challenge_native(
-            &poseidon_config,
+            &mut transcript,
             U_i.clone(),
             u_i.clone(),
             cmT,
@@ -492,10 +490,11 @@ pub mod tests {
             })
             .unwrap();
         let cmTVar = GVar::new_witness(cs.clone(), || Ok(cmT)).unwrap();
+        let mut transcript_var =
+            PoseidonSpongeVar::<Fq>::new(ConstraintSystem::<Fq>::new_ref(), &poseidon_config);
 
         let r_bitsVar = CycleFoldChallengeGadget::<Projective, GVar>::get_challenge_gadget(
-            cs.clone(),
-            &poseidon_config,
+            &mut transcript_var,
             U_iVar.to_native_sponge_field_elements().unwrap(),
             u_iVar,
             cmTVar,
@@ -514,6 +513,7 @@ pub mod tests {
     fn test_cyclefold_hash_gadget() {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_test_config::<Fq>();
+        let sponge = PoseidonSponge::<Fq>::new(&poseidon_config);
 
         let U_i = CommittedInstance::<Projective> {
             cmE: Projective::rand(&mut rng),
@@ -523,7 +523,7 @@ pub mod tests {
                 .take(CF_IO_LEN)
                 .collect(),
         };
-        let h = U_i.hash_cyclefold(&poseidon_config);
+        let h = U_i.hash_cyclefold(&sponge);
 
         let cs = ConstraintSystem::<Fq>::new_ref();
         let U_iVar =

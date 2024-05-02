@@ -3,24 +3,31 @@ use ark_crypto_primitives::sponge::{
     poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig, PoseidonSponge},
     Absorb, CryptographicSponge,
 };
-use ark_ec::CurveGroup;
+use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{BigInteger, PrimeField};
-use ark_r1cs_std::{boolean::Boolean, fields::fp::FpVar, ToConstraintFieldGadget};
+use ark_r1cs_std::{
+    boolean::Boolean, fields::fp::FpVar, groups::CurveVar, ToConstraintFieldGadget,
+};
 use ark_relations::r1cs::SynthesisError;
 
-use crate::{
-    folding::circuits::nonnative::affine::{
-        nonnative_affine_to_field_elements, NonNativeAffineVar,
-    },
-    Error,
-};
-
-use super::{Transcript, TranscriptVar};
+use super::{AbsorbNonNative, AbsorbNonNativeGadget, Transcript, TranscriptVar};
 
 impl<F: PrimeField + Absorb> Transcript<F> for PoseidonSponge<F> {
-    fn absorb_point<C: CurveGroup<ScalarField = F>>(&mut self, p: &C) {
-        let (x, y) = nonnative_affine_to_field_elements(*p);
-        self.absorb(&[x, y].concat());
+    fn absorb_point<C: CurveGroup<BaseField = F>>(&mut self, p: &C) {
+        let (x, y, is_inf) = match p.into_affine().xy() {
+            Some((&x, &y)) => (x, y, C::BaseField::zero()),
+            None => (
+                C::BaseField::zero(),
+                C::BaseField::zero(),
+                C::BaseField::one(),
+            ),
+        };
+        self.absorb(&x);
+        self.absorb(&y);
+        self.absorb(&is_inf);
+    }
+    fn absorb_nonnative<V: AbsorbNonNative<F>>(&mut self, v: &V) {
+        self.absorb(&v.to_native_sponge_field_elements_as_vec());
     }
     fn get_challenge(&mut self) -> F {
         let c = self.squeeze_field_elements(1);
@@ -40,11 +47,20 @@ impl<F: PrimeField + Absorb> Transcript<F> for PoseidonSponge<F> {
 }
 
 impl<F: PrimeField> TranscriptVar<F, PoseidonSponge<F>> for PoseidonSpongeVar<F> {
-    fn absorb_point<C: CurveGroup<ScalarField = F>>(
+    fn absorb_point<
+        C: CurveGroup<BaseField = F>,
+        GC: CurveVar<C, F> + ToConstraintFieldGadget<F>,
+    >(
         &mut self,
-        v: &NonNativeAffineVar<C>,
+        v: &GC,
     ) -> Result<(), SynthesisError> {
         self.absorb(&v.to_constraint_field()?)
+    }
+    fn absorb_nonnative<V: AbsorbNonNativeGadget<F>>(
+        &mut self,
+        v: &V,
+    ) -> Result<(), SynthesisError> {
+        self.absorb(&v.to_native_sponge_field_elements()?)
     }
     fn get_challenge(&mut self) -> Result<FpVar<F>, SynthesisError> {
         let c = self.squeeze_field_elements(1)?;
@@ -94,23 +110,53 @@ pub fn poseidon_test_config<F: PrimeField>() -> PoseidonConfig<F> {
 
 #[cfg(test)]
 pub mod tests {
+    use crate::folding::circuits::nonnative::affine::NonNativeAffineVar;
+
     use super::*;
     use ark_ec::Group;
     use ark_ff::UniformRand;
-    use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
-    use ark_r1cs_std::{alloc::AllocVar, groups::CurveVar, R1CSVar};
+    use ark_pallas::{constraints::GVar, Fq, Fr, PallasConfig, Projective};
+    use ark_r1cs_std::{
+        alloc::AllocVar, groups::curves::short_weierstrass::ProjectiveVar, R1CSVar,
+    };
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::test_rng;
 
     #[test]
-    fn test_transcript_and_transcriptvar_absorb_point() {
+    fn test_transcript_and_transcriptvar_absorb_native_point() {
+        // use 'native' transcript
+        let config = poseidon_test_config::<Fq>();
+        let mut tr = PoseidonSponge::<Fq>::new(&config);
+        let rng = &mut test_rng();
+
+        let p = Projective::rand(rng);
+        tr.absorb_point(&p);
+        let c = tr.get_challenge();
+
+        // use 'gadget' transcript
+        let cs = ConstraintSystem::<Fq>::new_ref();
+        let mut tr_var = PoseidonSpongeVar::<Fq>::new(cs.clone(), &config);
+        let p_var = ProjectiveVar::<PallasConfig, FpVar<Fq>>::new_witness(
+            ConstraintSystem::<Fq>::new_ref(),
+            || Ok(p),
+        )
+        .unwrap();
+        tr_var.absorb_point(&p_var).unwrap();
+        let c_var = tr_var.get_challenge().unwrap();
+
+        // assert that native & gadget transcripts return the same challenge
+        assert_eq!(c, c_var.value().unwrap());
+    }
+
+    #[test]
+    fn test_transcript_and_transcriptvar_absorb_nonnative_point() {
         // use 'native' transcript
         let config = poseidon_test_config::<Fr>();
         let mut tr = PoseidonSponge::<Fr>::new(&config);
         let rng = &mut test_rng();
 
         let p = Projective::rand(rng);
-        tr.absorb_point(&p);
+        tr.absorb_nonnative(&p);
         let c = tr.get_challenge();
 
         // use 'gadget' transcript
@@ -121,7 +167,7 @@ pub mod tests {
             || Ok(p),
         )
         .unwrap();
-        tr_var.absorb_point(&p_var).unwrap();
+        tr_var.absorb_nonnative(&p_var).unwrap();
         let c_var = tr_var.get_challenge().unwrap();
 
         // assert that native & gadget transcripts return the same challenge

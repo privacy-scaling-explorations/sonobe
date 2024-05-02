@@ -162,7 +162,7 @@ where
         _blind: &E::ScalarField,
         _rng: Option<&mut dyn RngCore>,
     ) -> Result<Self::Proof, Error> {
-        transcript.absorb_point(cm)?;
+        transcript.absorb_point(cm);
         let challenge = transcript.get_challenge();
         Self::prove_with_challenge(params, challenge, v, _blind, _rng)
     }
@@ -218,7 +218,7 @@ where
         cm: &E::G1,
         proof: &Self::Proof,
     ) -> Result<(), Error> {
-        transcript.absorb_point(cm)?;
+        transcript.absorb_point(cm);
         let challenge = transcript.get_challenge();
         Self::verify_with_challenge(params, challenge, cm, proof)
     }

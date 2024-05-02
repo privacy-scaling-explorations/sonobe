@@ -1,6 +1,5 @@
 /// This file implements the onchain (Ethereum's EVM) decider circuit. For non-ethereum use cases,
 /// other more efficient approaches can be used.
-use ark_crypto_primitives::crh::poseidon::constraints::CRHParametersVar;
 use ark_crypto_primitives::sponge::{
     constraints::CryptographicSpongeVar,
     poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig, PoseidonSponge},
@@ -27,10 +26,7 @@ use super::{circuits::ChallengeGadget, nifs::NIFS};
 use crate::arith::r1cs::R1CS;
 use crate::commitment::{pedersen::Params as PedersenParams, CommitmentScheme};
 use crate::folding::circuits::{
-    nonnative::{
-        affine::{nonnative_affine_to_field_elements, NonNativeAffineVar},
-        uint::NonNativeUintVar,
-    },
+    nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
     CF1, CF2,
 };
 use crate::folding::nova::{circuits::CommittedInstanceVar, CommittedInstance, Nova, Witness};
@@ -280,7 +276,7 @@ where
             nova.U_i.clone(),
             nova.u_i.clone(),
             cmT,
-        )?;
+        );
         let r_Fr = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
             .ok_or(Error::OutOfBounds)?;
         let (W_i1, U_i1) = NIFS::<C1, CS1>::fold_instances(
@@ -411,10 +407,7 @@ where
             Ok(self.eval_E.unwrap_or_else(CF1::<C1>::zero))
         })?;
 
-        let crh_params = CRHParametersVar::<C1::ScalarField>::new_constant(
-            cs.clone(),
-            self.poseidon_config.clone(),
-        )?;
+        let sponge = PoseidonSpongeVar::<C1::ScalarField>::new(cs.clone(), &self.poseidon_config);
 
         // 1. check RelaxedR1CS of U_{i+1}
         let z_U1: Vec<FpVar<CF1<C1>>> =
@@ -430,7 +423,7 @@ where
 
         // 3.a u_i.x[0] == H(i, z_0, z_i, U_i)
         let (u_i_x, U_i_vec) = U_i.clone().hash(
-            &crh_params,
+            &sponge,
             pp_hash.clone(),
             i.clone(),
             z_0.clone(),
@@ -466,7 +459,7 @@ where
             })?;
 
             // 3.b u_i.x[1] == H(cf_U_i)
-            let (cf_u_i_x, _) = cf_U_i.clone().hash(&crh_params, pp_hash.clone())?;
+            let (cf_u_i_x, _) = cf_U_i.clone().hash(&sponge, pp_hash.clone())?;
             (u_i.x[1]).enforce_equal(&cf_u_i_x)?;
 
             // 4. check Pedersen commitments of cf_U_i.{cmE, cmW}
@@ -574,17 +567,12 @@ where
         poseidon_config: &PoseidonConfig<C::ScalarField>,
         U_i: CommittedInstance<C>,
     ) -> Result<(C::ScalarField, C::ScalarField), Error> {
-        let (cmE_x_limbs, cmE_y_limbs) = nonnative_affine_to_field_elements(U_i.cmE);
-        let (cmW_x_limbs, cmW_y_limbs) = nonnative_affine_to_field_elements(U_i.cmW);
-
         let transcript = &mut PoseidonSponge::<C::ScalarField>::new(poseidon_config);
         // compute the KZG challenges, which are computed in-circuit and checked that it matches
         // the inputted one
-        transcript.absorb(&cmW_x_limbs);
-        transcript.absorb(&cmW_y_limbs);
+        transcript.absorb_nonnative(&U_i.cmW);
         let challenge_W = transcript.get_challenge();
-        transcript.absorb(&cmE_x_limbs);
-        transcript.absorb(&cmE_y_limbs);
+        transcript.absorb_nonnative(&U_i.cmE);
         let challenge_E = transcript.get_challenge();
 
         Ok((challenge_W, challenge_E))

@@ -263,8 +263,8 @@ where
                 C1::ScalarField::zero(),
                 z_0.clone(),
                 z_0.clone(),
-            )?,
-            cf_U_dummy.hash_cyclefold(&pp.poseidon_config, pp_hash)?,
+            ),
+            cf_U_dummy.hash_cyclefold(&pp.poseidon_config, pp_hash),
         ];
 
         // W_dummy=W_0 is a 'dummy witness', all zeroes, but with the size corresponding to the
@@ -344,13 +344,13 @@ where
                 C1::ScalarField::one(),
                 self.z_0.clone(),
                 z_i1.clone(),
-            )?;
+            );
 
             // hash the initial (dummy) CycleFold instance, which is used as the 2nd public
             // input in the AugmentedFCircuit
             cf_u_i1_x = self
                 .cf_U_i
-                .hash_cyclefold(&self.poseidon_config, self.pp_hash)?;
+                .hash_cyclefold(&self.poseidon_config, self.pp_hash);
 
             augmented_f_circuit = AugmentedFCircuit::<C1, C2, GC2, FC> {
                 _c2: PhantomData,
@@ -401,7 +401,7 @@ where
                 self.i + C1::ScalarField::one(),
                 self.z_0.clone(),
                 z_i1.clone(),
-            )?;
+            );
 
             let rho_Fq = C2::ScalarField::from_bigint(BigInteger::from_bits_le(&rho_bits))
                 .ok_or(Error::OutOfBounds)?;
@@ -436,7 +436,7 @@ where
                     cf_circuit,
                 )?;
 
-            cf_u_i1_x = cf_U_i1.hash_cyclefold(&self.poseidon_config, self.pp_hash)?;
+            cf_u_i1_x = cf_U_i1.hash_cyclefold(&self.poseidon_config, self.pp_hash);
 
             augmented_f_circuit = AugmentedFCircuit::<C1, C2, GC2, FC> {
                 _c2: PhantomData,
@@ -554,12 +554,12 @@ where
 
         // check that u_i's output points to the running instance
         // u_i.X[0] == H(i, z_0, z_i, U_i)
-        let expected_u_i_x = U_i.hash(&vp.poseidon_config, pp_hash, num_steps, z_0, z_i.clone())?;
+        let expected_u_i_x = U_i.hash(&vp.poseidon_config, pp_hash, num_steps, z_0, z_i.clone());
         if expected_u_i_x != u_i.x[0] {
             return Err(Error::IVCVerificationFail);
         }
         // u_i.X[1] == H(cf_U_i)
-        let expected_cf_u_i_x = cf_U_i.hash_cyclefold(&vp.poseidon_config, pp_hash)?;
+        let expected_cf_u_i_x = cf_U_i.hash_cyclefold(&vp.poseidon_config, pp_hash);
         if expected_cf_u_i_x != u_i.x[1] {
             return Err(Error::IVCVerificationFail);
         }

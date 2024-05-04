@@ -13,13 +13,12 @@ use super::{
     structs::{IOPProverMessage, IOPVerifierState},
     SumCheckSubClaim, SumCheckVerifier,
 };
-use crate::{transcript::Transcript, utils::virtual_polynomial::VPAuxInfo};
+use crate::{transcript::Transcript, utils::virtual_polynomial::VPAuxInfo, Error};
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ff::PrimeField;
 use ark_poly::Polynomial;
 use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial};
 use ark_std::{end_timer, start_timer};
-use espresso_subroutines::poly_iop::prelude::PolyIOPErrors;
 
 #[cfg(feature = "parallel")]
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
@@ -48,12 +47,12 @@ impl<F: PrimeField + Absorb> SumCheckVerifier<F> for IOPVerifierState<F> {
         &mut self,
         prover_msg: &<IOPVerifierState<F> as SumCheckVerifier<F>>::ProverMessage,
         transcript: &mut impl Transcript<F>,
-    ) -> Result<<IOPVerifierState<F> as SumCheckVerifier<F>>::Challenge, PolyIOPErrors> {
+    ) -> Result<<IOPVerifierState<F> as SumCheckVerifier<F>>::Challenge, Error> {
         let start =
             start_timer!(|| format!("sum check verify {}-th round and update state", self.round));
 
         if self.finished {
-            return Err(PolyIOPErrors::InvalidVerifier(
+            return Err(Error::InvalidPolyIOPVerifier(
                 "Incorrect verifier state: Verifier is already finished.".to_string(),
             ));
         }
@@ -84,16 +83,16 @@ impl<F: PrimeField + Absorb> SumCheckVerifier<F> for IOPVerifierState<F> {
     fn check_and_generate_subclaim(
         &self,
         asserted_sum: &F,
-    ) -> Result<Self::SumCheckSubClaim, PolyIOPErrors> {
+    ) -> Result<Self::SumCheckSubClaim, Error> {
         let start = start_timer!(|| "sum check check and generate subclaim");
         if !self.finished {
-            return Err(PolyIOPErrors::InvalidVerifier(
+            return Err(Error::InvalidPolyIOPVerifier(
                 "Incorrect verifier state: Verifier has not finished.".to_string(),
             ));
         }
 
         if self.polynomials_received.len() != self.num_vars {
-            return Err(PolyIOPErrors::InvalidVerifier(
+            return Err(Error::InvalidPolyIOPVerifier(
                 "insufficient rounds".to_string(),
             ));
         }
@@ -109,9 +108,9 @@ impl<F: PrimeField + Absorb> SumCheckVerifier<F> for IOPVerifierState<F> {
             .map(|(coeffs, challenge)| {
                 // Removed check on number of evaluations here since verifier receives polynomial in coeffs form
                 let prover_poly = DensePolynomial::from_coefficients_slice(&coeffs);
-                Ok(prover_poly.evaluate(&challenge))
+                prover_poly.evaluate(&challenge)
             })
-            .collect::<Result<Vec<_>, PolyIOPErrors>>()?;
+            .collect::<Vec<_>>();
 
         #[cfg(not(feature = "parallel"))]
         let mut expected_vec = self
@@ -122,9 +121,9 @@ impl<F: PrimeField + Absorb> SumCheckVerifier<F> for IOPVerifierState<F> {
             .map(|(coeffs, challenge)| {
                 // Removed check on number of evaluations here since verifier receives polynomial in coeffs form
                 let prover_poly = DensePolynomial::from_coefficients_slice(&coeffs);
-                Ok(prover_poly.evaluate(&challenge))
+                prover_poly.evaluate(&challenge)
             })
-            .collect::<Result<Vec<_>, PolyIOPErrors>>()?;
+            .collect::<Vec<_>>();
 
         // insert the asserted_sum to the first position of the expected vector
         expected_vec.insert(0, *asserted_sum);
@@ -147,7 +146,7 @@ impl<F: PrimeField + Absorb> SumCheckVerifier<F> for IOPVerifierState<F> {
             // the deferred check during the interactive phase:
             // 1. check if the received 'P(0) + P(1) = expected`.
             if eval != expected {
-                return Err(PolyIOPErrors::InvalidProof(
+                return Err(Error::InvalidPolyIOPProof(
                     "Prover message is not consistent with the claim.".to_string(),
                 ));
             }
@@ -172,7 +171,7 @@ impl<F: PrimeField + Absorb> SumCheckVerifier<F> for IOPVerifierState<F> {
 /// negligible compared to field operations.
 /// TODO: The quadratic term can be removed by precomputing the lagrange
 /// coefficients.
-pub fn interpolate_uni_poly<F: PrimeField>(p_i: &[F], eval_at: F) -> Result<F, PolyIOPErrors> {
+pub fn interpolate_uni_poly<F: PrimeField>(p_i: &[F], eval_at: F) -> F {
     let start = start_timer!(|| "sum check interpolate uni poly opt");
 
     let len = p_i.len();
@@ -269,7 +268,7 @@ pub fn interpolate_uni_poly<F: PrimeField>(p_i: &[F], eval_at: F) -> Result<F, P
         }
     }
     end_timer!(start);
-    Ok(res)
+    res
 }
 
 /// compute the factorial(a) = 1 * 2 * ... * a

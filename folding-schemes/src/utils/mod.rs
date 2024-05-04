@@ -5,7 +5,6 @@ use ark_crypto_primitives::sponge::poseidon::PoseidonConfig;
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
 use ark_serialize::CanonicalSerialize;
-use ark_std::Zero;
 use sha3::{Digest, Sha3_256};
 
 use crate::arith::ArithSerializer;
@@ -37,10 +36,8 @@ pub fn powers_of<F: PrimeField>(x: F, n: usize) -> Vec<F> {
 /// returns the coordinates of a commitment point. This is compatible with the arkworks
 /// GC.to_constraint_field()[..2]
 pub fn get_cm_coordinates<C: CurveGroup>(cm: &C) -> Vec<C::BaseField> {
-    let zero = (&C::BaseField::zero(), &C::BaseField::zero());
-    let cm = cm.into_affine();
-    let (cm_x, cm_y) = cm.xy().unwrap_or(zero);
-    vec![*cm_x, *cm_y]
+    let (cm_x, cm_y) = cm.into_affine().xy().unwrap_or_default();
+    vec![cm_x, cm_y]
 }
 
 /// returns the hash of the given public parameters of the Folding Scheme

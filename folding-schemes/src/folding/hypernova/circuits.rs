@@ -5,16 +5,17 @@ use ark_crypto_primitives::sponge::{
     CryptographicSponge,
 };
 use ark_crypto_primitives::sponge::{poseidon::PoseidonConfig, Absorb};
-use ark_ec::{CurveGroup, Group};
+use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
+    convert::ToConstraintFieldGadget,
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
     prelude::CurveVar,
     uint8::UInt8,
-    R1CSVar, ToConstraintFieldGadget,
+    R1CSVar,
 };
 use ark_relations::r1cs::{
     ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, Namespace, SynthesisError,
@@ -194,7 +195,7 @@ pub struct ProofVar<C: CurveGroup> {
 impl<C> AllocVar<NIMFSProof<C>, CF1<C>> for ProofVar<C>
 where
     C: CurveGroup,
-    <C as Group>::ScalarField: Absorb,
+    C::ScalarField: Absorb,
 {
     fn new_variable<T: Borrow<NIMFSProof<C>>>(
         cs: impl Into<Namespace<CF1<C>>>,
@@ -330,7 +331,7 @@ impl<C: CurveGroup> NIMFSGadget<C> {
         let rho_scalar: FpVar<CF1<C>> = FpVar::<CF1<C>>::new_constant(cs.clone(), rho_scalar_raw)?;
         transcript.absorb(&rho_scalar)?;
         let rho_bits: Vec<Boolean<CF1<C>>> = transcript.get_challenge_nbits(NOVA_N_BITS_RO)?;
-        let rho = Boolean::le_bits_to_fp_var(&rho_bits)?;
+        let rho = Boolean::le_bits_to_fp(&rho_bits)?;
 
         // Self::fold will return the folded instance
         let folded_lcccs = Self::fold(
@@ -518,12 +519,12 @@ impl<C1, C2, GC2, FC, const MU: usize, const NU: usize> AugmentedFCircuit<C1, C2
 where
     C1: CurveGroup,
     C2: CurveGroup,
-    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+    GC2: CurveVar<C2, CF2<C2>>,
     FC: FCircuit<CF1<C1>>,
     <C1 as CurveGroup>::BaseField: PrimeField,
     <C2 as CurveGroup>::BaseField: PrimeField,
-    <C1 as Group>::ScalarField: Absorb,
-    <C2 as Group>::ScalarField: Absorb,
+    C1::ScalarField: Absorb,
+    C2::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
 {
     pub fn default(
@@ -692,12 +693,12 @@ impl<C1, C2, GC2, FC, const MU: usize, const NU: usize> ConstraintSynthesizer<CF
 where
     C1: CurveGroup,
     C2: CurveGroup,
-    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+    GC2: CurveVar<C2, CF2<C2>>,
     FC: FCircuit<CF1<C1>>,
     <C1 as CurveGroup>::BaseField: PrimeField,
     <C2 as CurveGroup>::BaseField: PrimeField,
-    <C1 as Group>::ScalarField: Absorb,
-    <C2 as Group>::ScalarField: Absorb,
+    C1::ScalarField: Absorb,
+    C2::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
 {
     fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
@@ -752,7 +753,7 @@ where
         let sponge = PoseidonSpongeVar::<C1::ScalarField>::new(cs.clone(), &self.poseidon_config);
 
         let is_basecase = i.is_zero()?;
-        let is_not_basecase = is_basecase.not();
+        let is_not_basecase = !&is_basecase;
 
         // Primary Part
         // P.1. Compute u_i.x

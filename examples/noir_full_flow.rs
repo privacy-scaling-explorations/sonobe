@@ -27,8 +27,8 @@ use folding_schemes::{
     transcript::poseidon::poseidon_canonical_config,
     Decider, FoldingScheme,
 };
-use frontends::noir::{load_noir_circuit, NoirFCircuit};
-use std::time::Instant;
+use frontends::noir::NoirFCircuit;
+use std::{path::Path, time::Instant};
 
 use solidity_verifiers::{
     evm::{compile_solidity, Evm},
@@ -42,14 +42,11 @@ fn main() {
     let z_0 = vec![Fr::from(1)];
 
     // initialize the noir fcircuit
-    let circuit_path = format!("./frontends/src/noir/test_folder/test_mimc/target/test_mimc.json",);
-
-    let circuit = load_noir_circuit(circuit_path).unwrap();
-    let f_circuit = NoirFCircuit {
-        circuit,
-        state_len: 1,
-        external_inputs_len: 0,
-    };
+    let f_circuit = NoirFCircuit::new((
+        Path::new("./frontends/src/noir/test_folder/test_mimc/target/test_mimc.json").into(),
+        1,
+        0,
+    )).unwrap();
 
     pub type N = Nova<G1, GVar, G2, GVar2, NoirFCircuit<Fr>, KZG<'static, Bn254>, Pedersen<G2>>;
     pub type D = DeciderEth<
@@ -65,7 +62,7 @@ fn main() {
     >;
 
     let poseidon_config = poseidon_canonical_config::<Fr>();
-    let mut rng = rand::rngs::OsRng;
+    let mut rng = ark_std::rand::rngs::OsRng;
 
     // prepare the Nova prover & verifier params
     let nova_preprocess_params = PreprocessorParam::new(poseidon_config, f_circuit.clone());

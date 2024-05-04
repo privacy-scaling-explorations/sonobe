@@ -13,7 +13,6 @@ use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     fields::fp::FpVar,
     prelude::CurveVar,
-    ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
 use ark_std::{borrow::Borrow, marker::PhantomData};
@@ -95,9 +94,9 @@ pub type DeciderEthCircuit<C1, C2, GC2> = GenericOnchainDeciderCircuit<
 /// returns an instance of the DeciderEthCircuit from the given Nova struct
 impl<
         C1: CurveGroup,
-        GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
+        GC1: CurveVar<C1, CF2<C1>>,
         C2: CurveGroup,
-        GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+        GC2: CurveVar<C2, CF2<C2>>,
         FC: FCircuit<C1::ScalarField>,
         CS1: CommitmentScheme<C1, H>,
         // enforce that the CS2 is Pedersen commitment scheme, since we're at Ethereum's EVM decider

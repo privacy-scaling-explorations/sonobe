@@ -1,7 +1,7 @@
 /// This module contains the implementation the NIFSTrait for the
 /// [Ova](https://hackmd.io/V4838nnlRKal9ZiTHiGYzw) NIFS (Non-Interactive Folding Scheme).
 use ark_crypto_primitives::sponge::Absorb;
-use ark_ec::{CurveGroup, Group};
+use ark_ec::CurveGroup;
 use ark_ff::{BigInteger, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::fmt::Debug;
@@ -135,7 +135,7 @@ pub struct NIFS<
 impl<C: CurveGroup, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
     NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
 where
-    <C as Group>::ScalarField: Absorb,
+    C::ScalarField: Absorb,
     <C as CurveGroup>::BaseField: PrimeField,
 {
     type CommittedInstance = CommittedInstance<C>;

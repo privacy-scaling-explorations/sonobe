@@ -1,9 +1,9 @@
 /// This module contains the implementation the NIFSTrait for the
 /// [Mova](https://eprint.iacr.org/2024/1220.pdf) NIFS (Non-Interactive Folding Scheme).
 use ark_crypto_primitives::sponge::Absorb;
-use ark_ec::{CurveGroup, Group};
+use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
-use ark_poly::MultilinearExtension;
+use ark_poly::Polynomial;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::log2;
 use ark_std::rand::RngCore;
@@ -114,10 +114,7 @@ impl<C: CurveGroup> Witness<C> {
         let mut mleE = C::ScalarField::zero();
         if !is_zero_vec::<C::ScalarField>(&self.E) {
             let E = dense_vec_to_dense_mle(log2(self.E.len()) as usize, &self.E);
-            mleE = E.evaluate(&rE).ok_or(Error::NotExpectedLength(
-                rE.len(),
-                log2(self.E.len()) as usize,
-            ))?;
+            mleE = E.evaluate(&rE);
         }
         let cmW = CS::commit(params, &self.W, &self.rW)?;
         Ok(CommittedInstance {
@@ -155,7 +152,7 @@ pub struct NIFS<
 impl<C: CurveGroup, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
     NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
 where
-    <C as Group>::ScalarField: Absorb,
+    C::ScalarField: Absorb,
     <C as CurveGroup>::BaseField: PrimeField,
 {
     type CommittedInstance = CommittedInstance<C>;
@@ -261,7 +258,7 @@ where
         }
 
         let mleT = dense_vec_to_dense_mle(n_vars, &T);
-        let mleT_evaluated = mleT.evaluate(&rE_prime).ok_or(Error::EvaluationFail)?;
+        let mleT_evaluated = mleT.evaluate(&rE_prime);
 
         transcript.absorb(&mleT_evaluated);
 

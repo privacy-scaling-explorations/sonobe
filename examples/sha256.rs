@@ -11,7 +11,10 @@ use ark_crypto_primitives::crh::{
     CRHScheme, CRHSchemeGadget,
 };
 use ark_ff::{BigInteger, PrimeField, ToConstraintField};
-use ark_r1cs_std::{fields::fp::FpVar, ToBytesGadget, ToConstraintFieldGadget};
+use ark_r1cs_std::{
+    convert::{ToBytesGadget, ToConstraintFieldGadget},
+    fields::fp::FpVar,
+};
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 use core::marker::PhantomData;
 use std::time::Instant;
@@ -70,7 +73,7 @@ impl<F: PrimeField> FCircuit<F> for Sha256FCircuit<F> {
         _external_inputs: Vec<FpVar<F>>,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let unit_var = UnitVar::default();
-        let out_bytes = Sha256Gadget::evaluate(&unit_var, &z_i[0].to_bytes()?)?;
+        let out_bytes = Sha256Gadget::evaluate(&unit_var, &z_i[0].to_bytes_le()?)?;
         let out = out_bytes.0.to_constraint_field()?;
         Ok(vec![out[0].clone()])
     }

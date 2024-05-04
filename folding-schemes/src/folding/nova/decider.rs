@@ -3,9 +3,9 @@
 /// More details can be found at the documentation page:
 /// https://privacy-scaling-explorations.github.io/sonobe-docs/design/nova-decider-offchain.html
 use ark_crypto_primitives::sponge::Absorb;
-use ark_ec::{CurveGroup, Group};
+use ark_ec::CurveGroup;
 use ark_ff::{BigInteger, PrimeField};
-use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
+use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_snark::SNARK;
 use ark_std::rand::{CryptoRng, RngCore};
@@ -102,8 +102,8 @@ impl<C1, GC1, C2, GC2, FC, CS1, CS2, S1, S2, FS> DeciderTrait<C1, C2, FC, FS>
 where
     C1: CurveGroup,
     C2: CurveGroup,
-    GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
-    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+    GC1: CurveVar<C1, CF2<C1>>,
+    GC2: CurveVar<C2, CF2<C2>>,
     FC: FCircuit<C1::ScalarField>,
     CS1: CommitmentScheme<
         C1,
@@ -122,8 +122,8 @@ where
     FS: FoldingScheme<C1, C2, FC>,
     <C1 as CurveGroup>::BaseField: PrimeField,
     <C2 as CurveGroup>::BaseField: PrimeField,
-    <C1 as Group>::ScalarField: Absorb,
-    <C2 as Group>::ScalarField: Absorb,
+    C1::ScalarField: Absorb,
+    C2::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     for<'b> &'b GC1: GroupOpsBounds<'b, C1, GC1>,
     for<'b> &'b GC2: GroupOpsBounds<'b, C2, GC2>,

@@ -1,18 +1,20 @@
-use ark_noname::sonobe::NonameSonobeCircuit;
 use ark_r1cs_std::alloc::AllocVar;
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use num_bigint::BigUint;
 use std::marker::PhantomData;
 
-use self::utils::NonameInputs;
+use self::bridge::NonameSonobeCircuit;
+use self::utils::{compile_source_code, NonameInputs};
 
 use ark_ff::PrimeField;
-use ark_noname::utils::compile_source_code;
 use folding_schemes::{frontend::FCircuit, Error};
 use noname::backends::{r1cs::R1CS as R1CSNoname, BackendField};
 use noname::witness::CompiledCircuit;
+
+pub mod bridge;
 pub mod utils;
+
 #[derive(Debug, Clone)]
 pub struct NonameFCircuit<F: PrimeField, BF: BackendField> {
     pub state_len: usize,

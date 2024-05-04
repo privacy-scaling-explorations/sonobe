@@ -89,6 +89,16 @@ pub enum Error {
     #[error("Commitment verification failed")]
     CommitmentVerificationFail,
 
+    // Polynomial IOP errors, from https://github.com/EspressoSystems/hyperplonk/blob/main/subroutines/src/poly_iop/errors.rs
+    #[error("Invalid Polynomial IOP Prover: {0}")]
+    InvalidPolyIOPProver(String),
+    #[error("Invalid Polynomial IOP Verifier: {0}")]
+    InvalidPolyIOPVerifier(String),
+    #[error("Invalid Polynomial IOP Proof: {0}")]
+    InvalidPolyIOPProof(String),
+    #[error("Invalid Polynomial IOP Parameters: {0}")]
+    InvalidPolyIOPParameters(String),
+
     // Other
     #[error("{0}")]
     Other(String),

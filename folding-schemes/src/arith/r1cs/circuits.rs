@@ -98,7 +98,7 @@ pub mod tests {
     use ark_ec::CurveGroup;
     use ark_ff::BigInteger;
     use ark_pallas::{Fq, Fr, Projective};
-    use ark_r1cs_std::{bits::uint8::UInt8, eq::EqGadget, fields::fp::FpVar};
+    use ark_r1cs_std::{eq::EqGadget, fields::fp::FpVar, uint8::UInt8};
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef};
     use ark_std::{
         rand::{thread_rng, Rng},

@@ -3,7 +3,14 @@ use std::collections::HashMap;
 use ark_ff::PrimeField;
 use ark_r1cs_std::{fields::fp::FpVar, R1CSVar};
 use ark_relations::r1cs::SynthesisError;
-use noname::inputs::JsonInputs;
+use noname::{
+    backends::{r1cs::R1CS, BackendField},
+    circuit_writer::CircuitWriter,
+    compiler::{typecheck_next_file, Sources},
+    inputs::JsonInputs,
+    type_checker::TypeChecker,
+    witness::CompiledCircuit,
+};
 use serde_json::json;
 
 pub struct NonameInputs(pub JsonInputs);
@@ -55,4 +62,27 @@ impl NonameInputs {
             Ok(NonameInputs(JsonInputs(inputs)))
         }
     }
+}
+
+// from: https://github.com/zksecurity/noname/blob/main/src/tests/modules.rs
+// TODO: this will not work in the case where we are using libraries
+pub fn compile_source_code<BF: BackendField>(
+    code: &str,
+) -> Result<CompiledCircuit<R1CS<BF>>, noname::error::Error> {
+    let mut sources = Sources::new();
+
+    // parse the transitive dependency
+    let mut tast = TypeChecker::<R1CS<BF>>::new();
+    let _ = typecheck_next_file(
+        &mut tast,
+        None,
+        &mut sources,
+        "main.no".to_string(),
+        code.to_string(),
+        0,
+    )
+    .unwrap();
+    let r1cs = R1CS::<BF>::new();
+    // compile
+    CircuitWriter::generate_circuit(tast, r1cs)
 }

@@ -258,11 +258,7 @@ impl<F: PrimeField> VirtualPolynomial<F> {
         let evals: Vec<F> = self
             .flattened_ml_extensions
             .iter()
-            .map(|x| {
-                x.evaluate(point).unwrap() // safe unwrap here since we have
-                                           // already checked that num_var
-                                           // matches
-            })
+            .map(|x| x.fix_variables(point)[0])
             .collect();
 
         let res = self

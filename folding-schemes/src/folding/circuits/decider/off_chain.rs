@@ -8,9 +8,7 @@ use ark_crypto_primitives::sponge::{
     Absorb,
 };
 use ark_ec::CurveGroup;
-use ark_r1cs_std::{
-    alloc::AllocVar, eq::EqGadget, fields::fp::FpVar, prelude::CurveVar, ToConstraintFieldGadget,
-};
+use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, fields::fp::FpVar, prelude::CurveVar};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use ark_std::{marker::PhantomData, Zero};
 
@@ -40,7 +38,7 @@ use super::DeciderEnabledNIFS;
 pub struct GenericOffchainDeciderCircuit1<
     C1: CurveGroup,
     C2: CurveGroup,
-    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+    GC2: CurveVar<C2, CF2<C2>>,
     RU: CommittedInstanceOps<C1>,       // Running instance
     IU: CommittedInstanceOps<C1>,       // Incoming instance
     W: WitnessOps<CF1<C1>>,             // Witness
@@ -83,7 +81,7 @@ pub struct GenericOffchainDeciderCircuit1<
 impl<
         C1: CurveGroup,
         C2: CurveGroup<ScalarField = CF2<C1>, BaseField = CF1<C1>>,
-        GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+        GC2: CurveVar<C2, CF2<C2>>,
         RU: CommittedInstanceOps<C1> + for<'a> Dummy<&'a A>,
         IU: CommittedInstanceOps<C1> + for<'a> Dummy<&'a A>,
         W: WitnessOps<CF1<C1>> + for<'a> Dummy<&'a A>,
@@ -147,7 +145,7 @@ impl<
 impl<
         C1: CurveGroup,
         C2: CurveGroup<ScalarField = CF2<C1>, BaseField = CF1<C1>>,
-        GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+        GC2: CurveVar<C2, CF2<C2>>,
         RU: CommittedInstanceOps<C1>,
         IU: CommittedInstanceOps<C1>,
         W: WitnessOps<CF1<C1>>,

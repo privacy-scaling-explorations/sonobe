@@ -1,7 +1,7 @@
 /// Contains [CycleFold](https://eprint.iacr.org/2023/1192.pdf) related circuits and functions that
 /// are shared across the different folding schemes
 use ark_crypto_primitives::sponge::{Absorb, CryptographicSponge};
-use ark_ec::{AffineRepr, CurveGroup, Group};
+use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{BigInteger, Field, PrimeField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
@@ -9,7 +9,6 @@ use ark_r1cs_std::{
     eq::EqGadget,
     fields::fp::FpVar,
     prelude::CurveVar,
-    ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{
     ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, Namespace, SynthesisError,
@@ -45,26 +44,25 @@ impl<C: CurveGroup, GC: CurveVar<C, CF2<C>>> Inputize<CF2<C>, CycleFoldCommitted
     for CycleFoldCommittedInstance<C>
 {
     fn inputize(&self) -> Vec<CF2<C>> {
-        let zero = (&C::BaseField::zero(), &C::BaseField::zero());
         let cmE = self.cmE.into_affine();
         let cmW = self.cmW.into_affine();
-        let (cmE_x, cmE_y) = cmE.xy().unwrap_or(zero);
-        let (cmW_x, cmW_y) = cmW.xy().unwrap_or(zero);
+        let (cmE_x, cmE_y) = cmE.xy().unwrap_or_default();
+        let (cmW_x, cmW_y) = cmW.xy().unwrap_or_default();
         self.u
             .inputize()
             .into_iter()
             .chain(self.x.iter().flat_map(|x| x.inputize()))
             .chain(
                 [
-                    *cmE_x,
-                    *cmE_y,
+                    cmE_x,
+                    cmE_y,
                     C::BaseField::one(),
-                    *cmW_x,
-                    *cmW_y,
+                    cmW_x,
+                    cmW_y,
                     C::BaseField::one(),
                 ]
                 .into_iter()
-                .flat_map(|x| x.to_base_prime_field_elements()),
+                .flat_map(|x| x.to_base_prime_field_elements().collect::<Vec<_>>()),
             )
             .collect()
     }
@@ -112,14 +110,8 @@ where
     fn to_native_sponge_field_elements(&self, dest: &mut Vec<C::BaseField>) {
         [self.u].to_native_sponge_field_elements(dest);
         self.x.to_native_sponge_field_elements(dest);
-        let (cmE_x, cmE_y) = match self.cmE.into_affine().xy() {
-            Some((&x, &y)) => (x, y),
-            None => (C::BaseField::zero(), C::BaseField::zero()),
-        };
-        let (cmW_x, cmW_y) = match self.cmW.into_affine().xy() {
-            Some((&x, &y)) => (x, y),
-            None => (C::BaseField::zero(), C::BaseField::zero()),
-        };
+        let (cmE_x, cmE_y) = self.cmE.into_affine().xy().unwrap_or_default();
+        let (cmW_x, cmW_y) = self.cmW.into_affine().xy().unwrap_or_default();
         cmE_x.to_sponge_field_elements(dest);
         cmE_y.to_sponge_field_elements(dest);
         cmW_x.to_sponge_field_elements(dest);
@@ -130,7 +122,7 @@ where
 impl<C, GC> AbsorbNonNativeGadget<C::BaseField> for CycleFoldCommittedInstanceVar<C, GC>
 where
     C: CurveGroup,
-    GC: CurveVar<C, CF2<C>> + ToConstraintFieldGadget<CF2<C>>,
+    GC: CurveVar<C, CF2<C>>,
     C::BaseField: PrimeField + Absorb,
 {
     /// Extracts the underlying field elements from `CycleFoldCommittedInstanceVar`, in the order
@@ -181,7 +173,7 @@ where
 impl<C, GC> CycleFoldCommittedInstanceVar<C, GC>
 where
     C: CurveGroup,
-    GC: CurveVar<C, CF2<C>> + ToConstraintFieldGadget<CF2<C>>,
+    GC: CurveVar<C, CF2<C>>,
     C::BaseField: PrimeField + Absorb,
 {
     /// hash implements the committed instance hash compatible with the native
@@ -378,7 +370,7 @@ pub struct CycleFoldChallengeGadget<C: CurveGroup, GC: CurveVar<C, CF2<C>>> {
 impl<C, GC> CycleFoldChallengeGadget<C, GC>
 where
     C: CurveGroup,
-    GC: CurveVar<C, CF2<C>> + ToConstraintFieldGadget<CF2<C>>,
+    GC: CurveVar<C, CF2<C>>,
     C::BaseField: PrimeField + Absorb,
 {
     pub fn get_challenge_native<T: Transcript<C::BaseField>>(
@@ -437,15 +429,14 @@ pub trait CycleFoldConfig {
         Self::RANDOMNESS_BIT_LENGTH.div_ceil(Self::FIELD_CAPACITY) + 2 * Self::N_INPUT_POINTS + 2
     };
 
-    type F: Field;
-    type C: CurveGroup<BaseField = Self::F>;
+    type C: CurveGroup;
 }
 
 /// CycleFoldCircuit contains the constraints that check the correct fold of the committed
 /// instances from Curve1. Namely, it checks the random linear combinations of the elliptic curve
 /// (Curve1) points of u_i, U_i leading to U_{i+1}
 #[derive(Debug, Clone)]
-pub struct CycleFoldCircuit<CFG: CycleFoldConfig, GC: CurveVar<CFG::C, CFG::F>> {
+pub struct CycleFoldCircuit<CFG: CycleFoldConfig, GC: CurveVar<CFG::C, CF2<CFG::C>>> {
     pub _gc: PhantomData<GC>,
     /// r_bits is the bit representation of the r whose powers are used in the
     /// random-linear-combination inside the CycleFoldCircuit
@@ -453,10 +444,10 @@ pub struct CycleFoldCircuit<CFG: CycleFoldConfig, GC: CurveVar<CFG::C, CFG::F>> 
     /// points to be folded in the CycleFoldCircuit
     pub points: Option<Vec<CFG::C>>,
     /// public inputs (cf_u_{i+1}.x)
-    pub x: Option<Vec<CFG::F>>,
+    pub x: Option<Vec<CF2<CFG::C>>>,
 }
 
-impl<CFG: CycleFoldConfig, GC: CurveVar<CFG::C, CFG::F>> CycleFoldCircuit<CFG, GC> {
+impl<CFG: CycleFoldConfig, GC: CurveVar<CFG::C, CF2<CFG::C>>> CycleFoldCircuit<CFG, GC> {
     /// n_points indicates the number of points being folded in the CycleFoldCircuit
     pub fn empty() -> Self {
         Self {
@@ -468,14 +459,14 @@ impl<CFG: CycleFoldConfig, GC: CurveVar<CFG::C, CFG::F>> CycleFoldCircuit<CFG, G
     }
 }
 
-impl<CFG: CycleFoldConfig, GC: CurveVar<CFG::C, CFG::F>> ConstraintSynthesizer<CFG::F>
+impl<CFG: CycleFoldConfig, GC: CurveVar<CFG::C, CF2<CFG::C>>> ConstraintSynthesizer<CF2<CFG::C>>
     for CycleFoldCircuit<CFG, GC>
-where
-    GC: ToConstraintFieldGadget<CFG::F>,
-    CFG::F: PrimeField,
 {
-    fn generate_constraints(self, cs: ConstraintSystemRef<CFG::F>) -> Result<(), SynthesisError> {
-        let r_bits = Vec::<Boolean<CFG::F>>::new_witness(cs.clone(), || {
+    fn generate_constraints(
+        self,
+        cs: ConstraintSystemRef<CF2<CFG::C>>,
+    ) -> Result<(), SynthesisError> {
+        let r_bits = Vec::<Boolean<CF2<CFG::C>>>::new_witness(cs.clone(), || {
             Ok(self
                 .r_bits
                 .unwrap_or(vec![false; CFG::RANDOMNESS_BIT_LENGTH]))
@@ -506,8 +497,8 @@ where
             p_folded = p_folded.scalar_mul_le(r_bits.iter())? + points[i].clone();
         }
 
-        let x = Vec::<FpVar<CFG::F>>::new_input(cs.clone(), || {
-            Ok(self.x.unwrap_or(vec![CFG::F::zero(); CFG::IO_LEN]))
+        let x = Vec::new_input(cs.clone(), || {
+            Ok(self.x.unwrap_or(vec![CF2::<CFG::C>::zero(); CFG::IO_LEN]))
         })?;
         #[cfg(test)]
         assert_eq!(x.len(), CFG::IO_LEN); // non-constrained sanity check
@@ -518,10 +509,10 @@ where
         // computed_x = [r, p_0, p_1, p_2, ..., p_n, p_folded],
         // where each p_i is in fact p_i.to_constraint_field()
         let r_fp = r_bits
-            .chunks(CFG::F::MODULUS_BIT_SIZE as usize - 1)
-            .map(Boolean::le_bits_to_fp_var)
+            .chunks(CF2::<CFG::C>::MODULUS_BIT_SIZE as usize - 1)
+            .map(Boolean::le_bits_to_fp)
             .collect::<Result<Vec<_>, _>>()?;
-        let points_aux: Vec<FpVar<CFG::F>> = points
+        let points_aux = points
             .iter()
             .map(|p_i| Ok(p_i.to_constraint_field()?[..2].to_vec()))
             .collect::<Result<Vec<_>, SynthesisError>>()?
@@ -529,7 +520,7 @@ where
             .flatten()
             .collect();
 
-        let computed_x: Vec<FpVar<CFG::F>> = [
+        let computed_x = [
             r_fp,
             points_aux,
             p_folded.to_constraint_field()?[..2].to_vec(),
@@ -551,7 +542,7 @@ where
 pub struct CycleFoldNIFS<
     C1: CurveGroup,
     C2: CurveGroup,
-    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+    GC2: CurveVar<C2, CF2<C2>>,
     CS2: CommitmentScheme<C2, H>,
     const H: bool = false,
 > where
@@ -568,10 +559,10 @@ impl<C1: CurveGroup, C2: CurveGroup, GC2, CS2: CommitmentScheme<C2, H>, const H:
 where
     <C1 as CurveGroup>::BaseField: PrimeField,
     <C2 as CurveGroup>::BaseField: PrimeField,
-    <C1 as Group>::ScalarField: Absorb,
-    <C2 as Group>::ScalarField: Absorb,
+    C1::ScalarField: Absorb,
+    C2::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+    GC2: CurveVar<C2, CF2<C2>>,
 {
     fn prove(
         cf_r_Fq: C2::ScalarField, // C2::Fr==C1::Fq
@@ -631,16 +622,16 @@ pub fn fold_cyclefold_circuit<CFG, C1, GC1, C2, GC2, CS2, const H: bool>(
     Error,
 >
 where
-    CFG: CycleFoldConfig<C = C1, F = CF2<C1>>,
+    CFG: CycleFoldConfig<C = C1>,
     C1: CurveGroup,
-    GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
+    GC1: CurveVar<C1, CF2<C1>>,
     C2: CurveGroup,
-    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+    GC2: CurveVar<C2, CF2<C2>>,
     CS2: CommitmentScheme<C2, H>,
     <C1 as CurveGroup>::BaseField: PrimeField,
     <C2 as CurveGroup>::BaseField: PrimeField,
-    <C1 as Group>::ScalarField: Absorb,
-    <C2 as Group>::ScalarField: Absorb,
+    C1::ScalarField: Absorb,
+    C2::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
 {
     let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
@@ -713,7 +704,6 @@ pub mod tests {
         const RANDOMNESS_BIT_LENGTH: usize = NOVA_N_BITS_RO;
         const N_INPUT_POINTS: usize = N;
         type C = C;
-        type F = C::BaseField;
     }
 
     #[test]
@@ -899,7 +889,7 @@ pub mod tests {
         assert!(cs.is_satisfied().unwrap());
 
         // check that the natively computed and in-circuit computed hashes match
-        let rVar = Boolean::le_bits_to_fp_var(&r_bitsVar).unwrap();
+        let rVar = Boolean::le_bits_to_fp(&r_bitsVar).unwrap();
         let r = Fq::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
         assert_eq!(rVar.value().unwrap(), r);
         assert_eq!(r_bitsVar.value().unwrap(), r_bits);

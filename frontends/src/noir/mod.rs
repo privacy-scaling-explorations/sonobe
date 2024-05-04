@@ -11,13 +11,13 @@ use acvm::{
 };
 use ark_ff::PrimeField;
 use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, R1CSVar};
-use ark_relations::r1cs::ConstraintSynthesizer;
-use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
+use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use folding_schemes::{frontend::FCircuit, utils::PathOrBin, Error};
-use noir_arkworks_backend::{
-    read_program_from_binary, read_program_from_file, sonobe_bridge::AcirCircuitSonobe,
-    FilesystemError,
-};
+use serde::{self, Deserialize, Serialize};
+
+use self::bridge::AcirCircuitSonobe;
+
+mod bridge;
 
 #[derive(Clone, Debug)]
 pub struct NoirFCircuit<F: PrimeField> {
@@ -26,17 +26,30 @@ pub struct NoirFCircuit<F: PrimeField> {
     pub external_inputs_len: usize,
 }
 
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct ProgramArtifactGeneric<F: PrimeField> {
+    #[serde(
+        serialize_with = "Program::serialize_program_base64",
+        deserialize_with = "Program::deserialize_program_base64"
+    )]
+    pub bytecode: Program<GenericFieldElement<F>>,
+}
+
 impl<F: PrimeField> FCircuit<F> for NoirFCircuit<F> {
     type Params = (PathOrBin, usize, usize);
 
     fn new(params: Self::Params) -> Result<Self, Error> {
         let (source, state_len, external_inputs_len) = params;
-        let program = match source {
-            PathOrBin::Path(path) => read_program_from_file(path),
-            PathOrBin::Bin(bytes) => read_program_from_binary(&bytes),
-        }
-        .map_err(|ee| Error::Other(format!("{:?}", ee)))?;
-        let circuit: Circuit<GenericFieldElement<F>> = program.functions[0].clone();
+        let input_string = match source {
+            PathOrBin::Path(path) => {
+                let file_path = path.with_extension("json");
+                std::fs::read(&file_path).map_err(|_| Error::Other(format!("{} is not a valid path\nRun either `nargo compile` to generate missing build artifacts or `nargo prove` to construct a proof", file_path.display())))?
+            }
+            PathOrBin::Bin(bin) => bin,
+        };
+        let program: ProgramArtifactGeneric<F> = serde_json::from_slice(&input_string)
+            .map_err(|err| Error::JSONSerdeError(err.to_string()))?;
+        let circuit: Circuit<GenericFieldElement<F>> = program.bytecode.functions[0].clone();
         let ivc_input_length = circuit.public_parameters.0.len();
         let ivc_return_length = circuit.return_values.0.len();
 
@@ -217,17 +230,8 @@ impl<F: PrimeField> FCircuit<F> for NoirFCircuit<F> {
     }
 }
 
-pub fn load_noir_circuit<F: PrimeField>(
-    path: String,
-) -> Result<Circuit<GenericFieldElement<F>>, FilesystemError> {
-    let program: Program<GenericFieldElement<F>> = read_program_from_file(path)?;
-    let circuit: Circuit<GenericFieldElement<F>> = program.functions[0].clone();
-    Ok(circuit)
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::noir::load_noir_circuit;
     use ark_bn254::Fr;
     use ark_r1cs_std::R1CSVar;
     use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar};
@@ -240,16 +244,14 @@ mod tests {
     #[test]
     fn test_step_native() {
         let cur_path = env::current_dir().unwrap();
-        let circuit_path = format!(
-            "{}/src/noir/test_folder/test_circuit/target/test_circuit.json",
-            cur_path.to_str().unwrap()
-        );
-        let circuit = load_noir_circuit(circuit_path).unwrap();
-        let noirfcircuit = NoirFCircuit {
-            circuit,
-            state_len: 2,
-            external_inputs_len: 2,
-        };
+        let noirfcircuit = NoirFCircuit::new((
+            cur_path
+                .join("src/noir/test_folder/test_circuit/target/test_circuit.json")
+                .into(),
+            2,
+            2,
+        ))
+        .unwrap();
         let inputs = vec![Fr::from(2), Fr::from(5)];
         let res = noirfcircuit.step_native(0, inputs.clone(), inputs);
         assert!(res.is_ok());
@@ -260,16 +262,14 @@ mod tests {
     fn test_step_constraints() {
         let cs = ConstraintSystem::<Fr>::new_ref();
         let cur_path = env::current_dir().unwrap();
-        let circuit_path = format!(
-            "{}/src/noir/test_folder/test_circuit/target/test_circuit.json",
-            cur_path.to_str().unwrap()
-        );
-        let circuit = load_noir_circuit(circuit_path).unwrap();
-        let noirfcircuit = NoirFCircuit {
-            circuit,
-            state_len: 2,
-            external_inputs_len: 2,
-        };
+        let noirfcircuit = NoirFCircuit::new((
+            cur_path
+                .join("src/noir/test_folder/test_circuit/target/test_circuit.json")
+                .into(),
+            2,
+            2,
+        ))
+        .unwrap();
         let inputs = vec![Fr::from(2), Fr::from(5)];
         let z_i = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs.clone())).unwrap();
         let external_inputs = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs)).unwrap();
@@ -284,16 +284,14 @@ mod tests {
     fn test_step_constraints_no_external_inputs() {
         let cs = ConstraintSystem::<Fr>::new_ref();
         let cur_path = env::current_dir().unwrap();
-        let circuit_path = format!(
-            "{}/src/noir/test_folder/test_no_external_inputs/target/test_no_external_inputs.json",
-            cur_path.to_str().unwrap()
-        );
-        let circuit = load_noir_circuit(circuit_path).unwrap();
-        let noirfcircuit = NoirFCircuit {
-            circuit,
-            state_len: 2,
-            external_inputs_len: 0,
-        };
+        let noirfcircuit = NoirFCircuit::new((
+            cur_path
+                .join("src/noir/test_folder/test_no_external_inputs/target/test_no_external_inputs.json")
+                .into(),
+            2,
+            0,
+        ))
+        .unwrap();
         let inputs = vec![Fr::from(2), Fr::from(5)];
         let z_i = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs.clone())).unwrap();
         let external_inputs = vec![];

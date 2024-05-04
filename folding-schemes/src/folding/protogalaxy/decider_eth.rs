@@ -3,9 +3,9 @@
 /// More details can be found at the documentation page:
 /// https://privacy-scaling-explorations.github.io/sonobe-docs/design/nova-decider-onchain.html
 use ark_crypto_primitives::sponge::Absorb;
-use ark_ec::{CurveGroup, Group};
+use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
-use ark_r1cs_std::{prelude::CurveVar, ToConstraintFieldGadget};
+use ark_r1cs_std::prelude::CurveVar;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_snark::SNARK;
 use ark_std::{
@@ -72,9 +72,9 @@ impl<C1, GC1, C2, GC2, FC, CS1, CS2, S, FS> DeciderTrait<C1, C2, FC, FS>
     for Decider<C1, GC1, C2, GC2, FC, CS1, CS2, S, FS>
 where
     C1: CurveGroup,
-    GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
+    GC1: CurveVar<C1, CF2<C1>>,
     C2: CurveGroup,
-    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+    GC2: CurveVar<C2, CF2<C2>>,
     FC: FCircuit<C1::ScalarField>,
     // CS1 is a KZG commitment, where challenge is C1::Fr elem
     CS1: CommitmentScheme<
@@ -89,8 +89,8 @@ where
     FS: FoldingScheme<C1, C2, FC>,
     <C1 as CurveGroup>::BaseField: PrimeField,
     <C2 as CurveGroup>::BaseField: PrimeField,
-    <C1 as Group>::ScalarField: Absorb,
-    <C2 as Group>::ScalarField: Absorb,
+    C1::ScalarField: Absorb,
+    C2::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     // constrain FS into ProtoGalaxy, since this is a Decider specifically for ProtoGalaxy
     ProtoGalaxy<C1, GC1, C2, GC2, FC, CS1, CS2>: From<FS>,

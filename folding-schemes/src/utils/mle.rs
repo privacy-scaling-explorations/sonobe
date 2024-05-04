@@ -145,7 +145,7 @@ mod tests {
         for (i, A_row) in A_padded_dense.iter().enumerate() {
             for (j, _) in A_row.iter().enumerate() {
                 let s_i_j = bhc.at_i(i * A_row.len() + j);
-                assert_eq!(A_mle.evaluate(&s_i_j).unwrap(), A_padded_dense[i][j]);
+                assert_eq!(A_mle.fix_variables(&s_i_j)[0], A_padded_dense[i][j]);
             }
         }
     }
@@ -160,12 +160,12 @@ mod tests {
         let bhc = BooleanHypercube::new(z_mle.num_vars);
         for (i, z_i) in z.iter().enumerate() {
             let s_i = bhc.at_i(i);
-            assert_eq!(z_mle.evaluate(&s_i).unwrap(), z_i.clone());
+            assert_eq!(z_mle.fix_variables(&s_i)[0], z_i.clone());
         }
         // for the rest of elements of the boolean hypercube, expect it to evaluate to zero
         for i in (z.len())..(1 << z_mle.num_vars) {
             let s_i = bhc.at_i(i);
-            assert_eq!(z_mle.evaluate(&s_i).unwrap(), Fr::zero());
+            assert_eq!(z_mle.fix_variables(&s_i)[0], Fr::zero());
         }
     }
 

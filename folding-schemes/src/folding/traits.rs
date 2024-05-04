@@ -5,7 +5,7 @@ use ark_crypto_primitives::sponge::{
 };
 use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
-use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, ToConstraintFieldGadget};
+use ark_r1cs_std::{alloc::AllocVar, convert::ToConstraintFieldGadget, fields::fp::FpVar};
 use ark_relations::r1cs::SynthesisError;
 
 use crate::{transcript::Transcript, Error};

@@ -5,9 +5,9 @@ use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_poly::Polynomial;
 use ark_r1cs_std::{
+    convert::ToConstraintFieldGadget,
     fields::{fp::FpVar, FieldVar},
     poly::{domain::Radix2DomainVar, evaluations::univariate::EvaluationsVar},
-    ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::SynthesisError;
 use ark_std::log2;

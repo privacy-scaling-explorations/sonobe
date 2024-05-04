@@ -5,9 +5,7 @@ use ark_crypto_primitives::sponge::{
 };
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{BigInteger, PrimeField};
-use ark_r1cs_std::{
-    boolean::Boolean, fields::fp::FpVar, groups::CurveVar, ToConstraintFieldGadget,
-};
+use ark_r1cs_std::{boolean::Boolean, fields::fp::FpVar, groups::CurveVar};
 use ark_relations::r1cs::SynthesisError;
 
 use super::{AbsorbNonNative, AbsorbNonNativeGadget, Transcript, TranscriptVar};
@@ -15,10 +13,7 @@ use super::{AbsorbNonNative, AbsorbNonNativeGadget, Transcript, TranscriptVar};
 impl<F: PrimeField + Absorb> Transcript<F> for PoseidonSponge<F> {
     // Compatible with the in-circuit `TranscriptVar::absorb_point`
     fn absorb_point<C: CurveGroup<BaseField = F>>(&mut self, p: &C) {
-        let (x, y) = match p.into_affine().xy() {
-            Some((&x, &y)) => (x, y),
-            None => (C::BaseField::zero(), C::BaseField::zero()),
-        };
+        let (x, y) = p.into_affine().xy().unwrap_or_default();
         self.absorb(&x);
         self.absorb(&y);
     }
@@ -43,10 +38,7 @@ impl<F: PrimeField + Absorb> Transcript<F> for PoseidonSponge<F> {
 }
 
 impl<F: PrimeField> TranscriptVar<F, PoseidonSponge<F>> for PoseidonSpongeVar<F> {
-    fn absorb_point<
-        C: CurveGroup<BaseField = F>,
-        GC: CurveVar<C, F> + ToConstraintFieldGadget<F>,
-    >(
+    fn absorb_point<C: CurveGroup<BaseField = F>, GC: CurveVar<C, F>>(
         &mut self,
         v: &GC,
     ) -> Result<(), SynthesisError> {
@@ -77,7 +69,7 @@ impl<F: PrimeField> TranscriptVar<F, PoseidonSponge<F>> for PoseidonSpongeVar<F>
     /// `GC.scalar_mul_le` method.
     fn get_challenge_nbits(&mut self, nbits: usize) -> Result<Vec<Boolean<F>>, SynthesisError> {
         let bits = self.squeeze_bits(nbits)?;
-        self.absorb(&Boolean::le_bits_to_fp_var(&bits)?)?;
+        self.absorb(&Boolean::le_bits_to_fp(&bits)?)?;
         Ok(bits)
     }
     fn get_challenges(&mut self, n: usize) -> Result<Vec<FpVar<F>>, SynthesisError> {
@@ -123,7 +115,7 @@ pub mod tests {
 
     use super::*;
     use ark_bn254::{constraints::GVar, g1::Config, Fq, Fr, G1Projective as G1};
-    use ark_ec::Group;
+    use ark_ec::PrimeGroup;
     use ark_ff::UniformRand;
     use ark_r1cs_std::{
         alloc::AllocVar, groups::curves::short_weierstrass::ProjectiveVar, R1CSVar,

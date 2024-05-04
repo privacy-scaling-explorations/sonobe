@@ -2,10 +2,10 @@ use ark_crypto_primitives::sponge::{constraints::AbsorbGadget, Absorb};
 use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_r1cs_std::{
+    convert::ToConstraintFieldGadget,
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
     uint8::UInt8,
-    ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::SynthesisError;
 use ark_std::{cfg_into_iter, log2, One};

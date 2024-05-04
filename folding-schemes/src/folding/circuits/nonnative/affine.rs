@@ -2,15 +2,15 @@ use ark_ec::{short_weierstrass::SWFlags, AffineRepr, CurveGroup};
 use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
+    convert::ToConstraintFieldGadget,
     eq::EqGadget,
     fields::fp::FpVar,
     prelude::Boolean,
-    R1CSVar, ToConstraintFieldGadget,
+    R1CSVar,
 };
 use ark_relations::r1cs::{ConstraintSystemRef, Namespace, SynthesisError};
 use ark_serialize::{CanonicalSerialize, CanonicalSerializeWithFlags};
-use ark_std::Zero;
-use core::borrow::Borrow;
+use ark_std::{borrow::Borrow, Zero};
 
 use crate::{
     folding::traits::Inputize,
@@ -41,11 +41,10 @@ where
             let cs = cs.into();
 
             let affine = val.borrow().into_affine();
-            let zero = (&C::BaseField::zero(), &C::BaseField::zero());
-            let (x, y) = affine.xy().unwrap_or(zero);
+            let (x, y) = affine.xy().unwrap_or_default();
 
-            let x = NonNativeUintVar::new_variable(cs.clone(), || Ok(*x), mode)?;
-            let y = NonNativeUintVar::new_variable(cs.clone(), || Ok(*y), mode)?;
+            let x = NonNativeUintVar::new_variable(cs.clone(), || Ok(x), mode)?;
+            let y = NonNativeUintVar::new_variable(cs.clone(), || Ok(y), mode)?;
 
             Ok(Self { x, y })
         })
@@ -124,7 +123,7 @@ impl<C: CurveGroup> EqGadget<C::ScalarField> for NonNativeAffineVar<C> {
             if l.ub != r.ub {
                 return Err(SynthesisError::Unsatisfiable);
             }
-            result = result.and(&l.v.is_eq(&r.v)?)?;
+            result &= l.v.is_eq(&r.v)?;
         }
         Ok(result)
     }
@@ -158,19 +157,17 @@ pub(crate) fn nonnative_affine_to_field_elements<C: CurveGroup>(
     p: C,
 ) -> (Vec<C::ScalarField>, Vec<C::ScalarField>) {
     let affine = p.into_affine();
-    let zero = (&C::BaseField::zero(), &C::BaseField::zero());
-    let (x, y) = affine.xy().unwrap_or(zero);
+    let (x, y) = affine.xy().unwrap_or_default();
 
-    let x = nonnative_field_to_field_elements(x);
-    let y = nonnative_field_to_field_elements(y);
+    let x = nonnative_field_to_field_elements(&x);
+    let y = nonnative_field_to_field_elements(&y);
     (x, y)
 }
 
 impl<C: CurveGroup> Inputize<C::ScalarField, NonNativeAffineVar<C>> for C {
     fn inputize(&self) -> Vec<C::ScalarField> {
         let affine = self.into_affine();
-        let zero = (&C::BaseField::zero(), &C::BaseField::zero());
-        let (x, y) = affine.xy().unwrap_or(zero);
+        let (x, y) = affine.xy().unwrap_or_default();
 
         let x = x.inputize();
         let y = y.inputize();

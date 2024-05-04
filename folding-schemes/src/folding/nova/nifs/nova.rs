@@ -1,7 +1,7 @@
 /// This module contains the implementation the NIFSTrait for the
 /// [Nova](https://eprint.iacr.org/2021/370.pdf) NIFS (Non-Interactive Folding Scheme).
 use ark_crypto_primitives::sponge::{constraints::AbsorbGadget, Absorb, CryptographicSponge};
-use ark_ec::{CurveGroup, Group};
+use ark_ec::CurveGroup;
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{boolean::Boolean, fields::fp::FpVar};
 use ark_relations::r1cs::SynthesisError;
@@ -33,7 +33,7 @@ impl<C: CurveGroup, CI: Absorb> ChallengeGadget<C, CI>
 where
     C: CurveGroup,
     // <C as CurveGroup>::BaseField: PrimeField,
-    <C as Group>::ScalarField: Absorb,
+    C::ScalarField: Absorb,
 {
     pub fn get_challenge_native<T: Transcript<C::ScalarField>>(
         transcript: &mut T,
@@ -92,7 +92,7 @@ pub struct NIFS<
 impl<C: CurveGroup, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
     NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
 where
-    <C as Group>::ScalarField: Absorb,
+    C::ScalarField: Absorb,
 {
     type CommittedInstance = CommittedInstance<C>;
     type Witness = Witness<C>;
@@ -205,7 +205,7 @@ where
 impl<C: CurveGroup, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
     NIFS<C, CS, T, H>
 where
-    <C as Group>::ScalarField: Absorb,
+    C::ScalarField: Absorb,
 {
     /// compute_T: compute cross-terms T
     pub fn compute_T(

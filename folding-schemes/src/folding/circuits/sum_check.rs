@@ -1,14 +1,10 @@
 use crate::utils::espresso::sum_check::SumCheck;
 use crate::utils::virtual_polynomial::VPAuxInfo;
 use crate::{
-    transcript::{
-        poseidon::{PoseidonTranscript, PoseidonTranscriptVar},
-        TranscriptVar,
-    },
+    transcript::TranscriptVar,
     utils::sum_check::{structs::IOPProof, IOPSumCheck},
 };
-use ark_crypto_primitives::sponge::Absorb;
-use ark_ec::{CurveGroup, Group};
+use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, Absorb, CryptographicSponge};
 /// Heavily inspired from testudo: https://github.com/cryptonetlab/testudo/tree/master
 /// Some changes:
 /// - Typings to better stick to ark_poly's API
@@ -74,35 +70,27 @@ impl<F: PrimeField> DensePolynomialVar<F> {
 }
 
 #[derive(Clone, Debug)]
-pub struct IOPProofVar<C: CurveGroup> {
+pub struct IOPProofVar<F: PrimeField> {
     // We have to be generic over a CurveGroup because instantiating a IOPProofVar will call IOPSumCheck which requires a CurveGroup
-    pub proofs: Vec<DensePolynomialVar<C::ScalarField>>,
-    pub claim: FpVar<C::ScalarField>,
+    pub proofs: Vec<DensePolynomialVar<F>>,
+    pub claim: FpVar<F>,
 }
 
-impl<C: CurveGroup> AllocVar<IOPProof<C::ScalarField>, C::ScalarField> for IOPProofVar<C>
-where
-    <C as Group>::ScalarField: Absorb,
-{
-    fn new_variable<T: Borrow<IOPProof<C::ScalarField>>>(
-        cs: impl Into<Namespace<C::ScalarField>>,
+impl<F: PrimeField + Absorb> AllocVar<IOPProof<F>, F> for IOPProofVar<F> {
+    fn new_variable<T: Borrow<IOPProof<F>>>(
+        cs: impl Into<Namespace<F>>,
         f: impl FnOnce() -> Result<T, SynthesisError>,
         mode: AllocationMode,
     ) -> Result<Self, SynthesisError> {
         f().and_then(|c| {
             let cs = cs.into();
-            let cp: &IOPProof<C::ScalarField> = c.borrow();
-            let claim = IOPSumCheck::<C, PoseidonTranscript<C>>::extract_sum(cp);
-            let claim = FpVar::<C::ScalarField>::new_variable(cs.clone(), || Ok(claim), mode)?;
-            let mut proofs =
-                Vec::<DensePolynomialVar<C::ScalarField>>::with_capacity(cp.proofs.len());
+            let cp: &IOPProof<F> = c.borrow();
+            let claim = IOPSumCheck::<F, PoseidonSponge<F>>::extract_sum(cp);
+            let claim = FpVar::<F>::new_variable(cs.clone(), || Ok(claim), mode)?;
+            let mut proofs = Vec::<DensePolynomialVar<F>>::with_capacity(cp.proofs.len());
             for proof in cp.proofs.iter() {
                 let poly = DensePolynomial::from_coefficients_slice(&proof.coeffs);
-                let proof = DensePolynomialVar::<C::ScalarField>::new_variable(
-                    cs.clone(),
-                    || Ok(poly),
-                    mode,
-                )?;
+                let proof = DensePolynomialVar::<F>::new_variable(cs.clone(), || Ok(poly), mode)?;
                 proofs.push(proof);
             }
             Ok(Self { proofs, claim })
@@ -141,27 +129,27 @@ impl<F: PrimeField> AllocVar<VPAuxInfo<F>, F> for VPAuxInfoVar<F> {
 }
 
 #[derive(Debug, Clone)]
-pub struct SumCheckVerifierGadget<C: CurveGroup> {
-    _f: PhantomData<C>,
+pub struct SumCheckVerifierGadget<F: PrimeField> {
+    _f: PhantomData<F>,
 }
 
-impl<C: CurveGroup> SumCheckVerifierGadget<C> {
+impl<F: PrimeField> SumCheckVerifierGadget<F> {
     #[allow(clippy::type_complexity)]
-    pub fn verify(
-        iop_proof_var: &IOPProofVar<C>,
-        poly_aux_info_var: &VPAuxInfoVar<C::ScalarField>,
-        transcript_var: &mut PoseidonTranscriptVar<C::ScalarField>,
-    ) -> Result<(Vec<FpVar<C::ScalarField>>, Vec<FpVar<C::ScalarField>>), SynthesisError> {
+    pub fn verify<S: CryptographicSponge, T: TranscriptVar<F, S>>(
+        iop_proof_var: &IOPProofVar<F>,
+        poly_aux_info_var: &VPAuxInfoVar<F>,
+        transcript_var: &mut T,
+    ) -> Result<(Vec<FpVar<F>>, Vec<FpVar<F>>), SynthesisError> {
         let mut e_vars = vec![iop_proof_var.claim.clone()];
-        let mut r_vars: Vec<FpVar<C::ScalarField>> = Vec::new();
-        transcript_var.absorb(poly_aux_info_var.num_variables.clone())?;
-        transcript_var.absorb(poly_aux_info_var.max_degree.clone())?;
+        let mut r_vars: Vec<FpVar<F>> = Vec::new();
+        transcript_var.absorb(&poly_aux_info_var.num_variables)?;
+        transcript_var.absorb(&poly_aux_info_var.max_degree)?;
 
         for poly_var in iop_proof_var.proofs.iter() {
             let res = poly_var.eval_at_one() + poly_var.eval_at_zero();
             let e_var = e_vars.last().ok_or(SynthesisError::Unsatisfiable)?;
             res.enforce_equal(e_var)?;
-            transcript_var.absorb_vec(&poly_var.coeffs)?;
+            transcript_var.absorb(&poly_var.coeffs)?;
             let r_i_var = transcript_var.get_challenge()?;
             e_vars.push(poly_var.evaluate(&r_i_var));
             r_vars.push(r_i_var);
@@ -175,19 +163,19 @@ impl<C: CurveGroup> SumCheckVerifierGadget<C> {
 mod tests {
     use crate::{
         folding::circuits::sum_check::{IOPProofVar, VPAuxInfoVar},
-        transcript::{
-            poseidon::{poseidon_test_config, PoseidonTranscript, PoseidonTranscriptVar},
-            Transcript, TranscriptVar,
-        },
+        transcript::poseidon::poseidon_test_config,
         utils::{
             sum_check::{structs::IOPProof, IOPSumCheck, SumCheck},
             virtual_polynomial::VirtualPolynomial,
         },
     };
-    use ark_crypto_primitives::sponge::{poseidon::PoseidonConfig, Absorb};
-    use ark_ec::CurveGroup;
-    use ark_ff::Field;
-    use ark_pallas::{Fr, Projective};
+    use ark_crypto_primitives::sponge::{
+        constraints::CryptographicSpongeVar,
+        poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig, PoseidonSponge},
+        Absorb, CryptographicSponge,
+    };
+    use ark_ff::PrimeField;
+    use ark_pallas::Fr;
     use ark_poly::{
         univariate::DensePolynomial, DenseMultilinearExtension, DenseUVPolynomial,
         MultilinearExtension, Polynomial,
@@ -202,20 +190,15 @@ mod tests {
 
     /// Primarily used for testing the sumcheck gadget
     /// Returns a random virtual polynomial, the poseidon config used and the associated sumcheck proof
-    pub fn get_test_sumcheck_proof<C: CurveGroup>(
+    pub fn get_test_sumcheck_proof<F: PrimeField + Absorb>(
         num_vars: usize,
-    ) -> TestSumCheckProof<C::ScalarField>
-    where
-        <C as ark_ec::Group>::ScalarField: Absorb,
-    {
+    ) -> TestSumCheckProof<F> {
         let mut rng = ark_std::test_rng();
-        let poseidon_config: PoseidonConfig<C::ScalarField> =
-            poseidon_test_config::<C::ScalarField>();
-        let mut poseidon_transcript_prove = PoseidonTranscript::<C>::new(&poseidon_config);
+        let poseidon_config: PoseidonConfig<F> = poseidon_test_config::<F>();
+        let mut poseidon_transcript_prove = PoseidonSponge::<F>::new(&poseidon_config);
         let poly_mle = DenseMultilinearExtension::rand(num_vars, &mut rng);
-        let virtual_poly =
-            VirtualPolynomial::new_from_mle(&Arc::new(poly_mle), C::ScalarField::ONE);
-        let sum_check: IOPProof<C::ScalarField> = IOPSumCheck::<C, PoseidonTranscript<C>>::prove(
+        let virtual_poly = VirtualPolynomial::new_from_mle(&Arc::new(poly_mle), F::ONE);
+        let sum_check: IOPProof<F> = IOPSumCheck::<F, PoseidonSponge<F>>::prove(
             &virtual_poly,
             &mut poseidon_transcript_prove,
         )
@@ -228,14 +211,14 @@ mod tests {
         for num_vars in 1..15 {
             let cs = ConstraintSystem::<Fr>::new_ref();
             let (virtual_poly, poseidon_config, sum_check) =
-                get_test_sumcheck_proof::<Projective>(num_vars);
-            let mut poseidon_var: PoseidonTranscriptVar<Fr> =
-                PoseidonTranscriptVar::new(cs.clone(), &poseidon_config);
+                get_test_sumcheck_proof::<Fr>(num_vars);
+            let mut poseidon_var: PoseidonSpongeVar<Fr> =
+                PoseidonSpongeVar::new(cs.clone(), &poseidon_config);
             let iop_proof_var =
-                IOPProofVar::<Projective>::new_witness(cs.clone(), || Ok(&sum_check)).unwrap();
+                IOPProofVar::<Fr>::new_witness(cs.clone(), || Ok(&sum_check)).unwrap();
             let poly_aux_info_var =
                 VPAuxInfoVar::<Fr>::new_witness(cs.clone(), || Ok(virtual_poly.aux_info)).unwrap();
-            let res = SumCheckVerifierGadget::<Projective>::verify(
+            let res = SumCheckVerifierGadget::<Fr>::verify(
                 &iop_proof_var,
                 &poly_aux_info_var,
                 &mut poseidon_var,
@@ -245,8 +228,7 @@ mod tests {
             let (circuit_evals, r_challenges) = res.unwrap();
 
             // 1. assert claim from circuit is equal to the one from the sum-check
-            let claim: Fr =
-                IOPSumCheck::<Projective, PoseidonTranscript<Projective>>::extract_sum(&sum_check);
+            let claim: Fr = IOPSumCheck::<Fr, PoseidonSponge<Fr>>::extract_sum(&sum_check);
             assert_eq!(circuit_evals[0].value().unwrap(), claim);
 
             // 2. assert that all in-circuit evaluations are equal to the ones from the sum-check

@@ -124,7 +124,7 @@ where
         z_0: Vec<C1::ScalarField>, // initial state
     ) -> Result<Self, Error>;
 
-    fn prove_step(&mut self) -> Result<(), Error>;
+    fn prove_step(&mut self, external_inputs: Vec<C1::ScalarField>) -> Result<(), Error>;
 
     // returns the state at the current step
     fn state(&self) -> Vec<C1::ScalarField>;

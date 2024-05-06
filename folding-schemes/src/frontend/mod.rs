@@ -14,11 +14,15 @@ pub trait FCircuit<F: PrimeField>: Clone + Debug {
     type Params: Debug;
 
     /// returns a new FCircuit instance
-    fn new(params: Self::Params) -> Self;
+    fn new(params: Self::Params) -> Result<Self, Error>;
 
     /// returns the number of elements in the state of the FCircuit, which corresponds to the
     /// FCircuit inputs.
     fn state_len(&self) -> usize;
+
+    /// returns the number of elements in the external inputs used by the FCircuit. External inputs
+    /// are optional, and in case no external inputs are used, this method should return 0.
+    fn external_inputs_len(&self) -> usize;
 
     /// computes the next state values in place, assigning z_{i+1} into z_i, and computing the new
     /// z_{i+1}
@@ -28,6 +32,7 @@ pub trait FCircuit<F: PrimeField>: Clone + Debug {
         &self,
         i: usize,
         z_i: Vec<F>,
+        external_inputs: Vec<F>, // inputs that are not part of the state
     ) -> Result<Vec<F>, Error>;
 
     /// generates the constraints for the step of F for the given z_i
@@ -38,6 +43,7 @@ pub trait FCircuit<F: PrimeField>: Clone + Debug {
         cs: ConstraintSystemRef<F>,
         i: usize,
         z_i: Vec<FpVar<F>>,
+        external_inputs: Vec<FpVar<F>>, // inputs that are not part of the state
     ) -> Result<Vec<FpVar<F>>, SynthesisError>;
 }
 
@@ -61,13 +67,21 @@ pub mod tests {
     }
     impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
         type Params = ();
-        fn new(_params: Self::Params) -> Self {
-            Self { _f: PhantomData }
+        fn new(_params: Self::Params) -> Result<Self, Error> {
+            Ok(Self { _f: PhantomData })
         }
         fn state_len(&self) -> usize {
             1
         }
-        fn step_native(&self, _i: usize, z_i: Vec<F>) -> Result<Vec<F>, Error> {
+        fn external_inputs_len(&self) -> usize {
+            0
+        }
+        fn step_native(
+            &self,
+            _i: usize,
+            z_i: Vec<F>,
+            _external_inputs: Vec<F>,
+        ) -> Result<Vec<F>, Error> {
             Ok(vec![z_i[0] * z_i[0] * z_i[0] + z_i[0] + F::from(5_u32)])
         }
         fn generate_step_constraints(
@@ -75,6 +89,7 @@ pub mod tests {
             cs: ConstraintSystemRef<F>,
             _i: usize,
             z_i: Vec<FpVar<F>>,
+            _external_inputs: Vec<FpVar<F>>,
         ) -> Result<Vec<FpVar<F>>, SynthesisError> {
             let five = FpVar::<F>::new_constant(cs.clone(), F::from(5u32))?;
             let z_i = z_i[0].clone();
@@ -93,16 +108,24 @@ pub mod tests {
     impl<F: PrimeField> FCircuit<F> for CustomFCircuit<F> {
         type Params = usize;
 
-        fn new(params: Self::Params) -> Self {
-            Self {
+        fn new(params: Self::Params) -> Result<Self, Error> {
+            Ok(Self {
                 _f: PhantomData,
                 n_constraints: params,
-            }
+            })
         }
         fn state_len(&self) -> usize {
             1
         }
-        fn step_native(&self, _i: usize, z_i: Vec<F>) -> Result<Vec<F>, Error> {
+        fn external_inputs_len(&self) -> usize {
+            0
+        }
+        fn step_native(
+            &self,
+            _i: usize,
+            z_i: Vec<F>,
+            _external_inputs: Vec<F>,
+        ) -> Result<Vec<F>, Error> {
             let mut z_i1 = F::one();
             for _ in 0..self.n_constraints - 1 {
                 z_i1 *= z_i[0];
@@ -114,6 +137,7 @@ pub mod tests {
             cs: ConstraintSystemRef<F>,
             _i: usize,
             z_i: Vec<FpVar<F>>,
+            _external_inputs: Vec<FpVar<F>>,
         ) -> Result<Vec<FpVar<F>>, SynthesisError> {
             let mut z_i1 = FpVar::<F>::new_witness(cs.clone(), || Ok(F::one()))?;
             for _ in 0..self.n_constraints - 1 {
@@ -146,9 +170,9 @@ pub mod tests {
             let z_i1 = Vec::<FpVar<F>>::new_input(cs.clone(), || {
                 Ok(self.z_i1.unwrap_or(vec![F::zero()]))
             })?;
-            let computed_z_i1 = self
-                .FC
-                .generate_step_constraints(cs.clone(), 0, z_i.clone())?;
+            let computed_z_i1 =
+                self.FC
+                    .generate_step_constraints(cs.clone(), 0, z_i.clone(), vec![])?;
 
             computed_z_i1.enforce_equal(&z_i1)?;
             Ok(())
@@ -158,7 +182,7 @@ pub mod tests {
     #[test]
     fn test_testfcircuit() {
         let cs = ConstraintSystem::<Fr>::new_ref();
-        let F_circuit = CubicFCircuit::<Fr>::new(());
+        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
 
         let wrapper_circuit = WrapperCircuit::<Fr, CubicFCircuit<Fr>> {
             FC: F_circuit,
@@ -173,12 +197,12 @@ pub mod tests {
     fn test_customtestfcircuit() {
         let cs = ConstraintSystem::<Fr>::new_ref();
         let n_constraints = 1000;
-        let custom_circuit = CustomFCircuit::<Fr>::new(n_constraints);
+        let custom_circuit = CustomFCircuit::<Fr>::new(n_constraints).unwrap();
         let z_i = vec![Fr::from(5_u32)];
         let wrapper_circuit = WrapperCircuit::<Fr, CustomFCircuit<Fr>> {
             FC: custom_circuit,
             z_i: Some(z_i.clone()),
-            z_i1: Some(custom_circuit.step_native(0, z_i).unwrap()),
+            z_i1: Some(custom_circuit.step_native(0, z_i, vec![]).unwrap()),
         };
         wrapper_circuit.generate_constraints(cs.clone()).unwrap();
         assert_eq!(cs.num_constraints(), n_constraints);

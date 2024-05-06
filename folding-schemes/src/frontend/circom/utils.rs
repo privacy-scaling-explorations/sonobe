@@ -45,6 +45,13 @@ impl<F: PrimeField> CircomWrapper<F> {
         Ok((r1cs, Some(witness_vec)))
     }
 
+    pub fn extract_r1cs(&self) -> Result<R1CS<F>, Error> {
+        let file = File::open(&self.r1cs_filepath)?;
+        let reader = BufReader::new(file);
+        let r1cs_file = r1cs_reader::R1CSFile::<F>::new(reader)?;
+        Ok(r1cs_reader::R1CS::<F>::from(r1cs_file))
+    }
+
     // Extracts the witness vector as a vector of PrimeField elements.
     pub fn extract_witness(&self, inputs: &[(String, Vec<BigInt>)]) -> Result<Vec<F>, Error> {
         let witness_bigint = self.calculate_witness(inputs)?;

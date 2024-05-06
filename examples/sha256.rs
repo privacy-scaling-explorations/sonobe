@@ -16,15 +16,15 @@ use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 use core::marker::PhantomData;
 use std::time::Instant;
 
-use ark_pallas::{constraints::GVar, Fr, Projective};
-use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
+use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as Projective};
+use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
 
-use folding_schemes::commitment::pedersen::Pedersen;
+use folding_schemes::commitment::{kzg::KZG, pedersen::Pedersen};
 use folding_schemes::folding::nova::Nova;
 use folding_schemes::frontend::FCircuit;
 use folding_schemes::{Error, FoldingScheme};
 mod utils;
-use utils::test_nova_setup;
+use utils::init_nova_ivc_params;
 
 /// This is the circuit that we want to fold, it implements the FCircuit trait.
 /// The parameter z_i denotes the current state, and z_{i+1} denotes the next state which we get by
@@ -38,16 +38,24 @@ pub struct Sha256FCircuit<F: PrimeField> {
 impl<F: PrimeField> FCircuit<F> for Sha256FCircuit<F> {
     type Params = ();
 
-    fn new(_params: Self::Params) -> Self {
-        Self { _f: PhantomData }
+    fn new(_params: Self::Params) -> Result<Self, Error> {
+        Ok(Self { _f: PhantomData })
     }
     fn state_len(&self) -> usize {
         1
     }
+    fn external_inputs_len(&self) -> usize {
+        0
+    }
 
     /// computes the next state values in place, assigning z_{i+1} into z_i, and computing the new
     /// z_{i+1}
-    fn step_native(&self, _i: usize, z_i: Vec<F>) -> Result<Vec<F>, Error> {
+    fn step_native(
+        &self,
+        _i: usize,
+        z_i: Vec<F>,
+        _external_inputs: Vec<F>,
+    ) -> Result<Vec<F>, Error> {
         let out_bytes = Sha256::evaluate(&(), z_i[0].into_bigint().to_bytes_le()).unwrap();
         let out: Vec<F> = out_bytes.to_field_elements().unwrap();
 
@@ -60,6 +68,7 @@ impl<F: PrimeField> FCircuit<F> for Sha256FCircuit<F> {
         _cs: ConstraintSystemRef<F>,
         _i: usize,
         z_i: Vec<FpVar<F>>,
+        _external_inputs: Vec<FpVar<F>>,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let unit_var = UnitVar::default();
         let out_bytes = Sha256Gadget::evaluate(&unit_var, &z_i[0].to_bytes()?)?;
@@ -80,14 +89,14 @@ pub mod tests {
     fn test_f_circuit() {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        let circuit = Sha256FCircuit::<Fr>::new(());
+        let circuit = Sha256FCircuit::<Fr>::new(()).unwrap();
         let z_i = vec![Fr::from(1_u32)];
 
-        let z_i1 = circuit.step_native(0, z_i.clone()).unwrap();
+        let z_i1 = circuit.step_native(0, z_i.clone(), vec![]).unwrap();
 
         let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i)).unwrap();
         let computed_z_i1Var = circuit
-            .generate_step_constraints(cs.clone(), 0, z_iVar.clone())
+            .generate_step_constraints(cs.clone(), 0, z_iVar.clone(), vec![])
             .unwrap();
         assert_eq!(computed_z_i1Var.value().unwrap(), z_i1);
     }
@@ -98,10 +107,10 @@ fn main() {
     let num_steps = 10;
     let initial_state = vec![Fr::from(1_u32)];
 
-    let F_circuit = Sha256FCircuit::<Fr>::new(());
+    let F_circuit = Sha256FCircuit::<Fr>::new(()).unwrap();
 
     println!("Prepare Nova ProverParams & VerifierParams");
-    let (prover_params, verifier_params) = test_nova_setup::<Sha256FCircuit<Fr>>(F_circuit);
+    let (prover_params, verifier_params, _) = init_nova_ivc_params::<Sha256FCircuit<Fr>>(F_circuit);
 
     /// The idea here is that eventually we could replace the next line chunk that defines the
     /// `type NOVA = Nova<...>` by using another folding scheme that fulfills the `FoldingScheme`
@@ -112,7 +121,7 @@ fn main() {
         Projective2,
         GVar2,
         Sha256FCircuit<Fr>,
-        Pedersen<Projective>,
+        KZG<'static, Bn254>,
         Pedersen<Projective2>,
     >;
 
@@ -122,7 +131,7 @@ fn main() {
     // compute a step of the IVC
     for i in 0..num_steps {
         let start = Instant::now();
-        folding_scheme.prove_step().unwrap();
+        folding_scheme.prove_step(vec![]).unwrap();
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
 

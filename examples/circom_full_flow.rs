@@ -10,17 +10,12 @@
 /// - verify the proof in the EVM
 ///
 use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as G1};
-use ark_ff::PrimeField;
+
 use ark_groth16::Groth16;
 use ark_grumpkin::{constraints::GVar as GVar2, Projective as G2};
-use ark_r1cs_std::alloc::AllocVar;
-use ark_r1cs_std::fields::fp::FpVar;
-use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
-use std::marker::PhantomData;
-use std::time::Instant;
 
-mod utils;
-use utils::init_ivc_and_decider_params;
+use std::path::PathBuf;
+use std::time::Instant;
 
 use folding_schemes::{
     commitment::{kzg::KZG, pedersen::Pedersen},
@@ -28,8 +23,8 @@ use folding_schemes::{
         decider_eth::{prepare_calldata, Decider as DeciderEth},
         Nova,
     },
-    frontend::FCircuit,
-    Decider, Error, FoldingScheme,
+    frontend::{circom::CircomFCircuit, FCircuit},
+    Decider, FoldingScheme,
 };
 use solidity_verifiers::{
     evm::{compile_solidity, Evm},
@@ -38,60 +33,49 @@ use solidity_verifiers::{
     NovaCycleFoldVerifierKey,
 };
 
-/// Test circuit to be folded
-#[derive(Clone, Copy, Debug)]
-pub struct CubicFCircuit<F: PrimeField> {
-    _f: PhantomData<F>,
-}
-impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
-    type Params = ();
-    fn new(_params: Self::Params) -> Result<Self, Error> {
-        Ok(Self { _f: PhantomData })
-    }
-    fn state_len(&self) -> usize {
-        1
-    }
-    fn external_inputs_len(&self) -> usize {
-        0
-    }
-    fn step_native(
-        &self,
-        _i: usize,
-        z_i: Vec<F>,
-        _external_inputs: Vec<F>,
-    ) -> Result<Vec<F>, Error> {
-        Ok(vec![z_i[0] * z_i[0] * z_i[0] + z_i[0] + F::from(5_u32)])
-    }
-    fn generate_step_constraints(
-        &self,
-        cs: ConstraintSystemRef<F>,
-        _i: usize,
-        z_i: Vec<FpVar<F>>,
-        _external_inputs: Vec<FpVar<F>>,
-    ) -> Result<Vec<FpVar<F>>, SynthesisError> {
-        let five = FpVar::<F>::new_constant(cs.clone(), F::from(5u32))?;
-        let z_i = z_i[0].clone();
-
-        Ok(vec![&z_i * &z_i * &z_i + &z_i + &five])
-    }
-}
+mod utils;
+use utils::init_ivc_and_decider_params;
 
 fn main() {
-    let n_steps = 10;
     // set the initial state
     let z_0 = vec![Fr::from(3_u32)];
 
-    let f_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
-    let (fs_prover_params, kzg_vk, g16_pk, g16_vk) =
-        init_ivc_and_decider_params::<CubicFCircuit<Fr>>(f_circuit);
+    // set the external inputs to be used at each step of the IVC, it has length of 10 since this
+    // is the number of steps that we will do
+    let external_inputs = vec![
+        vec![Fr::from(6u32), Fr::from(7u32)],
+        vec![Fr::from(8u32), Fr::from(9u32)],
+        vec![Fr::from(10u32), Fr::from(11u32)],
+        vec![Fr::from(12u32), Fr::from(13u32)],
+        vec![Fr::from(14u32), Fr::from(15u32)],
+        vec![Fr::from(6u32), Fr::from(7u32)],
+        vec![Fr::from(8u32), Fr::from(9u32)],
+        vec![Fr::from(10u32), Fr::from(11u32)],
+        vec![Fr::from(12u32), Fr::from(13u32)],
+        vec![Fr::from(14u32), Fr::from(15u32)],
+    ];
 
-    pub type NOVA = Nova<G1, GVar, G2, GVar2, CubicFCircuit<Fr>, KZG<'static, Bn254>, Pedersen<G2>>;
+    // initialize the Circom circuit
+    let r1cs_path =
+        PathBuf::from("./folding-schemes/src/frontend/circom/test_folder/external_inputs.r1cs");
+    let wasm_path = PathBuf::from(
+        "./folding-schemes/src/frontend/circom/test_folder/external_inputs_js/external_inputs.wasm",
+    );
+
+    let f_circuit_params = (r1cs_path, wasm_path, 1, 2);
+    let f_circuit = CircomFCircuit::<Fr>::new(f_circuit_params).unwrap();
+
+    let (fs_prover_params, kzg_vk, g16_pk, g16_vk) =
+        init_ivc_and_decider_params::<CircomFCircuit<Fr>>(f_circuit.clone());
+
+    pub type NOVA =
+        Nova<G1, GVar, G2, GVar2, CircomFCircuit<Fr>, KZG<'static, Bn254>, Pedersen<G2>>;
     pub type DECIDERETH_FCircuit = DeciderEth<
         G1,
         GVar,
         G2,
         GVar2,
-        CubicFCircuit<Fr>,
+        CircomFCircuit<Fr>,
         KZG<'static, Bn254>,
         Pedersen<G2>,
         Groth16<Bn254>,
@@ -99,11 +83,11 @@ fn main() {
     >;
 
     // initialize the folding scheme engine, in our case we use Nova
-    let mut nova = NOVA::init(&fs_prover_params, f_circuit, z_0).unwrap();
+    let mut nova = NOVA::init(&fs_prover_params, f_circuit.clone(), z_0).unwrap();
     // run n steps of the folding iteration
-    for i in 0..n_steps {
+    for (i, external_inputs_at_step) in external_inputs.iter().enumerate() {
         let start = Instant::now();
-        nova.prove_step(vec![]).unwrap();
+        nova.prove_step(external_inputs_at_step.clone()).unwrap();
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
 

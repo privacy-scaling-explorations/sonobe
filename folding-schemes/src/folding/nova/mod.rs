@@ -339,8 +339,25 @@ where
     }
 
     /// Implements IVC.P of Nova+CycleFold
-    fn prove_step(&mut self) -> Result<(), Error> {
+    fn prove_step(&mut self, external_inputs: Vec<C1::ScalarField>) -> Result<(), Error> {
         let augmented_F_circuit: AugmentedFCircuit<C1, C2, GC2, FC>;
+
+        if self.z_i.len() != self.F.state_len() {
+            return Err(Error::NotSameLength(
+                "z_i.len()".to_string(),
+                self.z_i.len(),
+                "F.state_len()".to_string(),
+                self.F.state_len(),
+            ));
+        }
+        if external_inputs.len() != self.F.external_inputs_len() {
+            return Err(Error::NotSameLength(
+                "F.external_inputs_len()".to_string(),
+                self.F.external_inputs_len(),
+                "external_inputs.len()".to_string(),
+                external_inputs.len(),
+            ));
+        }
 
         if self.i > C1::ScalarField::from_le_bytes_mod_order(&usize::MAX.to_le_bytes()) {
             return Err(Error::MaxStep);
@@ -349,7 +366,9 @@ where
         i_bytes.copy_from_slice(&self.i.into_bigint().to_bytes_le()[..8]);
         let i_usize: usize = usize::from_le_bytes(i_bytes);
 
-        let z_i1 = self.F.step_native(i_usize, self.z_i.clone())?;
+        let z_i1 = self
+            .F
+            .step_native(i_usize, self.z_i.clone(), external_inputs.clone())?;
 
         // compute T and cmT for AugmentedFCircuit
         let (T, cmT) = self.compute_cmT()?;
@@ -392,6 +411,7 @@ where
                 i_usize: Some(0),
                 z_0: Some(self.z_0.clone()), // = z_i
                 z_i: Some(self.z_i.clone()),
+                external_inputs: Some(external_inputs.clone()),
                 u_i_cmW: Some(self.u_i.cmW), // = dummy
                 U_i: Some(self.U_i.clone()), // = dummy
                 U_i1_cmE: Some(U_i1.cmE),
@@ -464,6 +484,7 @@ where
                 i_usize: Some(i_usize),
                 z_0: Some(self.z_0.clone()),
                 z_i: Some(self.z_i.clone()),
+                external_inputs: Some(external_inputs.clone()),
                 u_i_cmW: Some(self.u_i.cmW),
                 U_i: Some(self.U_i.clone()),
                 U_i1_cmE: Some(U_i1.cmE),
@@ -803,7 +824,7 @@ pub mod tests {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_test_config::<Fr>();
 
-        let F_circuit = CubicFCircuit::<Fr>::new(());
+        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
 
         let (cs_len, cf_cs_len) =
             get_cs_params_len::<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>>(
@@ -854,7 +875,7 @@ pub mod tests {
 
         let num_steps: usize = 3;
         for _ in 0..num_steps {
-            nova.prove_step().unwrap();
+            nova.prove_step(vec![]).unwrap();
         }
         assert_eq!(Fr::from(num_steps as u32), nova.i);
 

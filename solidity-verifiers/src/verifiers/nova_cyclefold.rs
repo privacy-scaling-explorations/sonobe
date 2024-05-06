@@ -162,13 +162,21 @@ mod tests {
     }
     impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
         type Params = ();
-        fn new(_params: Self::Params) -> Self {
-            Self { _f: PhantomData }
+        fn new(_params: Self::Params) -> Result<Self, Error> {
+            Ok(Self { _f: PhantomData })
         }
         fn state_len(&self) -> usize {
             1
         }
-        fn step_native(&self, _i: usize, z_i: Vec<F>) -> Result<Vec<F>, Error> {
+        fn external_inputs_len(&self) -> usize {
+            0
+        }
+        fn step_native(
+            &self,
+            _i: usize,
+            z_i: Vec<F>,
+            _external_inputs: Vec<F>,
+        ) -> Result<Vec<F>, Error> {
             Ok(vec![z_i[0] * z_i[0] * z_i[0] + z_i[0] + F::from(5_u32)])
         }
         fn generate_step_constraints(
@@ -176,6 +184,7 @@ mod tests {
             cs: ConstraintSystemRef<F>,
             _i: usize,
             z_i: Vec<FpVar<F>>,
+            _external_inputs: Vec<FpVar<F>>,
         ) -> Result<Vec<FpVar<F>>, SynthesisError> {
             let five = FpVar::<F>::new_constant(cs.clone(), F::from(5u32))?;
             let z_i = z_i[0].clone();
@@ -196,16 +205,24 @@ mod tests {
     impl<F: PrimeField> FCircuit<F> for MultiInputsFCircuit<F> {
         type Params = ();
 
-        fn new(_params: Self::Params) -> Self {
-            Self { _f: PhantomData }
+        fn new(_params: Self::Params) -> Result<Self, Error> {
+            Ok(Self { _f: PhantomData })
         }
         fn state_len(&self) -> usize {
             5
         }
+        fn external_inputs_len(&self) -> usize {
+            0
+        }
 
         /// computes the next state values in place, assigning z_{i+1} into z_i, and computing the new
         /// z_{i+1}
-        fn step_native(&self, _i: usize, z_i: Vec<F>) -> Result<Vec<F>, Error> {
+        fn step_native(
+            &self,
+            _i: usize,
+            z_i: Vec<F>,
+            _external_inputs: Vec<F>,
+        ) -> Result<Vec<F>, Error> {
             let a = z_i[0] + F::from(4_u32);
             let b = z_i[1] + F::from(40_u32);
             let c = z_i[2] * F::from(4_u32);
@@ -221,6 +238,7 @@ mod tests {
             cs: ConstraintSystemRef<F>,
             _i: usize,
             z_i: Vec<FpVar<F>>,
+            _external_inputs: Vec<FpVar<F>>,
         ) -> Result<Vec<FpVar<F>>, SynthesisError> {
             let four = FpVar::<F>::new_constant(cs.clone(), F::from(4u32))?;
             let forty = FpVar::<F>::new_constant(cs.clone(), F::from(40u32))?;
@@ -270,7 +288,7 @@ mod tests {
     ) {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_test_config::<Fr>();
-        let f_circuit = FC::new(());
+        let f_circuit = FC::new(()).unwrap();
         let (cs_len, cf_cs_len) =
             get_cs_params_len::<G1, GVar, G2, GVar2, FC>(&poseidon_config, f_circuit).unwrap();
         let (kzg_pk, kzg_vk): (KZGProverKey<G1>, KZGVerifierKey<Bn254>) =
@@ -296,7 +314,7 @@ mod tests {
         let start = Instant::now();
         let (fs_prover_params, kzg_vk) = init_test_prover_params::<FC>();
         println!("generated Nova folding params: {:?}", start.elapsed());
-        let f_circuit = FC::new(());
+        let f_circuit = FC::new(()).unwrap();
 
         pub type NOVA_FCircuit<FC> =
             Nova<G1, GVar, G2, GVar2, FC, KZG<'static, Bn254>, Pedersen<G2>>;
@@ -351,14 +369,14 @@ mod tests {
             Groth16<Bn254>,
             NOVA_FCircuit<FC>,
         >;
-        let f_circuit = FC::new(());
+        let f_circuit = FC::new(()).unwrap();
 
         let nova_cyclefold_vk =
             NovaCycleFoldVerifierKey::from((g16_vk.clone(), kzg_vk.clone(), f_circuit.state_len()));
 
         let mut nova = NOVA_FCircuit::init(&fs_prover_params, f_circuit, z_0).unwrap();
         for _ in 0..n_steps {
-            nova.prove_step().unwrap();
+            nova.prove_step(vec![]).unwrap();
         }
 
         let rng = rand::rngs::OsRng;

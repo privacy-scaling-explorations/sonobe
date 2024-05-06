@@ -43,4 +43,7 @@ parallel = [
 [[example]]
 name = "full_flow"
 path = "../examples/full_flow.rs"
-# required-features = ["light-test"]
+
+[[example]]
+name = "circom_full_flow"
+path = "../examples/circom_full_flow.rs"

@@ -10,15 +10,15 @@ use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 use core::marker::PhantomData;
 use std::time::Instant;
 
-use ark_pallas::{constraints::GVar, Fr, Projective};
-use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
+use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as Projective};
+use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
 
-use folding_schemes::commitment::pedersen::Pedersen;
+use folding_schemes::commitment::{kzg::KZG, pedersen::Pedersen};
 use folding_schemes::folding::nova::Nova;
 use folding_schemes::frontend::FCircuit;
 use folding_schemes::{Error, FoldingScheme};
 mod utils;
-use utils::test_nova_setup;
+use utils::init_nova_ivc_params;
 
 /// This is the circuit that we want to fold, it implements the FCircuit trait. The parameter z_i
 /// denotes the current state which contains 5 elements, and z_{i+1} denotes the next state which
@@ -32,16 +32,24 @@ pub struct MultiInputsFCircuit<F: PrimeField> {
 impl<F: PrimeField> FCircuit<F> for MultiInputsFCircuit<F> {
     type Params = ();
 
-    fn new(_params: Self::Params) -> Self {
-        Self { _f: PhantomData }
+    fn new(_params: Self::Params) -> Result<Self, Error> {
+        Ok(Self { _f: PhantomData })
     }
     fn state_len(&self) -> usize {
         5
     }
+    fn external_inputs_len(&self) -> usize {
+        0
+    }
 
     /// computes the next state values in place, assigning z_{i+1} into z_i, and computing the new
     /// z_{i+1}
-    fn step_native(&self, _i: usize, z_i: Vec<F>) -> Result<Vec<F>, Error> {
+    fn step_native(
+        &self,
+        _i: usize,
+        z_i: Vec<F>,
+        _external_inputs: Vec<F>,
+    ) -> Result<Vec<F>, Error> {
         let a = z_i[0] + F::from(4_u32);
         let b = z_i[1] + F::from(40_u32);
         let c = z_i[2] * F::from(4_u32);
@@ -57,6 +65,7 @@ impl<F: PrimeField> FCircuit<F> for MultiInputsFCircuit<F> {
         cs: ConstraintSystemRef<F>,
         _i: usize,
         z_i: Vec<FpVar<F>>,
+        _external_inputs: Vec<FpVar<F>>,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let four = FpVar::<F>::new_constant(cs.clone(), F::from(4u32))?;
         let forty = FpVar::<F>::new_constant(cs.clone(), F::from(40u32))?;
@@ -83,7 +92,7 @@ pub mod tests {
     fn test_f_circuit() {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        let circuit = MultiInputsFCircuit::<Fr>::new(());
+        let circuit = MultiInputsFCircuit::<Fr>::new(()).unwrap();
         let z_i = vec![
             Fr::from(1_u32),
             Fr::from(1_u32),
@@ -92,11 +101,11 @@ pub mod tests {
             Fr::from(1_u32),
         ];
 
-        let z_i1 = circuit.step_native(0, z_i.clone()).unwrap();
+        let z_i1 = circuit.step_native(0, z_i.clone(), vec![]).unwrap();
 
         let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i)).unwrap();
         let computed_z_i1Var = circuit
-            .generate_step_constraints(cs.clone(), 0, z_iVar.clone())
+            .generate_step_constraints(cs.clone(), 0, z_iVar.clone(), vec![])
             .unwrap();
         assert_eq!(computed_z_i1Var.value().unwrap(), z_i1);
     }
@@ -113,10 +122,11 @@ fn main() {
         Fr::from(1_u32),
     ];
 
-    let F_circuit = MultiInputsFCircuit::<Fr>::new(());
+    let F_circuit = MultiInputsFCircuit::<Fr>::new(()).unwrap();
 
     println!("Prepare Nova ProverParams & VerifierParams");
-    let (prover_params, verifier_params) = test_nova_setup::<MultiInputsFCircuit<Fr>>(F_circuit);
+    let (prover_params, verifier_params, _) =
+        init_nova_ivc_params::<MultiInputsFCircuit<Fr>>(F_circuit);
 
     /// The idea here is that eventually we could replace the next line chunk that defines the
     /// `type NOVA = Nova<...>` by using another folding scheme that fulfills the `FoldingScheme`
@@ -127,7 +137,7 @@ fn main() {
         Projective2,
         GVar2,
         MultiInputsFCircuit<Fr>,
-        Pedersen<Projective>,
+        KZG<'static, Bn254>,
         Pedersen<Projective2>,
     >;
 
@@ -137,7 +147,7 @@ fn main() {
     // compute a step of the IVC
     for i in 0..num_steps {
         let start = Instant::now();
-        folding_scheme.prove_step().unwrap();
+        folding_scheme.prove_step(vec![]).unwrap();
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
 

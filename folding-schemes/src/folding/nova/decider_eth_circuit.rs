@@ -671,11 +671,11 @@ pub mod tests {
     #[test]
     fn test_relaxed_r1cs_small_gadget_arkworks() {
         let z_i = vec![Fr::from(3_u32)];
-        let cubic_circuit = CubicFCircuit::<Fr>::new(());
+        let cubic_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
         let circuit = WrapperCircuit::<Fr, CubicFCircuit<Fr>> {
             FC: cubic_circuit,
             z_i: Some(z_i.clone()),
-            z_i1: Some(cubic_circuit.step_native(0, z_i).unwrap()),
+            z_i1: Some(cubic_circuit.step_native(0, z_i, vec![]).unwrap()),
         };
 
         test_relaxed_r1cs_gadget(circuit);
@@ -713,12 +713,12 @@ pub mod tests {
     #[test]
     fn test_relaxed_r1cs_custom_circuit() {
         let n_constraints = 10_000;
-        let custom_circuit = CustomFCircuit::<Fr>::new(n_constraints);
+        let custom_circuit = CustomFCircuit::<Fr>::new(n_constraints).unwrap();
         let z_i = vec![Fr::from(5_u32)];
         let circuit = WrapperCircuit::<Fr, CustomFCircuit<Fr>> {
             FC: custom_circuit,
             z_i: Some(z_i.clone()),
-            z_i1: Some(custom_circuit.step_native(0, z_i).unwrap()),
+            z_i1: Some(custom_circuit.step_native(0, z_i, vec![]).unwrap()),
         };
         test_relaxed_r1cs_gadget(circuit);
     }
@@ -729,12 +729,12 @@ pub mod tests {
         // in practice we would use CycleFoldCircuit, but is a very big circuit (when computed
         // non-natively inside the RelaxedR1CS circuit), so in order to have a short test we use a
         // custom circuit.
-        let custom_circuit = CustomFCircuit::<Fq>::new(10);
+        let custom_circuit = CustomFCircuit::<Fq>::new(10).unwrap();
         let z_i = vec![Fq::from(5_u32)];
         let circuit = WrapperCircuit::<Fq, CustomFCircuit<Fq>> {
             FC: custom_circuit,
             z_i: Some(z_i.clone()),
-            z_i1: Some(custom_circuit.step_native(0, z_i).unwrap()),
+            z_i1: Some(custom_circuit.step_native(0, z_i, vec![]).unwrap()),
         };
         circuit.generate_constraints(cs.clone()).unwrap();
         cs.finalize();
@@ -770,7 +770,7 @@ pub mod tests {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_test_config::<Fr>();
 
-        let F_circuit = CubicFCircuit::<Fr>::new(());
+        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
         let z_0 = vec![Fr::from(3_u32)];
 
         // get the CS & CF_CS len
@@ -802,7 +802,7 @@ pub mod tests {
 
         // generate a Nova instance and do a step of it
         let mut nova = NOVA::init(&prover_params, F_circuit, z_0.clone()).unwrap();
-        nova.prove_step().unwrap();
+        nova.prove_step(vec![]).unwrap();
         let ivc_v = nova.clone();
         let verifier_params = VerifierParams::<Projective, Projective2> {
             poseidon_config: poseidon_config.clone(),

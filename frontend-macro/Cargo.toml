@@ -1,0 +1,20 @@
+[package]
+name = "frontend-macro"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+syn = { version = "0.15", features = ["extra-traits"] }
+quote = "0.6"
+proc-macro2 = "0.4"
+ark-ff = "^0.4.0"
+ark-bn254 = {version="0.4.0", features=["r1cs"]}
+
+
+[dev-dependencies]
+trybuild = "1.0"
+
+[lib]
+proc-macro = true

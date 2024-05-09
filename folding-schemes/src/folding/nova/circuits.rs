@@ -1,7 +1,7 @@
 /// contains [Nova](https://eprint.iacr.org/2021/370.pdf) related circuits
 use ark_crypto_primitives::sponge::{
     constraints::{AbsorbGadget, CryptographicSpongeVar},
-    poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig, PoseidonSponge},
+    poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig},
     Absorb, CryptographicSponge,
 };
 use ark_ec::{CurveGroup, Group};
@@ -106,9 +106,9 @@ where
     /// Additionally it returns the vector of the field elements from the self parameters, so they
     /// can be reused in other gadgets avoiding recalculating (reconstraining) them.
     #[allow(clippy::type_complexity)]
-    pub fn hash(
+    pub fn hash<S: CryptographicSponge, T: TranscriptVar<CF1<C>, S>>(
         self,
-        sponge: &PoseidonSpongeVar<CF1<C>>,
+        sponge: &T,
         pp_hash: FpVar<CF1<C>>,
         i: FpVar<CF1<C>>,
         z_0: Vec<FpVar<CF1<C>>>,
@@ -185,8 +185,8 @@ where
     <C as CurveGroup>::BaseField: PrimeField,
     <C as Group>::ScalarField: Absorb,
 {
-    pub fn get_challenge_native(
-        transcript: &mut PoseidonSponge<C::ScalarField>,
+    pub fn get_challenge_native<T: Transcript<C::ScalarField>>(
+        transcript: &mut T,
         pp_hash: C::ScalarField, // public params hash
         U_i: CommittedInstance<C>,
         u_i: CommittedInstance<C>,
@@ -200,8 +200,8 @@ where
     }
 
     // compatible with the native get_challenge_native
-    pub fn get_challenge_gadget(
-        transcript: &mut PoseidonSpongeVar<C::ScalarField>,
+    pub fn get_challenge_gadget<S: CryptographicSponge, T: TranscriptVar<CF1<C>, S>>(
+        transcript: &mut T,
         pp_hash: FpVar<CF1<C>>,      // public params hash
         U_i_vec: Vec<FpVar<CF1<C>>>, // apready processed input, so we don't have to recompute these values
         u_i: CommittedInstanceVar<C>,
@@ -538,6 +538,7 @@ where
 pub mod tests {
     use super::*;
     use ark_bn254::{Fr, G1Projective as Projective};
+    use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
     use ark_ff::BigInteger;
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::UniformRand;

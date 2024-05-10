@@ -32,15 +32,15 @@ use crate::constants::NOVA_N_BITS_RO;
 use crate::folding::{
     circuits::{
         cyclefold::{
-            CycleFoldChallengeGadget, CycleFoldCommittedInstanceVar, CycleFoldConfig,
-            NIFSFullGadget,
+            CycleFoldChallengeGadget, CycleFoldCommittedInstance, CycleFoldCommittedInstanceVar,
+            CycleFoldConfig, NIFSFullGadget,
         },
         nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
         sum_check::{IOPProofVar, SumCheckVerifierGadget, VPAuxInfoVar},
         utils::EqEvalGadget,
         CF1, CF2,
     },
-    nova::{get_r1cs_from_cs, CommittedInstance},
+    nova::get_r1cs_from_cs,
 };
 use crate::frontend::FCircuit;
 use crate::utils::virtual_polynomial::VPAuxInfo;
@@ -488,9 +488,9 @@ pub struct AugmentedFCircuit<
     pub nimfs_proof: Option<NIMFSProof<C1>>,
 
     // cyclefold verifier on C1
-    pub cf_u_i_cmW: Option<C2>,                // input, cf_u_i.cmW
-    pub cf_U_i: Option<CommittedInstance<C2>>, // input, RelaxedR1CS CycleFold instance
-    pub cf_x: Option<CF1<C1>>,                 // public input (cf_u_{i+1}.x[1])
+    pub cf_u_i_cmW: Option<C2>, // input, cf_u_i.cmW
+    pub cf_U_i: Option<CycleFoldCommittedInstance<C2>>, // input, RelaxedR1CS CycleFold instance
+    pub cf_x: Option<CF1<C1>>,  // public input (cf_u_{i+1}.x[1])
     pub cf_cmT: Option<C2>,
 }
 
@@ -726,7 +726,8 @@ where
             Ok(self.nimfs_proof.unwrap_or(nimfs_proof_dummy))
         })?;
 
-        let cf_u_dummy = CommittedInstance::dummy(HyperNovaCycleFoldConfig::<C1, MU, NU>::IO_LEN);
+        let cf_u_dummy =
+            CycleFoldCommittedInstance::dummy(HyperNovaCycleFoldConfig::<C1, MU, NU>::IO_LEN);
         let cf_U_i = CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || {
             Ok(self.cf_U_i.unwrap_or(cf_u_dummy.clone()))
         })?;
@@ -892,12 +893,12 @@ mod tests {
         },
         commitment::{pedersen::Pedersen, CommitmentScheme},
         folding::{
-            circuits::cyclefold::fold_cyclefold_circuit,
+            circuits::cyclefold::{fold_cyclefold_circuit, CycleFoldWitness},
             hypernova::{
                 utils::{compute_c, compute_sigmas_thetas},
                 HyperNovaCycleFoldCircuit,
             },
-            nova::{traits::NovaR1CS, Witness as NovaWitness},
+            nova::traits::NovaR1CS,
         },
         frontend::tests::CubicFCircuit,
         transcript::poseidon::poseidon_canonical_config,
@@ -1210,8 +1211,10 @@ mod tests {
         let U_dummy = LCCCS::<Projective>::dummy(ccs.l, ccs.t, ccs.s);
         let w_dummy = W_dummy.clone();
         let u_dummy = CCCS::<Projective>::dummy(ccs.l);
-        let (cf_W_dummy, cf_U_dummy): (NovaWitness<Projective2>, CommittedInstance<Projective2>) =
-            cf_r1cs.dummy_instance();
+        let (cf_W_dummy, cf_U_dummy): (
+            CycleFoldWitness<Projective2>,
+            CycleFoldCommittedInstance<Projective2>,
+        ) = cf_r1cs.dummy_instance();
 
         // set the initial dummy instances
         let mut W_i = W_dummy.clone();

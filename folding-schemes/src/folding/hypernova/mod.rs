@@ -22,13 +22,13 @@ use nimfs::NIMFS;
 use crate::commitment::CommitmentScheme;
 use crate::constants::NOVA_N_BITS_RO;
 use crate::folding::circuits::{
-    cyclefold::{fold_cyclefold_circuit, CycleFoldCircuit, CycleFoldConfig},
+    cyclefold::{
+        fold_cyclefold_circuit, CycleFoldCircuit, CycleFoldCommittedInstance, CycleFoldConfig,
+        CycleFoldWitness,
+    },
     CF2,
 };
-use crate::folding::nova::{
-    get_r1cs_from_cs, traits::NovaR1CS, CommittedInstance, PreprocessorParam,
-    Witness as NovaWitness,
-};
+use crate::folding::nova::{get_r1cs_from_cs, traits::NovaR1CS, PreprocessorParam};
 use crate::frontend::FCircuit;
 use crate::utils::{get_cm_coordinates, pp_hash};
 use crate::Error;
@@ -169,8 +169,8 @@ where
     pub u_i: CCCS<C1>,
 
     /// CycleFold running instance
-    pub cf_W_i: NovaWitness<C2>,
-    pub cf_U_i: CommittedInstance<C2>,
+    pub cf_W_i: CycleFoldWitness<C2>,
+    pub cf_U_i: CycleFoldCommittedInstance<C2>,
 }
 
 impl<C1, GC1, C2, GC2, FC, CS1, CS2, const MU: usize, const NU: usize, const H: bool> MultiFolding<C1, C2, FC>
@@ -268,7 +268,7 @@ where
         // prepare the initial dummy instances
         let U_i = LCCCS::<C1>::dummy(self.ccs.l, self.ccs.t, self.ccs.s);
         let mut u_i = CCCS::<C1>::dummy(self.ccs.l);
-        let (_, cf_U_i): (NovaWitness<C2>, CommittedInstance<C2>) = self.cf_r1cs.dummy_instance();
+        let (_, cf_U_i): (CycleFoldWitness<C2>, CycleFoldCommittedInstance<C2>) = self.cf_r1cs.dummy_instance();
 
         let sponge = PoseidonSponge::<C1::ScalarField>::new(&self.poseidon_config);
 
@@ -372,7 +372,7 @@ where
     type IncomingInstance = (CCCS<C1>, Witness<C1::ScalarField>);
     type MultiCommittedInstanceWithWitness =
         (Vec<Self::RunningInstance>, Vec<Self::IncomingInstance>);
-    type CFInstance = (CommittedInstance<C2>, NovaWitness<C2>);
+    type CFInstance = (CycleFoldCommittedInstance<C2>, CycleFoldWitness<C2>);
 
     fn preprocess(
         mut rng: impl RngCore,
@@ -461,7 +461,7 @@ where
         let U_dummy = LCCCS::<C1>::dummy(ccs.l, ccs.t, ccs.s);
         let w_dummy = W_dummy.clone();
         let mut u_dummy = CCCS::<C1>::dummy(ccs.l);
-        let (cf_W_dummy, cf_U_dummy): (NovaWitness<C2>, CommittedInstance<C2>) =
+        let (cf_W_dummy, cf_U_dummy): (CycleFoldWitness<C2>, CycleFoldCommittedInstance<C2>) =
             cf_r1cs.dummy_instance();
         u_dummy.x = vec![
             U_dummy.hash(

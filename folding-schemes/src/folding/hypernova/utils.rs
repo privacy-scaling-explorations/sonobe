@@ -2,7 +2,6 @@ use ark_ec::CurveGroup;
 use ark_ff::{Field, PrimeField};
 use ark_poly::DenseMultilinearExtension;
 use ark_poly::MultilinearExtension;
-use ark_std::{One, Zero};
 use std::ops::Add;
 
 use crate::utils::multilinear_polynomial::fix_variables;
@@ -65,19 +64,19 @@ pub fn compute_sum_Mz<F: PrimeField>(
 
 /// Compute the arrays of sigma_i and theta_i from step 4 corresponding to the LCCCS and CCCS
 /// instances
-pub fn compute_sigmas_and_thetas<C: CurveGroup>(
-    ccs: &CCS<C>,
-    z_lcccs: &[Vec<C::ScalarField>],
-    z_cccs: &[Vec<C::ScalarField>],
-    r_x_prime: &[C::ScalarField],
-) -> SigmasThetas<C::ScalarField> {
-    let mut sigmas: Vec<Vec<C::ScalarField>> = Vec::new();
+pub fn compute_sigmas_and_thetas<F: PrimeField>(
+    ccs: &CCS<F>,
+    z_lcccs: &[Vec<F>],
+    z_cccs: &[Vec<F>],
+    r_x_prime: &[F],
+) -> SigmasThetas<F> {
+    let mut sigmas: Vec<Vec<F>> = Vec::new();
     for z_lcccs_i in z_lcccs {
         // sigmas
         let sigma_i = compute_all_sum_Mz_evals(&ccs.M, z_lcccs_i, r_x_prime, ccs.s_prime);
         sigmas.push(sigma_i);
     }
-    let mut thetas: Vec<Vec<C::ScalarField>> = Vec::new();
+    let mut thetas: Vec<Vec<F>> = Vec::new();
     for z_cccs_i in z_cccs {
         // thetas
         let theta_i = compute_all_sum_Mz_evals(&ccs.M, z_cccs_i, r_x_prime, ccs.s_prime);
@@ -103,13 +102,10 @@ pub fn sum_muls_gamma_pows_eq_sigma<F: PrimeField>(
 }
 
 /// Computes $\sum_{i=1}^{q} c_i * \prod_{j \in S_i} theta_j$
-pub fn sum_ci_mul_prod_thetaj<C: CurveGroup>(
-    ccs: &CCS<C>,
-    thetas: &[C::ScalarField],
-) -> C::ScalarField {
-    let mut result = C::ScalarField::zero();
+pub fn sum_ci_mul_prod_thetaj<F: PrimeField>(ccs: &CCS<F>, thetas: &[F]) -> F {
+    let mut result = F::zero();
     for i in 0..ccs.q {
-        let mut prod = C::ScalarField::one();
+        let mut prod = F::one();
         for j in ccs.S[i].clone() {
             prod *= thetas[j];
         }
@@ -119,16 +115,16 @@ pub fn sum_ci_mul_prod_thetaj<C: CurveGroup>(
 }
 
 /// Compute the right-hand-side of step 5 of the multifolding scheme
-pub fn compute_c_from_sigmas_and_thetas<C: CurveGroup>(
-    ccs: &CCS<C>,
-    st: &SigmasThetas<C::ScalarField>,
-    gamma: C::ScalarField,
-    beta: &[C::ScalarField],
-    vec_r_x: &Vec<Vec<C::ScalarField>>,
-    r_x_prime: &[C::ScalarField],
-) -> C::ScalarField {
+pub fn compute_c_from_sigmas_and_thetas<F: PrimeField>(
+    ccs: &CCS<F>,
+    st: &SigmasThetas<F>,
+    gamma: F,
+    beta: &[F],
+    vec_r_x: &Vec<Vec<F>>,
+    r_x_prime: &[F],
+) -> F {
     let (vec_sigmas, vec_thetas) = (st.0.clone(), st.1.clone());
-    let mut c = C::ScalarField::zero();
+    let mut c = F::zero();
 
     let mut e_lcccs = Vec::new();
     for r_x in vec_r_x {
@@ -152,7 +148,7 @@ pub fn compute_c_from_sigmas_and_thetas<C: CurveGroup>(
 
 /// Compute g(x) polynomial for the given inputs.
 pub fn compute_g<C: CurveGroup>(
-    ccs: &CCS<C>,
+    ccs: &CCS<C::ScalarField>,
     running_instances: &[LCCCS<C>],
     z_lcccs: &[Vec<C::ScalarField>],
     z_cccs: &[Vec<C::ScalarField>],
@@ -205,7 +201,7 @@ pub mod tests {
 
     #[test]
     fn test_compute_sum_Mz_over_boolean_hypercube() {
-        let ccs = get_test_ccs::<Projective>();
+        let ccs = get_test_ccs::<Fr>();
         let z = get_test_z(3);
         ccs.check_relation(&z).unwrap();
         let z_mle = dense_vec_to_mle(ccs.s_prime, &z);
@@ -253,7 +249,7 @@ pub mod tests {
         let mut rng = test_rng();
 
         // s = 2, s' = 3
-        let ccs = get_test_ccs::<Projective>();
+        let ccs = get_test_ccs::<Fr>();
 
         let M = ccs.M[0].clone().to_dense();
         let M_mle = matrix_to_mle(ccs.M[0].clone());
@@ -310,7 +306,7 @@ pub mod tests {
         // c = (sum gamma^j * e1 * sigma_j) + gamma^{t+1} * e2 * sum c_i * prod theta_j
         // from compute_c_from_sigmas_and_thetas
         let expected_c = g.evaluate(&r_x_prime).unwrap();
-        let c = compute_c_from_sigmas_and_thetas::<Projective>(
+        let c = compute_c_from_sigmas_and_thetas::<Fr>(
             &ccs,
             &sigmas_thetas,
             gamma,

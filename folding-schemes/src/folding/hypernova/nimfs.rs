@@ -151,7 +151,7 @@ where
     #[allow(clippy::type_complexity)]
     pub fn prove(
         transcript: &mut impl Transcript<C>,
-        ccs: &CCS<C>,
+        ccs: &CCS<C::ScalarField>,
         running_instances: &[LCCCS<C>],
         new_instances: &[CCCS<C>],
         w_lcccs: &[Witness<C::ScalarField>],
@@ -277,7 +277,7 @@ where
     /// Returns the folded LCCCS instance.
     pub fn verify(
         transcript: &mut impl Transcript<C>,
-        ccs: &CCS<C>,
+        ccs: &CCS<C::ScalarField>,
         running_instances: &[LCCCS<C>],
         new_instances: &[CCCS<C>],
         proof: Proof<C>,
@@ -430,7 +430,7 @@ pub mod tests {
         let mut rng = test_rng();
 
         // Create a basic CCS circuit
-        let ccs = get_test_ccs::<Projective>();
+        let ccs = get_test_ccs::<Fr>();
         let (pedersen_params, _) =
             Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
 
@@ -489,7 +489,7 @@ pub mod tests {
     pub fn test_multifolding_two_instances_multiple_steps() {
         let mut rng = test_rng();
 
-        let ccs = get_test_ccs::<Projective>();
+        let ccs = get_test_ccs::<Fr>();
 
         let (pedersen_params, _) =
             Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
@@ -559,7 +559,7 @@ pub mod tests {
         let mut rng = test_rng();
 
         // Create a basic CCS circuit
-        let ccs = get_test_ccs::<Projective>();
+        let ccs = get_test_ccs::<Fr>();
         let (pedersen_params, _) =
             Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
 
@@ -642,7 +642,7 @@ pub mod tests {
         let mut rng = test_rng();
 
         // Create a basic CCS circuit
-        let ccs = get_test_ccs::<Projective>();
+        let ccs = get_test_ccs::<Fr>();
         let (pedersen_params, _) =
             Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
 

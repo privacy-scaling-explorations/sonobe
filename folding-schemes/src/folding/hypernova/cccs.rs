@@ -5,7 +5,7 @@ use ark_std::Zero;
 use std::ops::Add;
 use std::sync::Arc;
 
-use ark_std::{rand::Rng, UniformRand};
+use ark_std::rand::Rng;
 
 use super::utils::compute_sum_Mz;
 use crate::ccs::CCS;
@@ -35,13 +35,17 @@ pub struct CCCS<C: CurveGroup> {
     pub x: Vec<C::ScalarField>,
 }
 
-impl<C: CurveGroup> CCS<C> {
-    pub fn to_cccs<R: Rng>(
+impl<F: PrimeField> CCS<F> {
+    pub fn to_cccs<R: Rng, C: CurveGroup>(
         &self,
         rng: &mut R,
         pedersen_params: &PedersenParams<C>,
         z: &[C::ScalarField],
-    ) -> Result<(CCCS<C>, Witness<C::ScalarField>), Error> {
+    ) -> Result<(CCCS<C>, Witness<C::ScalarField>), Error>
+    where
+        // enforce that CCS's F is the C::ScalarField
+        C: CurveGroup<ScalarField = F>,
+    {
         let w: Vec<C::ScalarField> = z[(1 + self.l)..].to_vec();
         let r_w = C::ScalarField::rand(rng);
         let C = Pedersen::<C, true>::commit(pedersen_params, &w, &r_w)?;
@@ -57,13 +61,12 @@ impl<C: CurveGroup> CCS<C> {
 
     /// Computes q(x) = \sum^q c_i * \prod_{j \in S_i} ( \sum_{y \in {0,1}^s'} M_j(x, y) * z(y) )
     /// polynomial over x
-    pub fn compute_q(&self, z: &Vec<C::ScalarField>) -> VirtualPolynomial<C::ScalarField> {
+    pub fn compute_q(&self, z: &Vec<F>) -> VirtualPolynomial<F> {
         let z_mle = vec_to_mle(self.s_prime, z);
-        let mut q = VirtualPolynomial::<C::ScalarField>::new(self.s);
+        let mut q = VirtualPolynomial::<F>::new(self.s);
 
         for i in 0..self.q {
-            let mut prod: VirtualPolynomial<C::ScalarField> =
-                VirtualPolynomial::<C::ScalarField>::new(self.s);
+            let mut prod: VirtualPolynomial<F> = VirtualPolynomial::<F>::new(self.s);
             for j in self.S[i].clone() {
                 let M_j = matrix_to_mle(self.M[j].clone());
 
@@ -74,11 +77,9 @@ impl<C: CurveGroup> CCS<C> {
                     // If this is the first time we are adding something to this virtual polynomial, we need to
                     // explicitly add the products using add_mle_list()
                     // XXX is this true? improve API
-                    prod.add_mle_list([Arc::new(sum_Mz)], C::ScalarField::one())
-                        .unwrap();
+                    prod.add_mle_list([Arc::new(sum_Mz)], F::one()).unwrap();
                 } else {
-                    prod.mul_by_mle(Arc::new(sum_Mz), C::ScalarField::one())
-                        .unwrap();
+                    prod.mul_by_mle(Arc::new(sum_Mz), F::one()).unwrap();
                 }
             }
             // Multiply by the product by the coefficient c_i
@@ -92,11 +93,7 @@ impl<C: CurveGroup> CCS<C> {
     /// Computes Q(x) = eq(beta, x) * q(x)
     ///               = eq(beta, x) * \sum^q c_i * \prod_{j \in S_i} ( \sum_{y \in {0,1}^s'} M_j(x, y) * z(y) )
     /// polynomial over x
-    pub fn compute_Q(
-        &self,
-        z: &Vec<C::ScalarField>,
-        beta: &[C::ScalarField],
-    ) -> VirtualPolynomial<C::ScalarField> {
+    pub fn compute_Q(&self, z: &Vec<F>, beta: &[F]) -> VirtualPolynomial<F> {
         let q = self.compute_q(z);
         q.build_f_hat(beta).unwrap()
     }
@@ -107,7 +104,7 @@ impl<C: CurveGroup> CCCS<C> {
     pub fn check_relation(
         &self,
         pedersen_params: &PedersenParams<C>,
-        ccs: &CCS<C>,
+        ccs: &CCS<C::ScalarField>,
         w: &Witness<C::ScalarField>,
     ) -> Result<(), Error> {
         // check that C is the commitment of w. Notice that this is not verifying a Pedersen
@@ -139,7 +136,7 @@ pub mod tests {
     use ark_std::test_rng;
     use ark_std::UniformRand;
 
-    use ark_pallas::{Fr, Projective};
+    use ark_pallas::Fr;
 
     /// Do some sanity checks on q(x). It's a multivariable polynomial and it should evaluate to zero inside the
     /// hypercube, but to not-zero outside the hypercube.
@@ -147,7 +144,7 @@ pub mod tests {
     fn test_compute_q() {
         let mut rng = test_rng();
 
-        let ccs = get_test_ccs::<Projective>();
+        let ccs = get_test_ccs::<Fr>();
         let z = get_test_z(3);
 
         let q = ccs.compute_q(&z);
@@ -167,7 +164,7 @@ pub mod tests {
     fn test_compute_Q() {
         let mut rng = test_rng();
 
-        let ccs: CCS<Projective> = get_test_ccs();
+        let ccs: CCS<Fr> = get_test_ccs();
         let z = get_test_z(3);
         ccs.check_relation(&z).unwrap();
 
@@ -201,7 +198,7 @@ pub mod tests {
     fn test_Q_against_q() {
         let mut rng = test_rng();
 
-        let ccs: CCS<Projective> = get_test_ccs();
+        let ccs: CCS<Fr> = get_test_ccs();
         let z = get_test_z(3);
         ccs.check_relation(&z).unwrap();
 

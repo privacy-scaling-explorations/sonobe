@@ -23,7 +23,7 @@ use core::{borrow::Borrow, marker::PhantomData};
 use super::{nonnative::uint::NonNativeUintVar, CF2};
 use crate::arith::r1cs::{extract_w_x, R1CS};
 use crate::commitment::CommitmentScheme;
-use crate::constants::N_BITS_RO;
+use crate::constants::NOVA_N_BITS_RO;
 use crate::folding::nova::{nifs::NIFS, CommittedInstance, Witness};
 use crate::transcript::{AbsorbNonNativeGadget, Transcript, TranscriptVar};
 use crate::Error;
@@ -252,7 +252,7 @@ where
         transcript.absorb_nonnative(&U_i);
         transcript.absorb_nonnative(&u_i);
         transcript.absorb_point(&cmT);
-        transcript.squeeze_bits(N_BITS_RO)
+        transcript.squeeze_bits(NOVA_N_BITS_RO)
     }
 
     // compatible with the native get_challenge_native
@@ -267,7 +267,7 @@ where
         transcript.absorb(&U_i_vec)?;
         transcript.absorb_nonnative(&u_i)?;
         transcript.absorb_point(&cmT)?;
-        transcript.squeeze_bits(N_BITS_RO)
+        transcript.squeeze_bits(NOVA_N_BITS_RO)
     }
 }
 
@@ -505,7 +505,7 @@ pub mod tests {
     }
 
     impl<C: CurveGroup> CycleFoldConfig for TestCycleFoldConfig<C> {
-        const RANDOMNESS_BIT_LENGTH: usize = N_BITS_RO;
+        const RANDOMNESS_BIT_LENGTH: usize = NOVA_N_BITS_RO;
         const N_INPUT_POINTS: usize = 2;
         type C = C;
         type F = C::BaseField;

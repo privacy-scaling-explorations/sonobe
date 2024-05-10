@@ -20,7 +20,7 @@ use lcccs::LCCCS;
 use nimfs::NIMFS;
 
 use crate::commitment::CommitmentScheme;
-use crate::constants::N_BITS_RO;
+use crate::constants::NOVA_N_BITS_RO;
 use crate::folding::circuits::{
     cyclefold::{fold_cyclefold_circuit, CycleFoldCircuit, CycleFoldConfig},
     CF2,
@@ -47,7 +47,7 @@ struct HyperNovaCycleFoldConfig<C: CurveGroup, const MU: usize, const NU: usize>
 impl<C: CurveGroup, const MU: usize, const NU: usize> CycleFoldConfig
     for HyperNovaCycleFoldConfig<C, MU, NU>
 {
-    const RANDOMNESS_BIT_LENGTH: usize = N_BITS_RO;
+    const RANDOMNESS_BIT_LENGTH: usize = NOVA_N_BITS_RO;
     const N_INPUT_POINTS: usize = MU + NU;
     type C = C;
     type F = C::BaseField;
@@ -673,7 +673,7 @@ where
                 .collect();
             let rho_powers_bits: Vec<Vec<bool>> = rho_powers
                 .iter()
-                .map(|rho_i| rho_i.into_bigint().to_bits_le()[..N_BITS_RO].to_vec())
+                .map(|rho_i| rho_i.into_bigint().to_bits_le()[..NOVA_N_BITS_RO].to_vec())
                 .collect();
 
             // CycleFold part:

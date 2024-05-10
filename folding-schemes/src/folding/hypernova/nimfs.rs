@@ -12,7 +12,7 @@ use super::{
     Witness,
 };
 use crate::arith::ccs::CCS;
-use crate::constants::N_BITS_RO;
+use crate::constants::NOVA_N_BITS_RO;
 use crate::transcript::Transcript;
 use crate::utils::sum_check::structs::{IOPProof as SumCheckProof, IOPProverMessage};
 use crate::utils::sum_check::{IOPSumCheck, SumCheck};
@@ -123,10 +123,12 @@ where
 
             // compute the next power of rho
             rho_i *= rho;
-            // crop the size of rho_i to N_BITS_RO
+            // crop the size of rho_i to NOVA_N_BITS_RO
             let rho_i_bits = rho_i.into_bigint().to_bits_le();
-            rho_i = C::ScalarField::from_bigint(BigInteger::from_bits_le(&rho_i_bits[..N_BITS_RO]))
-                .unwrap();
+            rho_i = C::ScalarField::from_bigint(BigInteger::from_bits_le(
+                &rho_i_bits[..NOVA_N_BITS_RO],
+            ))
+            .unwrap();
             if i < lcccs.len() + cccs.len() - 1 {
                 // store the cropped rho_i into the rho_powers vector
                 rho_powers[i] = rho_i;
@@ -181,10 +183,12 @@ where
 
             // compute the next power of rho
             rho_i *= rho;
-            // crop the size of rho_i to N_BITS_RO
+            // crop the size of rho_i to NOVA_N_BITS_RO
             let rho_i_bits = rho_i.into_bigint().to_bits_le();
-            rho_i = C::ScalarField::from_bigint(BigInteger::from_bits_le(&rho_i_bits[..N_BITS_RO]))
-                .unwrap();
+            rho_i = C::ScalarField::from_bigint(BigInteger::from_bits_le(
+                &rho_i_bits[..NOVA_N_BITS_RO],
+            ))
+            .unwrap();
         }
         Witness {
             w: w_folded,
@@ -272,7 +276,7 @@ where
         // Step 6: Get the folding challenge
         let rho_scalar = C::ScalarField::from_le_bytes_mod_order(b"rho");
         transcript.absorb(&rho_scalar);
-        let rho_bits: Vec<bool> = transcript.get_challenge_nbits(N_BITS_RO);
+        let rho_bits: Vec<bool> = transcript.get_challenge_nbits(NOVA_N_BITS_RO);
         let rho: C::ScalarField =
             C::ScalarField::from_bigint(BigInteger::from_bits_le(&rho_bits)).unwrap();
 
@@ -391,7 +395,7 @@ where
         // Step 6: Get the folding challenge
         let rho_scalar = C::ScalarField::from_le_bytes_mod_order(b"rho");
         transcript.absorb(&rho_scalar);
-        let rho_bits: Vec<bool> = transcript.get_challenge_nbits(N_BITS_RO);
+        let rho_bits: Vec<bool> = transcript.get_challenge_nbits(NOVA_N_BITS_RO);
         let rho: C::ScalarField =
             C::ScalarField::from_bigint(BigInteger::from_bits_le(&rho_bits)).unwrap();
 

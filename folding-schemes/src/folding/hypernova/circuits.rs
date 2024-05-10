@@ -28,7 +28,7 @@ use super::{
     nimfs::{NIMFSProof, NIMFS},
     HyperNovaCycleFoldConfig, Witness,
 };
-use crate::constants::N_BITS_RO;
+use crate::constants::NOVA_N_BITS_RO;
 use crate::folding::{
     circuits::{
         cyclefold::{
@@ -314,7 +314,7 @@ where
         let rho_scalar_raw = C::ScalarField::from_le_bytes_mod_order(b"rho");
         let rho_scalar: FpVar<CF1<C>> = FpVar::<CF1<C>>::new_constant(cs.clone(), rho_scalar_raw)?;
         transcript.absorb(&rho_scalar)?;
-        let rho_bits: Vec<Boolean<CF1<C>>> = transcript.get_challenge_nbits(N_BITS_RO)?;
+        let rho_bits: Vec<Boolean<CF1<C>>> = transcript.get_challenge_nbits(NOVA_N_BITS_RO)?;
         let rho = Boolean::le_bits_to_fp_var(&rho_bits)?;
 
         // Self::fold will return the folded instance, together with the rho's powers vector so
@@ -343,7 +343,7 @@ where
         let mut v_folded: Vec<FpVar<CF1<C>>> = vec![FpVar::zero(); sigmas[0].len()];
 
         let mut rho_vec: Vec<Vec<Boolean<CF1<C>>>> =
-            vec![vec![Boolean::FALSE; N_BITS_RO]; lcccs.len() + cccs.len() - 1];
+            vec![vec![Boolean::FALSE; NOVA_N_BITS_RO]; lcccs.len() + cccs.len() - 1];
         let mut rho_i = FpVar::one();
         for i in 0..(lcccs.len() + cccs.len()) {
             let u: FpVar<CF1<C>>;
@@ -382,12 +382,12 @@ where
 
             // compute the next power of rho
             rho_i *= rho.clone();
-            // crop the size of rho_i to N_BITS_RO
+            // crop the size of rho_i to NOVA_N_BITS_RO
             let rho_i_bits = rho_i.to_bits_le()?;
-            rho_i = Boolean::le_bits_to_fp_var(&rho_i_bits[..N_BITS_RO])?;
+            rho_i = Boolean::le_bits_to_fp_var(&rho_i_bits[..NOVA_N_BITS_RO])?;
             if i < lcccs.len() + cccs.len() - 1 {
                 // store the cropped rho_i into the rho_vec
-                rho_vec[i] = rho_i_bits[..N_BITS_RO].to_vec();
+                rho_vec[i] = rho_i_bits[..NOVA_N_BITS_RO].to_vec();
             }
         }
 
@@ -1329,7 +1329,7 @@ mod tests {
                     .collect();
                 let rho_powers_bits: Vec<Vec<bool>> = rho_powers
                     .iter()
-                    .map(|rho_i| rho_i.into_bigint().to_bits_le()[..N_BITS_RO].to_vec())
+                    .map(|rho_i| rho_i.into_bigint().to_bits_le()[..NOVA_N_BITS_RO].to_vec())
                     .collect();
 
                 // CycleFold part:

@@ -11,7 +11,7 @@ quote = "0.6"
 proc-macro2 = "0.4"
 ark-ff = "^0.4.0"
 ark-bn254 = {version="0.4.0", features=["r1cs"]}
-
+ark-r1cs-std = { version = "0.4.0", default-features = false } # this is patched at the workspace level
 
 [dev-dependencies]
 trybuild = "1.0"

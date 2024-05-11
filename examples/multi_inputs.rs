@@ -47,9 +47,11 @@ impl<F: PrimeField> FCircuit<F> for MultiInputsFCircuit<F> {
     fn new(_params: Self::Params) -> Result<Self, Error> {
         Ok(Self { _f: PhantomData })
     }
+
     fn state_len(&self) -> usize {
-        5
+        State::<F>::state_number()
     }
+
     fn external_inputs_len(&self) -> usize {
         0
     }
@@ -82,16 +84,21 @@ impl<F: PrimeField> FCircuit<F> for MultiInputsFCircuit<F> {
         z_i: Vec<FpVar<F>>,
         _external_inputs: Vec<FpVar<F>>,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
+        let cs_state = State::cs_state(z_i.clone());
+
         let four = FpVar::<F>::new_constant(cs.clone(), F::from(4u32))?;
         let forty = FpVar::<F>::new_constant(cs.clone(), F::from(40u32))?;
         let onehundred = FpVar::<F>::new_constant(cs.clone(), F::from(100u32))?;
-        let a = z_i[0].clone() + four.clone();
-        let b = z_i[1].clone() + forty.clone();
-        let c = z_i[2].clone() * four;
-        let d = z_i[3].clone() * forty;
-        let e = z_i[4].clone() + onehundred;
 
-        Ok(vec![a, b, c, d, e])
+        let next_cs_state = StateConstraint {
+            a: cs_state.a.clone() + four.clone(),
+            b: cs_state.b.clone() + forty.clone(),
+            c: cs_state.c.clone() * four,
+            d: cs_state.d.clone() * forty,
+            e: cs_state.e.clone() + onehundred,
+        };
+
+        Ok(Vec::from(next_cs_state))
     }
 }
 

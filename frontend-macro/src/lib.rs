@@ -7,7 +7,9 @@ use syn::{parse_macro_input, DeriveInput};
 pub fn derive(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
     let iden = &ast.ident;
-
+    let cs_iden_name = format!("{}Constraint", iden.to_string());
+    let cs_iden = syn::Ident::new( &cs_iden_name, iden.span());
+    
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
     
     let fields = if let syn::Data::Struct(syn::DataStruct {
@@ -21,11 +23,26 @@ pub fn derive(input: TokenStream) -> TokenStream {
     };
 
     
+    let cs_fields_to_vec = fields.iter().map(|f| {
+        let name = &f.ident;
+        quote! { value.#name }
+    });
+
+    let cs_fields = fields.iter().map(|f| {
+        let name = &f.ident;
+        quote! {pub #name: ark_r1cs_std::fields::fp::FpVar<F> }
+    });
+
     let builder_fields = fields.iter().map(|f| {
         let name = &f.ident;
         quote! { value.#name }
     });
 
+    let cs_vec_to_fields = fields.iter().enumerate().map(|(id, f)| {
+        let name = &f.ident;
+        quote! {#name: vec[#id].clone()}
+    });
+    
     let vec_to_fields = fields.iter().enumerate().map(|(id, f)| {
         let name = &f.ident;
         quote! {#name: vec[#id]}
@@ -33,8 +50,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
     let state_number = fields.len();
 
-    let expanded = quote! {
-        
+    let another = quote! {
         impl #impl_generics #iden #ty_generics #where_clause {
             pub fn state_number() -> usize {
                 #state_number
@@ -53,6 +69,37 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 #iden {
                     #(#vec_to_fields,)*
                 }               
+            }
+        }
+    };
+
+    let expanded = quote! {
+        
+        #another
+
+        pub struct #cs_iden<F: ark_ff::PrimeField> {
+            #(#cs_fields,)*
+        }
+
+
+        impl<F: PrimeField> From<Vec<ark_r1cs_std::fields::fp::FpVar<F>>> for #cs_iden<F> {
+            fn from(vec: Vec<ark_r1cs_std::fields::fp::FpVar<F>>) -> #cs_iden<F>{
+                #cs_iden {
+                    #(#cs_vec_to_fields,)*
+                }     
+            }
+        }
+
+        impl<F: PrimeField> From<#cs_iden<F>> for Vec<ark_r1cs_std::fields::fp::FpVar<F>> {
+            fn from(value: #cs_iden<F>) -> Vec<ark_r1cs_std::fields::fp::FpVar<F>> {
+                vec![#(#cs_fields_to_vec,)*] 
+            }
+        }
+
+
+        impl<F: ark_ff::PrimeField> #iden<F>{
+            pub fn cs_state(v: Vec< ark_r1cs_std::fields::fp::FpVar<F>>) -> #cs_iden<F> {
+                #cs_iden::from(v)
             }
         }
     };

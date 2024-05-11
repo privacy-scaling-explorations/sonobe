@@ -1,7 +1,6 @@
 use ark_bn254::Fr;
 use ark_ff::PrimeField;
 use frontend_macro::Flatten;
-
 #[derive(Flatten, Debug)]
 struct State<F: PrimeField> {
     a: F,

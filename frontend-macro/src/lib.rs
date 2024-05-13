@@ -50,7 +50,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
     let state_number = fields.len();
 
-    let another = quote! {
+    let state_macro = quote! {
         impl #impl_generics #iden #ty_generics #where_clause {
             pub fn state_number() -> usize {
                 #state_number
@@ -73,10 +73,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
         }
     };
 
-    let expanded = quote! {
-        
-        #another
-
+    let constraint_macro = quote! {
         pub struct #cs_iden<F: ark_ff::PrimeField> {
             #(#cs_fields,)*
         }
@@ -104,7 +101,13 @@ pub fn derive(input: TokenStream) -> TokenStream {
         }
     };
 
-    
+    let expanded = quote! {        
+        #state_macro
+
+        #constraint_macro
+    };
+
+
     expanded.into()
 }
 

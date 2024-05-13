@@ -7,7 +7,7 @@ use syn::{parse_macro_input, DeriveInput};
 pub fn derive(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
     let iden = &ast.ident;
-    let cs_iden_name = format!("{}Constraint", iden.to_string());
+    let cs_iden_name = format!("{}Constraint", iden);
     let cs_iden = syn::Ident::new( &cs_iden_name, iden.span());
     
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
@@ -103,6 +103,8 @@ pub fn derive(input: TokenStream) -> TokenStream {
             }
         }
     };
+
+    
     expanded.into()
 }
 

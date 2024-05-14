@@ -246,28 +246,55 @@ mod tests {
 
     #[test]
     pub fn test_compute_c_from_sigmas_and_thetas_gadget() {
+        // number of LCCCS & CCCS instances to fold in a single step
+        let mu = 32;
+        let nu = 42;
+
+        let mut z_lcccs = Vec::new();
+        for i in 0..mu {
+            let z = get_test_z(i + 3);
+            z_lcccs.push(z);
+        }
+        let mut z_cccs = Vec::new();
+        for i in 0..nu {
+            let z = get_test_z(i + 3);
+            z_cccs.push(z);
+        }
+
         let ccs: CCS<Fr> = get_test_ccs();
-        let z1 = get_test_z(3);
-        let z2 = get_test_z(4);
 
         let mut rng = test_rng();
         let gamma: Fr = Fr::rand(&mut rng);
         let beta: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
         let r_x_prime: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
 
-        // Initialize a multifolding object
         let (pedersen_params, _) =
             Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
-        let (lcccs_instance, _) = ccs.to_lcccs(&mut rng, &pedersen_params, &z1).unwrap();
-        let sigmas_thetas =
-            compute_sigmas_and_thetas(&ccs, &[z1.clone()], &[z2.clone()], &r_x_prime);
+
+        // Create the LCCCS instances out of z_lcccs
+        let mut lcccs_instances = Vec::new();
+        for z_i in z_lcccs.iter() {
+            let (inst, _) = ccs.to_lcccs(&mut rng, &pedersen_params, z_i).unwrap();
+            lcccs_instances.push(inst);
+        }
+        // Create the CCCS instance out of z_cccs
+        let mut cccs_instances = Vec::new();
+        for z_i in z_cccs.iter() {
+            let (inst, _) = ccs.to_cccs(&mut rng, &pedersen_params, z_i).unwrap();
+            cccs_instances.push(inst);
+        }
+
+        let sigmas_thetas = compute_sigmas_and_thetas(&ccs, &z_lcccs, &z_cccs, &r_x_prime);
 
         let expected_c = compute_c_from_sigmas_and_thetas(
             &ccs,
             &sigmas_thetas,
             gamma,
             &beta,
-            &vec![lcccs_instance.r_x.clone()],
+            &lcccs_instances
+                .iter()
+                .map(|lcccs| lcccs.r_x.clone())
+                .collect(),
             &r_x_prime,
         );
 
@@ -282,17 +309,18 @@ mod tests {
             vec_thetas
                 .push(Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(thetas.clone())).unwrap());
         }
-        let vec_r_x =
-            vec![
-                Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(lcccs_instance.r_x.clone()))
-                    .unwrap(),
-            ];
+        let vec_r_x: Vec<Vec<FpVar<Fr>>> = lcccs_instances
+            .iter()
+            .map(|lcccs| {
+                Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(lcccs.r_x.clone())).unwrap()
+            })
+            .collect();
         let vec_r_x_prime =
             Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(r_x_prime.clone())).unwrap();
         let gamma_var = FpVar::<Fr>::new_witness(cs.clone(), || Ok(gamma)).unwrap();
         let beta_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(beta.clone())).unwrap();
         let computed_c = ComputeCFromSigmasAndThetasGadget::compute_c_from_sigmas_and_thetas(
-            cs,
+            cs.clone(),
             &ccs,
             vec_sigmas,
             vec_thetas,
@@ -303,6 +331,7 @@ mod tests {
         )
         .unwrap();
 
+        dbg!(cs.num_constraints());
         assert_eq!(expected_c, computed_c.value().unwrap());
     }
 }

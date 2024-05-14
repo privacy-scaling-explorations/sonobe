@@ -164,6 +164,7 @@ mod tests {
         )
         .unwrap();
 
+        dbg!(cs.num_constraints());
         assert_eq!(expected_c, computed_c.value().unwrap());
     }
 }

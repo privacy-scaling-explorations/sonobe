@@ -140,7 +140,6 @@ impl<C: CurveGroup> SumCheckVerifier<C> for IOPVerifierState<C> {
             let eval_at_zero: C::ScalarField = poly.coeffs[0];
             let eval = eval_at_one + eval_at_zero;
 
-            println!("evaluations: {:?}, expected: {:?}", eval, expected);
             // the deferred check during the interactive phase:
             // 1. check if the received 'P(0) + P(1) = expected`.
             if eval != expected {

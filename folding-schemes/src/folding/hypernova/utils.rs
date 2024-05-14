@@ -85,37 +85,14 @@ pub fn compute_sigmas_and_thetas<F: PrimeField>(
     SigmasThetas(sigmas, thetas)
 }
 
-/// Computes the sum $\sum_{j = 0}^{n} \gamma^{\text{pow} + j} \cdot eq_eval \cdot \sigma_{j}$
-/// `pow` corresponds to `i * ccs.t` in `compute_c_from_sigmas_and_thetas`
-pub fn sum_muls_gamma_pows_eq_sigma<F: PrimeField>(
-    gamma: F,
-    eq_eval: F,
-    sigmas: &[F],
-    pow: u64,
-) -> F {
-    let mut result = F::zero();
-    for (j, sigma_j) in sigmas.iter().enumerate() {
-        let gamma_j = gamma.pow([(pow + (j as u64))]);
-        result += gamma_j * eq_eval * sigma_j;
-    }
-    result
-}
-
-/// Computes $\sum_{i=1}^{q} c_i * \prod_{j \in S_i} theta_j$
-pub fn sum_ci_mul_prod_thetaj<F: PrimeField>(ccs: &CCS<F>, thetas: &[F]) -> F {
-    let mut result = F::zero();
-    for i in 0..ccs.q {
-        let mut prod = F::one();
-        for j in ccs.S[i].clone() {
-            prod *= thetas[j];
-        }
-        result += ccs.c[i] * prod;
-    }
-    result
-}
-
-/// Compute the right-hand-side of step 5 of the multifolding scheme
-pub fn compute_c_from_sigmas_and_thetas<F: PrimeField>(
+/// computes c from the step 5 in section 5 of HyperNova, adapted to multiple LCCCS & CCCS
+/// instances:
+/// $$
+/// c = \sum_{i \in [\mu]} \left(\sum_{j \in [t]} \gamma^{i \cdot t + j} \cdot e_i \cdot \sigma_{i,j} \right)
+/// + \sum_{k \in [\nu]} \gamma^{\mu \cdot t+k} \cdot e_k \cdot \left( \sum_{i=1}^q c_i \cdot \prod_{j \in S_i}
+/// \theta_{k,j} \right)
+/// $$
+pub fn compute_c<F: PrimeField>(
     ccs: &CCS<F>,
     st: &SigmasThetas<F>,
     gamma: F,
@@ -132,14 +109,24 @@ pub fn compute_c_from_sigmas_and_thetas<F: PrimeField>(
     }
     for (i, sigmas) in vec_sigmas.iter().enumerate() {
         // (sum gamma^j * e_i * sigma_j)
-        c += sum_muls_gamma_pows_eq_sigma(gamma, e_lcccs[i], sigmas, (i * ccs.t) as u64);
+        for (j, sigma_j) in sigmas.iter().enumerate() {
+            let gamma_j = gamma.pow([((i * ccs.t + j) as u64)]);
+            c += gamma_j * e_lcccs[i] * sigma_j;
+        }
     }
 
     let mu = vec_sigmas.len();
     let e2 = eq_eval(beta, r_x_prime).unwrap();
     for (k, thetas) in vec_thetas.iter().enumerate() {
         // + gamma^{t+1} * e2 * sum c_i * prod theta_j
-        let lhs = sum_ci_mul_prod_thetaj(ccs, thetas);
+        let mut lhs = F::zero();
+        for i in 0..ccs.q {
+            let mut prod = F::one();
+            for j in ccs.S[i].clone() {
+                prod *= thetas[j];
+            }
+            lhs += ccs.c[i] * prod;
+        }
         let gamma_t1 = gamma.pow([(mu * ccs.t + k) as u64]);
         c += gamma_t1 * e2 * lhs;
     }
@@ -304,9 +291,9 @@ pub mod tests {
 
         // we expect g(r_x_prime) to be equal to:
         // c = (sum gamma^j * e1 * sigma_j) + gamma^{t+1} * e2 * sum c_i * prod theta_j
-        // from compute_c_from_sigmas_and_thetas
+        // from compute_c
         let expected_c = g.evaluate(&r_x_prime).unwrap();
-        let c = compute_c_from_sigmas_and_thetas::<Fr>(
+        let c = compute_c::<Fr>(
             &ccs,
             &sigmas_thetas,
             gamma,

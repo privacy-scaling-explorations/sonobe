@@ -11,13 +11,13 @@ use ark_std::{One, Zero};
 use core::marker::PhantomData;
 
 pub use super::decider_eth_circuit::{DeciderEthCircuit, KZGChallengesGadget};
-use super::{circuits::CF2, nifs::NIFS, CommittedInstance, Nova};
+use super::{nifs::NIFS, CommittedInstance, Nova};
 use crate::commitment::{
     kzg::{Proof as KZGProof, KZG},
     pedersen::Params as PedersenParams,
     CommitmentScheme,
 };
-use crate::folding::circuits::nonnative::affine::NonNativeAffineVar;
+use crate::folding::circuits::{nonnative::affine::NonNativeAffineVar, CF2};
 use crate::frontend::FCircuit;
 use crate::Error;
 use crate::{Decider as DeciderTrait, FoldingScheme};

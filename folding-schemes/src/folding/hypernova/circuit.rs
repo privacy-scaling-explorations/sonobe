@@ -30,8 +30,7 @@ fn compute_c_gadget<F: PrimeField>(
 ) -> Result<FpVar<F>, SynthesisError> {
     let mut e_lcccs = Vec::new();
     for r_x in vec_r_x.iter() {
-        let e_1 = EqEvalGadget::eq_eval(r_x.to_vec(), vec_r_x_prime.to_vec())?;
-        e_lcccs.push(e_1);
+        e_lcccs.push(EqEvalGadget::eq_eval(r_x, &vec_r_x_prime)?);
     }
 
     let mut c = FpVar::<F>::zero();
@@ -44,7 +43,7 @@ fn compute_c_gadget<F: PrimeField>(
     }
 
     let ccs_c = Vec::<FpVar<F>>::new_constant(cs.clone(), ccs.c.clone())?;
-    let e_k = EqEvalGadget::eq_eval(beta, vec_r_x_prime)?;
+    let e_k = EqEvalGadget::eq_eval(&beta, &vec_r_x_prime)?;
     #[allow(clippy::needless_range_loop)]
     for k in 0..vec_thetas.len() {
         let mut sum = FpVar::<F>::zero();

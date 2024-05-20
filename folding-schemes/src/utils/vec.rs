@@ -79,7 +79,7 @@ pub fn is_zero_vec<F: PrimeField>(vec: &[F]) -> bool {
     vec.iter().all(|a| a.is_zero())
 }
 
-pub fn mat_vec_mul<F: PrimeField>(M: &Vec<Vec<F>>, z: &[F]) -> Result<Vec<F>, Error> {
+pub fn mat_vec_mul<F: PrimeField>(M: &[Vec<F>], z: &[F]) -> Result<Vec<F>, Error> {
     if M.is_empty() {
         return Err(Error::Empty);
     }

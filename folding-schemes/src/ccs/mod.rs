@@ -1,7 +1,5 @@
-use ark_ec::CurveGroup;
+use ark_ff::PrimeField;
 use ark_std::log2;
-use ark_std::{One, Zero};
-use std::ops::Neg;
 
 use crate::utils::vec::*;
 use crate::Error;
@@ -12,7 +10,7 @@ use r1cs::R1CS;
 /// CCS represents the Customizable Constraint Systems structure defined in
 /// the [CCS paper](https://eprint.iacr.org/2023/552)
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct CCS<C: CurveGroup> {
+pub struct CCS<F: PrimeField> {
     /// m: number of rows in M_i (such that M_i \in F^{m, n})
     pub m: usize,
     /// n = |z|, number of cols in M_i
@@ -31,25 +29,24 @@ pub struct CCS<C: CurveGroup> {
     pub s_prime: usize,
 
     /// vector of matrices
-    pub M: Vec<SparseMatrix<C::ScalarField>>,
+    pub M: Vec<SparseMatrix<F>>,
     /// vector of multisets
     pub S: Vec<Vec<usize>>,
     /// vector of coefficients
-    pub c: Vec<C::ScalarField>,
+    pub c: Vec<F>,
 }
 
-impl<C: CurveGroup> CCS<C> {
+impl<F: PrimeField> CCS<F> {
     /// check that a CCS structure is satisfied by a z vector. Only for testing.
-    pub fn check_relation(&self, z: &[C::ScalarField]) -> Result<(), Error> {
-        let mut result = vec![C::ScalarField::zero(); self.m];
+    pub fn check_relation(&self, z: &[F]) -> Result<(), Error> {
+        let mut result = vec![F::zero(); self.m];
 
         for i in 0..self.q {
             // extract the needed M_j matrices out of S_i
-            let vec_M_j: Vec<&SparseMatrix<C::ScalarField>> =
-                self.S[i].iter().map(|j| &self.M[*j]).collect();
+            let vec_M_j: Vec<&SparseMatrix<F>> = self.S[i].iter().map(|j| &self.M[*j]).collect();
 
             // complete the hadamard chain
-            let mut hadamard_result = vec![C::ScalarField::one(); self.m];
+            let mut hadamard_result = vec![F::one(); self.m];
             for M_j in vec_M_j.into_iter() {
                 hadamard_result = hadamard(&hadamard_result, &mat_vec_mul_sparse(M_j, z)?)?;
             }
@@ -72,8 +69,8 @@ impl<C: CurveGroup> CCS<C> {
     }
 }
 
-impl<C: CurveGroup> CCS<C> {
-    pub fn from_r1cs(r1cs: R1CS<C::ScalarField>) -> Self {
+impl<F: PrimeField> CCS<F> {
+    pub fn from_r1cs(r1cs: R1CS<F>) -> Self {
         let m = r1cs.A.n_rows;
         let n = r1cs.A.n_cols;
         CCS {
@@ -87,13 +84,13 @@ impl<C: CurveGroup> CCS<C> {
             d: 2,
 
             S: vec![vec![0, 1], vec![2]],
-            c: vec![C::ScalarField::one(), C::ScalarField::one().neg()],
+            c: vec![F::one(), F::one().neg()],
             M: vec![r1cs.A, r1cs.B, r1cs.C],
         }
     }
 
-    pub fn to_r1cs(self) -> R1CS<C::ScalarField> {
-        R1CS::<C::ScalarField> {
+    pub fn to_r1cs(self) -> R1CS<F> {
+        R1CS::<F> {
             l: self.l,
             A: self.M[0].clone(),
             B: self.M[1].clone(),
@@ -107,11 +104,11 @@ pub mod tests {
     use super::*;
     use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z as r1cs_get_test_z};
     use ark_ff::PrimeField;
-    use ark_pallas::Projective;
+    use ark_pallas::Fr;
 
-    pub fn get_test_ccs<C: CurveGroup>() -> CCS<C> {
-        let r1cs = get_test_r1cs::<C::ScalarField>();
-        CCS::<C>::from_r1cs(r1cs)
+    pub fn get_test_ccs<F: PrimeField>() -> CCS<F> {
+        let r1cs = get_test_r1cs::<F>();
+        CCS::<F>::from_r1cs(r1cs)
     }
     pub fn get_test_z<F: PrimeField>(input: usize) -> Vec<F> {
         r1cs_get_test_z(input)
@@ -120,7 +117,7 @@ pub mod tests {
     /// Test that a basic CCS relation can be satisfied
     #[test]
     fn test_ccs_relation() {
-        let ccs = get_test_ccs::<Projective>();
+        let ccs = get_test_ccs::<Fr>();
         let z = get_test_z(3);
 
         ccs.check_relation(&z).unwrap();

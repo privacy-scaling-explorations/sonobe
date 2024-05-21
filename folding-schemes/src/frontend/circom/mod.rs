@@ -7,6 +7,7 @@ use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisE
 use ark_std::fmt::Debug;
 use num_bigint::BigInt;
 use std::path::PathBuf;
+use std::usize;
 
 use crate::frontend::FCircuit;
 use crate::Error;
@@ -14,13 +15,64 @@ use crate::Error;
 pub mod utils;
 use utils::CircomWrapper;
 
+type CustomCode<F> = Box<dyn Fn(usize, Vec<F>, Vec<F>) -> Result<Vec<F>, Error>>;
+
 /// Define CircomFCircuit
 #[derive(Clone, Debug)]
 pub struct CircomFCircuit<F: PrimeField> {
     circom_wrapper: CircomWrapper<F>,
-    state_len: usize,
-    external_inputs_len: usize,
+    pub state_len: usize,
+    pub external_inputs_len: usize,
     r1cs: CircomR1CS<F>,
+    custom_code: Option<fn(usize, Vec<F>, Vec<F>) -> Result<Vec<F>, Error>>,
+}
+
+impl<F: PrimeField> CircomFCircuit<F> {
+    pub fn set_custom_code(&mut self, code: fn(usize, Vec<F>, Vec<F>) -> Result<Vec<F>, Error>) {
+        self.custom_code = Some(code);
+    }
+
+    pub fn execute_custom_code(
+        &self,
+        _i: usize,
+        z_i: Vec<F>,
+        external_inputs: Vec<F>,
+    ) -> Result<Vec<F>, Error> {
+        if let Some(code) = self.custom_code {
+            Ok(Vec::new())
+        } else {
+            #[cfg(test)]
+            assert_eq!(z_i.len(), self.state_len());
+            #[cfg(test)]
+            assert_eq!(external_inputs.len(), self.external_inputs_len());
+
+            let inputs_bi = z_i
+                .iter()
+                .map(|val| self.circom_wrapper.ark_primefield_to_num_bigint(*val))
+                .collect::<Vec<BigInt>>();
+            let mut inputs_map = vec![("ivc_input".to_string(), inputs_bi)];
+
+            if self.external_inputs_len() > 0 {
+                let external_inputs_bi = external_inputs
+                    .iter()
+                    .map(|val| self.circom_wrapper.ark_primefield_to_num_bigint(*val))
+                    .collect::<Vec<BigInt>>();
+                inputs_map.push(("external_inputs".to_string(), external_inputs_bi));
+            }
+
+            // Computes witness
+            let witness = self
+                .circom_wrapper
+                .extract_witness(&inputs_map)
+                .map_err(|e| {
+                    Error::WitnessCalculationError(format!("Failed to calculate witness: {}", e))
+                })?;
+
+            // Extracts the z_i1(next state) from the witness vector.
+            let z_i1 = witness[1..1 + self.state_len()].to_vec();
+            Ok(z_i1)
+        }
+    }
 }
 
 impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
@@ -37,6 +89,7 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
             state_len,
             external_inputs_len,
             r1cs,
+            custom_code: None,
         })
     }
 
@@ -53,36 +106,7 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
         z_i: Vec<F>,
         external_inputs: Vec<F>,
     ) -> Result<Vec<F>, Error> {
-        #[cfg(test)]
-        assert_eq!(z_i.len(), self.state_len());
-        #[cfg(test)]
-        assert_eq!(external_inputs.len(), self.external_inputs_len());
-
-        let inputs_bi = z_i
-            .iter()
-            .map(|val| self.circom_wrapper.ark_primefield_to_num_bigint(*val))
-            .collect::<Vec<BigInt>>();
-        let mut inputs_map = vec![("ivc_input".to_string(), inputs_bi)];
-
-        if self.external_inputs_len() > 0 {
-            let external_inputs_bi = external_inputs
-                .iter()
-                .map(|val| self.circom_wrapper.ark_primefield_to_num_bigint(*val))
-                .collect::<Vec<BigInt>>();
-            inputs_map.push(("external_inputs".to_string(), external_inputs_bi));
-        }
-
-        // Computes witness
-        let witness = self
-            .circom_wrapper
-            .extract_witness(&inputs_map)
-            .map_err(|e| {
-                Error::WitnessCalculationError(format!("Failed to calculate witness: {}", e))
-            })?;
-
-        // Extracts the z_i1(next state) from the witness vector.
-        let z_i1 = witness[1..1 + self.state_len()].to_vec();
-        Ok(z_i1)
+        self.execute_custom_code(_i, z_i, external_inputs)
     }
 
     fn generate_step_constraints(

@@ -6,8 +6,10 @@ use ark_r1cs_std::R1CSVar;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use ark_std::fmt::Debug;
 use num_bigint::BigInt;
+use std::marker::PhantomData;
 use std::path::PathBuf;
-use std::usize;
+use std::rc::Rc;
+use std::{fmt, usize};
 
 use crate::frontend::FCircuit;
 use crate::Error;
@@ -15,7 +17,29 @@ use crate::Error;
 pub mod utils;
 use utils::CircomWrapper;
 
-type CustomCode<F> = Box<dyn Fn(usize, Vec<F>, Vec<F>) -> Result<Vec<F>, Error>>;
+struct CustomCode<F: PrimeField> {
+    func: Rc<dyn Fn(usize, Vec<F>, Vec<F>) -> Result<Vec<F>, Error>>,
+    _marker: PhantomData<F>,
+}
+
+impl<F: PrimeField> fmt::Debug for CustomCode<F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Function pointer: {:?}",
+            std::any::type_name::<fn(i32) -> i32>()
+        )
+    }
+}
+
+impl<F: PrimeField> Clone for CustomCode<F> {
+    fn clone(&self) -> Self {
+        Self {
+            func: self.func.clone(),
+            _marker: self._marker.clone(),
+        }
+    }
+}
 
 /// Define CircomFCircuit
 #[derive(Clone, Debug)]
@@ -24,12 +48,24 @@ pub struct CircomFCircuit<F: PrimeField> {
     pub state_len: usize,
     pub external_inputs_len: usize,
     r1cs: CircomR1CS<F>,
-    custom_code: Option<fn(usize, Vec<F>, Vec<F>) -> Result<Vec<F>, Error>>,
+    custom_code: Option<CustomCode<F>>,
 }
 
 impl<F: PrimeField> CircomFCircuit<F> {
-    pub fn set_custom_code(&mut self, code: fn(usize, Vec<F>, Vec<F>) -> Result<Vec<F>, Error>) {
-        self.custom_code = Some(code);
+    pub fn set_custom_code(
+        &self,
+        func: Rc<dyn Fn(usize, Vec<F>, Vec<F>) -> Result<Vec<F>, Error>>,
+    ) -> Self {
+        Self {
+            circom_wrapper: self.circom_wrapper.clone(),
+            state_len: self.state_len,
+            external_inputs_len: self.external_inputs_len,
+            r1cs: self.r1cs.clone(),
+            custom_code: Some(CustomCode::<F> {
+                func,
+                _marker: PhantomData,
+            }),
+        }
     }
 
     pub fn execute_custom_code(
@@ -38,8 +74,8 @@ impl<F: PrimeField> CircomFCircuit<F> {
         z_i: Vec<F>,
         external_inputs: Vec<F>,
     ) -> Result<Vec<F>, Error> {
-        if let Some(code) = self.custom_code {
-            Ok(Vec::new())
+        if let Some(code) = &self.custom_code {
+            (code.func)(_i, z_i, external_inputs)
         } else {
             #[cfg(test)]
             assert_eq!(z_i.len(), self.state_len());
@@ -273,5 +309,35 @@ pub mod tests {
             .generate_step_constraints(cs.clone(), 1, z_i_var, external_inputs_var)
             .unwrap();
         assert_eq!(z_i1_var.value().unwrap(), vec![Fr::from(52u32)]);
+    }
+
+    #[test]
+    fn test_custom_code() {
+        let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit.r1cs");
+        let wasm_path =
+            PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
+
+        let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path, 1, 0)).unwrap(); // state_len:1, external_inputs_len:0
+
+        let new_circuit = circom_fcircuit.set_custom_code(Rc::new(move |_i, z_i, _external| {
+            let z = z_i[0];
+            Ok(vec![z * z * z + z + Fr::from(5)])
+        }));
+
+        // Allocates z_i1 by using step_native function.
+        let z_i = vec![Fr::from(3_u32)];
+        let wrapper_circuit = crate::frontend::tests::WrapperCircuit {
+            FC: new_circuit.clone(),
+            z_i: Some(z_i.clone()),
+            z_i1: Some(new_circuit.step_native(0, z_i.clone(), vec![]).unwrap()),
+        };
+
+        let cs = ConstraintSystem::<Fr>::new_ref();
+
+        wrapper_circuit.generate_constraints(cs.clone()).unwrap();
+        assert!(
+            cs.is_satisfied().unwrap(),
+            "Constraint system is not satisfied"
+        );
     }
 }

@@ -1,3 +1,6 @@
+use crate::frontend::FCircuit;
+use crate::frontend::FpVar::Var;
+use crate::Error;
 use ark_circom::circom::{CircomCircuit, R1CS as CircomR1CS};
 use ark_ff::PrimeField;
 use ark_r1cs_std::alloc::AllocVar;
@@ -7,9 +10,6 @@ use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisE
 use ark_std::fmt::Debug;
 use num_bigint::BigInt;
 use std::path::PathBuf;
-
-use crate::frontend::FCircuit;
-use crate::Error;
 
 pub mod utils;
 use utils::CircomWrapper;
@@ -97,11 +97,11 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
         #[cfg(test)]
         assert_eq!(external_inputs.len(), self.external_inputs_len());
 
-        let input_values = self.fpvars_to_bigints(z_i)?;
+        let input_values = self.fpvars_to_bigints(&z_i)?;
         let mut inputs_map = vec![("ivc_input".to_string(), input_values)];
 
         if self.external_inputs_len() > 0 {
-            let external_inputs_bi = self.fpvars_to_bigints(external_inputs)?;
+            let external_inputs_bi = self.fpvars_to_bigints(&external_inputs)?;
             inputs_map.push(("external_inputs".to_string(), external_inputs_bi));
         }
 
@@ -110,11 +110,21 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
             .extract_witness(&inputs_map)
             .map_err(|_| SynthesisError::AssignmentMissing)?;
 
+        // Since public inputs are already allocated variables, we will tell `circom-compat` to not re-allocate those
+        let mut already_allocated_public_inputs = vec![];
+        for var in z_i.iter() {
+            match var {
+                Var(var) => already_allocated_public_inputs.push(var.variable),
+                _ => return Err(SynthesisError::Unsatisfiable), // allocated z_i should be Var
+            }
+        }
+
         // Initializes the CircomCircuit.
         let circom_circuit = CircomCircuit {
             r1cs: self.r1cs.clone(),
             witness: Some(witness.clone()),
-            inputs_already_allocated: true,
+            public_inputs_indexes: already_allocated_public_inputs,
+            allocate_inputs_as_witnesses: true,
         };
 
         // Generates the constraints for the circom_circuit.
@@ -135,7 +145,7 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
 }
 
 impl<F: PrimeField> CircomFCircuit<F> {
-    fn fpvars_to_bigints(&self, fpVars: Vec<FpVar<F>>) -> Result<Vec<BigInt>, SynthesisError> {
+    fn fpvars_to_bigints(&self, fpVars: &Vec<FpVar<F>>) -> Result<Vec<BigInt>, SynthesisError> {
         let mut input_values = Vec::new();
         // converts each FpVar to PrimeField value, then to num_bigint::BigInt.
         for fp_var in fpVars.iter() {
@@ -154,7 +164,7 @@ impl<F: PrimeField> CircomFCircuit<F> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use ark_pallas::Fr;
+    use ark_bn254::Fr;
     use ark_r1cs_std::alloc::AllocVar;
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 
@@ -186,8 +196,6 @@ pub mod tests {
         let z_i = vec![Fr::from(3u32)];
 
         let z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i)).unwrap();
-
-        let cs = ConstraintSystem::<Fr>::new_ref();
         let z_i1_var = circom_fcircuit
             .generate_step_constraints(cs.clone(), 1, z_i_var, vec![])
             .unwrap();
@@ -249,5 +257,29 @@ pub mod tests {
             .generate_step_constraints(cs.clone(), 1, z_i_var, external_inputs_var)
             .unwrap();
         assert_eq!(z_i1_var.value().unwrap(), vec![Fr::from(52u32)]);
+    }
+
+    #[test]
+    fn test_keccak_circom() {
+        let z_0_aux: Vec<u32> = vec![0_u32; 8];
+        let z_0: Vec<Fr> = z_0_aux.iter().map(|v| Fr::from(*v)).collect::<Vec<Fr>>();
+
+        let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/keccak-chain.r1cs");
+        let wasm_path =
+            PathBuf::from("./src/frontend/circom/test_folder/keccak-chain_js/keccak-chain.wasm");
+
+        let f_circuit_params = (r1cs_path, wasm_path, 8, 0);
+        let circom_fcircuit = CircomFCircuit::<Fr>::new(f_circuit_params).unwrap();
+        let cs = ConstraintSystem::<Fr>::new_ref();
+
+        let z_0_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_0)).unwrap();
+        circom_fcircuit
+            .generate_step_constraints(cs.clone(), 1, z_0_var, vec![])
+            .unwrap();
+
+        assert!(
+            cs.is_satisfied().unwrap(),
+            "Constraint system is not satisfied"
+        );
     }
 }

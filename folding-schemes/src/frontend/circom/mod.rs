@@ -145,7 +145,7 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
 }
 
 impl<F: PrimeField> CircomFCircuit<F> {
-    fn fpvars_to_bigints(&self, fpVars: &Vec<FpVar<F>>) -> Result<Vec<BigInt>, SynthesisError> {
+    fn fpvars_to_bigints(&self, fpVars: &[FpVar<F>]) -> Result<Vec<BigInt>, SynthesisError> {
         let mut input_values = Vec::new();
         // converts each FpVar to PrimeField value, then to num_bigint::BigInt.
         for fp_var in fpVars.iter() {

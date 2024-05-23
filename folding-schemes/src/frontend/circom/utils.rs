@@ -49,7 +49,9 @@ impl<F: PrimeField> CircomWrapper<F> {
         let file = File::open(&self.r1cs_filepath)?;
         let reader = BufReader::new(file);
         let r1cs_file = r1cs_reader::R1CSFile::<F>::new(reader)?;
-        Ok(r1cs_reader::R1CS::<F>::from(r1cs_file))
+        let mut r1cs = r1cs_reader::R1CS::<F>::from(r1cs_file);
+        r1cs.wire_mapping = None;
+        Ok(r1cs)
     }
 
     // Extracts the witness vector as a vector of PrimeField elements.
@@ -147,7 +149,8 @@ mod tests {
         let circom_circuit = CircomCircuit {
             r1cs,
             witness,
-            inputs_already_allocated: false,
+            public_inputs_indexes: vec![],
+            allocate_inputs_as_witnesses: false,
         };
 
         circom_circuit.generate_constraints(cs.clone()).unwrap();

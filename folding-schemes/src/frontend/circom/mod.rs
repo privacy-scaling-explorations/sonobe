@@ -6,7 +6,6 @@ use ark_r1cs_std::R1CSVar;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use ark_std::fmt::Debug;
 use num_bigint::BigInt;
-use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::{fmt, usize};
@@ -17,10 +16,12 @@ use crate::Error;
 pub mod utils;
 use utils::CircomWrapper;
 
+type ClourserPointer<F> = Rc<dyn Fn (usize, Vec<F>, Vec<F>) -> Result<Vec<F>, Error>>;
+
+
 #[derive(Clone)]
 struct CustomCode<F: PrimeField> {
-    func: Rc<dyn Fn(usize, Vec<F>, Vec<F>) -> Result<Vec<F>, Error>>,
-    _marker: PhantomData<F>,
+    func: ClourserPointer<F>,
 }
 
 impl<F: PrimeField> fmt::Debug for CustomCode<F> {
@@ -46,7 +47,7 @@ pub struct CircomFCircuit<F: PrimeField> {
 impl<F: PrimeField> CircomFCircuit<F> {
     pub fn set_custom_code(
         &self,
-        func: Rc<dyn Fn(usize, Vec<F>, Vec<F>) -> Result<Vec<F>, Error>>,
+        func: ClourserPointer<F>,
     ) -> Self {
         Self {
             circom_wrapper: self.circom_wrapper.clone(),
@@ -55,7 +56,6 @@ impl<F: PrimeField> CircomFCircuit<F> {
             r1cs: self.r1cs.clone(),
             custom_code: Some(CustomCode::<F> {
                 func,
-                _marker: PhantomData,
             }),
         }
     }

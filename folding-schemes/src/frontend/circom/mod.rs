@@ -17,6 +17,7 @@ use crate::Error;
 pub mod utils;
 use utils::CircomWrapper;
 
+#[derive(Clone)]
 struct CustomCode<F: PrimeField> {
     func: Rc<dyn Fn(usize, Vec<F>, Vec<F>) -> Result<Vec<F>, Error>>,
     _marker: PhantomData<F>,
@@ -29,15 +30,6 @@ impl<F: PrimeField> fmt::Debug for CustomCode<F> {
             "Function pointer: {:?}",
             std::any::type_name::<fn(i32) -> i32>()
         )
-    }
-}
-
-impl<F: PrimeField> Clone for CustomCode<F> {
-    fn clone(&self) -> Self {
-        Self {
-            func: self.func.clone(),
-            _marker: self._marker.clone(),
-        }
     }
 }
 

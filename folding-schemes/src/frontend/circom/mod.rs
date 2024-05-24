@@ -230,56 +230,73 @@ pub mod tests {
 
     #[test]
     fn test_circom_external_inputs() {
-        let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/external_inputs.r1cs");
+        let r1cs_path =
+            PathBuf::from("./src/frontend/circom/test_folder/with_external_inputs.r1cs");
         let wasm_path = PathBuf::from(
-            "./src/frontend/circom/test_folder/external_inputs_js/external_inputs.wasm",
+            "./src/frontend/circom/test_folder/with_external_inputs_js/with_external_inputs.wasm",
         );
-
         let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path, 1, 2)).unwrap(); // state_len:1, external_inputs_len:2
-
         let cs = ConstraintSystem::<Fr>::new_ref();
-
         let z_i = vec![Fr::from(3u32)];
         let external_inputs = vec![Fr::from(6u32), Fr::from(7u32)];
 
         // run native step
-        let z_i1 = circom_fcircuit
+        let z_i1_native = circom_fcircuit
             .step_native(1, z_i.clone(), external_inputs.clone())
             .unwrap();
-        assert_eq!(z_i1, vec![Fr::from(52u32)]);
 
         // run gadget step
         let z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i)).unwrap();
         let external_inputs_var =
-            Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(external_inputs)).unwrap();
-
+            Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(external_inputs.clone())).unwrap();
         let z_i1_var = circom_fcircuit
             .generate_step_constraints(cs.clone(), 1, z_i_var, external_inputs_var)
             .unwrap();
-        assert_eq!(z_i1_var.value().unwrap(), vec![Fr::from(52u32)]);
+
+        assert_eq!(z_i1_var.value().unwrap(), z_i1_native);
+
+        // re-init cs and run gadget step with wrong ivc inputs (first ivc should not be zero)
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        let wrong_z_i = vec![Fr::from(0)];
+        let wrong_z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(wrong_z_i)).unwrap();
+        let external_inputs_var =
+            Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(external_inputs)).unwrap();
+        let z_i1_var = circom_fcircuit.generate_step_constraints(
+            cs.clone(),
+            1,
+            wrong_z_i_var,
+            external_inputs_var,
+        );
+        assert!(z_i1_var.is_err());
     }
 
     #[test]
-    fn test_keccak_circom() {
-        let z_0_aux: Vec<u32> = vec![0_u32; 8];
-        let z_0: Vec<Fr> = z_0_aux.iter().map(|v| Fr::from(*v)).collect::<Vec<Fr>>();
-
-        let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/keccak-chain.r1cs");
-        let wasm_path =
-            PathBuf::from("./src/frontend/circom/test_folder/keccak-chain_js/keccak-chain.wasm");
-
-        let f_circuit_params = (r1cs_path, wasm_path, 8, 0);
-        let circom_fcircuit = CircomFCircuit::<Fr>::new(f_circuit_params).unwrap();
+    fn test_circom_no_external_inputs() {
+        let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/no_external_inputs.r1cs");
+        let wasm_path = PathBuf::from(
+            "./src/frontend/circom/test_folder/no_external_inputs_js/no_external_inputs.wasm",
+        );
+        let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path, 3, 0)).unwrap();
         let cs = ConstraintSystem::<Fr>::new_ref();
+        let z_i = vec![Fr::from(3u32), Fr::from(4u32), Fr::from(5u32)];
+        let z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i.clone())).unwrap();
 
-        let z_0_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_0)).unwrap();
-        circom_fcircuit
-            .generate_step_constraints(cs.clone(), 1, z_0_var, vec![])
+        // run native step
+        let z_i1_native = circom_fcircuit.step_native(1, z_i.clone(), vec![]).unwrap();
+
+        // run gadget step
+        let z_i1_var = circom_fcircuit
+            .generate_step_constraints(cs.clone(), 1, z_i_var, vec![])
             .unwrap();
 
-        assert!(
-            cs.is_satisfied().unwrap(),
-            "Constraint system is not satisfied"
-        );
+        assert_eq!(z_i1_var.value().unwrap(), z_i1_native);
+
+        // re-init cs and run gadget step with wrong ivc inputs (first ivc input should not be zero)
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        let wrong_z_i = vec![Fr::from(0u32), Fr::from(4u32), Fr::from(5u32)];
+        let wrong_z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(wrong_z_i)).unwrap();
+        let z_i1_var =
+            circom_fcircuit.generate_step_constraints(cs.clone(), 1, wrong_z_i_var, vec![]);
+        assert!(z_i1_var.is_err());
     }
 }

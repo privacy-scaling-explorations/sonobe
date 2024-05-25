@@ -12,7 +12,7 @@ pub struct EqEvalGadget<F: PrimeField> {
 impl<F: PrimeField> EqEvalGadget<F> {
     /// Gadget to evaluate eq polynomial.
     /// Follows the implementation of `eq_eval` found in this crate.
-    pub fn eq_eval(x: Vec<FpVar<F>>, y: Vec<FpVar<F>>) -> Result<FpVar<F>, SynthesisError> {
+    pub fn eq_eval(x: &[FpVar<F>], y: &[FpVar<F>]) -> Result<FpVar<F>, SynthesisError> {
         if x.len() != y.len() {
             return Err(SynthesisError::Unsatisfiable);
         }
@@ -30,15 +30,14 @@ impl<F: PrimeField> EqEvalGadget<F> {
 
 #[cfg(test)]
 mod tests {
-
-    use crate::utils::virtual_polynomial::eq_eval;
-
-    use super::EqEvalGadget;
     use ark_ff::Field;
     use ark_pallas::Fr;
     use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, R1CSVar};
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::{test_rng, UniformRand};
+
+    use super::EqEvalGadget;
+    use crate::utils::virtual_polynomial::eq_eval;
 
     #[test]
     pub fn test_eq_eval_gadget() {
@@ -57,19 +56,19 @@ mod tests {
                 .map(|y| FpVar::<Fr>::new_witness(cs.clone(), || Ok(y)).unwrap())
                 .collect();
             let expected_eq_eval = eq_eval::<Fr>(&x_vec, &y_vec).unwrap();
-            let gadget_eq_eval: FpVar<Fr> = EqEvalGadget::<Fr>::eq_eval(x, y).unwrap();
+            let gadget_eq_eval: FpVar<Fr> = EqEvalGadget::<Fr>::eq_eval(&x, &y).unwrap();
             assert_eq!(expected_eq_eval, gadget_eq_eval.value().unwrap());
         }
 
         let x: Vec<FpVar<Fr>> = vec![];
         let y: Vec<FpVar<Fr>> = vec![];
-        let gadget_eq_eval = EqEvalGadget::<Fr>::eq_eval(x, y);
+        let gadget_eq_eval = EqEvalGadget::<Fr>::eq_eval(&x, &y);
         assert!(gadget_eq_eval.is_err());
 
         let x: Vec<FpVar<Fr>> = vec![];
         let y: Vec<FpVar<Fr>> =
             vec![FpVar::<Fr>::new_witness(cs.clone(), || Ok(&Fr::ONE)).unwrap()];
-        let gadget_eq_eval = EqEvalGadget::<Fr>::eq_eval(x, y);
+        let gadget_eq_eval = EqEvalGadget::<Fr>::eq_eval(&x, &y);
         assert!(gadget_eq_eval.is_err());
     }
 }

@@ -7,7 +7,7 @@ use ark_std::{One, Zero};
 
 use super::cccs::{Witness, CCCS};
 use super::lcccs::LCCCS;
-use super::utils::{compute_c_from_sigmas_and_thetas, compute_g, compute_sigmas_and_thetas};
+use super::utils::{compute_c, compute_g, compute_sigmas_and_thetas};
 use crate::ccs::CCS;
 use crate::transcript::Transcript;
 use crate::utils::hypercube::BooleanHypercube;
@@ -20,13 +20,13 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 
 /// Proof defines a multifolding proof
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Proof<C: CurveGroup> {
     pub sc_proof: SumCheckProof<C::ScalarField>,
     pub sigmas_thetas: SigmasThetas<C::ScalarField>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct SigmasThetas<F: PrimeField>(pub Vec<Vec<F>>, pub Vec<Vec<F>>);
 
 #[derive(Debug)]
@@ -151,7 +151,7 @@ where
     #[allow(clippy::type_complexity)]
     pub fn prove(
         transcript: &mut impl Transcript<C>,
-        ccs: &CCS<C>,
+        ccs: &CCS<C::ScalarField>,
         running_instances: &[LCCCS<C>],
         new_instances: &[CCCS<C>],
         w_lcccs: &[Witness<C::ScalarField>],
@@ -277,7 +277,7 @@ where
     /// Returns the folded LCCCS instance.
     pub fn verify(
         transcript: &mut impl Transcript<C>,
-        ccs: &CCS<C>,
+        ccs: &CCS<C::ScalarField>,
         running_instances: &[LCCCS<C>],
         new_instances: &[CCCS<C>],
         proof: Proof<C>,
@@ -325,7 +325,7 @@ where
         let r_x_prime = sumcheck_subclaim.point.clone();
 
         // Step 5: Finish verifying sumcheck (verify the claim c)
-        let c = compute_c_from_sigmas_and_thetas(
+        let c = compute_c(
             ccs,
             &proof.sigmas_thetas,
             gamma,
@@ -336,6 +336,7 @@ where
                 .collect(),
             &r_x_prime,
         );
+
         // check that the g(r_x') from the sumcheck proof is equal to the computed c from sigmas&thetas
         if c != sumcheck_subclaim.expected_evaluation {
             return Err(Error::NotEqual);
@@ -430,7 +431,7 @@ pub mod tests {
         let mut rng = test_rng();
 
         // Create a basic CCS circuit
-        let ccs = get_test_ccs::<Projective>();
+        let ccs = get_test_ccs::<Fr>();
         let (pedersen_params, _) =
             Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
 
@@ -489,7 +490,7 @@ pub mod tests {
     pub fn test_multifolding_two_instances_multiple_steps() {
         let mut rng = test_rng();
 
-        let ccs = get_test_ccs::<Projective>();
+        let ccs = get_test_ccs::<Fr>();
 
         let (pedersen_params, _) =
             Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
@@ -559,7 +560,7 @@ pub mod tests {
         let mut rng = test_rng();
 
         // Create a basic CCS circuit
-        let ccs = get_test_ccs::<Projective>();
+        let ccs = get_test_ccs::<Fr>();
         let (pedersen_params, _) =
             Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
 
@@ -642,7 +643,7 @@ pub mod tests {
         let mut rng = test_rng();
 
         // Create a basic CCS circuit
-        let ccs = get_test_ccs::<Projective>();
+        let ccs = get_test_ccs::<Fr>();
         let (pedersen_params, _) =
             Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
 

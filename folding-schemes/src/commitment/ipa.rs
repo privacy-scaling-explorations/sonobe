@@ -493,7 +493,7 @@ where
     /// there are some constraints saved.
     #[allow(clippy::too_many_arguments)]
     pub fn verify<const K: usize>(
-        g: &Vec<GC>,                                  // params.generators
+        g: &[GC],                                     // params.generators
         h: &GC,                                       // params.h
         x: &NonNativeFieldVar<C::ScalarField, CF<C>>, // evaluation point, challenge
         v: &NonNativeFieldVar<C::ScalarField, CF<C>>, // value at evaluation point

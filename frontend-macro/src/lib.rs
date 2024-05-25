@@ -2,16 +2,15 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, DeriveInput};
 
-
 #[proc_macro_derive(Flatten)]
 pub fn derive(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
     let iden = &ast.ident;
     let cs_iden_name = format!("{}Constraint", iden);
-    let cs_iden = syn::Ident::new( &cs_iden_name, iden.span());
-    
+    let cs_iden = syn::Ident::new(&cs_iden_name, iden.span());
+
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
-    
+
     let fields = if let syn::Data::Struct(syn::DataStruct {
         fields: syn::Fields::Named(syn::FieldsNamed { ref named, .. }),
         ..
@@ -22,7 +21,6 @@ pub fn derive(input: TokenStream) -> TokenStream {
         unimplemented!();
     };
 
-    
     let cs_fields_to_vec = fields.iter().map(|f| {
         let name = &f.ident;
         quote! { value.#name }
@@ -42,7 +40,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
         let name = &f.ident;
         quote! {#name: vec[#id].clone()}
     });
-    
+
     let vec_to_fields = fields.iter().enumerate().map(|(id, f)| {
         let name = &f.ident;
         quote! {#name: vec[#id]}
@@ -68,7 +66,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 assert!(vec.len() == #iden::#ty_generics::state_number());
                 #iden {
                     #(#vec_to_fields,)*
-                }               
+                }
             }
         }
     };
@@ -83,13 +81,13 @@ pub fn derive(input: TokenStream) -> TokenStream {
             fn from(vec: Vec<ark_r1cs_std::fields::fp::FpVar<F>>) -> #cs_iden<F>{
                 #cs_iden {
                     #(#cs_vec_to_fields,)*
-                }     
+                }
             }
         }
 
         impl<F: PrimeField> From<#cs_iden<F>> for Vec<ark_r1cs_std::fields::fp::FpVar<F>> {
             fn from(value: #cs_iden<F>) -> Vec<ark_r1cs_std::fields::fp::FpVar<F>> {
-                vec![#(#cs_fields_to_vec,)*] 
+                vec![#(#cs_fields_to_vec,)*]
             }
         }
 
@@ -101,14 +99,11 @@ pub fn derive(input: TokenStream) -> TokenStream {
         }
     };
 
-    let expanded = quote! {        
+    let expanded = quote! {
         #state_macro
 
         #constraint_macro
     };
 
-
     expanded.into()
 }
-
-

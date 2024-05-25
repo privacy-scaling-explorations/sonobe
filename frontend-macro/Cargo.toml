@@ -9,12 +9,13 @@ edition = "2021"
 syn = { version = "0.15", features = ["extra-traits"] }
 quote = "0.6"
 proc-macro2 = "0.4"
+
+[dev-dependencies]
+trybuild = "1.0"
 ark-ff = "^0.4.0"
 ark-bn254 = {version="0.4.0", features=["r1cs"]}
 ark-r1cs-std = { version = "0.4.0", default-features = false } # this is patched at the workspace level
 
-[dev-dependencies]
-trybuild = "1.0"
 
 [lib]
 proc-macro = true

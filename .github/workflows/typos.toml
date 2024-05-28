@@ -1,5 +1,2 @@
 [default.extend-words]
 groth = "groth"
-
-[type.po]
-check-file = false

@@ -2,5 +2,4 @@
 groth = "groth"
 
 [type.po]
-extend-glob = ["*.circom"]
 check-file = false

@@ -263,7 +263,7 @@ pub mod tests {
         let wrong_z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(wrong_z_i)).unwrap();
         let external_inputs_var =
             Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(external_inputs)).unwrap();
-        let z_i1_var = circom_fcircuit.generate_step_constraints(
+        let _z_i1_var = circom_fcircuit.generate_step_constraints(
             cs.clone(),
             1,
             wrong_z_i_var,
@@ -299,7 +299,7 @@ pub mod tests {
         let cs = ConstraintSystem::<Fr>::new_ref();
         let wrong_z_i = vec![Fr::from(0u32), Fr::from(4u32), Fr::from(5u32)];
         let wrong_z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(wrong_z_i)).unwrap();
-        let z_i1_var =
+        let _z_i1_var =
             circom_fcircuit.generate_step_constraints(cs.clone(), 1, wrong_z_i_var, vec![]);
         // TODO:: https://github.com/privacy-scaling-explorations/sonobe/issues/104
         // Disable check for now

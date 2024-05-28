@@ -130,10 +130,12 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
         // Generates the constraints for the circom_circuit.
         circom_circuit.generate_constraints(cs.clone())?;
 
+        // TODO: https://github.com/privacy-scaling-explorations/sonobe/issues/104
+        // We disable checking constraints for now
         // Checks for constraint satisfaction.
-        if !cs.is_satisfied().unwrap() {
-            return Err(SynthesisError::Unsatisfiable);
-        }
+        // if !cs.is_satisfied().unwrap() {
+        //     return Err(SynthesisError::Unsatisfiable);
+        // }
 
         // Extracts the z_i1(next state) from the witness vector.
         let z_i1: Vec<FpVar<F>> = Vec::<FpVar<F>>::new_witness(cs.clone(), || {

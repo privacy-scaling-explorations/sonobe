@@ -551,20 +551,22 @@ pub mod tests {
     use super::*;
     use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, CryptographicSponge};
     use std::str::FromStr;
+
+    // Test with value taken from https://github.com/iden3/circomlibjs/blob/43cc582b100fc3459cf78d903a6f538e5d7f38ee/test/poseidon.js#L32
     #[test]
     fn check_against_circom_poseidon() {
         let pos_conf = poseidon_config::<Fr>();
         let mut poseidon_sponge: PoseidonSponge<Fr> = CryptographicSponge::new(&pos_conf);
-        let v: Vec<Fr> = vec!["1", "2", "3", "4", "5", "6", "7"]
+        let v: Vec<Fr> = vec!["1", "2", "3", "4"]
             .into_iter()
             .map(|x| Fr::from_str(x).unwrap())
             .collect();
         poseidon_sponge.absorb(&v);
-        let out = poseidon_sponge.squeeze_field_elements::<Fr>(1);
+        poseidon_sponge.squeeze_field_elements::<Fr>(1);
         assert!(
-            out[0]
+            poseidon_sponge.state[0]
                 == Fr::from_str(
-                    "3637726918731233354960448572465528704217843406233123660822069175839457651784"
+                    "18821383157269793795438455681495246036402687001665670618754263018637548127333"
                 )
                 .unwrap()
         );

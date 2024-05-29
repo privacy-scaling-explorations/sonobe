@@ -4,8 +4,9 @@ use ark_std::rand::Rng;
 
 use crate::utils::vec::{hadamard, mat_vec_mul, vec_add, vec_scalar_mul, SparseMatrix};
 use crate::Error;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct R1CS<F: PrimeField> {
     pub l: usize, // io len
     pub A: SparseMatrix<F>,

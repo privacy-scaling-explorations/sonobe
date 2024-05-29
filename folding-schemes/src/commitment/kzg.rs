@@ -14,6 +14,7 @@ use ark_poly::{
 use ark_poly_commit::kzg10::{
     Commitment as KZG10Commitment, Proof as KZG10Proof, VerifierKey, KZG10,
 };
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Valid};
 use ark_std::rand::RngCore;
 use ark_std::{borrow::Cow, fmt::Debug};
 use ark_std::{One, Zero};
@@ -33,6 +34,42 @@ pub struct ProverKey<'a, C: CurveGroup> {
     pub powers_of_g: Cow<'a, [C::Affine]>,
 }
 
+impl<'a, C: CurveGroup> CanonicalSerialize for ProverKey<'a, C> {
+    fn serialize_with_mode<W: std::io::prelude::Write>(
+        &self,
+        mut writer: W,
+        compress: ark_serialize::Compress,
+    ) -> Result<(), ark_serialize::SerializationError> {
+        self.powers_of_g.serialize_with_mode(&mut writer, compress)
+    }
+
+    fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
+        self.powers_of_g.serialized_size(compress)
+    }
+}
+
+impl<'a, C: CurveGroup> CanonicalDeserialize for ProverKey<'a, C> {
+    fn deserialize_with_mode<R: std::io::prelude::Read>(
+        reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        let powers_of_g_vec = Vec::deserialize_with_mode(reader, compress, validate)?;
+        Ok(ProverKey {
+            powers_of_g: ark_std::borrow::Cow::Owned(powers_of_g_vec),
+        })
+    }
+}
+
+impl<'a, C: CurveGroup> Valid for ProverKey<'a, C> {
+    fn check(&self) -> Result<(), ark_serialize::SerializationError> {
+        match self.powers_of_g.clone() {
+            Cow::Borrowed(powers) => powers.to_vec().check(),
+            Cow::Owned(powers) => powers.check(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub struct Proof<C: CurveGroup> {
     pub eval: C::ScalarField,
@@ -45,6 +82,7 @@ pub struct KZG<'a, E: Pairing, const H: bool = false> {
     _a: PhantomData<&'a ()>,
     _e: PhantomData<E>,
 }
+
 impl<'a, E, const H: bool> CommitmentScheme<E::G1, H> for KZG<'a, E, H>
 where
     E: Pairing,

@@ -23,7 +23,6 @@ struct CustomStepNative<F: PrimeField> {
     func: ClosurePointer<F>,
 }
 
-
 impl<F: PrimeField> fmt::Debug for CustomStepNative<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(

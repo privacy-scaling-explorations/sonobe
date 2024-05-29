@@ -216,7 +216,7 @@ mod tests {
     use ark_std::UniformRand;
 
     use super::*;
-    use crate::transcript::poseidon::{poseidon_test_config, PoseidonTranscript};
+    use crate::transcript::poseidon::{poseidon_canonical_config, PoseidonTranscript};
 
     #[test]
     fn test_pedersen() {
@@ -229,7 +229,7 @@ mod tests {
         let n: usize = 10;
         // setup params
         let (params, _) = Pedersen::<Projective>::setup(&mut rng, n).unwrap();
-        let poseidon_config = poseidon_test_config::<Fr>();
+        let poseidon_config = poseidon_canonical_config::<Fr>();
 
         // init Prover's transcript
         let mut transcript_p = PoseidonTranscript::<Projective>::new(&poseidon_config);

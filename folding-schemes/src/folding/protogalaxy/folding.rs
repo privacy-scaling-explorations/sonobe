@@ -385,7 +385,7 @@ mod tests {
 
     use crate::ccs::r1cs::tests::{get_test_r1cs, get_test_z};
     use crate::commitment::{pedersen::Pedersen, CommitmentScheme};
-    use crate::transcript::poseidon::{poseidon_test_config, PoseidonTranscript};
+    use crate::transcript::poseidon::{poseidon_canonical_config, PoseidonTranscript};
 
     pub(crate) fn check_instance<C: CurveGroup>(
         r1cs: &R1CS<C::ScalarField>,
@@ -512,7 +512,7 @@ mod tests {
         let r1cs = get_test_r1cs::<Fr>();
 
         // init Prover & Verifier's transcript
-        let poseidon_config = poseidon_test_config::<Fr>();
+        let poseidon_config = poseidon_canonical_config::<Fr>();
         let mut transcript_p = PoseidonTranscript::<Projective>::new(&poseidon_config);
         let mut transcript_v = PoseidonTranscript::<Projective>::new(&poseidon_config);
 
@@ -552,7 +552,7 @@ mod tests {
         let r1cs = get_test_r1cs::<Fr>();
 
         // init Prover & Verifier's transcript
-        let poseidon_config = poseidon_test_config::<Fr>();
+        let poseidon_config = poseidon_canonical_config::<Fr>();
         let mut transcript_p = PoseidonTranscript::<Projective>::new(&poseidon_config);
         let mut transcript_v = PoseidonTranscript::<Projective>::new(&poseidon_config);
 

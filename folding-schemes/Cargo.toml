@@ -9,6 +9,7 @@ ark-ff = "^0.4.0"
 ark-poly = "^0.4.0"
 ark-std = "^0.4.0"
 ark-crypto-primitives = { version = "^0.4.0", default-features = false, features = ["r1cs", "sponge", "crh"] }
+ark-grumpkin = {version="0.4.0"}
 ark-poly-commit = "^0.4.0"
 ark-relations = { version = "^0.4.0", default-features = false }
 ark-r1cs-std = { version = "0.4.0", default-features = false } # this is patched at the workspace level

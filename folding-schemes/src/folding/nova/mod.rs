@@ -815,14 +815,14 @@ pub mod tests {
 
     use crate::commitment::pedersen::Pedersen;
     use crate::frontend::tests::CubicFCircuit;
-    use crate::transcript::poseidon::poseidon_test_config;
+    use crate::transcript::poseidon::poseidon_canonical_config;
 
     /// This test tests the Nova+CycleFold IVC, and by consequence it is also testing the
     /// AugmentedFCircuit
     #[test]
     fn test_ivc() {
         let mut rng = ark_std::test_rng();
-        let poseidon_config = poseidon_test_config::<Fr>();
+        let poseidon_config = poseidon_canonical_config::<Fr>();
 
         let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
 

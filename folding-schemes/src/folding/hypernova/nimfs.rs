@@ -374,7 +374,7 @@ where
 pub mod tests {
     use super::*;
     use crate::ccs::tests::{get_test_ccs, get_test_z};
-    use crate::transcript::poseidon::poseidon_test_config;
+    use crate::transcript::poseidon::poseidon_canonical_config;
     use crate::transcript::poseidon::PoseidonTranscript;
     use ark_std::test_rng;
     use ark_std::UniformRand;
@@ -446,7 +446,7 @@ pub mod tests {
         let (new_instance, w2) = ccs.to_cccs(&mut rng, &pedersen_params, &z_2).unwrap();
 
         // Prover's transcript
-        let poseidon_config = poseidon_test_config::<Fr>();
+        let poseidon_config = poseidon_canonical_config::<Fr>();
         let mut transcript_p: PoseidonTranscript<Projective> =
             PoseidonTranscript::<Projective>::new(&poseidon_config);
         transcript_p.absorb(&Fr::from_le_bytes_mod_order(b"init init"));
@@ -500,7 +500,7 @@ pub mod tests {
         let (mut running_instance, mut w1) =
             ccs.to_lcccs(&mut rng, &pedersen_params, &z_1).unwrap();
 
-        let poseidon_config = poseidon_test_config::<Fr>();
+        let poseidon_config = poseidon_canonical_config::<Fr>();
 
         let mut transcript_p: PoseidonTranscript<Projective> =
             PoseidonTranscript::<Projective>::new(&poseidon_config);
@@ -597,7 +597,7 @@ pub mod tests {
         }
 
         // Prover's transcript
-        let poseidon_config = poseidon_test_config::<Fr>();
+        let poseidon_config = poseidon_canonical_config::<Fr>();
         let mut transcript_p: PoseidonTranscript<Projective> =
             PoseidonTranscript::<Projective>::new(&poseidon_config);
         transcript_p.absorb(&Fr::from_le_bytes_mod_order(b"init init"));
@@ -647,7 +647,7 @@ pub mod tests {
         let (pedersen_params, _) =
             Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
 
-        let poseidon_config = poseidon_test_config::<Fr>();
+        let poseidon_config = poseidon_canonical_config::<Fr>();
         // Prover's transcript
         let mut transcript_p: PoseidonTranscript<Projective> =
             PoseidonTranscript::<Projective>::new(&poseidon_config);

@@ -90,7 +90,7 @@ mod tests {
     use folding_schemes::{
         commitment::{kzg::KZG, CommitmentScheme},
         transcript::{
-            poseidon::{poseidon_test_config, PoseidonTranscript},
+            poseidon::{poseidon_canonical_config, PoseidonTranscript},
             Transcript,
         },
     };
@@ -132,7 +132,7 @@ mod tests {
     #[test]
     fn kzg_verifier_accepts_and_rejects_proofs() {
         let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
-        let poseidon_config = poseidon_test_config::<Fr>();
+        let poseidon_config = poseidon_canonical_config::<Fr>();
         let transcript_p = &mut PoseidonTranscript::<G1>::new(&poseidon_config);
         let transcript_v = &mut PoseidonTranscript::<G1>::new(&poseidon_config);
 

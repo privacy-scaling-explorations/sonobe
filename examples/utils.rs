@@ -21,7 +21,7 @@ use folding_schemes::{
         decider_eth_circuit::DeciderEthCircuit, get_r1cs, Nova, ProverParams, VerifierParams,
     },
     frontend::FCircuit,
-    transcript::poseidon::poseidon_test_config,
+    transcript::poseidon::poseidon_canonical_config,
     FoldingScheme,
 };
 
@@ -37,7 +37,7 @@ pub(crate) fn init_nova_ivc_params<FC: FCircuit<Fr>>(
     KZGVerifierKey<Bn254>,
 ) {
     let mut rng = ark_std::test_rng();
-    let poseidon_config = poseidon_test_config::<Fr>();
+    let poseidon_config = poseidon_canonical_config::<Fr>();
 
     // get the CM & CF_CM len
     let (r1cs, cf_r1cs) = get_r1cs::<G1, GVar, G2, GVar2, FC>(&poseidon_config, F_circuit).unwrap();

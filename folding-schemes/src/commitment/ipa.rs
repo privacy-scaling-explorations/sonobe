@@ -567,7 +567,7 @@ mod tests {
     use std::ops::Mul;
 
     use super::*;
-    use crate::transcript::poseidon::{poseidon_test_config, PoseidonTranscript};
+    use crate::transcript::poseidon::{poseidon_canonical_config, PoseidonTranscript};
 
     #[test]
     fn test_ipa() {
@@ -583,7 +583,7 @@ mod tests {
         // setup params
         let (params, _) = IPA::<Projective, hiding>::setup(&mut rng, d).unwrap();
 
-        let poseidon_config = poseidon_test_config::<Fr>();
+        let poseidon_config = poseidon_canonical_config::<Fr>();
         // init Prover's transcript
         let mut transcript_p = PoseidonTranscript::<Projective>::new(&poseidon_config);
         // init Verifier's transcript
@@ -627,7 +627,7 @@ mod tests {
         // setup params
         let (params, _) = IPA::<Projective, hiding>::setup(&mut rng, d).unwrap();
 
-        let poseidon_config = poseidon_test_config::<Fr>();
+        let poseidon_config = poseidon_canonical_config::<Fr>();
         // init Prover's transcript
         let mut transcript_p = PoseidonTranscript::<Projective>::new(&poseidon_config);
         // init Verifier's transcript

@@ -209,7 +209,7 @@ pub mod tests {
     use crate::commitment::pedersen::{Params as PedersenParams, Pedersen};
     use crate::folding::nova::circuits::ChallengeGadget;
     use crate::folding::nova::traits::NovaR1CS;
-    use crate::transcript::poseidon::{poseidon_test_config, PoseidonTranscript};
+    use crate::transcript::poseidon::{poseidon_canonical_config, PoseidonTranscript};
 
     #[allow(clippy::type_complexity)]
     pub(crate) fn prepare_simple_fold_inputs<C>() -> (
@@ -257,7 +257,7 @@ pub mod tests {
             NIFS::<C, Pedersen<C>>::compute_cmT(&pedersen_params, &r1cs, &w1, &ci1, &w2, &ci2)
                 .unwrap();
 
-        let poseidon_config = poseidon_test_config::<C::ScalarField>();
+        let poseidon_config = poseidon_canonical_config::<C::ScalarField>();
 
         let r_bits = ChallengeGadget::<C>::get_challenge_native(
             &poseidon_config,

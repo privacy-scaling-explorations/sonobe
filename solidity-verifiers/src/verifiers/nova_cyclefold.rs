@@ -142,7 +142,7 @@ mod tests {
             get_cs_params_len, Nova, ProverParams,
         },
         frontend::FCircuit,
-        transcript::poseidon::poseidon_test_config,
+        transcript::poseidon::poseidon_canonical_config,
         Decider, Error, FoldingScheme,
     };
 
@@ -287,7 +287,7 @@ mod tests {
         KZGVerifierKey<Bn254>,
     ) {
         let mut rng = ark_std::test_rng();
-        let poseidon_config = poseidon_test_config::<Fr>();
+        let poseidon_config = poseidon_canonical_config::<Fr>();
         let f_circuit = FC::new(()).unwrap();
         let (cs_len, cf_cs_len) =
             get_cs_params_len::<G1, GVar, G2, GVar2, FC>(&poseidon_config, f_circuit).unwrap();

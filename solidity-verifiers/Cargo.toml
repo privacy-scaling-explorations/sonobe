@@ -47,3 +47,7 @@ path = "../examples/full_flow.rs"
 [[example]]
 name = "circom_full_flow"
 path = "../examples/circom_full_flow.rs"
+
+[[example]]
+name = "circom_full_flow_with_custom_code"
+path = "../examples/circom_full_flow_with_custom_code.rs"

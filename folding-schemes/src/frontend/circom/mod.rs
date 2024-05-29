@@ -16,20 +16,20 @@ use crate::Error;
 pub mod utils;
 use utils::CircomWrapper;
 
-type ClourserPointer<F> = Rc<dyn Fn (usize, Vec<F>, Vec<F>) -> Result<Vec<F>, Error>>;
-
+type ClosurePointer<F> = Rc<dyn Fn(usize, Vec<F>, Vec<F>) -> Result<Vec<F>, Error>>;
 
 #[derive(Clone)]
-struct CustomCode<F: PrimeField> {
-    func: ClourserPointer<F>,
+struct CustomStepNative<F: PrimeField> {
+    func: ClosurePointer<F>,
 }
 
-impl<F: PrimeField> fmt::Debug for CustomCode<F> {
+
+impl<F: PrimeField> fmt::Debug for CustomStepNative<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "Function pointer: {:?}",
-            std::any::type_name::<fn(i32) -> i32>()
+            std::any::type_name::<fn(usize, Vec<F>, Vec<F>) -> Result<Vec<F>, Error>>()
         )
     }
 }
@@ -41,32 +41,21 @@ pub struct CircomFCircuit<F: PrimeField> {
     pub state_len: usize,
     pub external_inputs_len: usize,
     r1cs: CircomR1CS<F>,
-    custom_code: Option<CustomCode<F>>,
+    custom_step_native_code: Option<CustomStepNative<F>>,
 }
 
 impl<F: PrimeField> CircomFCircuit<F> {
-    pub fn set_custom_code(
-        &self,
-        func: ClourserPointer<F>,
-    ) -> Self {
-        Self {
-            circom_wrapper: self.circom_wrapper.clone(),
-            state_len: self.state_len,
-            external_inputs_len: self.external_inputs_len,
-            r1cs: self.r1cs.clone(),
-            custom_code: Some(CustomCode::<F> {
-                func,
-            }),
-        }
+    pub fn set_custom_step_native(&mut self, func: ClosurePointer<F>) {
+        self.custom_step_native_code = Some(CustomStepNative::<F> { func });
     }
 
-    pub fn execute_custom_code(
+    pub fn execute_custom_step_native(
         &self,
         _i: usize,
         z_i: Vec<F>,
         external_inputs: Vec<F>,
     ) -> Result<Vec<F>, Error> {
-        if let Some(code) = &self.custom_code {
+        if let Some(code) = &self.custom_step_native_code {
             (code.func)(_i, z_i, external_inputs)
         } else {
             #[cfg(test)]
@@ -117,7 +106,7 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
             state_len,
             external_inputs_len,
             r1cs,
-            custom_code: None,
+            custom_step_native_code: None,
         })
     }
 
@@ -134,7 +123,7 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
         z_i: Vec<F>,
         external_inputs: Vec<F>,
     ) -> Result<Vec<F>, Error> {
-        self.execute_custom_code(_i, z_i, external_inputs)
+        self.execute_custom_step_native(_i, z_i, external_inputs)
     }
 
     fn generate_step_constraints(
@@ -309,9 +298,9 @@ pub mod tests {
         let wasm_path =
             PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
-        let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path, 1, 0)).unwrap(); // state_len:1, external_inputs_len:0
+        let mut circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path, 1, 0)).unwrap(); // state_len:1, external_inputs_len:0
 
-        let new_circuit = circom_fcircuit.set_custom_code(Rc::new(move |_i, z_i, _external| {
+        circom_fcircuit.set_custom_step_native(Rc::new(|_i, z_i, _external| {
             let z = z_i[0];
             Ok(vec![z * z * z + z + Fr::from(5)])
         }));
@@ -319,9 +308,9 @@ pub mod tests {
         // Allocates z_i1 by using step_native function.
         let z_i = vec![Fr::from(3_u32)];
         let wrapper_circuit = crate::frontend::tests::WrapperCircuit {
-            FC: new_circuit.clone(),
+            FC: circom_fcircuit.clone(),
             z_i: Some(z_i.clone()),
-            z_i1: Some(new_circuit.step_native(0, z_i.clone(), vec![]).unwrap()),
+            z_i1: Some(circom_fcircuit.step_native(0, z_i.clone(), vec![]).unwrap()),
         };
 
         let cs = ConstraintSystem::<Fr>::new_ref();

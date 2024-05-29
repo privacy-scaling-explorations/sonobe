@@ -1,10 +1,7 @@
 use crate::utils::espresso::sum_check::SumCheck;
 use crate::utils::virtual_polynomial::VPAuxInfo;
 use crate::{
-    transcript::{
-        poseidon::{PoseidonTranscript, PoseidonTranscriptVar},
-        TranscriptVar,
-    },
+    transcript::{poseidon::PoseidonTranscript, TranscriptVar},
     utils::sum_check::{structs::IOPProof, IOPSumCheck},
 };
 use ark_crypto_primitives::sponge::Absorb;
@@ -150,7 +147,7 @@ impl<C: CurveGroup> SumCheckVerifierGadget<C> {
     pub fn verify(
         iop_proof_var: &IOPProofVar<C>,
         poly_aux_info_var: &VPAuxInfoVar<C::ScalarField>,
-        transcript_var: &mut PoseidonTranscriptVar<C::ScalarField>,
+        transcript_var: &mut impl TranscriptVar<C::ScalarField>,
     ) -> Result<(Vec<FpVar<C::ScalarField>>, Vec<FpVar<C::ScalarField>>), SynthesisError> {
         let mut e_vars = vec![iop_proof_var.claim.clone()];
         let mut r_vars: Vec<FpVar<C::ScalarField>> = Vec::new();

@@ -56,10 +56,11 @@ fn main() {
     ];
 
     // initialize the Circom circuit
-    let r1cs_path =
-        PathBuf::from("./folding-schemes/src/frontend/circom/test_folder/external_inputs.r1cs");
+    let r1cs_path = PathBuf::from(
+        "./folding-schemes/src/frontend/circom/test_folder/with_external_inputs.r1cs",
+    );
     let wasm_path = PathBuf::from(
-        "./folding-schemes/src/frontend/circom/test_folder/external_inputs_js/external_inputs.wasm",
+        "./folding-schemes/src/frontend/circom/test_folder/with_external_inputs_js/with_external_inputs.wasm",
     );
 
     let f_circuit_params = (r1cs_path, wasm_path, 1, 2);

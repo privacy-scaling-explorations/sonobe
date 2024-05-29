@@ -1,9 +1,10 @@
 use ark_ec::CurveGroup;
+use ark_ff::PrimeField;
 use ark_poly::DenseMultilinearExtension;
 use ark_std::One;
 use std::sync::Arc;
 
-use ark_std::{rand::Rng, UniformRand};
+use ark_std::rand::Rng;
 
 use super::cccs::Witness;
 use super::utils::{compute_all_sum_Mz_evals, compute_sum_Mz};
@@ -31,19 +32,23 @@ pub struct LCCCS<C: CurveGroup> {
     pub v: Vec<C::ScalarField>,
 }
 
-impl<C: CurveGroup> CCS<C> {
+impl<F: PrimeField> CCS<F> {
     /// Compute v_j values of the linearized committed CCS form
     /// Given `r`, compute:  \sum_{y \in {0,1}^s'} M_j(r, y) * z(y)
-    fn compute_v_j(&self, z: &[C::ScalarField], r: &[C::ScalarField]) -> Vec<C::ScalarField> {
-        compute_all_sum_Mz_evals(&self.M, &z.to_vec(), r, self.s_prime)
+    fn compute_v_j(&self, z: &[F], r: &[F]) -> Vec<F> {
+        compute_all_sum_Mz_evals(&self.M, z, r, self.s_prime)
     }
 
-    pub fn to_lcccs<R: Rng>(
+    pub fn to_lcccs<R: Rng, C: CurveGroup>(
         &self,
         rng: &mut R,
         pedersen_params: &PedersenParams<C>,
         z: &[C::ScalarField],
-    ) -> Result<(LCCCS<C>, Witness<C::ScalarField>), Error> {
+    ) -> Result<(LCCCS<C>, Witness<C::ScalarField>), Error>
+    where
+        // enforce that CCS's F is the C::ScalarField
+        C: CurveGroup<ScalarField = F>,
+    {
         let w: Vec<C::ScalarField> = z[(1 + self.l)..].to_vec();
         let r_w = C::ScalarField::rand(rng);
         let C = Pedersen::<C, true>::commit(pedersen_params, &w, &r_w)?;
@@ -68,8 +73,8 @@ impl<C: CurveGroup> LCCCS<C> {
     /// Compute all L_j(x) polynomials
     pub fn compute_Ls(
         &self,
-        ccs: &CCS<C>,
-        z: &Vec<C::ScalarField>,
+        ccs: &CCS<C::ScalarField>,
+        z: &[C::ScalarField],
     ) -> Vec<VirtualPolynomial<C::ScalarField>> {
         let z_mle = vec_to_mle(ccs.s_prime, z);
         // Convert all matrices to MLE
@@ -92,7 +97,7 @@ impl<C: CurveGroup> LCCCS<C> {
     pub fn check_relation(
         &self,
         pedersen_params: &PedersenParams<C>,
-        ccs: &CCS<C>,
+        ccs: &CCS<C::ScalarField>,
         w: &Witness<C::ScalarField>,
     ) -> Result<(), Error> {
         // check that C is the commitment of w. Notice that this is not verifying a Pedersen

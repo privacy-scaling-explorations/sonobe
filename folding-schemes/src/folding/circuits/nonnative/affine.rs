@@ -1,4 +1,5 @@
 use ark_ec::{AffineRepr, CurveGroup};
+use ark_ff::PrimeField;
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     fields::fp::FpVar,
@@ -16,7 +17,7 @@ use super::uint::{nonnative_field_to_field_elements, NonNativeUintVar};
 #[derive(Debug, Clone)]
 pub struct NonNativeAffineVar<C: CurveGroup>
 where
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
+    <C as CurveGroup>::BaseField: PrimeField,
 {
     pub x: NonNativeUintVar<C::ScalarField>,
     pub y: NonNativeUintVar<C::ScalarField>,
@@ -25,7 +26,7 @@ where
 impl<C> AllocVar<C, C::ScalarField> for NonNativeAffineVar<C>
 where
     C: CurveGroup,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
+    <C as CurveGroup>::BaseField: PrimeField,
 {
     fn new_variable<T: Borrow<C>>(
         cs: impl Into<Namespace<C::ScalarField>>,
@@ -49,7 +50,7 @@ where
 
 impl<C: CurveGroup> ToConstraintFieldGadget<C::ScalarField> for NonNativeAffineVar<C>
 where
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
+    <C as CurveGroup>::BaseField: PrimeField,
 {
     // Used for converting `NonNativeAffineVar` to a vector of `FpVar` with minimum length in
     // the circuit.
@@ -66,7 +67,7 @@ pub fn nonnative_affine_to_field_elements<C: CurveGroup>(
     p: C,
 ) -> Result<(Vec<C::ScalarField>, Vec<C::ScalarField>), SynthesisError>
 where
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
+    <C as CurveGroup>::BaseField: PrimeField,
 {
     let affine = p.into_affine();
     if affine.is_zero() {
@@ -83,7 +84,7 @@ where
 
 impl<C: CurveGroup> NonNativeAffineVar<C>
 where
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
+    <C as CurveGroup>::BaseField: PrimeField,
 {
     // A wrapper of `point_to_nonnative_limbs_custom_opt` with constraints-focused optimization
     // type (which is the default optimization type for arkworks' Groth16).

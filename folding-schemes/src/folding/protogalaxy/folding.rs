@@ -288,7 +288,7 @@ where
 }
 
 // naive impl of pow_i for betas, assuming that betas=(b, b^2, b^4, ..., b^{2^{t-1}})
-fn pow_i<F: PrimeField>(i: usize, betas: &Vec<F>) -> F {
+fn pow_i<F: PrimeField>(i: usize, betas: &[F]) -> F {
     // WIP check if makes more sense to do it with ifs instead of arithmetic
 
     let n = 2_u64.pow(betas.len() as u32);

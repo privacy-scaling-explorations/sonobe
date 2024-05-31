@@ -262,6 +262,9 @@ impl<
         CS1: CommitmentScheme<C1>,
         CS2: CommitmentScheme<C2>,
     > CanonicalSerialize for Nova<C1, GC1, C2, GC2, FC, CS1, CS2>
+where
+    CS1::ProverParams: CanonicalSerialize,
+    CS2::ProverParams: CanonicalSerialize,
 {
     fn serialize_with_mode<W: Write>(
         &self,
@@ -283,6 +286,8 @@ impl<
         self.cf_U_i.serialize_with_mode(&mut writer, compress)?;
         self.r1cs.serialize_with_mode(&mut writer, compress)?;
         self.cf_r1cs.serialize_with_mode(&mut writer, compress)?;
+        // we serialize PoseidonConfig without implementing the `CanonicalDeserialize` trait
+        // this is because we can not implement an external trait on an external type.
         self.poseidon_config
             .full_rounds
             .serialize_with_mode(&mut writer, compress)?;
@@ -355,6 +360,8 @@ impl<
     }
 }
 
+// Note that we can't derive or implement `CanonicalDeserialize` directly.
+// This is because `CurveVar` notably does not implement the `Sync` trait.
 impl<
         C1: CurveGroup,
         GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,

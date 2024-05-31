@@ -8,7 +8,7 @@ use ark_ec::{AffineRepr, CurveGroup, Group};
 use ark_ff::{BigInteger, Field, PrimeField, ToConstraintField};
 use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Valid};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::fmt::Debug;
 use ark_std::{One, Zero};
 use core::marker::PhantomData;
@@ -368,6 +368,7 @@ where
     CS1::ProverParams: CanonicalDeserialize,
     CS2::ProverParams: CanonicalDeserialize,
 {
+    #[allow(dead_code)]
     fn deserialize_nova<R: std::io::prelude::Read>(
         mut reader: R,
         compress: ark_serialize::Compress,

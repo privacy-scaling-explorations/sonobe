@@ -211,7 +211,7 @@ pub mod tests {
     use ark_poly::MultilinearExtension;
     use ark_std::test_rng;
 
-    use crate::transcript::poseidon::poseidon_test_config;
+    use crate::transcript::poseidon::poseidon_canonical_config;
     use crate::transcript::poseidon::PoseidonTranscript;
     use crate::transcript::Transcript;
     use crate::utils::sum_check::SumCheck;
@@ -224,7 +224,7 @@ pub mod tests {
         let mut rng = test_rng();
         let poly_mle = DenseMultilinearExtension::rand(5, &mut rng);
         let virtual_poly = VirtualPolynomial::new_from_mle(&Arc::new(poly_mle), Fr::ONE);
-        let poseidon_config = poseidon_test_config::<Fr>();
+        let poseidon_config = poseidon_canonical_config::<Fr>();
 
         // sum-check prove
         let mut poseidon_transcript_prove: PoseidonTranscript<Projective> =

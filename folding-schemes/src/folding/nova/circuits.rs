@@ -559,7 +559,7 @@ pub mod tests {
     use crate::commitment::pedersen::Pedersen;
     use crate::folding::nova::nifs::tests::prepare_simple_fold_inputs;
     use crate::folding::nova::nifs::NIFS;
-    use crate::transcript::poseidon::poseidon_test_config;
+    use crate::transcript::poseidon::poseidon_canonical_config;
 
     #[test]
     fn test_committed_instance_var() {
@@ -615,7 +615,7 @@ pub mod tests {
     #[test]
     fn test_committed_instance_hash() {
         let mut rng = ark_std::test_rng();
-        let poseidon_config = poseidon_test_config::<Fr>();
+        let poseidon_config = poseidon_canonical_config::<Fr>();
 
         let i = Fr::from(3_u32);
         let z_0 = vec![Fr::from(3_u32)];
@@ -654,7 +654,7 @@ pub mod tests {
     #[test]
     fn test_challenge_gadget() {
         let mut rng = ark_std::test_rng();
-        let poseidon_config = poseidon_test_config::<Fr>();
+        let poseidon_config = poseidon_canonical_config::<Fr>();
 
         let u_i = CommittedInstance::<Projective> {
             cmE: Projective::rand(&mut rng),

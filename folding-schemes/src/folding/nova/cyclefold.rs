@@ -377,7 +377,7 @@ pub mod tests {
 
     use crate::folding::nova::get_cm_coordinates;
     use crate::folding::nova::nifs::tests::prepare_simple_fold_inputs;
-    use crate::transcript::poseidon::poseidon_test_config;
+    use crate::transcript::poseidon::poseidon_canonical_config;
 
     #[test]
     fn test_committed_instance_cyclefold_var() {
@@ -488,7 +488,7 @@ pub mod tests {
     #[test]
     fn test_cyclefold_challenge_gadget() {
         let mut rng = ark_std::test_rng();
-        let poseidon_config = poseidon_test_config::<Fq>();
+        let poseidon_config = poseidon_canonical_config::<Fq>();
 
         let u_i = CommittedInstance::<Projective> {
             cmE: Projective::zero(), // zero on purpose, so we test also the zero point case
@@ -550,7 +550,7 @@ pub mod tests {
     #[test]
     fn test_cyclefold_hash_gadget() {
         let mut rng = ark_std::test_rng();
-        let poseidon_config = poseidon_test_config::<Fq>();
+        let poseidon_config = poseidon_canonical_config::<Fq>();
 
         let U_i = CommittedInstance::<Projective> {
             cmE: Projective::rand(&mut rng),

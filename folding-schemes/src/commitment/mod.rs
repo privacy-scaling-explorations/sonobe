@@ -78,14 +78,14 @@ mod tests {
     use super::kzg::{ProverKey, KZG};
     use super::pedersen::Pedersen;
     use crate::transcript::{
-        poseidon::{poseidon_test_config, PoseidonTranscript},
+        poseidon::{poseidon_canonical_config, PoseidonTranscript},
         Transcript,
     };
 
     #[test]
     fn test_homomorphic_property_using_Commitment_trait() {
         let mut rng = &mut test_rng();
-        let poseidon_config = poseidon_test_config::<Fr>();
+        let poseidon_config = poseidon_canonical_config::<Fr>();
         let n: usize = 128;
 
         // set random vector for the test

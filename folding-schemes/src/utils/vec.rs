@@ -119,6 +119,19 @@ pub fn mat_vec_mul_sparse<F: PrimeField>(M: &SparseMatrix<F>, z: &[F]) -> Result
     Ok(res)
 }
 
+pub fn mat_from_str_mat<F: PrimeField>(str_mat: Vec<Vec<&str>>) -> Result<Vec<Vec<F>>, Error> {
+    str_mat
+        .into_iter()
+        .map(|row| {
+            row.into_iter()
+                .map(|s| {
+                    F::from_str(s).map_err(|_| Error::Other("Invalid decimal string".to_string()))
+                })
+                .collect()
+        })
+        .collect()
+}
+
 pub fn hadamard<F: PrimeField>(a: &[F], b: &[F]) -> Result<Vec<F>, Error> {
     if a.len() != b.len() {
         return Err(Error::NotSameLength(

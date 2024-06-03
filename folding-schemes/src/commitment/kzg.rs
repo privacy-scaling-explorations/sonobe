@@ -244,12 +244,12 @@ mod tests {
     use ark_std::{test_rng, UniformRand};
 
     use super::*;
-    use crate::transcript::poseidon::{poseidon_test_config, PoseidonTranscript};
+    use crate::transcript::poseidon::{poseidon_canonical_config, PoseidonTranscript};
 
     #[test]
     fn test_kzg_commitment_scheme() {
         let mut rng = &mut test_rng();
-        let poseidon_config = poseidon_test_config::<Fr>();
+        let poseidon_config = poseidon_canonical_config::<Fr>();
         let transcript_p = &mut PoseidonTranscript::<G1>::new(&poseidon_config);
         let transcript_v = &mut PoseidonTranscript::<G1>::new(&poseidon_config);
 

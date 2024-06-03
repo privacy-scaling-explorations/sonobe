@@ -292,7 +292,7 @@ pub mod tests {
     use crate::commitment::pedersen::Pedersen;
     use crate::folding::nova::{get_cs_params_len, ProverParams};
     use crate::frontend::tests::CubicFCircuit;
-    use crate::transcript::poseidon::poseidon_test_config;
+    use crate::transcript::poseidon::poseidon_canonical_config;
 
     #[test]
     fn test_decider() {
@@ -319,7 +319,7 @@ pub mod tests {
         >;
 
         let mut rng = ark_std::test_rng();
-        let poseidon_config = poseidon_test_config::<Fr>();
+        let poseidon_config = poseidon_canonical_config::<Fr>();
 
         let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
         let z_0 = vec![Fr::from(3_u32)];

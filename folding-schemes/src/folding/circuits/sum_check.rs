@@ -173,7 +173,7 @@ mod tests {
     use crate::{
         folding::circuits::sum_check::{IOPProofVar, VPAuxInfoVar},
         transcript::{
-            poseidon::{poseidon_test_config, PoseidonTranscript, PoseidonTranscriptVar},
+            poseidon::{poseidon_canonical_config, PoseidonTranscript, PoseidonTranscriptVar},
             Transcript, TranscriptVar,
         },
         utils::{
@@ -207,7 +207,7 @@ mod tests {
     {
         let mut rng = ark_std::test_rng();
         let poseidon_config: PoseidonConfig<C::ScalarField> =
-            poseidon_test_config::<C::ScalarField>();
+            poseidon_canonical_config::<C::ScalarField>();
         let mut poseidon_transcript_prove = PoseidonTranscript::<C>::new(&poseidon_config);
         let poly_mle = DenseMultilinearExtension::rand(num_vars, &mut rng);
         let virtual_poly =

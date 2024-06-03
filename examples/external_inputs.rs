@@ -25,7 +25,7 @@ use folding_schemes::folding::nova::Nova;
 use folding_schemes::frontend::FCircuit;
 use folding_schemes::{Error, FoldingScheme};
 mod utils;
-use folding_schemes::transcript::poseidon::poseidon_test_config;
+use folding_schemes::transcript::poseidon::poseidon_canonical_config;
 use utils::init_nova_ivc_params;
 
 /// This is the circuit that we want to fold, it implements the FCircuit trait. The parameter z_i
@@ -131,7 +131,7 @@ pub mod tests {
     // test to check that the ExternalInputsCircuits computes the same values inside and outside the circuit
     #[test]
     fn test_f_circuit() {
-        let poseidon_config = poseidon_test_config::<Fr>();
+        let poseidon_config = poseidon_canonical_config::<Fr>();
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
@@ -169,7 +169,7 @@ fn main() {
     ];
     assert_eq!(external_inputs.len(), num_steps);
 
-    let poseidon_config = poseidon_test_config::<Fr>();
+    let poseidon_config = poseidon_canonical_config::<Fr>();
     let F_circuit = ExternalInputsCircuits::<Fr>::new(poseidon_config).unwrap();
 
     println!("Prepare Nova ProverParams & VerifierParams");

@@ -14,9 +14,11 @@ use crate::commitment::{
     CommitmentScheme,
 };
 use crate::utils::hypercube::BooleanHypercube;
+use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::utils::mle::matrix_to_dense_mle;
 use crate::utils::mle::vec_to_dense_mle;
-use crate::utils::virtual_polynomial::VirtualPolynomial;
+use crate::utils::vec::mat_vec_mul;
+use crate::utils::virtual_polynomial::{build_eq_x_r_vec, VirtualPolynomial};
 use crate::Error;
 
 /// Witness for the LCCCS & CCCS, containing the w vector, and the r_w used as randomness in the Pedersen commitment.
@@ -90,12 +92,32 @@ impl<F: PrimeField> CCS<F> {
         q
     }
 
+    pub fn compute_Q_OLD(&self, z: &[F], beta: &[F]) -> VirtualPolynomial<F> {
+        let q = self.compute_q(z);
+        q.build_f_hat(beta).unwrap()
+    }
+
     /// Computes Q(x) = eq(beta, x) * q(x)
     ///               = eq(beta, x) * \sum^q c_i * \prod_{j \in S_i} ( \sum_{y \in {0,1}^s'} M_j(x, y) * z(y) )
     /// polynomial over x
     pub fn compute_Q(&self, z: &[F], beta: &[F]) -> VirtualPolynomial<F> {
-        let q = self.compute_q(z);
-        q.build_f_hat(beta).unwrap()
+        let eq_beta = build_eq_x_r_vec(beta).unwrap();
+        let eq_beta_mle = dense_vec_to_dense_mle(self.s, &eq_beta);
+
+        let mut Q = VirtualPolynomial::<F>::new(self.s);
+        for i in 0..self.q {
+            let mut Q_k = vec![];
+            for &j in self.S[i].iter() {
+                Q_k.push(dense_vec_to_dense_mle(
+                    self.s,
+                    &mat_vec_mul(&self.M[j], z).unwrap(),
+                ));
+            }
+            Q_k.push(eq_beta_mle.clone());
+            Q.add_mle_list(Q_k.iter().map(|v| Arc::new(v.clone())), self.c[i])
+                .unwrap();
+        }
+        Q
     }
 }
 

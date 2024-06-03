@@ -124,7 +124,8 @@ mod tests {
         ]);
 
         let A_mle = matrix_to_mle(A);
-        assert_eq!(A_mle.evaluations.len(), 16); // 4x4 matrix, thus 2bit x 2bit, thus 2^4=16 evals
+        assert_eq!(A_mle.evaluations.len(), 15); // 15 non-zero elements
+        assert_eq!(A_mle.num_vars, 4); // 4x4 matrix, thus 2bit x 2bit, thus 2^4=16 evals
 
         let A = to_F_matrix::<Fr>(vec![
             vec![2, 3, 4, 4, 1],
@@ -134,7 +135,8 @@ mod tests {
             vec![420, 4, 2, 0, 5],
         ]);
         let A_mle = matrix_to_mle(A.clone());
-        assert_eq!(A_mle.evaluations.len(), 64); // 5x5 matrix, thus 3bit x 3bit, thus 2^6=64 evals
+        assert_eq!(A_mle.evaluations.len(), 23); // 23 non-zero elements
+        assert_eq!(A_mle.num_vars, 6); // 5x5 matrix, thus 3bit x 3bit, thus 2^6=64 evals
 
         // check that the A_mle evaluated over the boolean hypercube equals the matrix A_i_j values
         let bhc = BooleanHypercube::new(A_mle.num_vars);

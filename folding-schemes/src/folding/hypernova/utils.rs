@@ -66,25 +66,40 @@ pub fn compute_sum_Mz<F: PrimeField>(
 
 /// Compute the arrays of sigma_i and theta_i from step 4 corresponding to the LCCCS and CCCS
 /// instances
-pub fn compute_sigmas_and_thetas<F: PrimeField>(
+pub fn compute_sigmas_thetas<F: PrimeField>(
     ccs: &CCS<F>,
     z_lcccs: &[Vec<F>],
     z_cccs: &[Vec<F>],
     r_x_prime: &[F],
-) -> SigmasThetas<F> {
+) -> Result<SigmasThetas<F>, Error> {
+    // sigmas
     let mut sigmas: Vec<Vec<F>> = Vec::new();
     for z_lcccs_i in z_lcccs {
-        // sigmas
-        let sigma_i = compute_all_sum_Mz_evals(&ccs.M, z_lcccs_i, r_x_prime, ccs.s_prime);
+        let mut Mzs: Vec<DenseMultilinearExtension<F>> = vec![];
+        for M_j in ccs.M.iter() {
+            Mzs.push(dense_vec_to_dense_mle(ccs.s, &mat_vec_mul(M_j, z_lcccs_i)?));
+        }
+        let sigma_i = Mzs
+            .iter()
+            .map(|Mz| Mz.evaluate(r_x_prime).ok_or(Error::EvaluationFail))
+            .collect::<Result<_, Error>>()?;
         sigmas.push(sigma_i);
     }
+
+    // thetas
     let mut thetas: Vec<Vec<F>> = Vec::new();
     for z_cccs_i in z_cccs {
-        // thetas
-        let theta_i = compute_all_sum_Mz_evals(&ccs.M, z_cccs_i, r_x_prime, ccs.s_prime);
+        let mut Mzs: Vec<DenseMultilinearExtension<F>> = vec![];
+        for M_j in ccs.M.iter() {
+            Mzs.push(dense_vec_to_dense_mle(ccs.s, &mat_vec_mul(M_j, z_cccs_i)?));
+        }
+        let theta_i = Mzs
+            .iter()
+            .map(|Mz| Mz.evaluate(r_x_prime).ok_or(Error::EvaluationFail))
+            .collect::<Result<_, Error>>()?;
         thetas.push(theta_i);
     }
-    SigmasThetas(sigmas, thetas)
+    Ok(SigmasThetas(sigmas, thetas))
 }
 
 /// computes c from the step 5 in section 5 of HyperNova, adapted to multiple LCCCS & CCCS
@@ -285,7 +300,7 @@ pub mod tests {
     }
 
     #[test]
-    fn test_compute_sigmas_and_thetas() {
+    fn test_compute_sigmas_thetas() {
         let ccs = get_test_ccs();
         let z1 = get_test_z(3);
         let z2 = get_test_z(4);
@@ -303,7 +318,7 @@ pub mod tests {
         let (lcccs_instance, _) = ccs.to_lcccs(&mut rng, &pedersen_params, &z1).unwrap();
 
         let sigmas_thetas =
-            compute_sigmas_and_thetas(&ccs, &[z1.clone()], &[z2.clone()], &r_x_prime);
+            compute_sigmas_thetas(&ccs, &[z1.clone()], &[z2.clone()], &r_x_prime).unwrap();
 
         let g = compute_g(
             &ccs,

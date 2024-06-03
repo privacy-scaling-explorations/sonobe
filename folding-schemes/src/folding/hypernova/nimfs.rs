@@ -7,7 +7,7 @@ use ark_std::{One, Zero};
 
 use super::cccs::{Witness, CCCS};
 use super::lcccs::LCCCS;
-use super::utils::{compute_c, compute_g, compute_sigmas_and_thetas};
+use super::utils::{compute_c, compute_g, compute_sigmas_thetas};
 use crate::ccs::CCS;
 use crate::transcript::Transcript;
 use crate::utils::hypercube::BooleanHypercube;
@@ -244,7 +244,7 @@ where
         let r_x_prime = sumcheck_proof.point.clone();
 
         // Step 4: compute sigmas and thetas
-        let sigmas_thetas = compute_sigmas_and_thetas(ccs, &z_lcccs, &z_cccs, &r_x_prime);
+        let sigmas_thetas = compute_sigmas_thetas(ccs, &z_lcccs, &z_cccs, &r_x_prime)?;
 
         // Step 6: Get the folding challenge
         let rho_scalar = C::ScalarField::from_le_bytes_mod_order(b"rho");
@@ -395,7 +395,7 @@ pub mod tests {
         let r_x_prime: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
 
         let sigmas_thetas =
-            compute_sigmas_and_thetas(&ccs, &[z1.clone()], &[z2.clone()], &r_x_prime);
+            compute_sigmas_thetas(&ccs, &[z1.clone()], &[z2.clone()], &r_x_prime).unwrap();
 
         let (pedersen_params, _) =
             Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();

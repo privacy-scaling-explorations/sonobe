@@ -364,7 +364,7 @@ mod tests {
             utils::{compute_c, compute_sigmas_and_thetas},
         },
         transcript::{
-            poseidon::{poseidon_test_config, PoseidonTranscript, PoseidonTranscriptVar},
+            poseidon::{poseidon_canonical_config, PoseidonTranscript, PoseidonTranscriptVar},
             Transcript,
         },
     };
@@ -504,7 +504,7 @@ mod tests {
         }
 
         // Prover's transcript
-        let poseidon_config = poseidon_test_config::<Fr>();
+        let poseidon_config = poseidon_canonical_config::<Fr>();
         let mut transcript_p: PoseidonTranscript<Projective> =
             PoseidonTranscript::<Projective>::new(&poseidon_config);
 

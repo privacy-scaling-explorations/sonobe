@@ -14,8 +14,8 @@ use crate::commitment::{
     CommitmentScheme,
 };
 use crate::utils::hypercube::BooleanHypercube;
-use crate::utils::mle::matrix_to_mle;
-use crate::utils::mle::vec_to_mle;
+use crate::utils::mle::matrix_to_dense_mle;
+use crate::utils::mle::vec_to_dense_mle;
 use crate::utils::virtual_polynomial::VirtualPolynomial;
 use crate::Error;
 
@@ -62,13 +62,13 @@ impl<F: PrimeField> CCS<F> {
     /// Computes q(x) = \sum^q c_i * \prod_{j \in S_i} ( \sum_{y \in {0,1}^s'} M_j(x, y) * z(y) )
     /// polynomial over x
     pub fn compute_q(&self, z: &[F]) -> VirtualPolynomial<F> {
-        let z_mle = vec_to_mle(self.s_prime, z);
+        let z_mle = vec_to_dense_mle(self.s_prime, z);
         let mut q = VirtualPolynomial::<F>::new(self.s);
 
         for i in 0..self.q {
             let mut prod: VirtualPolynomial<F> = VirtualPolynomial::<F>::new(self.s);
             for j in self.S[i].clone() {
-                let M_j = matrix_to_mle(self.M[j].clone());
+                let M_j = matrix_to_dense_mle(self.M[j].clone());
 
                 let sum_Mz = compute_sum_Mz(M_j, &z_mle, self.s_prime);
 

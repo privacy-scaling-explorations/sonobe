@@ -1,20 +1,19 @@
 use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_poly::DenseMultilinearExtension;
-use ark_std::One;
-use std::sync::Arc;
+use ark_poly::MultilinearExtension;
 
 use ark_std::rand::Rng;
 
 use super::cccs::Witness;
-use super::utils::{compute_all_sum_Mz_evals, compute_sum_Mz};
+use super::utils::compute_all_sum_Mz_evals;
 use crate::ccs::CCS;
 use crate::commitment::{
     pedersen::{Params as PedersenParams, Pedersen},
     CommitmentScheme,
 };
-use crate::utils::mle::{matrix_to_mle, vec_to_mle};
-use crate::utils::virtual_polynomial::VirtualPolynomial;
+use crate::utils::mle::dense_vec_to_dense_mle;
+use crate::utils::vec::mat_vec_mul;
 use crate::Error;
 
 /// Linearized Committed CCS instance
@@ -35,9 +34,6 @@ pub struct LCCCS<C: CurveGroup> {
 impl<F: PrimeField> CCS<F> {
     /// Compute v_j values of the linearized committed CCS form
     /// Given `r`, compute:  \sum_{y \in {0,1}^s'} M_j(r, y) * z(y)
-    fn compute_v_j(&self, z: &[F], r: &[F]) -> Vec<F> {
-        compute_all_sum_Mz_evals(&self.M, z, r, self.s_prime)
-    }
 
     pub fn to_lcccs<R: Rng, C: CurveGroup>(
         &self,
@@ -54,7 +50,22 @@ impl<F: PrimeField> CCS<F> {
         let C = Pedersen::<C, true>::commit(pedersen_params, &w, &r_w)?;
 
         let r_x: Vec<C::ScalarField> = (0..self.s).map(|_| C::ScalarField::rand(rng)).collect();
-        let v = self.compute_v_j(z, &r_x);
+
+        let mut Mzs = vec![];
+        for M_j in self.M.iter() {
+            Mzs.push(dense_vec_to_dense_mle(self.s, &mat_vec_mul(M_j, z)?));
+        }
+        let Mzs: Vec<DenseMultilinearExtension<F>> = self
+            .M
+            .iter()
+            .map(|M_j| Ok(dense_vec_to_dense_mle(self.s, &mat_vec_mul(M_j, z)?)))
+            .collect::<Result<_, Error>>()?;
+
+        // compute v_j
+        let v: Vec<F> = Mzs
+            .iter()
+            .map(|Mz| Mz.evaluate(&r_x).ok_or(Error::EvaluationFail))
+            .collect::<Result<_, Error>>()?;
 
         Ok((
             LCCCS::<C> {
@@ -70,29 +81,6 @@ impl<F: PrimeField> CCS<F> {
 }
 
 impl<C: CurveGroup> LCCCS<C> {
-    /// Compute all L_j(x) polynomials
-    pub fn compute_Ls(
-        &self,
-        ccs: &CCS<C::ScalarField>,
-        z: &[C::ScalarField],
-    ) -> Vec<VirtualPolynomial<C::ScalarField>> {
-        let z_mle = vec_to_mle(ccs.s_prime, z);
-        // Convert all matrices to MLE
-        let M_x_y_mle: Vec<DenseMultilinearExtension<C::ScalarField>> =
-            ccs.M.clone().into_iter().map(matrix_to_mle).collect();
-
-        let mut vec_L_j_x = Vec::with_capacity(ccs.t);
-        for M_j in M_x_y_mle {
-            let sum_Mz = compute_sum_Mz(M_j, &z_mle, ccs.s_prime);
-            let sum_Mz_virtual =
-                VirtualPolynomial::new_from_mle(&Arc::new(sum_Mz.clone()), C::ScalarField::one());
-            let L_j_x = sum_Mz_virtual.build_f_hat(&self.r_x).unwrap();
-            vec_L_j_x.push(L_j_x);
-        }
-
-        vec_L_j_x
-    }
-
     /// Perform the check of the LCCCS instance described at section 4.2
     pub fn check_relation(
         &self,
@@ -118,31 +106,64 @@ impl<C: CurveGroup> LCCCS<C> {
 
 #[cfg(test)]
 pub mod tests {
-    use super::*;
-    use ark_std::Zero;
-
-    use crate::ccs::tests::{get_test_ccs, get_test_z};
-    use crate::utils::hypercube::BooleanHypercube;
-    use ark_std::test_rng;
-
     use ark_pallas::{Fr, Projective};
+    use ark_std::test_rng;
+    use ark_std::One;
+    use ark_std::UniformRand;
+    use ark_std::Zero;
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::ccs::{
+        r1cs::R1CS,
+        tests::{get_test_ccs, get_test_z},
+    };
+    use crate::utils::hypercube::BooleanHypercube;
+    use crate::utils::virtual_polynomial::{build_eq_x_r_vec, VirtualPolynomial};
+
+    // method for testing
+    pub fn compute_Ls<C: CurveGroup>(
+        ccs: &CCS<C::ScalarField>,
+        lcccs: &LCCCS<C>,
+        z: &[C::ScalarField],
+    ) -> Vec<VirtualPolynomial<C::ScalarField>> {
+        let eq_rx = build_eq_x_r_vec(&lcccs.r_x).unwrap();
+        let eq_rx_mle = dense_vec_to_dense_mle(ccs.s, &eq_rx);
+
+        let mut Ls = Vec::with_capacity(ccs.t);
+        for M_j in ccs.M.iter() {
+            let mut L = VirtualPolynomial::<C::ScalarField>::new(ccs.s);
+            let mut Mz = vec![dense_vec_to_dense_mle(ccs.s, &mat_vec_mul(M_j, z).unwrap())];
+            Mz.push(eq_rx_mle.clone());
+            L.add_mle_list(
+                Mz.iter().map(|v| Arc::new(v.clone())),
+                C::ScalarField::one(),
+            )
+            .unwrap();
+            Ls.push(L);
+        }
+        Ls
+    }
 
     #[test]
     /// Test linearized CCCS v_j against the L_j(x)
     fn test_lcccs_v_j() {
         let mut rng = test_rng();
 
-        let ccs = get_test_ccs();
-        let z = get_test_z(3);
-        ccs.check_relation(&z.clone()).unwrap();
+        let n_rows = 2_u32.pow(5) as usize;
+        let n_cols = 2_u32.pow(5) as usize;
+        let r1cs = R1CS::rand(&mut rng, n_rows, n_cols);
+        let ccs = CCS::from_r1cs(r1cs);
+        let z: Vec<Fr> = (0..n_cols).map(|_| Fr::rand(&mut rng)).collect();
 
         let (pedersen_params, _) =
             Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
+
         let (lcccs, _) = ccs.to_lcccs(&mut rng, &pedersen_params, &z).unwrap();
         // with our test vector coming from R1CS, v should have length 3
         assert_eq!(lcccs.v.len(), 3);
 
-        let vec_L_j_x = lcccs.compute_Ls(&ccs, &z);
+        let vec_L_j_x = compute_Ls(&ccs, &lcccs, &z);
         assert_eq!(vec_L_j_x.len(), lcccs.v.len());
 
         for (v_i, L_j_x) in lcccs.v.into_iter().zip(vec_L_j_x) {
@@ -175,7 +196,7 @@ pub mod tests {
         assert_eq!(lcccs.v.len(), 3);
 
         // Bad compute L_j(x) with the bad z
-        let vec_L_j_x = lcccs.compute_Ls(&ccs, &bad_z);
+        let vec_L_j_x = compute_Ls(&ccs, &lcccs, &bad_z);
         assert_eq!(vec_L_j_x.len(), lcccs.v.len());
 
         // Make sure that the LCCCS is not satisfied given these L_j(x)
@@ -189,7 +210,6 @@ pub mod tests {
                 satisfied = false;
             }
         }
-
         assert!(!satisfied);
     }
 }

@@ -200,7 +200,7 @@ where
         let beta: Vec<C::ScalarField> = transcript.get_challenges(ccs.s);
 
         // Compute g(x)
-        let g = compute_g(ccs, running_instances, &z_lcccs, &z_cccs, gamma, &beta);
+        let g = compute_g(ccs, running_instances, &z_lcccs, &z_cccs, gamma, &beta)?;
 
         // Step 3: Run the sumcheck prover
         let sumcheck_proof = IOPSumCheck::<C, T>::prove(&g, transcript)

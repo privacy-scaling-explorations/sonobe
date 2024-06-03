@@ -4,6 +4,7 @@ use ark_poly::{
 };
 pub use ark_relations::r1cs::Matrix as R1CSMatrix;
 use ark_std::cfg_iter;
+use ark_std::rand::Rng;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use crate::Error;
@@ -18,6 +19,23 @@ pub struct SparseMatrix<F: PrimeField> {
 }
 
 impl<F: PrimeField> SparseMatrix<F> {
+    pub fn rand<R: Rng>(rng: &mut R, n_rows: usize, n_cols: usize) -> Self {
+        const ZERO_VAL_PROBABILITY: f64 = 0.8f64;
+
+        let dense = (0..n_rows)
+            .map(|_| {
+                (0..n_cols)
+                    .map(|_| {
+                        if !rng.gen_bool(ZERO_VAL_PROBABILITY) {
+                            return F::rand(rng);
+                        }
+                        F::zero()
+                    })
+                    .collect::<Vec<F>>()
+            })
+            .collect::<Vec<Vec<F>>>();
+        dense_matrix_to_sparse(dense)
+    }
     pub fn to_dense(&self) -> Vec<Vec<F>> {
         let mut r: Vec<Vec<F>> = vec![vec![F::zero(); self.n_cols]; self.n_rows];
         for (row_i, row) in self.coeffs.iter().enumerate() {
@@ -79,7 +97,7 @@ pub fn is_zero_vec<F: PrimeField>(vec: &[F]) -> bool {
     vec.iter().all(|a| a.is_zero())
 }
 
-pub fn mat_vec_mul<F: PrimeField>(M: &[Vec<F>], z: &[F]) -> Result<Vec<F>, Error> {
+pub fn mat_vec_mul_dense<F: PrimeField>(M: &[Vec<F>], z: &[F]) -> Result<Vec<F>, Error> {
     if M.is_empty() {
         return Err(Error::Empty);
     }
@@ -101,7 +119,7 @@ pub fn mat_vec_mul<F: PrimeField>(M: &[Vec<F>], z: &[F]) -> Result<Vec<F>, Error
     Ok(r)
 }
 
-pub fn mat_vec_mul_sparse<F: PrimeField>(M: &SparseMatrix<F>, z: &[F]) -> Result<Vec<F>, Error> {
+pub fn mat_vec_mul<F: PrimeField>(M: &SparseMatrix<F>, z: &[F]) -> Result<Vec<F>, Error> {
     if M.n_cols != z.len() {
         return Err(Error::NotSameLength(
             "M.n_cols".to_string(),
@@ -191,9 +209,12 @@ pub mod tests {
         ])
         .to_dense();
         let z = to_F_vec(vec![1, 3, 35, 9, 27, 30]);
-        assert_eq!(mat_vec_mul(&A, &z).unwrap(), to_F_vec(vec![3, 9, 30, 35]));
         assert_eq!(
-            mat_vec_mul_sparse(&dense_matrix_to_sparse(A), &z).unwrap(),
+            mat_vec_mul_dense(&A, &z).unwrap(),
+            to_F_vec(vec![3, 9, 30, 35])
+        );
+        assert_eq!(
+            mat_vec_mul(&dense_matrix_to_sparse(A), &z).unwrap(),
             to_F_vec(vec![3, 9, 30, 35])
         );
 
@@ -201,13 +222,10 @@ pub mod tests {
         let v = to_F_vec(vec![19, 55, 50, 3]);
 
         assert_eq!(
-            mat_vec_mul(&A.to_dense(), &v).unwrap(),
+            mat_vec_mul_dense(&A.to_dense(), &v).unwrap(),
             to_F_vec(vec![418, 1158, 979])
         );
-        assert_eq!(
-            mat_vec_mul_sparse(&A, &v).unwrap(),
-            to_F_vec(vec![418, 1158, 979])
-        );
+        assert_eq!(mat_vec_mul(&A, &v).unwrap(), to_F_vec(vec![418, 1158, 979]));
     }
 
     #[test]

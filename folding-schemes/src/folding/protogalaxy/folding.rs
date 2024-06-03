@@ -370,9 +370,9 @@ fn lagrange_polys<F: PrimeField>(domain_n: GeneralEvaluationDomain<F>) -> Vec<De
 // f(w) in R1CS context. For the moment we use R1CS, in the future we will abstract this with a
 // trait
 fn eval_f<F: PrimeField>(r1cs: &R1CS<F>, w: &[F]) -> Result<Vec<F>, Error> {
-    let Az = mat_vec_mul_sparse(&r1cs.A, w)?;
-    let Bz = mat_vec_mul_sparse(&r1cs.B, w)?;
-    let Cz = mat_vec_mul_sparse(&r1cs.C, w)?;
+    let Az = mat_vec_mul(&r1cs.A, w)?;
+    let Bz = mat_vec_mul(&r1cs.B, w)?;
+    let Cz = mat_vec_mul(&r1cs.C, w)?;
     let AzBz = hadamard(&Az, &Bz)?;
     vec_sub(&AzBz, &Cz)
 }

@@ -7,7 +7,7 @@ use super::{CommittedInstance, Witness};
 use crate::ccs::r1cs::R1CS;
 use crate::commitment::CommitmentScheme;
 use crate::transcript::Transcript;
-use crate::utils::vec::*;
+use crate::utils::vec::{hadamard, mat_vec_mul, vec_add, vec_scalar_mul, vec_sub};
 use crate::Error;
 
 /// Implements the Non-Interactive Folding Scheme described in section 4 of
@@ -32,12 +32,12 @@ where
         let (A, B, C) = (r1cs.A.clone(), r1cs.B.clone(), r1cs.C.clone());
 
         // this is parallelizable (for the future)
-        let Az1 = mat_vec_mul_sparse(&A, z1)?;
-        let Bz1 = mat_vec_mul_sparse(&B, z1)?;
-        let Cz1 = mat_vec_mul_sparse(&C, z1)?;
-        let Az2 = mat_vec_mul_sparse(&A, z2)?;
-        let Bz2 = mat_vec_mul_sparse(&B, z2)?;
-        let Cz2 = mat_vec_mul_sparse(&C, z2)?;
+        let Az1 = mat_vec_mul(&A, z1)?;
+        let Bz1 = mat_vec_mul(&B, z1)?;
+        let Cz1 = mat_vec_mul(&C, z1)?;
+        let Az2 = mat_vec_mul(&A, z2)?;
+        let Bz2 = mat_vec_mul(&B, z2)?;
+        let Cz2 = mat_vec_mul(&C, z2)?;
 
         let Az1_Bz2 = hadamard(&Az1, &Bz2)?;
         let Az2_Bz1 = hadamard(&Az2, &Bz1)?;

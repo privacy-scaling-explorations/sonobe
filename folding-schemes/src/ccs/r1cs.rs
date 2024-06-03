@@ -1,8 +1,9 @@
 use ark_ff::PrimeField;
-
-use crate::utils::vec::*;
-use crate::Error;
 use ark_relations::r1cs::ConstraintSystem;
+use ark_std::rand::Rng;
+
+use crate::utils::vec::{hadamard, mat_vec_mul, vec_add, vec_scalar_mul, SparseMatrix};
+use crate::Error;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct R1CS<F: PrimeField> {
@@ -13,6 +14,15 @@ pub struct R1CS<F: PrimeField> {
 }
 
 impl<F: PrimeField> R1CS<F> {
+    pub fn rand<R: Rng>(rng: &mut R, n_rows: usize, n_cols: usize) -> Self {
+        Self {
+            l: 1,
+            A: SparseMatrix::rand(rng, n_rows, n_cols),
+            B: SparseMatrix::rand(rng, n_rows, n_cols),
+            C: SparseMatrix::rand(rng, n_rows, n_cols),
+        }
+    }
+
     /// returns a tuple containing (w, x) (witness and public inputs respectively)
     pub fn split_z(&self, z: &[F]) -> (Vec<F>, Vec<F>) {
         (z[self.l + 1..].to_vec(), z[1..self.l + 1].to_vec())
@@ -20,9 +30,9 @@ impl<F: PrimeField> R1CS<F> {
 
     /// check that a R1CS structure is satisfied by a z vector. Only for testing.
     pub fn check_relation(&self, z: &[F]) -> Result<(), Error> {
-        let Az = mat_vec_mul_sparse(&self.A, z)?;
-        let Bz = mat_vec_mul_sparse(&self.B, z)?;
-        let Cz = mat_vec_mul_sparse(&self.C, z)?;
+        let Az = mat_vec_mul(&self.A, z)?;
+        let Bz = mat_vec_mul(&self.B, z)?;
+        let Cz = mat_vec_mul(&self.C, z)?;
         let AzBz = hadamard(&Az, &Bz)?;
         if AzBz != Cz {
             return Err(Error::NotSatisfied);
@@ -58,9 +68,9 @@ pub struct RelaxedR1CS<F: PrimeField> {
 impl<F: PrimeField> RelaxedR1CS<F> {
     /// check that a RelaxedR1CS structure is satisfied by a z vector. Only for testing.
     pub fn check_relation(&self, z: &[F]) -> Result<(), Error> {
-        let Az = mat_vec_mul_sparse(&self.A, z)?;
-        let Bz = mat_vec_mul_sparse(&self.B, z)?;
-        let Cz = mat_vec_mul_sparse(&self.C, z)?;
+        let Az = mat_vec_mul(&self.A, z)?;
+        let Bz = mat_vec_mul(&self.B, z)?;
+        let Cz = mat_vec_mul(&self.C, z)?;
         let uCz = vec_scalar_mul(&Cz, &self.u);
         let uCzE = vec_add(&uCz, &self.E)?;
         let AzBz = hadamard(&Az, &Bz)?;

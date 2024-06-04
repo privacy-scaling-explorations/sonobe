@@ -3,66 +3,15 @@ use ark_ff::PrimeField;
 use ark_poly::DenseMultilinearExtension;
 use ark_poly::MultilinearExtension;
 use ark_std::One;
-use std::ops::Add;
 use std::sync::Arc;
-
-use crate::utils::multilinear_polynomial::fix_variables;
-use crate::utils::multilinear_polynomial::scalar_mul;
 
 use super::lcccs::LCCCS;
 use super::nimfs::SigmasThetas;
 use crate::ccs::CCS;
-use crate::utils::hypercube::BooleanHypercube;
-use crate::utils::mle::{dense_vec_to_dense_mle, matrix_to_dense_mle};
-use crate::utils::vec::{mat_vec_mul, SparseMatrix};
+use crate::utils::mle::dense_vec_to_dense_mle;
+use crate::utils::vec::mat_vec_mul;
 use crate::utils::virtual_polynomial::{build_eq_x_r_vec, eq_eval, VirtualPolynomial};
 use crate::Error;
-
-/// Return a vector of evaluations p_j(r) = \sum_{y \in {0,1}^s'} M_j(r, y) * z(y) for all j values
-/// in 0..self.t
-pub fn compute_all_sum_Mz_evals<F: PrimeField>(
-    vec_M: &[SparseMatrix<F>],
-    z: &[F],
-    r: &[F],
-    s_prime: usize,
-) -> Vec<F> {
-    // Convert z to MLE
-    let z_y_mle = dense_vec_to_dense_mle(s_prime, z);
-    // Convert all matrices to MLE
-    let M_x_y_mle: Vec<DenseMultilinearExtension<F>> =
-        vec_M.iter().cloned().map(matrix_to_dense_mle).collect();
-
-    let mut v = Vec::with_capacity(M_x_y_mle.len());
-    for M_i in M_x_y_mle {
-        let sum_Mz = compute_sum_Mz(M_i, &z_y_mle, s_prime);
-        let v_i = sum_Mz.evaluate(r).unwrap();
-        v.push(v_i);
-    }
-    v
-}
-
-/// Return the multilinear polynomial p(x) = \sum_{y \in {0,1}^s'} M_j(x, y) * z(y)
-pub fn compute_sum_Mz<F: PrimeField>(
-    M_j: DenseMultilinearExtension<F>,
-    z: &DenseMultilinearExtension<F>,
-    s_prime: usize,
-) -> DenseMultilinearExtension<F> {
-    let mut sum_Mz = DenseMultilinearExtension {
-        evaluations: vec![F::zero(); M_j.evaluations.len()],
-        num_vars: M_j.num_vars - s_prime,
-    };
-
-    let bhc = BooleanHypercube::new(s_prime);
-    for y in bhc.into_iter() {
-        // In a slightly counter-intuitive fashion fix_variables() fixes the right-most variables of the polynomial. So
-        // for a polynomial M(x,y) and a random field element r, if we do fix_variables(M,r) we will get M(x,r).
-        let M_j_y = fix_variables(&M_j, &y);
-        let z_y = z.evaluate(&y).unwrap();
-        let M_j_z = scalar_mul(&M_j_y, &z_y);
-        sum_Mz = sum_Mz.add(M_j_z);
-    }
-    sum_Mz
-}
 
 /// Compute the arrays of sigma_i and theta_i from step 4 corresponding to the LCCCS and CCCS
 /// instances
@@ -72,7 +21,6 @@ pub fn compute_sigmas_thetas<F: PrimeField>(
     z_cccs: &[Vec<F>],
     r_x_prime: &[F],
 ) -> Result<SigmasThetas<F>, Error> {
-    // sigmas
     let mut sigmas: Vec<Vec<F>> = Vec::new();
     for z_lcccs_i in z_lcccs {
         let mut Mzs: Vec<DenseMultilinearExtension<F>> = vec![];
@@ -86,7 +34,6 @@ pub fn compute_sigmas_thetas<F: PrimeField>(
         sigmas.push(sigma_i);
     }
 
-    // thetas
     let mut thetas: Vec<Vec<F>> = Vec::new();
     for z_cccs_i in z_cccs {
         let mut Mzs: Vec<DenseMultilinearExtension<F>> = vec![];
@@ -116,13 +63,13 @@ pub fn compute_c<F: PrimeField>(
     beta: &[F],
     vec_r_x: &Vec<Vec<F>>,
     r_x_prime: &[F],
-) -> F {
+) -> Result<F, Error> {
     let (vec_sigmas, vec_thetas) = (st.0.clone(), st.1.clone());
     let mut c = F::zero();
 
     let mut e_lcccs = Vec::new();
     for r_x in vec_r_x {
-        e_lcccs.push(eq_eval(r_x, r_x_prime).unwrap());
+        e_lcccs.push(eq_eval(r_x, r_x_prime)?);
     }
     for (i, sigmas) in vec_sigmas.iter().enumerate() {
         // (sum gamma^j * e_i * sigma_j)
@@ -133,7 +80,7 @@ pub fn compute_c<F: PrimeField>(
     }
 
     let mu = vec_sigmas.len();
-    let e2 = eq_eval(beta, r_x_prime).unwrap();
+    let e2 = eq_eval(beta, r_x_prime)?;
     for (k, thetas) in vec_thetas.iter().enumerate() {
         // + gamma^{t+1} * e2 * sum c_i * prod theta_j
         let mut lhs = F::zero();
@@ -147,7 +94,7 @@ pub fn compute_c<F: PrimeField>(
         let gamma_t1 = gamma.pow([(mu * ccs.t + k) as u64]);
         c += gamma_t1 * e2 * lhs;
     }
-    c
+    Ok(c)
 }
 
 /// Compute g(x) polynomial for the given inputs.
@@ -223,33 +170,10 @@ pub mod tests {
     use crate::ccs::tests::{get_test_ccs, get_test_z};
     use crate::commitment::{pedersen::Pedersen, CommitmentScheme};
     use crate::folding::hypernova::lcccs::tests::compute_Ls;
+    use crate::utils::hypercube::BooleanHypercube;
+    use crate::utils::mle::matrix_to_dense_mle;
     use crate::utils::multilinear_polynomial::tests::fix_last_variables;
     use crate::utils::virtual_polynomial::eq_eval;
-
-    #[test]
-    fn test_compute_sum_Mz_over_boolean_hypercube() {
-        let ccs = get_test_ccs::<Fr>();
-        let z = get_test_z(3);
-        ccs.check_relation(&z).unwrap();
-        let z_mle = dense_vec_to_dense_mle(ccs.s_prime, &z);
-
-        // check that evaluating over all the values x over the boolean hypercube, the result of
-        // the next for loop is equal to 0
-        for x in BooleanHypercube::new(ccs.s) {
-            let mut r = Fr::zero();
-            for i in 0..ccs.q {
-                let mut Sj_prod = Fr::one();
-                for j in ccs.S[i].clone() {
-                    let M_j = matrix_to_dense_mle(ccs.M[j].clone());
-                    let sum_Mz = compute_sum_Mz(M_j, &z_mle, ccs.s_prime);
-                    let sum_Mz_x = sum_Mz.evaluate(&x).unwrap();
-                    Sj_prod *= sum_Mz_x;
-                }
-                r += Sj_prod * ccs.c[i];
-            }
-            assert_eq!(r, Fr::zero());
-        }
-    }
 
     /// Given M(x,y) matrix and a random field element `r`, test that ~M(r,y) is is an s'-variable polynomial which
     /// compresses every column j of the M(x,y) matrix by performing a random linear combination between the elements
@@ -341,13 +265,14 @@ pub mod tests {
             &beta,
             &vec![lcccs_instance.r_x],
             &r_x_prime,
-        );
+        )
+        .unwrap();
         assert_eq!(c, expected_c);
     }
 
     #[test]
     fn test_compute_g() {
-        let mut rng = test_rng(); // TMP
+        let mut rng = test_rng();
 
         // generate test CCS & z vectors
         let ccs: CCS<Fr> = get_test_ccs();

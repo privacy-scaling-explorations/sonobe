@@ -6,7 +6,6 @@ use ark_poly::MultilinearExtension;
 use ark_std::rand::Rng;
 
 use super::cccs::Witness;
-use super::utils::compute_all_sum_Mz_evals;
 use crate::ccs::CCS;
 use crate::commitment::{
     pedersen::{Params as PedersenParams, Pedersen},
@@ -32,9 +31,6 @@ pub struct LCCCS<C: CurveGroup> {
 }
 
 impl<F: PrimeField> CCS<F> {
-    /// Compute v_j values of the linearized committed CCS form
-    /// Given `r`, compute:  \sum_{y \in {0,1}^s'} M_j(r, y) * z(y)
-
     pub fn to_lcccs<R: Rng, C: CurveGroup>(
         &self,
         rng: &mut R,
@@ -51,10 +47,6 @@ impl<F: PrimeField> CCS<F> {
 
         let r_x: Vec<C::ScalarField> = (0..self.s).map(|_| C::ScalarField::rand(rng)).collect();
 
-        let mut Mzs = vec![];
-        for M_j in self.M.iter() {
-            Mzs.push(dense_vec_to_dense_mle(self.s, &mat_vec_mul(M_j, z)?));
-        }
         let Mzs: Vec<DenseMultilinearExtension<F>> = self
             .M
             .iter()
@@ -96,7 +88,15 @@ impl<C: CurveGroup> LCCCS<C> {
 
         // check CCS relation
         let z: Vec<C::ScalarField> = [vec![self.u], self.x.clone(), w.w.to_vec()].concat();
-        let computed_v = compute_all_sum_Mz_evals(&ccs.M, &z, &self.r_x, ccs.s_prime);
+
+        let computed_v: Vec<C::ScalarField> = ccs
+            .M
+            .iter()
+            .map(|M_j| {
+                let Mz_mle = dense_vec_to_dense_mle(ccs.s, &mat_vec_mul(M_j, &z)?);
+                Mz_mle.evaluate(&self.r_x).ok_or(Error::EvaluationFail)
+            })
+            .collect::<Result<_, Error>>()?;
         if computed_v != self.v {
             return Err(Error::NotSatisfied);
         }

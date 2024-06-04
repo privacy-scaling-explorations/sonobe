@@ -336,7 +336,7 @@ where
                 .map(|lcccs| lcccs.r_x.clone())
                 .collect(),
             &r_x_prime,
-        );
+        )?;
 
         // check that the g(r_x') from the sumcheck proof is equal to the computed c from sigmas&thetas
         if c != sumcheck_subclaim.expected_evaluation {
@@ -345,9 +345,10 @@ where
 
         // Sanity check: we can also compute g(r_x') from the proof last evaluation value, and
         // should be equal to the previously obtained values.
-        let g_on_rxprime_from_sumcheck_last_eval =
-            DensePolynomial::from_coefficients_slice(&proof.sc_proof.proofs.last().unwrap().coeffs)
-                .evaluate(r_x_prime.last().unwrap());
+        let g_on_rxprime_from_sumcheck_last_eval = DensePolynomial::from_coefficients_slice(
+            &proof.sc_proof.proofs.last().ok_or(Error::Empty)?.coeffs,
+        )
+        .evaluate(r_x_prime.last().ok_or(Error::Empty)?);
         if g_on_rxprime_from_sumcheck_last_eval != c {
             return Err(Error::NotEqual);
         }

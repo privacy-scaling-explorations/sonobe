@@ -421,7 +421,8 @@ mod tests {
                 .map(|lcccs| lcccs.r_x.clone())
                 .collect(),
             &r_x_prime,
-        );
+        )
+        .unwrap();
 
         let cs = ConstraintSystem::<Fr>::new_ref();
         let mut vec_sigmas = Vec::new();

@@ -42,7 +42,7 @@ Detailed usage and design documentation can be found at [Sonobe docs](https://pr
 
 ### Folding Schemes introduction
 
-Folding schemes efficitently achieve incrementally verifiable computation (IVC), where the prover recursively proves the correct execution of the incremental computations.
+Folding schemes efficiently achieve incrementally verifiable computation (IVC), where the prover recursively proves the correct execution of the incremental computations.
 Once the IVC iterations are completed, the IVC proof is compressed into the Decider proof, a zkSNARK proof which proves that applying $n$ times the $F$ function (the circuit being folded) to the initial state ($z_0$) results in the final state ($z_n$).
 
 

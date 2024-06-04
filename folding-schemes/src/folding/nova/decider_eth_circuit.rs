@@ -22,14 +22,14 @@ use core::{borrow::Borrow, marker::PhantomData};
 use super::{circuits::ChallengeGadget, nifs::NIFS};
 use crate::ccs::r1cs::R1CS;
 use crate::commitment::{pedersen::Params as PedersenParams, CommitmentScheme};
-use crate::folding::circuits::nonnative::{
-    affine::{nonnative_affine_to_field_elements, NonNativeAffineVar},
-    uint::NonNativeUintVar,
+use crate::folding::circuits::{
+    nonnative::{
+        affine::{nonnative_affine_to_field_elements, NonNativeAffineVar},
+        uint::NonNativeUintVar,
+    },
+    CF1, CF2,
 };
-use crate::folding::nova::{
-    circuits::{CommittedInstanceVar, CF1, CF2},
-    CommittedInstance, Nova, Witness,
-};
+use crate::folding::nova::{circuits::CommittedInstanceVar, CommittedInstance, Nova, Witness};
 use crate::frontend::FCircuit;
 use crate::transcript::{
     poseidon::{PoseidonTranscript, PoseidonTranscriptVar},

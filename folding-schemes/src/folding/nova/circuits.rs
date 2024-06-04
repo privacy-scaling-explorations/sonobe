@@ -8,8 +8,8 @@ use ark_crypto_primitives::sponge::{
     poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig, PoseidonSponge},
     Absorb, CryptographicSponge,
 };
-use ark_ec::{AffineRepr, CurveGroup, Group};
-use ark_ff::{Field, PrimeField};
+use ark_ec::{CurveGroup, Group};
+use ark_ff::PrimeField;
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
@@ -30,19 +30,14 @@ use super::{
     CommittedInstance,
 };
 use crate::constants::N_BITS_RO;
-use crate::folding::circuits::nonnative::{
-    affine::{nonnative_affine_to_field_elements, NonNativeAffineVar},
-    uint::NonNativeUintVar,
+use crate::folding::circuits::{
+    nonnative::{
+        affine::{nonnative_affine_to_field_elements, NonNativeAffineVar},
+        uint::NonNativeUintVar,
+    },
+    CF1, CF2,
 };
 use crate::frontend::FCircuit;
-
-/// CF1 represents the ConstraintField used for the main Nova circuit which is over E1::Fr, where
-/// E1 is the main curve where we do the folding.
-pub type CF1<C> = <<C as CurveGroup>::Affine as AffineRepr>::ScalarField;
-/// CF2 represents the ConstraintField used for the CycleFold circuit which is over E2::Fr=E1::Fq,
-/// where E2 is the auxiliary curve (from [CycleFold](https://eprint.iacr.org/2023/1192.pdf)
-/// approach) where we check the folding of the commitments (elliptic curve points).
-pub type CF2<C> = <<C as CurveGroup>::BaseField as Field>::BasePrimeField;
 
 /// CommittedInstanceVar contains the u, x, cmE and cmW values which are folded on the main Nova
 /// constraints field (E1::Fr, where E1 is the main curve). The peculiarity is that cmE and cmW are

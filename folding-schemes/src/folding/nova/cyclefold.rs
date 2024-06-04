@@ -26,10 +26,9 @@ use ark_std::fmt::Debug;
 use ark_std::{One, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
-use super::circuits::CF2;
 use super::CommittedInstance;
 use crate::constants::N_BITS_RO;
-use crate::folding::circuits::nonnative::uint::NonNativeUintVar;
+use crate::folding::circuits::{nonnative::uint::NonNativeUintVar, CF2};
 use crate::Error;
 
 // public inputs length for the CycleFoldCircuit: |[r, p1.x,y, p2.x,y, p3.x,y]|

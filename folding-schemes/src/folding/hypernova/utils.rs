@@ -149,7 +149,6 @@ pub fn compute_g<C: CurveGroup>(
         vec_Ls.append(&mut Ls);
     }
     let mut vec_Q: Vec<VirtualPolynomial<C::ScalarField>> = Vec::new();
-    // for (i, _) in cccs_instances.iter().enumerate() {
     for z_cccs_i in z_cccs.iter() {
         let Q = ccs.compute_Q(z_cccs_i, beta);
         vec_Q.push(Q);

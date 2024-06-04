@@ -54,9 +54,8 @@ where
         let mut x_folded: Vec<C::ScalarField> = vec![C::ScalarField::zero(); lcccs[0].x.len()];
         let mut v_folded: Vec<C::ScalarField> = vec![C::ScalarField::zero(); sigmas[0].len()];
 
+        let mut rho_i = C::ScalarField::one();
         for i in 0..(lcccs.len() + cccs.len()) {
-            let rho_i = rho.pow([i as u64]);
-
             let c: C;
             let u: C::ScalarField;
             let x: Vec<C::ScalarField>;
@@ -94,6 +93,8 @@ where
                 )
                 .map(|(a_i, b_i)| *a_i + b_i)
                 .collect();
+
+            rho_i *= rho;
         }
 
         LCCCS::<C> {

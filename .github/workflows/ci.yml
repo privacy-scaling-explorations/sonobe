@@ -60,7 +60,9 @@ jobs:
           curl -sSfL https://github.com/ethereum/solidity/releases/download/v0.8.4/solc-static-linux -o /usr/local/bin/solc
           chmod +x /usr/local/bin/solc
       - name: Execute compile.sh to generate .r1cs and .wasm from .circom
-        run: bash ./folding-schemes/src/frontend/circom/test_folder/compile.sh
+        run: ./folding-schemes/src/frontend/circom/test_folder/compile.sh
+      - name: Install clang 
+        run: sudo apt update && sudo apt -y install clang
       - name: Build
         # This build will be reused by nextest,
         # and also checks (--all-targets) that benches don't bit-rot
@@ -90,7 +92,9 @@ jobs:
           curl -sSfL https://github.com/ethereum/solidity/releases/download/v0.8.4/solc-static-linux -o /usr/local/bin/solc
           chmod +x /usr/local/bin/solc
       - name: Execute compile.sh to generate .r1cs and .wasm from .circom
-        run: bash ./folding-schemes/src/frontend/circom/test_folder/compile.sh
+        run: ./folding-schemes/src/frontend/circom/test_folder/compile.sh 
+      - name: Install clang 
+        run: sudo apt update && sudo apt -y install clang
       - name: Run examples tests
         run: cargo test --examples
       - name: Run examples
@@ -121,6 +125,8 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+      - name: install clang
+        run: sudo apt update && sudo apt -y install clang
       - name: Run clippy
         uses: actions-rs/cargo@v1
         with:

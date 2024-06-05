@@ -98,7 +98,7 @@ pub enum Error {
 
 /// FoldingScheme defines trait that is implemented by the diverse folding schemes. It is defined
 /// over a cycle of curves (C1, C2), where:
-/// - C1 is the main curve, which ScalarField we use as our F for al the field operations
+/// - C1 is the main curve, which ScalarField we use as our F for all the field operations
 /// - C2 is the auxiliary curve, which we use for the commitments, whose BaseField (for point
 /// coordinates) are in the C1::ScalarField.
 /// In other words, C1.Fq == C2.Fr, and C1.Fr == C2.Fq.

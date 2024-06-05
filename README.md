@@ -4,7 +4,7 @@ Experimental folding schemes library implemented jointly by [0xPARC](https://0xp
 
 <img align="right" style="width:30%;min-width:250px;margin-bottom:20px;" src="https://privacy-scaling-explorations.github.io/sonobe-docs/imgs/sonobe.png">
 
-<b>Sonobe</b> is a modular library to fold arithmetic circuit instances in an Incremental Verifiable computation (IVC) style. It features multiple folding schemes and decider setups, allowing users to pick the scheme which best fit their needs.
+<b>Sonobe</b> is a modular library to fold arithmetic circuit instances in an Incremental Verifiable computation (IVC) style. It features multiple folding schemes and decider setups, allowing users to pick the scheme which best fits their needs.
 <br><br>
 Sonobe is conceived as an exploratory effort with the aim to push forward the practical side of folding schemes and advancing towards onchain (EVM) verification.
 <br><br>
@@ -64,7 +64,7 @@ The development flow using Sonobe looks like:
 1. Define a circuit to be folded
 2. Set which folding scheme to be used (eg. Nova with CycleFold)
 3. Set a final decider to generate the final proof (eg. Spartan over Pasta curves)
-4. Generate the the decider verifier
+4. Generate the decider verifier
 
 <p align="center">
     <img src="https://privacy-scaling-explorations.github.io/sonobe-docs/imgs/sonobe-lib-pipeline.png"/>

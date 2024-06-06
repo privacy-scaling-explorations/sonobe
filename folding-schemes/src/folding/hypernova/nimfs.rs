@@ -7,7 +7,7 @@ use ark_std::{One, Zero};
 
 use super::cccs::{Witness, CCCS};
 use super::lcccs::LCCCS;
-use super::utils::{compute_c, compute_g, compute_sigmas_and_thetas};
+use super::utils::{compute_c, compute_g, compute_sigmas_thetas};
 use crate::ccs::CCS;
 use crate::transcript::Transcript;
 use crate::utils::hypercube::BooleanHypercube;
@@ -200,7 +200,7 @@ where
         let beta: Vec<C::ScalarField> = transcript.get_challenges(ccs.s);
 
         // Compute g(x)
-        let g = compute_g(ccs, running_instances, &z_lcccs, &z_cccs, gamma, &beta);
+        let g = compute_g(ccs, running_instances, &z_lcccs, &z_cccs, gamma, &beta)?;
 
         // Step 3: Run the sumcheck prover
         let sumcheck_proof = IOPSumCheck::<C, T>::prove(&g, transcript)
@@ -244,7 +244,7 @@ where
         let r_x_prime = sumcheck_proof.point.clone();
 
         // Step 4: compute sigmas and thetas
-        let sigmas_thetas = compute_sigmas_and_thetas(ccs, &z_lcccs, &z_cccs, &r_x_prime);
+        let sigmas_thetas = compute_sigmas_thetas(ccs, &z_lcccs, &z_cccs, &r_x_prime)?;
 
         // Step 6: Get the folding challenge
         let rho_scalar = C::ScalarField::from_le_bytes_mod_order(b"rho");
@@ -336,7 +336,7 @@ where
                 .map(|lcccs| lcccs.r_x.clone())
                 .collect(),
             &r_x_prime,
-        );
+        )?;
 
         // check that the g(r_x') from the sumcheck proof is equal to the computed c from sigmas&thetas
         if c != sumcheck_subclaim.expected_evaluation {
@@ -345,9 +345,10 @@ where
 
         // Sanity check: we can also compute g(r_x') from the proof last evaluation value, and
         // should be equal to the previously obtained values.
-        let g_on_rxprime_from_sumcheck_last_eval =
-            DensePolynomial::from_coefficients_slice(&proof.sc_proof.proofs.last().unwrap().coeffs)
-                .evaluate(r_x_prime.last().unwrap());
+        let g_on_rxprime_from_sumcheck_last_eval = DensePolynomial::from_coefficients_slice(
+            &proof.sc_proof.proofs.last().ok_or(Error::Empty)?.coeffs,
+        )
+        .evaluate(r_x_prime.last().ok_or(Error::Empty)?);
         if g_on_rxprime_from_sumcheck_last_eval != c {
             return Err(Error::NotEqual);
         }
@@ -395,7 +396,7 @@ pub mod tests {
         let r_x_prime: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
 
         let sigmas_thetas =
-            compute_sigmas_and_thetas(&ccs, &[z1.clone()], &[z2.clone()], &r_x_prime);
+            compute_sigmas_thetas(&ccs, &[z1.clone()], &[z2.clone()], &r_x_prime).unwrap();
 
         let (pedersen_params, _) =
             Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();

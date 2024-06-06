@@ -2,21 +2,19 @@ use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_std::One;
 use ark_std::Zero;
-use std::ops::Add;
 use std::sync::Arc;
 
 use ark_std::rand::Rng;
 
-use super::utils::compute_sum_Mz;
 use crate::ccs::CCS;
 use crate::commitment::{
     pedersen::{Params as PedersenParams, Pedersen},
     CommitmentScheme,
 };
 use crate::utils::hypercube::BooleanHypercube;
-use crate::utils::mle::matrix_to_mle;
-use crate::utils::mle::vec_to_mle;
-use crate::utils::virtual_polynomial::VirtualPolynomial;
+use crate::utils::mle::dense_vec_to_dense_mle;
+use crate::utils::vec::mat_vec_mul;
+use crate::utils::virtual_polynomial::{build_eq_x_r_vec, VirtualPolynomial};
 use crate::Error;
 
 /// Witness for the LCCCS & CCCS, containing the w vector, and the r_w used as randomness in the Pedersen commitment.
@@ -61,41 +59,35 @@ impl<F: PrimeField> CCS<F> {
 
     /// Computes q(x) = \sum^q c_i * \prod_{j \in S_i} ( \sum_{y \in {0,1}^s'} M_j(x, y) * z(y) )
     /// polynomial over x
-    pub fn compute_q(&self, z: &[F]) -> VirtualPolynomial<F> {
-        let z_mle = vec_to_mle(self.s_prime, z);
-        let mut q = VirtualPolynomial::<F>::new(self.s);
-
+    pub fn compute_q(&self, z: &[F]) -> Result<VirtualPolynomial<F>, Error> {
+        let mut q_x = VirtualPolynomial::<F>::new(self.s);
         for i in 0..self.q {
-            let mut prod: VirtualPolynomial<F> = VirtualPolynomial::<F>::new(self.s);
-            for j in self.S[i].clone() {
-                let M_j = matrix_to_mle(self.M[j].clone());
-
-                let sum_Mz = compute_sum_Mz(M_j, &z_mle, self.s_prime);
-
-                // Fold this sum into the running product
-                if prod.products.is_empty() {
-                    // If this is the first time we are adding something to this virtual polynomial, we need to
-                    // explicitly add the products using add_mle_list()
-                    // XXX is this true? improve API
-                    prod.add_mle_list([Arc::new(sum_Mz)], F::one()).unwrap();
-                } else {
-                    prod.mul_by_mle(Arc::new(sum_Mz), F::one()).unwrap();
-                }
+            let mut Q_k = vec![];
+            for &j in self.S[i].iter() {
+                Q_k.push(dense_vec_to_dense_mle(self.s, &mat_vec_mul(&self.M[j], z)?));
             }
-            // Multiply by the product by the coefficient c_i
-            prod.scalar_mul(&self.c[i]);
-            // Add it to the running sum
-            q = q.add(&prod);
+            q_x.add_mle_list(Q_k.iter().map(|v| Arc::new(v.clone())), self.c[i])?;
         }
-        q
+        Ok(q_x)
     }
 
     /// Computes Q(x) = eq(beta, x) * q(x)
     ///               = eq(beta, x) * \sum^q c_i * \prod_{j \in S_i} ( \sum_{y \in {0,1}^s'} M_j(x, y) * z(y) )
     /// polynomial over x
-    pub fn compute_Q(&self, z: &[F], beta: &[F]) -> VirtualPolynomial<F> {
-        let q = self.compute_q(z);
-        q.build_f_hat(beta).unwrap()
+    pub fn compute_Q(&self, z: &[F], beta: &[F]) -> Result<VirtualPolynomial<F>, Error> {
+        let eq_beta = build_eq_x_r_vec(beta)?;
+        let eq_beta_mle = dense_vec_to_dense_mle(self.s, &eq_beta);
+
+        let mut Q = VirtualPolynomial::<F>::new(self.s);
+        for i in 0..self.q {
+            let mut Q_k = vec![];
+            for &j in self.S[i].iter() {
+                Q_k.push(dense_vec_to_dense_mle(self.s, &mat_vec_mul(&self.M[j], z)?));
+            }
+            Q_k.push(eq_beta_mle.clone());
+            Q.add_mle_list(Q_k.iter().map(|v| Arc::new(v.clone())), self.c[i])?;
+        }
+        Ok(Q)
     }
 }
 
@@ -118,9 +110,10 @@ impl<C: CurveGroup> CCCS<C> {
             [vec![C::ScalarField::one()], self.x.clone(), w.w.to_vec()].concat();
 
         // A CCCS relation is satisfied if the q(x) multivariate polynomial evaluates to zero in the hypercube
-        let q_x = ccs.compute_q(&z);
+        let q_x = ccs.compute_q(&z)?;
+
         for x in BooleanHypercube::new(ccs.s) {
-            if !q_x.evaluate(&x).unwrap().is_zero() {
+            if !q_x.evaluate(&x)?.is_zero() {
                 return Err(Error::NotSatisfied);
             }
         }
@@ -147,7 +140,7 @@ pub mod tests {
         let ccs = get_test_ccs::<Fr>();
         let z = get_test_z(3);
 
-        let q = ccs.compute_q(&z);
+        let q = ccs.compute_q(&z).unwrap();
 
         // Evaluate inside the hypercube
         for x in BooleanHypercube::new(ccs.s) {
@@ -171,7 +164,7 @@ pub mod tests {
         let beta: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
 
         // Compute Q(x) = eq(beta, x) * q(x).
-        let Q = ccs.compute_Q(&z, &beta);
+        let Q = ccs.compute_Q(&z, &beta).unwrap();
 
         // Let's consider the multilinear polynomial G(x) = \sum_{y \in {0, 1}^s} eq(x, y) q(y)
         // which interpolates the multivariate polynomial q(x) inside the hypercube.
@@ -204,9 +197,9 @@ pub mod tests {
 
         // Now test that if we create Q(x) with eq(d,y) where d is inside the hypercube, \sum Q(x) should be G(d) which
         // should be equal to q(d), since G(x) interpolates q(x) inside the hypercube
-        let q = ccs.compute_q(&z);
+        let q = ccs.compute_q(&z).unwrap();
         for d in BooleanHypercube::new(ccs.s) {
-            let Q_at_d = ccs.compute_Q(&z, &d);
+            let Q_at_d = ccs.compute_Q(&z, &d).unwrap();
 
             // Get G(d) by summing over Q_d(x) over the hypercube
             let G_at_d = BooleanHypercube::new(ccs.s)
@@ -217,7 +210,7 @@ pub mod tests {
 
         // Now test that they should disagree outside of the hypercube
         let r: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
-        let Q_at_r = ccs.compute_Q(&z, &r);
+        let Q_at_r = ccs.compute_Q(&z, &r).unwrap();
 
         // Get G(d) by summing over Q_d(x) over the hypercube
         let G_at_r = BooleanHypercube::new(ccs.s)

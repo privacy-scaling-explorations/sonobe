@@ -361,7 +361,7 @@ mod tests {
         commitment::{pedersen::Pedersen, CommitmentScheme},
         folding::hypernova::{
             nimfs::NIMFS,
-            utils::{compute_c, compute_sigmas_and_thetas},
+            utils::{compute_c, compute_sigmas_thetas},
         },
         transcript::{
             poseidon::{poseidon_canonical_config, PoseidonTranscript, PoseidonTranscriptVar},
@@ -409,7 +409,7 @@ mod tests {
             cccs_instances.push(inst);
         }
 
-        let sigmas_thetas = compute_sigmas_and_thetas(&ccs, &z_lcccs, &z_cccs, &r_x_prime);
+        let sigmas_thetas = compute_sigmas_thetas(&ccs, &z_lcccs, &z_cccs, &r_x_prime).unwrap();
 
         let expected_c = compute_c(
             &ccs,
@@ -421,7 +421,8 @@ mod tests {
                 .map(|lcccs| lcccs.r_x.clone())
                 .collect(),
             &r_x_prime,
-        );
+        )
+        .unwrap();
 
         let cs = ConstraintSystem::<Fr>::new_ref();
         let mut vec_sigmas = Vec::new();

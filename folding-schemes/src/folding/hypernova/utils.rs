@@ -1,88 +1,52 @@
 use ark_ec::CurveGroup;
-use ark_ff::{Field, PrimeField};
+use ark_ff::PrimeField;
 use ark_poly::DenseMultilinearExtension;
 use ark_poly::MultilinearExtension;
-use std::ops::Add;
-
-use crate::utils::multilinear_polynomial::fix_variables;
-use crate::utils::multilinear_polynomial::scalar_mul;
+use ark_std::One;
+use std::sync::Arc;
 
 use super::lcccs::LCCCS;
 use super::nimfs::SigmasThetas;
 use crate::ccs::CCS;
-use crate::utils::hypercube::BooleanHypercube;
-use crate::utils::mle::dense_vec_to_mle;
-use crate::utils::mle::matrix_to_mle;
-use crate::utils::vec::SparseMatrix;
-use crate::utils::virtual_polynomial::{eq_eval, VirtualPolynomial};
-
-/// Return a vector of evaluations p_j(r) = \sum_{y \in {0,1}^s'} M_j(r, y) * z(y) for all j values
-/// in 0..self.t
-pub fn compute_all_sum_Mz_evals<F: PrimeField>(
-    vec_M: &[SparseMatrix<F>],
-    z: &[F],
-    r: &[F],
-    s_prime: usize,
-) -> Vec<F> {
-    // Convert z to MLE
-    let z_y_mle = dense_vec_to_mle(s_prime, z);
-    // Convert all matrices to MLE
-    let M_x_y_mle: Vec<DenseMultilinearExtension<F>> =
-        vec_M.iter().cloned().map(matrix_to_mle).collect();
-
-    let mut v = Vec::with_capacity(M_x_y_mle.len());
-    for M_i in M_x_y_mle {
-        let sum_Mz = compute_sum_Mz(M_i, &z_y_mle, s_prime);
-        let v_i = sum_Mz.evaluate(r).unwrap();
-        v.push(v_i);
-    }
-    v
-}
-
-/// Return the multilinear polynomial p(x) = \sum_{y \in {0,1}^s'} M_j(x, y) * z(y)
-pub fn compute_sum_Mz<F: PrimeField>(
-    M_j: DenseMultilinearExtension<F>,
-    z: &DenseMultilinearExtension<F>,
-    s_prime: usize,
-) -> DenseMultilinearExtension<F> {
-    let mut sum_Mz = DenseMultilinearExtension {
-        evaluations: vec![F::zero(); M_j.evaluations.len()],
-        num_vars: M_j.num_vars - s_prime,
-    };
-
-    let bhc = BooleanHypercube::new(s_prime);
-    for y in bhc.into_iter() {
-        // In a slightly counter-intuitive fashion fix_variables() fixes the right-most variables of the polynomial. So
-        // for a polynomial M(x,y) and a random field element r, if we do fix_variables(M,r) we will get M(x,r).
-        let M_j_y = fix_variables(&M_j, &y);
-        let z_y = z.evaluate(&y).unwrap();
-        let M_j_z = scalar_mul(&M_j_y, &z_y);
-        sum_Mz = sum_Mz.add(M_j_z);
-    }
-    sum_Mz
-}
+use crate::utils::mle::dense_vec_to_dense_mle;
+use crate::utils::vec::mat_vec_mul;
+use crate::utils::virtual_polynomial::{build_eq_x_r_vec, eq_eval, VirtualPolynomial};
+use crate::Error;
 
 /// Compute the arrays of sigma_i and theta_i from step 4 corresponding to the LCCCS and CCCS
 /// instances
-pub fn compute_sigmas_and_thetas<F: PrimeField>(
+pub fn compute_sigmas_thetas<F: PrimeField>(
     ccs: &CCS<F>,
     z_lcccs: &[Vec<F>],
     z_cccs: &[Vec<F>],
     r_x_prime: &[F],
-) -> SigmasThetas<F> {
+) -> Result<SigmasThetas<F>, Error> {
     let mut sigmas: Vec<Vec<F>> = Vec::new();
     for z_lcccs_i in z_lcccs {
-        // sigmas
-        let sigma_i = compute_all_sum_Mz_evals(&ccs.M, z_lcccs_i, r_x_prime, ccs.s_prime);
+        let mut Mzs: Vec<DenseMultilinearExtension<F>> = vec![];
+        for M_j in ccs.M.iter() {
+            Mzs.push(dense_vec_to_dense_mle(ccs.s, &mat_vec_mul(M_j, z_lcccs_i)?));
+        }
+        let sigma_i = Mzs
+            .iter()
+            .map(|Mz| Mz.evaluate(r_x_prime).ok_or(Error::EvaluationFail))
+            .collect::<Result<_, Error>>()?;
         sigmas.push(sigma_i);
     }
+
     let mut thetas: Vec<Vec<F>> = Vec::new();
     for z_cccs_i in z_cccs {
-        // thetas
-        let theta_i = compute_all_sum_Mz_evals(&ccs.M, z_cccs_i, r_x_prime, ccs.s_prime);
+        let mut Mzs: Vec<DenseMultilinearExtension<F>> = vec![];
+        for M_j in ccs.M.iter() {
+            Mzs.push(dense_vec_to_dense_mle(ccs.s, &mat_vec_mul(M_j, z_cccs_i)?));
+        }
+        let theta_i = Mzs
+            .iter()
+            .map(|Mz| Mz.evaluate(r_x_prime).ok_or(Error::EvaluationFail))
+            .collect::<Result<_, Error>>()?;
         thetas.push(theta_i);
     }
-    SigmasThetas(sigmas, thetas)
+    Ok(SigmasThetas(sigmas, thetas))
 }
 
 /// computes c from the step 5 in section 5 of HyperNova, adapted to multiple LCCCS & CCCS
@@ -99,13 +63,13 @@ pub fn compute_c<F: PrimeField>(
     beta: &[F],
     vec_r_x: &Vec<Vec<F>>,
     r_x_prime: &[F],
-) -> F {
+) -> Result<F, Error> {
     let (vec_sigmas, vec_thetas) = (st.0.clone(), st.1.clone());
     let mut c = F::zero();
 
     let mut e_lcccs = Vec::new();
     for r_x in vec_r_x {
-        e_lcccs.push(eq_eval(r_x, r_x_prime).unwrap());
+        e_lcccs.push(eq_eval(r_x, r_x_prime)?);
     }
     for (i, sigmas) in vec_sigmas.iter().enumerate() {
         // (sum gamma^j * e_i * sigma_j)
@@ -116,7 +80,7 @@ pub fn compute_c<F: PrimeField>(
     }
 
     let mu = vec_sigmas.len();
-    let e2 = eq_eval(beta, r_x_prime).unwrap();
+    let e2 = eq_eval(beta, r_x_prime)?;
     for (k, thetas) in vec_thetas.iter().enumerate() {
         // + gamma^{t+1} * e2 * sum c_i * prod theta_j
         let mut lhs = F::zero();
@@ -130,7 +94,7 @@ pub fn compute_c<F: PrimeField>(
         let gamma_t1 = gamma.pow([(mu * ccs.t + k) as u64]);
         c += gamma_t1 * e2 * lhs;
     }
-    c
+    Ok(c)
 }
 
 /// Compute g(x) polynomial for the given inputs.
@@ -141,74 +105,75 @@ pub fn compute_g<C: CurveGroup>(
     z_cccs: &[Vec<C::ScalarField>],
     gamma: C::ScalarField,
     beta: &[C::ScalarField],
-) -> VirtualPolynomial<C::ScalarField> {
-    let mu = running_instances.len();
-    let mut vec_Ls: Vec<VirtualPolynomial<C::ScalarField>> = Vec::new();
-    for (i, running_instance) in running_instances.iter().enumerate() {
-        let mut Ls = running_instance.compute_Ls(ccs, &z_lcccs[i]);
-        vec_Ls.append(&mut Ls);
-    }
-    let mut vec_Q: Vec<VirtualPolynomial<C::ScalarField>> = Vec::new();
-    for z_cccs_i in z_cccs.iter() {
-        let Q = ccs.compute_Q(z_cccs_i, beta);
-        vec_Q.push(Q);
-    }
-    let mut g = vec_Ls[0].clone();
+) -> Result<VirtualPolynomial<C::ScalarField>, Error>
+where
+    C::ScalarField: PrimeField,
+{
+    assert_eq!(running_instances.len(), z_lcccs.len());
 
-    // note: the following two loops can be integrated in the previous two loops, but left
-    // separated for clarity in the PoC implementation.
-    for (j, L_j) in vec_Ls.iter_mut().enumerate().skip(1) {
-        let gamma_j = gamma.pow([j as u64]);
-        L_j.scalar_mul(&gamma_j);
-        g = g.add(L_j);
+    let mut g = VirtualPolynomial::<C::ScalarField>::new(ccs.s);
+
+    let mu = z_lcccs.len();
+    let nu = z_cccs.len();
+
+    let mut gamma_pow = C::ScalarField::one();
+    for i in 0..mu {
+        // L_j
+        let eq_rx = build_eq_x_r_vec(&running_instances[i].r_x)?;
+        let eq_rx_mle = dense_vec_to_dense_mle(ccs.s, &eq_rx);
+        for M_j in ccs.M.iter() {
+            let mut L_i_j = vec![dense_vec_to_dense_mle(
+                ccs.s,
+                &mat_vec_mul(M_j, &z_lcccs[i])?,
+            )];
+            L_i_j.push(eq_rx_mle.clone());
+            g.add_mle_list(L_i_j.iter().map(|v| Arc::new(v.clone())), gamma_pow)?;
+            gamma_pow *= gamma;
+        }
     }
-    for (i, Q_i) in vec_Q.iter_mut().enumerate() {
-        let gamma_mut_i = gamma.pow([(mu * ccs.t + i) as u64]);
-        Q_i.scalar_mul(&gamma_mut_i);
-        g = g.add(Q_i);
+
+    let eq_beta = build_eq_x_r_vec(beta)?;
+    let eq_beta_mle = dense_vec_to_dense_mle(ccs.s, &eq_beta);
+
+    #[allow(clippy::needless_range_loop)]
+    for k in 0..nu {
+        // Q_k
+        for i in 0..ccs.q {
+            let mut Q_k = vec![];
+            for &j in ccs.S[i].iter() {
+                Q_k.push(dense_vec_to_dense_mle(
+                    ccs.s,
+                    &mat_vec_mul(&ccs.M[j], &z_cccs[k])?,
+                ));
+            }
+            Q_k.push(eq_beta_mle.clone());
+            g.add_mle_list(
+                Q_k.iter().map(|v| Arc::new(v.clone())),
+                ccs.c[i] * gamma_pow,
+            )?;
+        }
+        gamma_pow *= gamma;
     }
-    g
+
+    Ok(g)
 }
 
 #[cfg(test)]
 pub mod tests {
-    use super::*;
-
+    use ark_ff::Field;
     use ark_pallas::{Fr, Projective};
     use ark_std::test_rng;
-    use ark_std::One;
     use ark_std::UniformRand;
     use ark_std::Zero;
 
+    use super::*;
     use crate::ccs::tests::{get_test_ccs, get_test_z};
     use crate::commitment::{pedersen::Pedersen, CommitmentScheme};
+    use crate::folding::hypernova::lcccs::tests::compute_Ls;
+    use crate::utils::hypercube::BooleanHypercube;
+    use crate::utils::mle::matrix_to_dense_mle;
     use crate::utils::multilinear_polynomial::tests::fix_last_variables;
     use crate::utils::virtual_polynomial::eq_eval;
-
-    #[test]
-    fn test_compute_sum_Mz_over_boolean_hypercube() {
-        let ccs = get_test_ccs::<Fr>();
-        let z = get_test_z(3);
-        ccs.check_relation(&z).unwrap();
-        let z_mle = dense_vec_to_mle(ccs.s_prime, &z);
-
-        // check that evaluating over all the values x over the boolean hypercube, the result of
-        // the next for loop is equal to 0
-        for x in BooleanHypercube::new(ccs.s) {
-            let mut r = Fr::zero();
-            for i in 0..ccs.q {
-                let mut Sj_prod = Fr::one();
-                for j in ccs.S[i].clone() {
-                    let M_j = matrix_to_mle(ccs.M[j].clone());
-                    let sum_Mz = compute_sum_Mz(M_j, &z_mle, ccs.s_prime);
-                    let sum_Mz_x = sum_Mz.evaluate(&x).unwrap();
-                    Sj_prod *= sum_Mz_x;
-                }
-                r += Sj_prod * ccs.c[i];
-            }
-            assert_eq!(r, Fr::zero());
-        }
-    }
 
     /// Given M(x,y) matrix and a random field element `r`, test that ~M(r,y) is is an s'-variable polynomial which
     /// compresses every column j of the M(x,y) matrix by performing a random linear combination between the elements
@@ -238,7 +203,7 @@ pub mod tests {
         let ccs = get_test_ccs::<Fr>();
 
         let M = ccs.M[0].clone().to_dense();
-        let M_mle = matrix_to_mle(ccs.M[0].clone());
+        let M_mle = matrix_to_dense_mle(ccs.M[0].clone());
 
         // Fix the polynomial ~M(r,y)
         let r: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
@@ -259,7 +224,7 @@ pub mod tests {
     }
 
     #[test]
-    fn test_compute_sigmas_and_thetas() {
+    fn test_compute_sigmas_thetas() {
         let ccs = get_test_ccs();
         let z1 = get_test_z(3);
         let z2 = get_test_z(4);
@@ -277,7 +242,7 @@ pub mod tests {
         let (lcccs_instance, _) = ccs.to_lcccs(&mut rng, &pedersen_params, &z1).unwrap();
 
         let sigmas_thetas =
-            compute_sigmas_and_thetas(&ccs, &[z1.clone()], &[z2.clone()], &r_x_prime);
+            compute_sigmas_thetas(&ccs, &[z1.clone()], &[z2.clone()], &r_x_prime).unwrap();
 
         let g = compute_g(
             &ccs,
@@ -286,7 +251,8 @@ pub mod tests {
             &[z2.clone()],
             gamma,
             &beta,
-        );
+        )
+        .unwrap();
 
         // we expect g(r_x_prime) to be equal to:
         // c = (sum gamma^j * e1 * sigma_j) + gamma^{t+1} * e2 * sum c_i * prod theta_j
@@ -299,19 +265,22 @@ pub mod tests {
             &beta,
             &vec![lcccs_instance.r_x],
             &r_x_prime,
-        );
+        )
+        .unwrap();
         assert_eq!(c, expected_c);
     }
 
     #[test]
     fn test_compute_g() {
-        let ccs = get_test_ccs();
+        let mut rng = test_rng();
+
+        // generate test CCS & z vectors
+        let ccs: CCS<Fr> = get_test_ccs();
         let z1 = get_test_z(3);
         let z2 = get_test_z(4);
         ccs.check_relation(&z1).unwrap();
         ccs.check_relation(&z2).unwrap();
 
-        let mut rng = test_rng(); // TMP
         let gamma: Fr = Fr::rand(&mut rng);
         let beta: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
 
@@ -319,12 +288,6 @@ pub mod tests {
         let (pedersen_params, _) =
             Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
         let (lcccs_instance, _) = ccs.to_lcccs(&mut rng, &pedersen_params, &z1).unwrap();
-
-        let mut sum_v_j_gamma = Fr::zero();
-        for j in 0..lcccs_instance.v.len() {
-            let gamma_j = gamma.pow([j as u64]);
-            sum_v_j_gamma += lcccs_instance.v[j] * gamma_j;
-        }
 
         // Compute g(x) with that r_x
         let g = compute_g::<Projective>(
@@ -334,7 +297,8 @@ pub mod tests {
             &[z2.clone()],
             gamma,
             &beta,
-        );
+        )
+        .unwrap();
 
         // evaluate g(x) over x \in {0,1}^s
         let mut g_on_bhc = Fr::zero();
@@ -342,9 +306,22 @@ pub mod tests {
             g_on_bhc += g.evaluate(&x).unwrap();
         }
 
+        // Q(x) over bhc is assumed to be zero, as checked in the test 'test_compute_Q'
+        assert_ne!(g_on_bhc, Fr::zero());
+
+        let mut sum_v_j_gamma = Fr::zero();
+        for j in 0..lcccs_instance.v.len() {
+            let gamma_j = gamma.pow([j as u64]);
+            sum_v_j_gamma += lcccs_instance.v[j] * gamma_j;
+        }
+
+        // evaluating g(x) over the boolean hypercube should give the same result as evaluating the
+        // sum of gamma^j * v_j over j \in [t]
+        assert_eq!(g_on_bhc, sum_v_j_gamma);
+
         // evaluate sum_{j \in [t]} (gamma^j * Lj(x)) over x \in {0,1}^s
         let mut sum_Lj_on_bhc = Fr::zero();
-        let vec_L = lcccs_instance.compute_Ls(&ccs, &z1);
+        let vec_L = compute_Ls(&ccs, &lcccs_instance, &z1);
         for x in BooleanHypercube::new(ccs.s) {
             for (j, Lj) in vec_L.iter().enumerate() {
                 let gamma_j = gamma.pow([j as u64]);
@@ -352,15 +329,8 @@ pub mod tests {
             }
         }
 
-        // Q(x) over bhc is assumed to be zero, as checked in the test 'test_compute_Q'
-        assert_ne!(g_on_bhc, Fr::zero());
-
         // evaluating g(x) over the boolean hypercube should give the same result as evaluating the
         // sum of gamma^j * Lj(x) over the boolean hypercube
         assert_eq!(g_on_bhc, sum_Lj_on_bhc);
-
-        // evaluating g(x) over the boolean hypercube should give the same result as evaluating the
-        // sum of gamma^j * v_j over j \in [t]
-        assert_eq!(g_on_bhc, sum_v_j_gamma);
     }
 }

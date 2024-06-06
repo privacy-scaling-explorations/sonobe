@@ -1,6 +1,6 @@
 /// Some basic MLE utilities
 use ark_ff::PrimeField;
-use ark_poly::DenseMultilinearExtension;
+use ark_poly::{DenseMultilinearExtension, SparseMultilinearExtension};
 use ark_std::log2;
 
 use super::vec::SparseMatrix;
@@ -15,7 +15,7 @@ pub fn pad_matrix<F: PrimeField>(m: &SparseMatrix<F>) -> SparseMatrix<F> {
 
 /// Returns the dense multilinear extension from the given matrix, without modifying the original
 /// matrix.
-pub fn matrix_to_mle<F: PrimeField>(matrix: SparseMatrix<F>) -> DenseMultilinearExtension<F> {
+pub fn matrix_to_dense_mle<F: PrimeField>(matrix: SparseMatrix<F>) -> DenseMultilinearExtension<F> {
     let n_vars: usize = (log2(matrix.n_rows) + log2(matrix.n_cols)) as usize; // n_vars = s + s'
 
     // Matrices might need to get padded before turned into an MLE
@@ -30,11 +30,11 @@ pub fn matrix_to_mle<F: PrimeField>(matrix: SparseMatrix<F>) -> DenseMultilinear
     }
 
     // convert the dense vector into a mle
-    vec_to_mle(n_vars, &v)
+    vec_to_dense_mle(n_vars, &v)
 }
 
 /// Takes the n_vars and a dense vector and returns its dense MLE.
-pub fn vec_to_mle<F: PrimeField>(n_vars: usize, v: &[F]) -> DenseMultilinearExtension<F> {
+pub fn vec_to_dense_mle<F: PrimeField>(n_vars: usize, v: &[F]) -> DenseMultilinearExtension<F> {
     let v_padded: Vec<F> = if v.len() != (1 << n_vars) {
         // pad to 2^n_vars
         [
@@ -50,7 +50,35 @@ pub fn vec_to_mle<F: PrimeField>(n_vars: usize, v: &[F]) -> DenseMultilinearExte
     DenseMultilinearExtension::<F>::from_evaluations_vec(n_vars, v_padded)
 }
 
-pub fn dense_vec_to_mle<F: PrimeField>(n_vars: usize, v: &[F]) -> DenseMultilinearExtension<F> {
+/// Returns the sparse multilinear extension from the given matrix, without modifying the original
+/// matrix.
+pub fn matrix_to_mle<F: PrimeField>(m: SparseMatrix<F>) -> SparseMultilinearExtension<F> {
+    let n_rows = m.n_rows.next_power_of_two();
+    let n_cols = m.n_cols.next_power_of_two();
+    let n_vars: usize = (log2(n_rows) + log2(n_cols)) as usize; // n_vars = s + s'
+
+    // build the sparse vec representing the sparse matrix
+    let mut v: Vec<(usize, F)> = Vec::new();
+    for (i, row) in m.coeffs.iter().enumerate() {
+        for (val, j) in row.iter() {
+            v.push((i * n_cols + j, *val));
+        }
+    }
+
+    // convert the dense vector into a mle
+    vec_to_mle(n_vars, &v)
+}
+
+/// Takes the n_vars and a sparse vector and returns its sparse MLE.
+pub fn vec_to_mle<F: PrimeField>(n_vars: usize, v: &[(usize, F)]) -> SparseMultilinearExtension<F> {
+    SparseMultilinearExtension::<F>::from_evaluations(n_vars, v)
+}
+
+/// Takes the n_vars and a dense vector and returns its dense MLE.
+pub fn dense_vec_to_dense_mle<F: PrimeField>(
+    n_vars: usize,
+    v: &[F],
+) -> DenseMultilinearExtension<F> {
     // Pad to 2^n_vars
     let v_padded: Vec<F> = [
         v.to_owned(),
@@ -60,6 +88,16 @@ pub fn dense_vec_to_mle<F: PrimeField>(n_vars: usize, v: &[F]) -> DenseMultiline
     ]
     .concat();
     DenseMultilinearExtension::<F>::from_evaluations_vec(n_vars, v_padded)
+}
+
+/// Takes the n_vars and a dense vector and returns its sparse MLE.
+pub fn dense_vec_to_mle<F: PrimeField>(n_vars: usize, v: &[F]) -> SparseMultilinearExtension<F> {
+    let v_sparse = v
+        .iter()
+        .enumerate()
+        .map(|(i, v_i)| (i, *v_i))
+        .collect::<Vec<(usize, F)>>();
+    SparseMultilinearExtension::<F>::from_evaluations(n_vars, &v_sparse)
 }
 
 #[cfg(test)]
@@ -86,7 +124,8 @@ mod tests {
         ]);
 
         let A_mle = matrix_to_mle(A);
-        assert_eq!(A_mle.evaluations.len(), 16); // 4x4 matrix, thus 2bit x 2bit, thus 2^4=16 evals
+        assert_eq!(A_mle.evaluations.len(), 15); // 15 non-zero elements
+        assert_eq!(A_mle.num_vars, 4); // 4x4 matrix, thus 2bit x 2bit, thus 2^4=16 evals
 
         let A = to_F_matrix::<Fr>(vec![
             vec![2, 3, 4, 4, 1],
@@ -96,7 +135,8 @@ mod tests {
             vec![420, 4, 2, 0, 5],
         ]);
         let A_mle = matrix_to_mle(A.clone());
-        assert_eq!(A_mle.evaluations.len(), 64); // 5x5 matrix, thus 3bit x 3bit, thus 2^6=64 evals
+        assert_eq!(A_mle.evaluations.len(), 23); // 23 non-zero elements
+        assert_eq!(A_mle.num_vars, 6); // 5x5 matrix, thus 3bit x 3bit, thus 2^6=64 evals
 
         // check that the A_mle evaluated over the boolean hypercube equals the matrix A_i_j values
         let bhc = BooleanHypercube::new(A_mle.num_vars);
@@ -138,7 +178,7 @@ mod tests {
             vec![420, 4, 2, 0],
         ]);
 
-        let A_mle = matrix_to_mle(A.clone());
+        let A_mle = matrix_to_dense_mle(A.clone());
         let A = A.to_dense();
         let bhc = BooleanHypercube::new(2);
         for (i, y) in bhc.enumerate() {

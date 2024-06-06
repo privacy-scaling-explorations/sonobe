@@ -68,6 +68,8 @@ pub enum Error {
     NewDomainFail,
     #[error("The number of folded steps must be greater than 1")]
     NotEnoughSteps,
+    #[error("Evaluation failed")]
+    EvaluationFail,
 
     // Commitment errors
     #[error("Pedersen parameters length is not sufficient (generators.len={0} < vector.len={1} unsatisfied)")]

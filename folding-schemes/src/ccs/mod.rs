@@ -1,7 +1,7 @@
 use ark_ff::PrimeField;
 use ark_std::log2;
 
-use crate::utils::vec::*;
+use crate::utils::vec::{hadamard, mat_vec_mul, vec_add, vec_scalar_mul, SparseMatrix};
 use crate::Error;
 
 pub mod r1cs;
@@ -48,7 +48,7 @@ impl<F: PrimeField> CCS<F> {
             // complete the hadamard chain
             let mut hadamard_result = vec![F::one(); self.m];
             for M_j in vec_M_j.into_iter() {
-                hadamard_result = hadamard(&hadamard_result, &mat_vec_mul_sparse(M_j, z)?)?;
+                hadamard_result = hadamard(&hadamard_result, &mat_vec_mul(M_j, z)?)?;
             }
 
             // multiply by the coefficient of this step

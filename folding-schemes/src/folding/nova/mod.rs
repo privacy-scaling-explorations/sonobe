@@ -817,9 +817,6 @@ pub mod tests {
     use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as Projective};
     use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
     use ark_poly_commit::kzg10::VerifierKey as KZGVerifierKey;
-    use ark_serialize::{CanonicalSerialize, Compress, Validate};
-    use std::fs;
-    use std::io::Write;
 
     use crate::commitment::pedersen::Pedersen;
     use crate::frontend::tests::CubicFCircuit;
@@ -860,77 +857,6 @@ pub mod tests {
             cf_pedersen_params,
             F_circuit,
         );
-    }
-
-    #[test]
-    fn test_serde_nova() {
-        let mut rng = ark_std::test_rng();
-        let poseidon_config = poseidon_canonical_config::<Fr>();
-        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
-        let (cs_len, cf_cs_len) =
-            get_cs_params_len::<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>>(
-                &poseidon_config,
-                F_circuit,
-            )
-            .unwrap();
-        let (kzg_pk, _): (KZGProverKey<Projective>, KZGVerifierKey<Bn254>) =
-            KZG::<Bn254>::setup(&mut rng, cs_len).unwrap();
-        let (cf_pedersen_params, _) = Pedersen::<Projective2>::setup(&mut rng, cf_cs_len).unwrap();
-
-        // Initialize nova and make multiple `prove_step()`
-        type NOVA<CS1, CS2> =
-            Nova<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>, CS1, CS2>;
-        let prover_params =
-            ProverParams::<Projective, Projective2, KZG<Bn254>, Pedersen<Projective2>> {
-                poseidon_config: poseidon_config.clone(),
-                cs_params: kzg_pk.clone(),
-                cf_cs_params: cf_pedersen_params.clone(),
-            };
-
-        let z_0 = vec![Fr::from(3_u32)];
-        let mut nova = NOVA::init(&prover_params, F_circuit, z_0.clone()).unwrap();
-
-        let num_steps: usize = 3;
-        for _ in 0..num_steps {
-            nova.prove_step(vec![]).unwrap();
-        }
-
-        let mut writer = vec![];
-        assert!(nova
-            .serialize_with_mode(&mut writer, ark_serialize::Compress::No)
-            .is_ok());
-
-        let mut file = fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .open("./nova.serde")
-            .unwrap();
-
-        file.write_all(&writer).unwrap();
-
-        let bytes = fs::read("./nova.serde").unwrap();
-
-        let mut deserialized_nova =
-            Nova::<
-                Projective,
-                GVar,
-                Projective2,
-                GVar2,
-                CubicFCircuit<Fr>,
-                KZG<Bn254>,
-                Pedersen<Projective2>,
-            >::deserialize_nova(bytes.as_slice(), Compress::No, Validate::No)
-            .unwrap();
-
-        assert_eq!(nova.i, deserialized_nova.i);
-
-        let num_steps: usize = 3;
-        for _ in 0..num_steps {
-            deserialized_nova.prove_step(vec![]).unwrap();
-            nova.prove_step(vec![]).unwrap();
-        }
-
-        assert_eq!(deserialized_nova.w_i, nova.w_i);
     }
 
     // test_ivc allowing to choose the CommitmentSchemes

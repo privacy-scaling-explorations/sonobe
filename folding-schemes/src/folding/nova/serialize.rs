@@ -1,25 +1,35 @@
-use std::marker::PhantomData;
-
+pub use super::{CommittedInstance, Witness};
+pub use crate::folding::circuits::CF2;
+use crate::{ccs::r1cs::R1CS, commitment::CommitmentScheme, frontend::FCircuit};
 use ark_crypto_primitives::sponge::poseidon::PoseidonConfig;
 use ark_ec::CurveGroup;
+use ark_ff::PrimeField;
+use ark_r1cs_std::groups::GroupOpsBounds;
 use ark_r1cs_std::{groups::CurveVar, ToConstraintFieldGadget};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Write};
-
-use super::{circuits::CF2, CommittedInstance, Witness};
-use crate::{ccs::r1cs::R1CS, commitment::CommitmentScheme, frontend::FCircuit};
+use std::marker::PhantomData;
 
 use super::Nova;
+use ark_crypto_primitives::sponge::Absorb;
+use ark_ec::Group;
 
-impl<
-        C1: CurveGroup,
-        GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
-        C2: CurveGroup,
-        GC2: CurveVar<C2, CF2<C2>>,
-        FC: FCircuit<C1::ScalarField>,
-        CS1: CommitmentScheme<C1>,
-        CS2: CommitmentScheme<C2>,
-    > CanonicalSerialize for Nova<C1, GC1, C2, GC2, FC, CS1, CS2>
+impl<C1, GC1, C2, GC2, FC, CS1, CS2> CanonicalSerialize for Nova<C1, GC1, C2, GC2, FC, CS1, CS2>
 where
+    C1: CurveGroup,
+    C2: CurveGroup,
+    FC: FCircuit<C1::ScalarField>,
+    CS1: CommitmentScheme<C1>,
+    CS2: CommitmentScheme<C2>,
+    <C1 as CurveGroup>::BaseField: PrimeField,
+    <C2 as CurveGroup>::BaseField: PrimeField,
+    <C1 as Group>::ScalarField: Absorb,
+    <C2 as Group>::ScalarField: Absorb,
+    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    for<'a> &'a GC1: GroupOpsBounds<'a, C1, GC1>,
+    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
+    GC1: CurveVar<C1, <C2 as Group>::ScalarField>,
+    GC1: ToConstraintFieldGadget<<C2 as Group>::ScalarField>,
+    GC2: CurveVar<C2, <C2 as CurveGroup>::BaseField>,
     CS1::ProverParams: CanonicalSerialize,
     CS2::ProverParams: CanonicalSerialize,
 {
@@ -119,16 +129,23 @@ where
 
 // Note that we can't derive or implement `CanonicalDeserialize` directly.
 // This is because `CurveVar` notably does not implement the `Sync` trait.
-impl<
-        C1: CurveGroup,
-        GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
-        C2: CurveGroup,
-        GC2: CurveVar<C2, CF2<C2>>,
-        FC: FCircuit<C1::ScalarField, Params = ()>,
-        CS1: CommitmentScheme<C1>,
-        CS2: CommitmentScheme<C2>,
-    > Nova<C1, GC1, C2, GC2, FC, CS1, CS2>
+impl<C1, GC1, C2, GC2, FC, CS1, CS2> Nova<C1, GC1, C2, GC2, FC, CS1, CS2>
 where
+    C1: CurveGroup,
+    C2: CurveGroup,
+    FC: FCircuit<C1::ScalarField, Params = ()>,
+    CS1: CommitmentScheme<C1>,
+    CS2: CommitmentScheme<C2>,
+    <C1 as CurveGroup>::BaseField: PrimeField,
+    <C2 as CurveGroup>::BaseField: PrimeField,
+    <C1 as Group>::ScalarField: Absorb,
+    <C2 as Group>::ScalarField: Absorb,
+    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    for<'a> &'a GC1: GroupOpsBounds<'a, C1, GC1>,
+    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
+    GC1: CurveVar<C1, <C2 as Group>::ScalarField>,
+    GC1: ToConstraintFieldGadget<<C2 as Group>::ScalarField>,
+    GC2: CurveVar<C2, <C2 as CurveGroup>::BaseField>,
     CS1::ProverParams: CanonicalDeserialize,
     CS2::ProverParams: CanonicalDeserialize,
 {

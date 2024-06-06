@@ -865,7 +865,7 @@ pub mod tests {
     #[test]
     fn test_serde_nova() {
         let mut rng = ark_std::test_rng();
-        let poseidon_config = poseidon_test_config::<Fr>();
+        let poseidon_config = poseidon_canonical_config::<Fr>();
         let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
         let (cs_len, cf_cs_len) =
             get_cs_params_len::<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>>(

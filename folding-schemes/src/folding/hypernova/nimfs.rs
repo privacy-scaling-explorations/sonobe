@@ -5,13 +5,14 @@ use ark_poly::univariate::DensePolynomial;
 use ark_poly::{DenseUVPolynomial, Polynomial};
 use ark_std::{One, Zero};
 
-use super::cccs::{Witness, CCCS};
+use super::cccs::CCCS;
 use super::lcccs::LCCCS;
 use super::utils::{compute_c, compute_g, compute_sigmas_thetas};
+use super::Witness;
 use crate::ccs::CCS;
+use crate::folding::circuits::nonnative::affine::nonnative_affine_to_field_elements;
 use crate::transcript::Transcript;
-use crate::utils::hypercube::BooleanHypercube;
-use crate::utils::sum_check::structs::IOPProof as SumCheckProof;
+use crate::utils::sum_check::structs::{IOPProof as SumCheckProof, IOPProverMessage};
 use crate::utils::sum_check::{IOPSumCheck, SumCheck};
 use crate::utils::virtual_polynomial::VPAuxInfo;
 use crate::Error;
@@ -19,11 +20,31 @@ use crate::Error;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
-/// Proof defines a multifolding proof
+/// NIMFSProof defines a multifolding proof
 #[derive(Clone, Debug)]
-pub struct Proof<C: CurveGroup> {
+pub struct NIMFSProof<C: CurveGroup> {
     pub sc_proof: SumCheckProof<C::ScalarField>,
     pub sigmas_thetas: SigmasThetas<C::ScalarField>,
+}
+
+impl<C: CurveGroup> NIMFSProof<C> {
+    pub fn dummy(ccs: &CCS<C::ScalarField>, mu: usize, nu: usize) -> Self {
+        NIMFSProof::<C> {
+            sc_proof: SumCheckProof::<C::ScalarField> {
+                point: vec![C::ScalarField::zero(); ccs.d],
+                proofs: vec![
+                    IOPProverMessage {
+                        coeffs: vec![C::ScalarField::zero(); ccs.t + 1]
+                    };
+                    ccs.s
+                ],
+            },
+            sigmas_thetas: SigmasThetas(
+                vec![vec![C::ScalarField::zero(); ccs.t]; mu],
+                vec![vec![C::ScalarField::zero(); ccs.t]; nu],
+            ),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -40,6 +61,7 @@ pub struct NIMFS<C: CurveGroup, T: Transcript<C>> {
 impl<C: CurveGroup, T: Transcript<C>> NIMFS<C, T>
 where
     <C as Group>::ScalarField: Absorb,
+    C::BaseField: PrimeField,
 {
     pub fn fold(
         lcccs: &[LCCCS<C>],
@@ -157,8 +179,26 @@ where
         new_instances: &[CCCS<C>],
         w_lcccs: &[Witness<C::ScalarField>],
         w_cccs: &[Witness<C::ScalarField>],
-    ) -> Result<(Proof<C>, LCCCS<C>, Witness<C::ScalarField>), Error> {
-        // TODO appends to transcript
+    ) -> Result<(NIMFSProof<C>, LCCCS<C>, Witness<C::ScalarField>), Error> {
+        // absorb instances to transcript
+        for U_i in running_instances {
+            let (C_x, C_y) = nonnative_affine_to_field_elements::<C>(U_i.C)?;
+            let v = [
+                C_x,
+                C_y,
+                vec![U_i.u],
+                U_i.x.clone(),
+                U_i.r_x.clone(),
+                U_i.v.clone(),
+            ]
+            .concat();
+            transcript.absorb_vec(&v);
+        }
+        for u_i in new_instances {
+            let (C_x, C_y) = nonnative_affine_to_field_elements::<C>(u_i.C)?;
+            let v = [C_x, C_y, u_i.x.clone()].concat();
+            transcript.absorb_vec(&v);
+        }
 
         if running_instances.is_empty() {
             return Err(Error::Empty);
@@ -168,7 +208,6 @@ where
         }
 
         // construct the LCCCS z vector from the relaxation factor, public IO and witness
-        // XXX this deserves its own function in LCCCS
         let mut z_lcccs = Vec::new();
         for (i, running_instance) in running_instances.iter().enumerate() {
             let z_1: Vec<C::ScalarField> = [
@@ -206,40 +245,6 @@ where
         let sumcheck_proof = IOPSumCheck::<C, T>::prove(&g, transcript)
             .map_err(|err| Error::SumCheckProveError(err.to_string()))?;
 
-        // Note: The following two "sanity checks" are done for this prototype, in a final version
-        // they should be removed.
-        //
-        // Sanity check 1: evaluate g(x) over x \in {0,1} (the boolean hypercube), and check that
-        // its sum is equal to the extracted_sum from the SumCheck.
-        //////////////////////////////////////////////////////////////////////
-        let mut g_over_bhc = C::ScalarField::zero();
-        for x in BooleanHypercube::new(ccs.s) {
-            g_over_bhc += g.evaluate(&x)?;
-        }
-
-        // note: this is the sum of g(x) over the whole boolean hypercube
-        let extracted_sum = IOPSumCheck::<C, T>::extract_sum(&sumcheck_proof);
-
-        if extracted_sum != g_over_bhc {
-            return Err(Error::NotEqual);
-        }
-        // Sanity check 2: expect \sum v_j * gamma^j to be equal to the sum of g(x) over the
-        // boolean hypercube (and also equal to the extracted_sum from the SumCheck).
-        let mut sum_v_j_gamma = C::ScalarField::zero();
-        for (i, running_instance) in running_instances.iter().enumerate() {
-            for j in 0..running_instance.v.len() {
-                let gamma_j = gamma.pow([(i * ccs.t + j) as u64]);
-                sum_v_j_gamma += running_instance.v[j] * gamma_j;
-            }
-        }
-        if g_over_bhc != sum_v_j_gamma {
-            return Err(Error::NotEqual);
-        }
-        if extracted_sum != sum_v_j_gamma {
-            return Err(Error::NotEqual);
-        }
-        //////////////////////////////////////////////////////////////////////
-
         // Step 2: dig into the sumcheck and extract r_x_prime
         let r_x_prime = sumcheck_proof.point.clone();
 
@@ -264,7 +269,7 @@ where
         let folded_witness = Self::fold_witness(w_lcccs, w_cccs, rho);
 
         Ok((
-            Proof::<C> {
+            NIMFSProof::<C> {
                 sc_proof: sumcheck_proof,
                 sigmas_thetas,
             },
@@ -281,9 +286,27 @@ where
         ccs: &CCS<C::ScalarField>,
         running_instances: &[LCCCS<C>],
         new_instances: &[CCCS<C>],
-        proof: Proof<C>,
+        proof: NIMFSProof<C>,
     ) -> Result<LCCCS<C>, Error> {
-        // TODO appends to transcript
+        // absorb instances to transcript
+        for U_i in running_instances {
+            let (C_x, C_y) = nonnative_affine_to_field_elements::<C>(U_i.C)?;
+            let v = [
+                C_x,
+                C_y,
+                vec![U_i.u],
+                U_i.x.clone(),
+                U_i.r_x.clone(),
+                U_i.v.clone(),
+            ]
+            .concat();
+            transcript.absorb_vec(&v);
+        }
+        for u_i in new_instances {
+            let (C_x, C_y) = nonnative_affine_to_field_elements::<C>(u_i.C)?;
+            let v = [C_x, C_y, u_i.x.clone()].concat();
+            transcript.absorb_vec(&v);
+        }
 
         if running_instances.is_empty() {
             return Err(Error::Empty);
@@ -514,11 +537,8 @@ pub mod tests {
 
         let n: usize = 10;
         for i in 3..n {
-            println!("\niteration: i {}", i); // DBG
-
             // CCS witness
             let z_2 = get_test_z(i);
-            println!("z_2 {:?}", z_2); // DBG
 
             let (new_instance, w2) = ccs.to_cccs(&mut rng, &pedersen_params, &z_2).unwrap();
 
@@ -546,7 +566,6 @@ pub mod tests {
             assert_eq!(folded_lcccs, folded_lcccs_v);
 
             // check that the folded instance with the folded witness holds the LCCCS relation
-            println!("check_relation {}", i);
             folded_lcccs
                 .check_relation(&pedersen_params, &ccs, &folded_witness)
                 .unwrap();

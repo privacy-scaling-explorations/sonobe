@@ -1,16 +1,21 @@
-use ark_ec::CurveGroup;
+use ark_crypto_primitives::{
+    crh::{poseidon::CRH, CRHScheme},
+    sponge::{poseidon::PoseidonConfig, Absorb},
+};
+use ark_ec::{CurveGroup, Group};
 use ark_ff::PrimeField;
 use ark_poly::DenseMultilinearExtension;
 use ark_poly::MultilinearExtension;
-
 use ark_std::rand::Rng;
+use ark_std::Zero;
 
-use super::cccs::Witness;
+use super::Witness;
 use crate::ccs::CCS;
 use crate::commitment::{
     pedersen::{Params as PedersenParams, Pedersen},
     CommitmentScheme,
 };
+use crate::folding::circuits::nonnative::affine::nonnative_affine_to_field_elements;
 use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::utils::vec::mat_vec_mul;
 use crate::Error;
@@ -73,6 +78,19 @@ impl<F: PrimeField> CCS<F> {
 }
 
 impl<C: CurveGroup> LCCCS<C> {
+    pub fn dummy(l: usize, t: usize, s: usize) -> LCCCS<C>
+    where
+        C::ScalarField: PrimeField,
+    {
+        LCCCS::<C> {
+            C: C::zero(),
+            u: C::ScalarField::zero(),
+            x: vec![C::ScalarField::zero(); l],
+            r_x: vec![C::ScalarField::zero(); s],
+            v: vec![C::ScalarField::zero(); t],
+        }
+    }
+
     /// Perform the check of the LCCCS instance described at section 4.2
     pub fn check_relation(
         &self,
@@ -101,6 +119,42 @@ impl<C: CurveGroup> LCCCS<C> {
             return Err(Error::NotSatisfied);
         }
         Ok(())
+    }
+}
+
+impl<C: CurveGroup> LCCCS<C>
+where
+    <C as Group>::ScalarField: Absorb,
+    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
+{
+    /// hash implements the committed instance hash compatible with the gadget implemented in
+    /// nova/circuits.rs::CommittedInstanceVar.hash.
+    /// Returns `H(i, z_0, z_i, U_i)`, where `i` can be `i` but also `i+1`, and `U_i` is the LCCCS.
+    pub fn hash(
+        &self,
+        poseidon_config: &PoseidonConfig<C::ScalarField>,
+        i: C::ScalarField,
+        z_0: Vec<C::ScalarField>,
+        z_i: Vec<C::ScalarField>,
+    ) -> Result<C::ScalarField, Error> {
+        let (C_x, C_y) = nonnative_affine_to_field_elements::<C>(self.C)?;
+
+        CRH::<C::ScalarField>::evaluate(
+            poseidon_config,
+            vec![
+                vec![i],
+                z_0,
+                z_i,
+                C_x,
+                C_y,
+                vec![self.u],
+                self.x.clone(),
+                self.r_x.clone(),
+                self.v.clone(),
+            ]
+            .concat(),
+        )
+        .map_err(|e| Error::Other(e.to_string()))
     }
 }
 

@@ -1,25 +1,27 @@
+/// Heavily inspired from testudo: https://github.com/cryptonetlab/testudo/tree/master
+/// Some changes:
+/// - Typings to better stick to ark_poly's API
+/// - Uses `folding-schemes`' own `TranscriptVar` trait and `PoseidonTranscriptVar` struct
+/// - API made closer to gadgets found in `folding-schemes`
+use ark_crypto_primitives::sponge::Absorb;
+use ark_ec::{CurveGroup, Group};
+use ark_ff::PrimeField;
+use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial};
+use ark_r1cs_std::{
+    alloc::{AllocVar, AllocationMode},
+    boolean::Boolean,
+    eq::EqGadget,
+    fields::{fp::FpVar, FieldVar},
+};
+use ark_relations::r1cs::{Namespace, SynthesisError};
+use std::{borrow::Borrow, marker::PhantomData};
+
 use crate::utils::espresso::sum_check::SumCheck;
 use crate::utils::virtual_polynomial::VPAuxInfo;
 use crate::{
     transcript::{poseidon::PoseidonTranscript, TranscriptVar},
     utils::sum_check::{structs::IOPProof, IOPSumCheck},
 };
-use ark_crypto_primitives::sponge::Absorb;
-use ark_ec::{CurveGroup, Group};
-/// Heavily inspired from testudo: https://github.com/cryptonetlab/testudo/tree/master
-/// Some changes:
-/// - Typings to better stick to ark_poly's API
-/// - Uses `folding-schemes`' own `TranscriptVar` trait and `PoseidonTranscriptVar` struct
-/// - API made closer to gadgets found in `folding-schemes`
-use ark_ff::PrimeField;
-use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial};
-use ark_r1cs_std::{
-    alloc::{AllocVar, AllocationMode},
-    eq::EqGadget,
-    fields::fp::FpVar,
-};
-use ark_relations::r1cs::{Namespace, SynthesisError};
-use std::{borrow::Borrow, marker::PhantomData};
 
 #[derive(Clone, Debug)]
 pub struct DensePolynomialVar<F: PrimeField> {
@@ -47,10 +49,16 @@ impl<F: PrimeField> AllocVar<DensePolynomial<F>, F> for DensePolynomialVar<F> {
 
 impl<F: PrimeField> DensePolynomialVar<F> {
     pub fn eval_at_zero(&self) -> FpVar<F> {
+        if self.coeffs.is_empty() {
+            return FpVar::<F>::zero();
+        }
         self.coeffs[0].clone()
     }
 
     pub fn eval_at_one(&self) -> FpVar<F> {
+        if self.coeffs.is_empty() {
+            return FpVar::<F>::zero();
+        }
         let mut res = self.coeffs[0].clone();
         for i in 1..self.coeffs.len() {
             res = &res + &self.coeffs[i];
@@ -59,6 +67,9 @@ impl<F: PrimeField> DensePolynomialVar<F> {
     }
 
     pub fn evaluate(&self, r: &FpVar<F>) -> FpVar<F> {
+        if self.coeffs.is_empty() {
+            return FpVar::<F>::zero();
+        }
         let mut eval = self.coeffs[0].clone();
         let mut power = r.clone();
 
@@ -73,7 +84,7 @@ impl<F: PrimeField> DensePolynomialVar<F> {
 #[derive(Clone, Debug)]
 pub struct IOPProofVar<C: CurveGroup> {
     // We have to be generic over a CurveGroup because instantiating a IOPProofVar will call IOPSumCheck which requires a CurveGroup
-    pub proofs: Vec<DensePolynomialVar<C::ScalarField>>,
+    pub proofs: Vec<DensePolynomialVar<C::ScalarField>>, // = IOPProof.proofs
     pub claim: FpVar<C::ScalarField>,
 }
 
@@ -148,6 +159,7 @@ impl<C: CurveGroup> SumCheckVerifierGadget<C> {
         iop_proof_var: &IOPProofVar<C>,
         poly_aux_info_var: &VPAuxInfoVar<C::ScalarField>,
         transcript_var: &mut impl TranscriptVar<C::ScalarField>,
+        enabled: Boolean<C::ScalarField>,
     ) -> Result<(Vec<FpVar<C::ScalarField>>, Vec<FpVar<C::ScalarField>>), SynthesisError> {
         let mut e_vars = vec![iop_proof_var.claim.clone()];
         let mut r_vars: Vec<FpVar<C::ScalarField>> = Vec::new();
@@ -157,7 +169,7 @@ impl<C: CurveGroup> SumCheckVerifierGadget<C> {
         for poly_var in iop_proof_var.proofs.iter() {
             let res = poly_var.eval_at_one() + poly_var.eval_at_zero();
             let e_var = e_vars.last().ok_or(SynthesisError::Unsatisfiable)?;
-            res.enforce_equal(e_var)?;
+            res.conditional_enforce_equal(e_var, &enabled)?;
             transcript_var.absorb_vec(&poly_var.coeffs)?;
             let r_i_var = transcript_var.get_challenge()?;
             e_vars.push(poly_var.evaluate(&r_i_var));
@@ -170,17 +182,6 @@ impl<C: CurveGroup> SumCheckVerifierGadget<C> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        folding::circuits::sum_check::{IOPProofVar, VPAuxInfoVar},
-        transcript::{
-            poseidon::{poseidon_canonical_config, PoseidonTranscript, PoseidonTranscriptVar},
-            Transcript, TranscriptVar,
-        },
-        utils::{
-            sum_check::{structs::IOPProof, IOPSumCheck, SumCheck},
-            virtual_polynomial::VirtualPolynomial,
-        },
-    };
     use ark_crypto_primitives::sponge::{poseidon::PoseidonConfig, Absorb};
     use ark_ec::CurveGroup;
     use ark_ff::Field;
@@ -193,7 +194,18 @@ mod tests {
     use ark_relations::r1cs::ConstraintSystem;
     use std::sync::Arc;
 
-    use super::SumCheckVerifierGadget;
+    use super::*;
+    use crate::{
+        folding::circuits::sum_check::{IOPProofVar, VPAuxInfoVar},
+        transcript::{
+            poseidon::{poseidon_canonical_config, PoseidonTranscript, PoseidonTranscriptVar},
+            Transcript, TranscriptVar,
+        },
+        utils::{
+            sum_check::{structs::IOPProof, IOPSumCheck, SumCheck},
+            virtual_polynomial::VirtualPolynomial,
+        },
+    };
 
     pub type TestSumCheckProof<F> = (VirtualPolynomial<F>, PoseidonConfig<F>, IOPProof<F>);
 
@@ -232,10 +244,12 @@ mod tests {
                 IOPProofVar::<Projective>::new_witness(cs.clone(), || Ok(&sum_check)).unwrap();
             let poly_aux_info_var =
                 VPAuxInfoVar::<Fr>::new_witness(cs.clone(), || Ok(virtual_poly.aux_info)).unwrap();
+            let enabled = Boolean::<Fr>::new_witness(cs.clone(), || Ok(true)).unwrap();
             let res = SumCheckVerifierGadget::<Projective>::verify(
                 &iop_proof_var,
                 &poly_aux_info_var,
                 &mut poseidon_var,
+                enabled,
             );
 
             assert!(res.is_ok());

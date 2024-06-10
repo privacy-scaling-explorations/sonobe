@@ -1,6 +1,10 @@
+use super::{circuits::AugmentedFCircuit, cyclefold::CycleFoldCircuit, Nova, ProverParams};
 pub use super::{CommittedInstance, Witness};
 pub use crate::folding::circuits::CF2;
-use crate::{ccs::r1cs::R1CS, commitment::CommitmentScheme, frontend::FCircuit};
+use crate::{
+    ccs::r1cs::extract_r1cs, commitment::CommitmentScheme, folding::circuits::CF1,
+    frontend::FCircuit,
+};
 use ark_crypto_primitives::sponge::{poseidon::PoseidonConfig, Absorb};
 use ark_ec::{CurveGroup, Group};
 use ark_ff::PrimeField;
@@ -8,10 +12,10 @@ use ark_r1cs_std::{
     groups::{CurveVar, GroupOpsBounds},
     ToConstraintFieldGadget,
 };
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Write};
+use ark_relations::r1cs::ConstraintSynthesizer;
+use ark_relations::r1cs::ConstraintSystem;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError, Write};
 use std::marker::PhantomData;
-
-use super::{Nova, ProverParams};
 
 impl<C1, GC1, C2, GC2, FC, CS1, CS2> CanonicalSerialize for Nova<C1, GC1, C2, GC2, FC, CS1, CS2>
 where
@@ -88,7 +92,7 @@ impl<C1, GC1, C2, GC2, FC, CS1, CS2> Nova<C1, GC1, C2, GC2, FC, CS1, CS2>
 where
     C1: CurveGroup,
     C2: CurveGroup,
-    FC: FCircuit<C1::ScalarField, Params = ()>,
+    FC: FCircuit<CF1<C1>, Params = ()>,
     CS1: CommitmentScheme<C1>,
     CS2: CommitmentScheme<C2>,
     <C1 as CurveGroup>::BaseField: PrimeField,
@@ -100,14 +104,13 @@ where
     for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
     GC1: CurveVar<C1, <C2 as Group>::ScalarField>,
     GC1: ToConstraintFieldGadget<<C2 as Group>::ScalarField>,
-    GC2: CurveVar<C2, <C2 as CurveGroup>::BaseField>,
+    GC2: CurveVar<C2, CF2<C2>>,
+    GC2: ToConstraintFieldGadget<<C2 as CurveGroup>::BaseField>,
 {
     pub fn deserialize_nova<R: std::io::prelude::Read>(
         mut reader: R,
         compress: ark_serialize::Compress,
         validate: ark_serialize::Validate,
-        r1cs: R1CS<C1::ScalarField>,
-        cf_r1cs: R1CS<C2::ScalarField>,
         prover_params: ProverParams<C1, C2, CS1, CS2>,
         poseidon_config: PoseidonConfig<C1::ScalarField>,
     ) -> Result<Self, ark_serialize::SerializationError> {
@@ -121,7 +124,28 @@ where
         let cf_W_i = Witness::<C2>::deserialize_with_mode(&mut reader, compress, validate)?;
         let cf_U_i =
             CommittedInstance::<C2>::deserialize_with_mode(&mut reader, compress, validate)?;
+
         let f_circuit = FC::new(()).unwrap();
+        let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
+        let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
+        let augmented_F_circuit =
+            AugmentedFCircuit::<C1, C2, GC2, FC>::empty(&poseidon_config, f_circuit.clone());
+        let cf_circuit = CycleFoldCircuit::<C1, GC1>::empty();
+
+        augmented_F_circuit
+            .generate_constraints(cs.clone())
+            .map_err(|_| SerializationError::InvalidData)?;
+        cs.finalize();
+        let cs = cs.into_inner().ok_or(SerializationError::InvalidData)?;
+        let r1cs = extract_r1cs::<C1::ScalarField>(&cs);
+
+        cf_circuit
+            .generate_constraints(cs2.clone())
+            .map_err(|_| SerializationError::InvalidData)?;
+        cs2.finalize();
+        let cs2 = cs2.into_inner().ok_or(SerializationError::InvalidData)?;
+        let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2);
+
         Ok(Nova {
             _gc1: PhantomData,
             _c2: PhantomData,
@@ -224,8 +248,6 @@ pub mod tests {
             bytes.as_slice(),
             Compress::No,
             Validate::No,
-            nova.r1cs.clone(),
-            nova.cf_r1cs.clone(),
             prover_params,
             poseidon_config,
         )

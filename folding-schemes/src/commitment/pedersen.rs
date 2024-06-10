@@ -2,6 +2,7 @@ use ark_ec::CurveGroup;
 use ark_ff::Field;
 use ark_r1cs_std::{boolean::Boolean, groups::GroupOpsBounds, prelude::CurveVar};
 use ark_relations::r1cs::SynthesisError;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::Zero;
 use ark_std::{rand::RngCore, UniformRand};
 use core::marker::PhantomData;
@@ -18,7 +19,7 @@ pub struct Proof<C: CurveGroup> {
     pub r_u: C::ScalarField, // blind
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Params<C: CurveGroup> {
     pub h: C,
     pub generators: Vec<C::Affine>,

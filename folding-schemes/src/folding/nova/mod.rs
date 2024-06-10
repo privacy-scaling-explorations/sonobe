@@ -7,11 +7,12 @@ use ark_crypto_primitives::{
 use ark_ec::{AffineRepr, CurveGroup, Group};
 use ark_ff::{BigInteger, Field, PrimeField, ToConstraintField};
 use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
+use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::fmt::Debug;
 use ark_std::{One, Zero};
 use core::marker::PhantomData;
-
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
+use std::usize;
 
 use crate::ccs::r1cs::{extract_r1cs, extract_w_x, R1CS};
 use crate::commitment::CommitmentScheme;
@@ -31,6 +32,7 @@ pub mod cyclefold;
 pub mod decider_eth;
 pub mod decider_eth_circuit;
 pub mod nifs;
+pub mod serialize;
 pub mod traits;
 
 use circuits::{AugmentedFCircuit, ChallengeGadget};
@@ -41,7 +43,7 @@ use traits::NovaR1CS;
 #[cfg(test)]
 use cyclefold::CF_IO_LEN;
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct CommittedInstance<C: CurveGroup> {
     pub cmE: C,
     pub u: C::ScalarField,
@@ -148,7 +150,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Witness<C: CurveGroup> {
     pub E: Vec<C::ScalarField>,
     pub rE: C::ScalarField,

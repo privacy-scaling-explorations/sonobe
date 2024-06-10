@@ -3,13 +3,14 @@ use ark_poly::{
     univariate::DensePolynomial, EvaluationDomain, Evaluations, GeneralEvaluationDomain,
 };
 pub use ark_relations::r1cs::Matrix as R1CSMatrix;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::cfg_iter;
 use ark_std::rand::Rng;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use crate::Error;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct SparseMatrix<F: PrimeField> {
     pub n_rows: usize,
     pub n_cols: usize,

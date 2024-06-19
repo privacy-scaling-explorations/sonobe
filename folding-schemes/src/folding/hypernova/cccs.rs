@@ -6,23 +6,16 @@ use std::sync::Arc;
 
 use ark_std::rand::Rng;
 
+use super::Witness;
 use crate::ccs::CCS;
 use crate::commitment::{
     pedersen::{Params as PedersenParams, Pedersen},
     CommitmentScheme,
 };
-use crate::utils::hypercube::BooleanHypercube;
 use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::utils::vec::mat_vec_mul;
 use crate::utils::virtual_polynomial::{build_eq_x_r_vec, VirtualPolynomial};
 use crate::Error;
-
-/// Witness for the LCCCS & CCCS, containing the w vector, and the r_w used as randomness in the Pedersen commitment.
-#[derive(Debug, Clone)]
-pub struct Witness<F: PrimeField> {
-    pub w: Vec<F>,
-    pub r_w: F, // randomness used in the Pedersen commitment of w
-}
 
 /// Committed CCS instance
 #[derive(Debug, Clone)]
@@ -92,6 +85,16 @@ impl<F: PrimeField> CCS<F> {
 }
 
 impl<C: CurveGroup> CCCS<C> {
+    pub fn dummy(l: usize) -> CCCS<C>
+    where
+        C::ScalarField: PrimeField,
+    {
+        CCCS::<C> {
+            C: C::zero(),
+            x: vec![C::ScalarField::zero(); l],
+        }
+    }
+
     /// Perform the check of the CCCS instance described at section 4.1
     pub fn check_relation(
         &self,
@@ -109,14 +112,10 @@ impl<C: CurveGroup> CCCS<C> {
         let z: Vec<C::ScalarField> =
             [vec![C::ScalarField::one()], self.x.clone(), w.w.to_vec()].concat();
 
-        // A CCCS relation is satisfied if the q(x) multivariate polynomial evaluates to zero in the hypercube
-        let q_x = ccs.compute_q(&z)?;
-
-        for x in BooleanHypercube::new(ccs.s) {
-            if !q_x.evaluate(&x)?.is_zero() {
-                return Err(Error::NotSatisfied);
-            }
-        }
+        // A CCCS relation is satisfied if the q(x) multivariate polynomial evaluates to zero in
+        // the hypercube, evaluating over the whole boolean hypercube for a normal-sized instance
+        // would take too much, this checks the CCS relation of the CCCS.
+        ccs.check_relation(&z)?;
 
         Ok(())
     }
@@ -124,12 +123,13 @@ impl<C: CurveGroup> CCCS<C> {
 
 #[cfg(test)]
 pub mod tests {
-    use super::*;
-    use crate::ccs::tests::{get_test_ccs, get_test_z};
+    use ark_pallas::Fr;
     use ark_std::test_rng;
     use ark_std::UniformRand;
 
-    use ark_pallas::Fr;
+    use super::*;
+    use crate::ccs::tests::{get_test_ccs, get_test_z};
+    use crate::utils::hypercube::BooleanHypercube;
 
     /// Do some sanity checks on q(x). It's a multivariable polynomial and it should evaluate to zero inside the
     /// hypercube, but to not-zero outside the hypercube.

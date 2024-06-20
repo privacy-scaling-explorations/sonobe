@@ -1,4 +1,4 @@
-/// Implementation of [HyperNova](https://eprint.iacr.org/2023/573.pdf) NIMFS verifier circuit
+/// Implementation of [HyperNova](https://eprint.iacr.org/2023/573.pdf) circuits
 use ark_crypto_primitives::crh::{
     poseidon::constraints::{CRHGadget, CRHParametersVar},
     CRHSchemeGadget,
@@ -27,21 +27,24 @@ use super::{
     nimfs::{NIMFSProof, NIMFS},
     Witness,
 };
-use crate::folding::circuits::{
-    nonnative::affine::NonNativeAffineVar,
-    sum_check::{IOPProofVar, SumCheckVerifierGadget, VPAuxInfoVar},
-    utils::EqEvalGadget,
-    CF1, CF2,
+use crate::constants::N_BITS_RO;
+use crate::folding::{
+    circuits::cyclefold::{
+        CycleFoldChallengeGadget, CycleFoldCommittedInstanceVar, NIFSFullGadget, CF_IO_LEN,
+    },
+    circuits::{
+        nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
+        sum_check::{IOPProofVar, SumCheckVerifierGadget, VPAuxInfoVar},
+        utils::EqEvalGadget,
+        CF1, CF2,
+    },
+    nova::{get_r1cs_from_cs, CommittedInstance},
 };
-use crate::folding::nova::get_r1cs_from_cs;
 use crate::frontend::FCircuit;
 use crate::utils::virtual_polynomial::VPAuxInfo;
 use crate::Error;
 use crate::{
-    ccs::{
-        r1cs::{extract_r1cs, extract_w_x},
-        CCS,
-    },
+    ccs::{r1cs::extract_r1cs, CCS},
     transcript::{
         poseidon::{PoseidonTranscript, PoseidonTranscriptVar},
         Transcript, TranscriptVar,
@@ -56,7 +59,7 @@ where
 {
     // Commitment to witness
     pub C: NonNativeAffineVar<C>,
-    // Public input/output
+    // Public io
     pub x: Vec<FpVar<CF1<C>>>,
 }
 impl<C> AllocVar<CCCS<C>, CF1<C>> for CCCSVar<C>
@@ -91,7 +94,7 @@ where
     pub C: NonNativeAffineVar<C>,
     // Relaxation factor of z for folded LCCCS
     pub u: FpVar<CF1<C>>,
-    // Public input/output
+    // Public io
     pub x: Vec<FpVar<CF1<C>>>,
     // Random evaluation point for the v_i
     pub r_x: Vec<FpVar<CF1<C>>>,
@@ -216,6 +219,9 @@ impl<C: CurveGroup> NIMFSGadget<C>
 where
     <C as CurveGroup>::BaseField: PrimeField,
 {
+    /// Runs (in-circuit) the NIMFS.V, which outputs the new folded LCCCS instance together with
+    /// the rho_bits, which will be used in other parts of the AugmentedFCircuit
+    #[allow(clippy::type_complexity)]
     pub fn verify(
         cs: ConstraintSystemRef<CF1<C>>,
         // only used the CCS params, not the matrices
@@ -226,7 +232,7 @@ where
         new_instances: &[CCCSVar<C>],
         proof: ProofVar<C>,
         enabled: Boolean<C::ScalarField>,
-    ) -> Result<LCCCSVar<C>, SynthesisError> {
+    ) -> Result<(LCCCSVar<C>, Vec<Boolean<CF1<C>>>), SynthesisError> {
         // absorb instances to transcript
         for U_i in running_instances {
             let v = [
@@ -306,18 +312,24 @@ where
         let rho_scalar_raw = C::ScalarField::from_le_bytes_mod_order(b"rho");
         let rho_scalar: FpVar<CF1<C>> = FpVar::<CF1<C>>::new_constant(cs.clone(), rho_scalar_raw)?;
         transcript.absorb(rho_scalar)?;
-        let rho: FpVar<CF1<C>> = transcript.get_challenge()?;
+        let rho_bits: Vec<Boolean<CF1<C>>> = transcript.get_challenge_nbits(N_BITS_RO)?;
+        let rho = Boolean::le_bits_to_fp_var(&rho_bits)?;
 
-        // return the folded instance
-        Self::fold(
-            running_instances,
-            new_instances,
-            proof.sigmas_thetas,
-            r_x_prime,
-            rho,
-        )
+        // return the folded instance, together with the rho_bits so they can be used in other
+        // parts of the AugmentedFCircuit
+        Ok((
+            Self::fold(
+                running_instances,
+                new_instances,
+                proof.sigmas_thetas,
+                r_x_prime,
+                rho,
+            )?,
+            rho_bits,
+        ))
     }
 
+    /// Runs (in-circuit) the verifier side of the fold, computing the new folded LCCCS instance
     #[allow(clippy::type_complexity)]
     fn fold(
         lcccs: &[LCCCSVar<C>],
@@ -380,7 +392,7 @@ where
     }
 }
 
-/// computes c from the step 5 in section 5 of HyperNova, adapted to multiple LCCCS & CCCS
+/// Computes c from the step 5 in section 5 of HyperNova, adapted to multiple LCCCS & CCCS
 /// instances:
 /// $$
 /// c = \sum_{i \in [\mu]} \left(\sum_{j \in [t]} \gamma^{i \cdot t + j} \cdot e_i \cdot \sigma_{i,j} \right)
@@ -454,6 +466,12 @@ pub struct AugmentedFCircuit<
     pub F: FC,              // F circuit
     pub x: Option<CF1<C1>>, // public input (u_{i+1}.x[0])
     pub nimfs_proof: Option<NIMFSProof<C1>>,
+
+    // cyclefold verifier on C1
+    pub cf_u_i_cmW: Option<C2>,                // input, cf_u_i.cmW
+    pub cf_U_i: Option<CommittedInstance<C2>>, // input, RelaxedR1CS CycleFold instance
+    pub cf_x: Option<CF1<C1>>,                 // public input (cf_u_{i+1}.x[1])
+    pub cf_cmT: Option<C2>,
 }
 
 impl<C1, C2, GC2, FC> AugmentedFCircuit<C1, C2, GC2, FC>
@@ -490,6 +508,10 @@ where
             F: F_circuit,
             x: None,
             nimfs_proof: None,
+            cf_u_i_cmW: None,
+            cf_U_i: None,
+            cf_x: None,
+            cf_cmT: None,
         }
     }
 
@@ -527,68 +549,52 @@ where
     /// feed in as parameter for the AugmentedFCircuit::empty method to avoid computing them there.
     pub fn upper_bound_ccs(&self) -> Result<CCS<C1::ScalarField>, Error> {
         let r1cs = get_r1cs_from_cs::<CF1<C1>>(self.clone()).unwrap();
-        let mut ccs = CCS::from_r1cs(r1cs.clone());
+        let ccs = CCS::from_r1cs(r1cs.clone());
 
         let z_0 = vec![C1::ScalarField::zero(); self.F.state_len()];
-        let mut W_i =
-            Witness::<C1::ScalarField>::new(vec![C1::ScalarField::zero(); ccs.n - ccs.l - 1]);
-        let mut U_i = LCCCS::<C1>::dummy(ccs.l, ccs.t, ccs.s);
-        let mut w_i = W_i.clone();
-        let mut u_i = CCCS::<C1>::dummy(ccs.l);
+        let W_i = Witness::<C1::ScalarField>::dummy(&ccs);
+        let U_i = LCCCS::<C1>::dummy(ccs.l, ccs.t, ccs.s);
+        let w_i = W_i.clone();
+        let u_i = CCCS::<C1>::dummy(ccs.l);
 
-        let n_iters = 3;
+        let mut transcript_p: PoseidonTranscript<C1> =
+            PoseidonTranscript::<C1>::new(&self.poseidon_config.clone());
+        let (nimfs_proof, U_i1, _, _) = NIMFS::<C1, PoseidonTranscript<C1>>::prove(
+            &mut transcript_p,
+            &ccs,
+            &[U_i.clone()],
+            &[u_i.clone()],
+            &[W_i.clone()],
+            &[w_i.clone()],
+        )?;
 
-        for _ in 0..n_iters {
-            let mut transcript_p: PoseidonTranscript<C1> =
-                PoseidonTranscript::<C1>::new(&self.poseidon_config.clone());
-            let (nimfs_proof, U_i1, _) = NIMFS::<C1, PoseidonTranscript<C1>>::prove(
-                &mut transcript_p,
-                &ccs,
-                &[U_i.clone()],
-                &[u_i.clone()],
-                &[W_i.clone()],
-                &[w_i.clone()],
-            )
-            .unwrap();
+        let augmented_f_circuit = Self {
+            _c2: PhantomData,
+            _gc2: PhantomData,
+            poseidon_config: self.poseidon_config.clone(),
+            ccs: ccs.clone(),
+            i: Some(C1::ScalarField::zero()),
+            i_usize: Some(0),
+            z_0: Some(z_0.clone()),
+            z_i: Some(z_0.clone()),
+            external_inputs: Some(vec![]),
+            u_i_C: Some(u_i.C),
+            U_i: Some(U_i.clone()),
+            U_i1_C: Some(U_i1.C),
+            F: self.F.clone(),
+            x: Some(C1::ScalarField::zero()),
+            nimfs_proof: Some(nimfs_proof),
+            // cyclefold values
+            cf_u_i_cmW: None,
+            cf_U_i: None,
+            cf_x: None,
+            cf_cmT: None,
+        };
 
-            let augmented_f_circuit = Self {
-                _c2: PhantomData,
-                _gc2: PhantomData,
-                poseidon_config: self.poseidon_config.clone(),
-                ccs: ccs.clone(),
-                i: Some(C1::ScalarField::zero()),
-                i_usize: Some(0),
-                z_0: Some(z_0.clone()),
-                z_i: Some(z_0.clone()),
-                external_inputs: Some(vec![]),
-                u_i_C: Some(u_i.C),
-                U_i: Some(U_i.clone()),
-                U_i1_C: Some(U_i1.C),
-                F: self.F.clone(),
-                x: Some(C1::ScalarField::zero()),
-                nimfs_proof: Some(nimfs_proof),
-            };
-
-            let cs: ConstraintSystem<C1::ScalarField>;
-            (cs, ccs) = augmented_f_circuit.compute_cs_ccs()?;
-
-            // prepare instances for next loop iteration
-            let (r1cs_w_i1, r1cs_x_i1) = extract_w_x::<C1::ScalarField>(&cs); // includes 1 and public inputs
-            u_i = CCCS::<C1> {
-                C: u_i.C,
-                x: r1cs_x_i1,
-            };
-            w_i = Witness::<C1::ScalarField> {
-                w: r1cs_w_i1.clone(),
-                r_w: C1::ScalarField::one(),
-            };
-            W_i = Witness::<C1::ScalarField>::dummy(&ccs);
-            U_i = LCCCS::<C1>::dummy(ccs.l, ccs.t, ccs.s);
-        }
-        Ok(ccs)
+        Ok(augmented_f_circuit.compute_cs_ccs()?.1)
     }
 
-    /// returns the cs (ConstraintSystem) and the CCS out of the AugmentedFCircuit
+    /// Returns the cs (ConstraintSystem) and the CCS out of the AugmentedFCircuit
     #[allow(clippy::type_complexity)]
     fn compute_cs_ccs(
         &self,
@@ -651,6 +657,12 @@ where
             Ok(self.nimfs_proof.unwrap_or(nimfs_proof_dummy))
         })?;
 
+        let cf_u_dummy = CommittedInstance::dummy(CF_IO_LEN);
+        let cf_U_i = CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || {
+            Ok(self.cf_U_i.unwrap_or(cf_u_dummy.clone()))
+        })?;
+        let cf_cmT = GC2::new_witness(cs.clone(), || Ok(self.cf_cmT.unwrap_or_else(C2::zero)))?;
+
         let crh_params = CRHParametersVar::<C1::ScalarField>::new_constant(
             cs.clone(),
             self.poseidon_config.clone(),
@@ -671,6 +683,8 @@ where
         let (u_i_x, _) = U_i
             .clone()
             .hash(&crh_params, i.clone(), z_0.clone(), z_i.clone())?;
+        // u_i.x[1] = H(cf_U_i)
+        let (cf_u_i_x, cf_U_i_vec) = cf_U_i.clone().hash(&crh_params)?;
 
         // P.2. Construct u_i
         let u_i = CCCSVar::<C1> {
@@ -679,7 +693,7 @@ where
                 Ok(self.u_i_C.unwrap_or(C1::zero()))
             })?,
             // u_i.x is computed in step 1
-            x: vec![u_i_x],
+            x: vec![u_i_x, cf_u_i_x],
         };
 
         // P.3. NIMFS.verify, obtains U_{i+1} by folding [U_i] & [u_i].
@@ -688,7 +702,7 @@ where
         // other curve.
         let transcript =
             PoseidonTranscriptVar::<C1::ScalarField>::new(cs.clone(), &self.poseidon_config);
-        let mut U_i1 = NIMFSGadget::<C1>::verify(
+        let (mut U_i1, rho_bits) = NIMFSGadget::<C1>::verify(
             cs.clone(),
             &self.ccs.clone(),
             transcript,
@@ -700,23 +714,80 @@ where
         U_i1.C = U_i1_C;
 
         // P.4.a compute and check the first output of F'
-        // Base case: u_{i+1}.x[0] == H((1, z_0, z_{i+1}, U_{i+1})
-        // Non-base case: u_{i+1}.x[0] == H((i+1, z_0, z_{i+1}, U_{i+1})
         let (u_i1_x, _) = U_i1.clone().hash(
             &crh_params,
             i + FpVar::<CF1<C1>>::one(),
             z_0.clone(),
             z_i1.clone(),
         )?;
-        let (u_i1_x_base, _) = U_i1.hash(
-            &crh_params,
-            FpVar::<CF1<C1>>::one(),
-            z_0.clone(),
-            z_i1.clone(),
+        let x = FpVar::new_input(cs.clone(), || Ok(self.x.unwrap_or(C1::ScalarField::zero())))?;
+        x.enforce_equal(&u_i1_x)?;
+
+        // convert rho_bits to a `NonNativeFieldVar`
+        let rho_nonnat = {
+            let mut bits = rho_bits;
+            bits.resize(C1::BaseField::MODULUS_BIT_SIZE as usize, Boolean::FALSE);
+            NonNativeUintVar::from(&bits)
+        };
+
+        // CycleFold part
+        // C.1. Compute cf1_u_i.x and cf2_u_i.x
+        let cf_x = vec![
+            rho_nonnat, U_i.C.x, U_i.C.y, u_i.C.x, u_i.C.y, U_i1.C.x, U_i1.C.y,
+        ];
+
+        // ensure that cf_u has as public inputs the C from main instances U_i, u_i, U_i+1
+        // coordinates of the commitments.
+        // C.2. Construct `cf_u_i`
+        let cf_u_i = CycleFoldCommittedInstanceVar {
+            // cf1_u_i.cmE = 0. Notice that we enforce cmE to be equal to 0 since it is allocated
+            // as 0.
+            cmE: GC2::zero(),
+            // cf1_u_i.u = 1
+            u: NonNativeUintVar::new_constant(cs.clone(), C1::BaseField::one())?,
+            // cf_u_i.cmW is provided by the prover as witness
+            cmW: GC2::new_witness(cs.clone(), || Ok(self.cf_u_i_cmW.unwrap_or(C2::zero())))?,
+            // cf_u_i.x is computed in step 1
+            x: cf_x,
+        };
+
+        // C.3. nifs.verify (fold_committed_instance), obtains cf_U_{i+1} by folding cf_u_i & cf_U_i.
+        // compute cf_r = H(cf_u_i, cf_U_i, cf_cmT)
+        // cf_r_bits is denoted by rho* in the paper.
+        let cf_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_gadget(
+            cs.clone(),
+            &self.poseidon_config,
+            cf_U_i_vec,
+            cf_u_i.clone(),
+            cf_cmT.clone(),
+        )?;
+        // Convert cf_r_bits to a `NonNativeFieldVar`
+        let cf_r_nonnat = {
+            let mut bits = cf_r_bits.clone();
+            bits.resize(C1::BaseField::MODULUS_BIT_SIZE as usize, Boolean::FALSE);
+            NonNativeUintVar::from(&bits)
+        };
+        // Fold cf1_u_i & cf_U_i into cf1_U_{i+1}
+        let cf_U_i1 = NIFSFullGadget::<C2, GC2>::fold_committed_instance(
+            cf_r_bits,
+            cf_r_nonnat,
+            cf_cmT,
+            cf_U_i,
+            cf_u_i,
         )?;
 
-        let x = FpVar::new_input(cs.clone(), || Ok(self.x.unwrap_or(u_i1_x_base.value()?)))?;
-        x.enforce_equal(&is_basecase.select(&u_i1_x_base, &u_i1_x)?)?;
+        // Back to Primary Part
+        // P.4.b compute and check the second output of F'
+        // Base case: u_{i+1}.x[1] == H(cf_U_{\bot})
+        // Non-base case: u_{i+1}.x[1] == H(cf_U_{i+1})
+        let (cf_u_i1_x, _) = cf_U_i1.clone().hash(&crh_params)?;
+        let (cf_u_i1_x_base, _) =
+            CycleFoldCommittedInstanceVar::new_constant(cs.clone(), cf_u_dummy)?
+                .hash(&crh_params)?;
+        let cf_x = FpVar::new_input(cs.clone(), || {
+            Ok(self.cf_x.unwrap_or(cf_u_i1_x_base.value()?))
+        })?;
+        cf_x.enforce_equal(&is_basecase.select(&cf_u_i1_x_base, &cf_u_i1_x)?)?;
 
         Ok(())
     }
@@ -724,7 +795,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use ark_bn254::{Fr, G1Projective as Projective};
+    use ark_bn254::{constraints::GVar, Fq, Fr, G1Projective as Projective};
+    use ark_ff::BigInteger;
     use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
     use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, R1CSVar};
     use ark_std::{test_rng, UniformRand};
@@ -738,10 +810,16 @@ mod tests {
             CCS,
         },
         commitment::{pedersen::Pedersen, CommitmentScheme},
-        folding::hypernova::{
-            nimfs::NIMFS,
-            utils::{compute_c, compute_sigmas_thetas},
-            Witness,
+        folding::{
+            circuits::cyclefold::{fold_cyclefold_circuit, CycleFoldCircuit},
+            hypernova::{
+                nimfs::NIMFS,
+                utils::{compute_c, compute_sigmas_thetas},
+                Witness,
+            },
+            nova::{
+                get_cm_coordinates, traits::NovaR1CS, CommittedInstance, Witness as NovaWitness,
+            },
         },
         frontend::tests::CubicFCircuit,
         transcript::{
@@ -891,7 +969,7 @@ mod tests {
             PoseidonTranscript::<Projective>::new(&poseidon_config);
 
         // Run the prover side of the multifolding
-        let (proof, folded_lcccs, folded_witness) =
+        let (proof, folded_lcccs, folded_witness, _) =
             NIMFS::<Projective, PoseidonTranscript<Projective>>::prove(
                 &mut transcript_p,
                 &ccs,
@@ -935,7 +1013,7 @@ mod tests {
         let transcriptVar = PoseidonTranscriptVar::<Fr>::new(cs.clone(), &poseidon_config);
 
         let enabled = Boolean::<Fr>::new_witness(cs.clone(), || Ok(true)).unwrap();
-        let folded_lcccsVar = NIMFSGadget::<Projective>::verify(
+        let (folded_lcccsVar, _) = NIMFSGadget::<Projective>::verify(
             cs.clone(),
             &ccs,
             transcriptVar,
@@ -1005,26 +1083,46 @@ mod tests {
         println!("AugmentedFCircuit & CCS generation: {:?}", start.elapsed());
         println!("CCS m x n: {} x {}", ccs.m, ccs.n);
 
+        // CycleFold circuit
+        let cs2 = ConstraintSystem::<Fq>::new_ref();
+        let cf_circuit = CycleFoldCircuit::<Projective, GVar>::empty();
+        cf_circuit.generate_constraints(cs2.clone()).unwrap();
+        cs2.finalize();
+        let cs2 = cs2
+            .into_inner()
+            .ok_or(Error::NoInnerConstraintSystem)
+            .unwrap();
+        let cf_r1cs = extract_r1cs::<Fq>(&cs2);
+
         let (pedersen_params, _) =
             Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
+        let (cf_pedersen_params, _) =
+            Pedersen::<Projective2>::setup(&mut rng, cf_r1cs.A.n_cols - cf_r1cs.l - 1).unwrap();
 
         // first step
         let z_0 = vec![Fr::from(3_u32)];
         let mut z_i = z_0.clone();
 
+        // prepare the dummy instances
         let W_dummy = Witness::<Fr>::new(vec![Fr::zero(); ccs.n - ccs.l - 1]);
         let U_dummy = LCCCS::<Projective>::dummy(ccs.l, ccs.t, ccs.s);
         let w_dummy = W_dummy.clone();
         let u_dummy = CCCS::<Projective>::dummy(ccs.l);
+        let (cf_w_dummy, cf_u_dummy): (NovaWitness<Projective2>, CommittedInstance<Projective2>) =
+            cf_r1cs.dummy_instance();
 
         // set the initial dummy instances
         let mut W_i = W_dummy.clone();
         let mut U_i = U_dummy.clone();
         let mut w_i = w_dummy.clone();
         let mut u_i = u_dummy.clone();
-        u_i.x = vec![U_i
-            .hash(&poseidon_config, Fr::zero(), z_0.clone(), z_i.clone())
-            .unwrap()];
+        let mut cf_W_i = cf_w_dummy.clone();
+        let mut cf_U_i = cf_u_dummy.clone();
+        u_i.x = vec![
+            U_i.hash(&poseidon_config, Fr::zero(), z_0.clone(), z_i.clone())
+                .unwrap(),
+            cf_U_i.hash_cyclefold(&poseidon_config).unwrap(),
+        ];
 
         let n_steps: usize = 4;
         let mut iFr = Fr::zero();
@@ -1032,7 +1130,7 @@ mod tests {
             let start = Instant::now();
             let mut transcript_p: PoseidonTranscript<Projective> =
                 PoseidonTranscript::<Projective>::new(&poseidon_config.clone());
-            let (nimfs_proof, U_i1, W_i1) =
+            let (nimfs_proof, U_i1, W_i1, rho_bits) =
                 NIMFS::<Projective, PoseidonTranscript<Projective>>::prove(
                     &mut transcript_p,
                     &ccs,
@@ -1051,43 +1149,132 @@ mod tests {
                 .hash(&poseidon_config, iFr + Fr::one(), z_0.clone(), z_i1.clone())
                 .unwrap();
 
-            augmented_f_circuit =
-                AugmentedFCircuit::<Projective, Projective2, GVar2, CubicFCircuit<Fr>> {
-                    _c2: PhantomData,
-                    _gc2: PhantomData,
-                    poseidon_config: poseidon_config.clone(),
-                    ccs: ccs.clone(),
-                    i: Some(iFr),
-                    i_usize: Some(i),
-                    z_0: Some(z_0.clone()),
-                    z_i: Some(z_i.clone()),
-                    external_inputs: Some(vec![]),
-                    u_i_C: Some(u_i.C),
-                    U_i: Some(U_i.clone()),
-                    U_i1_C: Some(U_i1.C),
-                    F: F_circuit,
-                    x: Some(u_i1_x),
-                    nimfs_proof: Some(nimfs_proof),
+            if i == 0 {
+                // hash the initial (dummy) CycleFold instance, which is used as the 2nd public
+                // input in the AugmentedFCircuit
+                let cf_u_i1_x = cf_U_i.hash_cyclefold(&poseidon_config).unwrap();
+
+                augmented_f_circuit =
+                    AugmentedFCircuit::<Projective, Projective2, GVar2, CubicFCircuit<Fr>> {
+                        _c2: PhantomData,
+                        _gc2: PhantomData,
+                        poseidon_config: poseidon_config.clone(),
+                        ccs: ccs.clone(),
+                        i: Some(iFr),
+                        i_usize: Some(i),
+                        z_0: Some(z_0.clone()),
+                        z_i: Some(z_i.clone()),
+                        external_inputs: Some(vec![]),
+                        u_i_C: Some(u_i.C),
+                        U_i: Some(U_i.clone()),
+                        U_i1_C: Some(U_i1.C),
+                        F: F_circuit,
+                        x: Some(u_i1_x),
+                        nimfs_proof: Some(nimfs_proof),
+
+                        // cyclefold values
+                        cf_u_i_cmW: None,
+                        cf_U_i: None,
+                        cf_x: Some(cf_u_i1_x),
+                        cf_cmT: None,
+                    };
+            } else {
+                let rho_Fq = Fq::from_bigint(BigInteger::from_bits_le(&rho_bits)).unwrap();
+                // CycleFold part:
+                // get the vector used as public inputs 'x' in the CycleFold circuit
+                // cyclefold circuit for cmW
+                let cf_u_i_x = [
+                    vec![rho_Fq],
+                    get_cm_coordinates(&U_i.C),
+                    get_cm_coordinates(&u_i.C),
+                    get_cm_coordinates(&U_i1.C),
+                ]
+                .concat();
+
+                let cf_circuit = CycleFoldCircuit::<Projective, GVar> {
+                    _gc: PhantomData,
+                    r_bits: Some(rho_bits.clone()),
+                    p1: Some(U_i.clone().C),
+                    p2: Some(u_i.clone().C),
+                    x: Some(cf_u_i_x.clone()),
                 };
+
+                let (_cf_w_i, cf_u_i, cf_W_i1, cf_U_i1, cf_cmT, _) = fold_cyclefold_circuit::<
+                    Projective,
+                    GVar,
+                    Projective2,
+                    GVar2,
+                    CubicFCircuit<Fr>,
+                    Pedersen<Projective>,
+                    Pedersen<Projective2>,
+                >(
+                    &poseidon_config,
+                    cf_r1cs.clone(),
+                    cf_pedersen_params.clone(),
+                    cf_W_i.clone(), // CycleFold running instance witness
+                    cf_U_i.clone(), // CycleFold running instance
+                    cf_u_i_x,       // CycleFold incoming instance
+                    cf_circuit,
+                )
+                .unwrap();
+
+                // hash the CycleFold folded instance, which is used as the 2nd public input in the
+                // AugmentedFCircuit
+                let cf_u_i1_x = cf_U_i1.hash_cyclefold(&poseidon_config).unwrap();
+
+                augmented_f_circuit =
+                    AugmentedFCircuit::<Projective, Projective2, GVar2, CubicFCircuit<Fr>> {
+                        _c2: PhantomData,
+                        _gc2: PhantomData,
+                        poseidon_config: poseidon_config.clone(),
+                        ccs: ccs.clone(),
+                        i: Some(iFr),
+                        i_usize: Some(i),
+                        z_0: Some(z_0.clone()),
+                        z_i: Some(z_i.clone()),
+                        external_inputs: Some(vec![]),
+                        u_i_C: Some(u_i.C),
+                        U_i: Some(U_i.clone()),
+                        U_i1_C: Some(U_i1.C),
+                        F: F_circuit,
+                        x: Some(u_i1_x),
+                        nimfs_proof: Some(nimfs_proof),
+
+                        // cyclefold values
+                        cf_u_i_cmW: Some(cf_u_i.cmW),
+                        cf_U_i: Some(cf_U_i),
+                        cf_x: Some(cf_u_i1_x),
+                        cf_cmT: Some(cf_cmT),
+                    };
+
+                // assign the next round instances
+                cf_W_i = cf_W_i1;
+                cf_U_i = cf_U_i1;
+            }
 
             let (cs, _) = augmented_f_circuit.compute_cs_ccs().unwrap();
             assert!(cs.is_satisfied().unwrap());
 
             let (r1cs_w_i1, r1cs_x_i1) = extract_w_x::<Fr>(&cs); // includes 1 and public inputs
             assert_eq!(r1cs_x_i1[0], augmented_f_circuit.x.unwrap());
-            let r1cs_z = [vec![Fr::one()], r1cs_x_i1, r1cs_w_i1].concat();
+            let r1cs_z = [vec![Fr::one()], r1cs_x_i1.clone(), r1cs_w_i1.clone()].concat();
             // compute committed instances, w_{i+1}, u_{i+1}, which will be used as w_i, u_i, so we
             // assign them directly to w_i, u_i.
             (u_i, w_i) = ccs.to_cccs(&mut rng, &pedersen_params, &r1cs_z).unwrap();
             u_i.check_relation(&pedersen_params, &ccs, &w_i).unwrap();
 
-            // sanity check
+            // sanity checks
+            assert_eq!(w_i.w, r1cs_w_i1);
+            assert_eq!(u_i.x, r1cs_x_i1);
             assert_eq!(u_i.x[0], augmented_f_circuit.x.unwrap());
+            assert_eq!(u_i.x[1], augmented_f_circuit.cf_x.unwrap());
             let expected_u_i1_x = U_i1
                 .hash(&poseidon_config, iFr + Fr::one(), z_0.clone(), z_i1.clone())
                 .unwrap();
+            let expected_cf_U_i1_x = cf_U_i.hash_cyclefold(&poseidon_config).unwrap();
             // u_i is already u_i1 at this point, check that has the expected value at x[0]
             assert_eq!(u_i.x[0], expected_u_i1_x);
+            assert_eq!(u_i.x[1], expected_cf_U_i1_x);
 
             // set values for next iteration
             iFr += Fr::one();
@@ -1100,6 +1287,11 @@ mod tests {
             U_i.check_relation(&pedersen_params, &ccs, &W_i).unwrap();
             // check the new CCCS instance relation
             u_i.check_relation(&pedersen_params, &ccs, &w_i).unwrap();
+
+            // check the CycleFold instance relation
+            cf_r1cs
+                .check_relaxed_instance_relation(&cf_W_i, &cf_U_i)
+                .unwrap();
 
             println!("augmented_f_circuit step {}: {:?}", i, start.elapsed());
         }

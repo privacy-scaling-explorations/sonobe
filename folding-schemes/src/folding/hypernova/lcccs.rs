@@ -127,8 +127,8 @@ where
     <C as Group>::ScalarField: Absorb,
     <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
 {
-    /// hash implements the committed instance hash compatible with the gadget implemented in
-    /// nova/circuits.rs::CommittedInstanceVar.hash.
+    /// [`LCCCS`].hash implements the committed instance hash compatible with the gadget
+    /// implemented in nova/circuits.rs::CommittedInstanceVar.hash.
     /// Returns `H(i, z_0, z_i, U_i)`, where `i` can be `i` but also `i+1`, and `U_i` is the LCCCS.
     pub fn hash(
         &self,

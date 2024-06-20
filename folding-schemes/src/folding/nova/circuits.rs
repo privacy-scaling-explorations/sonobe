@@ -23,14 +23,12 @@ use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace,
 use ark_std::{fmt::Debug, One, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
-use super::{
+use super::CommittedInstance;
+use crate::constants::N_BITS_RO;
+use crate::folding::circuits::{
     cyclefold::{
         CycleFoldChallengeGadget, CycleFoldCommittedInstanceVar, NIFSFullGadget, CF_IO_LEN,
     },
-    CommittedInstance,
-};
-use crate::constants::N_BITS_RO;
-use crate::folding::circuits::{
     nonnative::{
         affine::{nonnative_affine_to_field_elements, NonNativeAffineVar},
         uint::NonNativeUintVar,

@@ -16,6 +16,7 @@ use std::usize;
 
 use crate::ccs::r1cs::{extract_r1cs, extract_w_x, R1CS};
 use crate::commitment::CommitmentScheme;
+use crate::folding::circuits::cyclefold::{fold_cyclefold_circuit, CycleFoldCircuit};
 use crate::folding::circuits::{
     nonnative::{
         affine::nonnative_affine_to_field_elements, uint::nonnative_field_to_field_elements,
@@ -28,20 +29,14 @@ use crate::Error;
 use crate::FoldingScheme;
 
 pub mod circuits;
-pub mod cyclefold;
 pub mod decider_eth;
 pub mod decider_eth_circuit;
 pub mod nifs;
 pub mod serialize;
 pub mod traits;
-
 use circuits::{AugmentedFCircuit, ChallengeGadget};
-use cyclefold::{CycleFoldChallengeGadget, CycleFoldCircuit};
 use nifs::NIFS;
 use traits::NovaR1CS;
-
-#[cfg(test)]
-use cyclefold::CF_IO_LEN;
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct CommittedInstance<C: CurveGroup> {
@@ -644,23 +639,6 @@ where
             &self.U_i,
         )
     }
-    // computes T* and cmT* for the CycleFoldCircuit
-    fn compute_cf_cmT(
-        &self,
-        cf_w_i: &Witness<C2>,
-        cf_u_i: &CommittedInstance<C2>,
-        cf_W_i: &Witness<C2>,
-        cf_U_i: &CommittedInstance<C2>,
-    ) -> Result<(Vec<C2::ScalarField>, C2), Error> {
-        NIFS::<C2, CS2>::compute_cyclefold_cmT(
-            &self.cf_cs_params,
-            &self.cf_r1cs,
-            cf_w_i,
-            cf_u_i,
-            cf_W_i,
-            cf_U_i,
-        )
-    }
 }
 
 impl<C1, GC1, C2, GC2, FC, CS1, CS2> Nova<C1, GC1, C2, GC2, FC, CS1, CS2>
@@ -699,41 +677,15 @@ where
         ),
         Error,
     > {
-        let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
-        cf_circuit.generate_constraints(cs2.clone())?;
-
-        let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
-        let (cf_w_i, cf_x_i) = extract_w_x::<C1::BaseField>(&cs2);
-        if cf_x_i != cf_u_i_x {
-            return Err(Error::NotEqual);
-        }
-
-        #[cfg(test)]
-        if cf_x_i.len() != CF_IO_LEN {
-            return Err(Error::NotExpectedLength(cf_x_i.len(), CF_IO_LEN));
-        }
-
-        // fold cyclefold instances
-        let cf_w_i = Witness::<C2>::new(cf_w_i.clone(), self.cf_r1cs.A.n_rows);
-        let cf_u_i: CommittedInstance<C2> =
-            cf_w_i.commit::<CS2>(&self.cf_cs_params, cf_x_i.clone())?;
-
-        // compute T* and cmT* for CycleFoldCircuit
-        let (cf_T, cf_cmT) = self.compute_cf_cmT(&cf_w_i, &cf_u_i, &cf_W_i, &cf_U_i)?;
-
-        let cf_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_native(
+        fold_cyclefold_circuit::<C1, GC1, C2, GC2, FC, CS1, CS2>(
             &self.poseidon_config,
-            cf_U_i.clone(),
-            cf_u_i.clone(),
-            cf_cmT,
-        )?;
-        let cf_r_Fq = C1::BaseField::from_bigint(BigInteger::from_bits_le(&cf_r_bits))
-            .ok_or(Error::OutOfBounds)?;
-
-        let (cf_W_i1, cf_U_i1) = NIFS::<C2, CS2>::fold_instances(
-            cf_r_Fq, &cf_W_i, &cf_U_i, &cf_w_i, &cf_u_i, &cf_T, cf_cmT,
-        )?;
-        Ok((cf_w_i, cf_u_i, cf_W_i1, cf_U_i1, cf_cmT, cf_r_Fq))
+            self.cf_r1cs.clone(),
+            self.cf_cs_params.clone(),
+            cf_W_i,
+            cf_U_i,
+            cf_u_i_x,
+            cf_circuit,
+        )
     }
 }
 

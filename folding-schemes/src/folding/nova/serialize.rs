@@ -1,6 +1,6 @@
-use super::{circuits::AugmentedFCircuit, cyclefold::CycleFoldCircuit, Nova, ProverParams};
+use super::{circuits::AugmentedFCircuit, Nova, ProverParams};
 pub use super::{CommittedInstance, Witness};
-pub use crate::folding::circuits::CF2;
+pub use crate::folding::circuits::{cyclefold::CycleFoldCircuit, CF2};
 use crate::{
     ccs::r1cs::extract_r1cs, commitment::CommitmentScheme, folding::circuits::CF1,
     frontend::FCircuit,

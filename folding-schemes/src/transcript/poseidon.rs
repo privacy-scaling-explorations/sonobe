@@ -164,6 +164,71 @@ pub mod tests {
     use ark_relations::r1cs::ConstraintSystem;
     use std::ops::Mul;
 
+    mod poseidon_config_equivalence {
+        use crate::transcript::poseidon::{bn254, grumpkin, poseidon_canonical_config};
+        use ark_ff::PrimeField;
+
+        #[test]
+        fn test_bn() {
+            use ark_bn254::Fr;
+
+            let full_rounds = 8;
+            let partial_rounds = 60;
+            let rate = 4;
+
+            let (ark_gen, mds_gen) =
+                ark_crypto_primitives::sponge::poseidon::find_poseidon_ark_and_mds::<Fr>(
+                    Fr::MODULUS_BIT_SIZE as u64,
+                    rate,
+                    full_rounds,
+                    partial_rounds,
+                    0,
+                );
+
+            let (ark0, mds0) = bn254::constants::<Fr>();
+
+            let (ark1, mds1) = {
+                let config = poseidon_canonical_config::<Fr>();
+                (config.ark, config.mds)
+            };
+
+            assert_eq!(ark0, ark_gen);
+            assert_eq!(mds0, mds_gen);
+            assert_eq!(ark1, ark_gen);
+            assert_eq!(mds1, mds_gen);
+        }
+
+        #[test]
+        fn test_grumpkin() {
+            use ark_grumpkin::Fr;
+
+            let full_rounds = 8;
+            let partial_rounds = 56;
+            let rate = 4;
+
+            let (ark_gen, mds_gen) =
+                ark_crypto_primitives::sponge::poseidon::find_poseidon_ark_and_mds::<Fr>(
+                    Fr::MODULUS_BIT_SIZE as u64,
+                    rate,
+                    full_rounds,
+                    partial_rounds,
+                    0,
+                );
+
+            let (ark0, mds0) = grumpkin::constants::<Fr>();
+
+            let (ark1, mds1) = {
+                let config = poseidon_canonical_config::<Fr>();
+                (config.ark, config.mds)
+            };
+
+            assert_eq!(ark0, ark_gen);
+            assert_eq!(mds0, mds_gen);
+            assert_eq!(ark1, ark_gen);
+            assert_eq!(mds1, mds_gen);
+        }
+    }
+
     #[test]
     fn test_transcript_and_transcriptvar_get_challenge() {
         // use 'native' transcript

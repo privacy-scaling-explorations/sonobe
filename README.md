@@ -1,5 +1,11 @@
 # sonobe
 
+# Benchmarks
+
+To run the benchmars use
+
+`cargo run --release --example <folding>`
+
 Experimental folding schemes library implemented jointly by [0xPARC](https://0xparc.org/) and [PSE](https://pse.dev).
 
 <img align="right" style="width:30%;min-width:250px;margin-bottom:20px;" src="https://privacy-scaling-explorations.github.io/sonobe-docs/imgs/sonobe.png">

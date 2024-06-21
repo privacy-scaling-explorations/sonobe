@@ -36,18 +36,19 @@ rand = "0.8.5"
 tracing = { version = "0.1", default-features = false, features = [ "attributes" ] }
 tracing-subscriber = { version = "0.2" }
 
+
 [features]
 default = ["parallel"]
 light-test = []
 
-parallel = [ 
-    "ark-std/parallel", 
-    "ark-ff/parallel",  
-    "ark-ec/parallel",  
-    "ark-poly/parallel", 
-    "ark-crypto-primitives/parallel",  
-    "ark-r1cs-std/parallel",  
-    ]
+parallel = [
+    "ark-std/parallel",
+    "ark-ff/parallel",
+    "ark-ec/parallel",
+    "ark-poly/parallel",
+    "ark-crypto-primitives/parallel",
+    "ark-r1cs-std/parallel",
+]
 
 
 [[example]]
@@ -61,3 +62,7 @@ path = "../examples/multi_inputs.rs"
 [[example]]
 name = "external_inputs"
 path = "../examples/external_inputs.rs"
+
+[[example]]
+name = "nova"
+path = "../examples/nova.rs"

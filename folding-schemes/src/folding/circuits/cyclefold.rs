@@ -1,4 +1,5 @@
-/// contains [CycleFold](https://eprint.iacr.org/2023/1192.pdf) related circuits
+/// Contains [CycleFold](https://eprint.iacr.org/2023/1192.pdf) related circuits and functions that
+/// are shared across the different folding schemes
 use ark_crypto_primitives::{
     crh::{
         poseidon::constraints::{CRHGadget, CRHParametersVar},
@@ -10,8 +11,8 @@ use ark_crypto_primitives::{
         Absorb, CryptographicSponge,
     },
 };
-use ark_ec::{AffineRepr, CurveGroup};
-use ark_ff::{Field, PrimeField, ToConstraintField};
+use ark_ec::{AffineRepr, CurveGroup, Group};
+use ark_ff::{BigInteger, Field, PrimeField, ToConstraintField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
@@ -21,18 +22,23 @@ use ark_r1cs_std::{
     prelude::CurveVar,
     ToConstraintFieldGadget,
 };
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
+use ark_relations::r1cs::{
+    ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, Namespace, SynthesisError,
+};
 use ark_std::fmt::Debug;
 use ark_std::{One, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
-use super::CommittedInstance;
+use super::{nonnative::uint::NonNativeUintVar, CF2};
+use crate::ccs::r1cs::{extract_w_x, R1CS};
+use crate::commitment::CommitmentScheme;
 use crate::constants::N_BITS_RO;
-use crate::folding::circuits::{nonnative::uint::NonNativeUintVar, CF2};
+use crate::folding::nova::{nifs::NIFS, CommittedInstance, Witness};
+use crate::frontend::FCircuit;
 use crate::Error;
 
-// public inputs length for the CycleFoldCircuit: |[r, p1.x,y, p2.x,y, p3.x,y]|
-pub const CF_IO_LEN: usize = 7;
+/// Public inputs length for the CycleFoldCircuit: |[r, p1.x,y, p2.x,y, p3.x,y]|
+pub(crate) const CF_IO_LEN: usize = 7;
 
 /// CycleFoldCommittedInstanceVar is the CycleFold CommittedInstance representation in the Nova
 /// circuit.
@@ -78,8 +84,9 @@ where
     <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField + Absorb,
     for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
 {
-    // Extract the underlying field elements from `CycleFoldCommittedInstanceVar`, in the order of
-    // `u`, `x`, `cmE.x`, `cmE.y`, `cmW.x`, `cmW.y`, `cmE.is_inf || cmW.is_inf` (|| is for concat).
+    /// Extracts the underlying field elements from `CycleFoldCommittedInstanceVar`, in the order
+    /// of `u`, `x`, `cmE.x`, `cmE.y`, `cmW.x`, `cmW.y`, `cmE.is_inf || cmW.is_inf` (|| is for
+    /// concat).
     fn to_constraint_field(&self) -> Result<Vec<FpVar<CF2<C>>>, SynthesisError> {
         let mut cmE_elems = self.cmE.to_constraint_field()?;
         let mut cmW_elems = self.cmW.to_constraint_field()?;
@@ -112,10 +119,10 @@ where
     for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
 {
     /// hash implements the committed instance hash compatible with the native implementation from
-    /// CommittedInstance.hash_cyclefold.
-    /// Returns `H(U_i)`, where `U` is the `CommittedInstance` for CycleFold.
-    /// Additionally it returns the vector of the field elements from the self parameters, so they
-    /// can be reused in other gadgets avoiding recalculating (reconstraining) them.
+    /// CommittedInstance.hash_cyclefold. Returns `H(U_i)`, where `U` is the `CommittedInstance`
+    /// for CycleFold. Additionally it returns the vector of the field elements from the self
+    /// parameters, so they can be reused in other gadgets avoiding recalculating (reconstraining)
+    /// them.
     #[allow(clippy::type_complexity)]
     pub fn hash(
         self,
@@ -365,15 +372,94 @@ where
     }
 }
 
+/// Folds the given cyclefold circuit and its instances. This method is isolated from any folding
+/// scheme struct because it is used both by Nova & HyperNova's CycleFold.
+#[allow(clippy::type_complexity)]
+pub fn fold_cyclefold_circuit<C1, GC1, C2, GC2, FC, CS1, CS2>(
+    poseidon_config: &PoseidonConfig<C1::ScalarField>,
+    cf_r1cs: R1CS<C2::ScalarField>,
+    cf_cs_params: CS2::ProverParams,
+    cf_W_i: Witness<C2>,           // witness of the running instance
+    cf_U_i: CommittedInstance<C2>, // running instance
+    cf_u_i_x: Vec<C2::ScalarField>,
+    cf_circuit: CycleFoldCircuit<C1, GC1>,
+) -> Result<
+    (
+        Witness<C2>,
+        CommittedInstance<C2>, // u_i
+        Witness<C2>,           // W_i1
+        CommittedInstance<C2>, // U_i1
+        C2,                    // cmT
+        C2::ScalarField,       // r_Fq
+    ),
+    Error,
+>
+where
+    C1: CurveGroup,
+    GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
+    C2: CurveGroup,
+    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+    FC: FCircuit<C1::ScalarField>,
+    CS1: CommitmentScheme<C1>,
+    CS2: CommitmentScheme<C2>,
+    <C1 as CurveGroup>::BaseField: PrimeField,
+    <C2 as CurveGroup>::BaseField: PrimeField,
+    <C1 as Group>::ScalarField: Absorb,
+    <C2 as Group>::ScalarField: Absorb,
+    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    for<'a> &'a GC1: GroupOpsBounds<'a, C1, GC1>,
+    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
+{
+    let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
+    cf_circuit.generate_constraints(cs2.clone())?;
+
+    let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
+    let (cf_w_i, cf_x_i) = extract_w_x::<C1::BaseField>(&cs2);
+    if cf_x_i != cf_u_i_x {
+        return Err(Error::NotEqual);
+    }
+
+    #[cfg(test)]
+    assert_eq!(cf_x_i.len(), CF_IO_LEN);
+
+    // fold cyclefold instances
+    let cf_w_i = Witness::<C2>::new(cf_w_i.clone(), cf_r1cs.A.n_rows);
+    let cf_u_i: CommittedInstance<C2> = cf_w_i.commit::<CS2>(&cf_cs_params, cf_x_i.clone())?;
+
+    // compute T* and cmT* for CycleFoldCircuit
+    let (cf_T, cf_cmT) = NIFS::<C2, CS2>::compute_cyclefold_cmT(
+        &cf_cs_params,
+        &cf_r1cs,
+        &cf_w_i,
+        &cf_u_i,
+        &cf_W_i,
+        &cf_U_i,
+    )?;
+
+    let cf_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_native(
+        poseidon_config,
+        cf_U_i.clone(),
+        cf_u_i.clone(),
+        cf_cmT,
+    )?;
+    let cf_r_Fq = C1::BaseField::from_bigint(BigInteger::from_bits_le(&cf_r_bits))
+        .expect("cf_r_bits out of bounds");
+
+    let (cf_W_i1, cf_U_i1) = NIFS::<C2, CS2>::fold_instances(
+        cf_r_Fq, &cf_W_i, &cf_U_i, &cf_w_i, &cf_u_i, &cf_T, cf_cmT,
+    )?;
+    Ok((cf_w_i, cf_u_i, cf_W_i1, cf_U_i1, cf_cmT, cf_r_Fq))
+}
+
 #[cfg(test)]
 pub mod tests {
-    use super::*;
     use ark_bn254::{constraints::GVar, Fq, Fr, G1Projective as Projective};
     use ark_ff::BigInteger;
     use ark_r1cs_std::R1CSVar;
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::UniformRand;
 
+    use super::*;
     use crate::folding::nova::get_cm_coordinates;
     use crate::folding::nova::nifs::tests::prepare_simple_fold_inputs;
     use crate::transcript::poseidon::poseidon_canonical_config;

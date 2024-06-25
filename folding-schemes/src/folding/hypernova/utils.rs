@@ -49,7 +49,7 @@ pub fn compute_sigmas_thetas<F: PrimeField>(
     Ok(SigmasThetas(sigmas, thetas))
 }
 
-/// computes c from the step 5 in section 5 of HyperNova, adapted to multiple LCCCS & CCCS
+/// Computes c from the step 5 in section 5 of HyperNova, adapted to multiple LCCCS & CCCS
 /// instances:
 /// $$
 /// c = \sum_{i \in [\mu]} \left(\sum_{j \in [t]} \gamma^{i \cdot t + j} \cdot e_i \cdot \sigma_{i,j} \right)

@@ -1,15 +1,18 @@
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{CurveGroup, Group};
-use ark_ff::{Field, PrimeField};
+use ark_ff::{BigInteger, Field, PrimeField};
 use ark_poly::univariate::DensePolynomial;
 use ark_poly::{DenseUVPolynomial, Polynomial};
 use ark_std::{One, Zero};
 
-use super::cccs::CCCS;
-use super::lcccs::LCCCS;
-use super::utils::{compute_c, compute_g, compute_sigmas_thetas};
-use super::Witness;
+use super::{
+    cccs::CCCS,
+    lcccs::LCCCS,
+    utils::{compute_c, compute_g, compute_sigmas_thetas},
+    Witness,
+};
 use crate::ccs::CCS;
+use crate::constants::N_BITS_RO;
 use crate::folding::circuits::nonnative::affine::nonnative_affine_to_field_elements;
 use crate::transcript::Transcript;
 use crate::utils::sum_check::structs::{IOPProof as SumCheckProof, IOPProverMessage};
@@ -179,7 +182,7 @@ where
         new_instances: &[CCCS<C>],
         w_lcccs: &[Witness<C::ScalarField>],
         w_cccs: &[Witness<C::ScalarField>],
-    ) -> Result<(NIMFSProof<C>, LCCCS<C>, Witness<C::ScalarField>), Error> {
+    ) -> Result<(NIMFSProof<C>, LCCCS<C>, Witness<C::ScalarField>, Vec<bool>), Error> {
         // absorb instances to transcript
         for U_i in running_instances {
             let (C_x, C_y) = nonnative_affine_to_field_elements::<C>(U_i.C)?;
@@ -254,7 +257,9 @@ where
         // Step 6: Get the folding challenge
         let rho_scalar = C::ScalarField::from_le_bytes_mod_order(b"rho");
         transcript.absorb(&rho_scalar);
-        let rho: C::ScalarField = transcript.get_challenge();
+        let rho_bits: Vec<bool> = transcript.get_challenge_nbits(N_BITS_RO);
+        let rho: C::ScalarField =
+            C::ScalarField::from_bigint(BigInteger::from_bits_le(&rho_bits)).unwrap();
 
         // Step 7: Create the folded instance
         let folded_lcccs = Self::fold(
@@ -275,6 +280,7 @@ where
             },
             folded_lcccs,
             folded_witness,
+            rho_bits,
         ))
     }
 
@@ -382,7 +388,9 @@ where
         // Step 6: Get the folding challenge
         let rho_scalar = C::ScalarField::from_le_bytes_mod_order(b"rho");
         transcript.absorb(&rho_scalar);
-        let rho: C::ScalarField = transcript.get_challenge();
+        let rho_bits: Vec<bool> = transcript.get_challenge_nbits(N_BITS_RO);
+        let rho: C::ScalarField =
+            C::ScalarField::from_bigint(BigInteger::from_bits_le(&rho_bits)).unwrap();
 
         // Step 7: Compute the folded instance
         Ok(Self::fold(
@@ -477,7 +485,7 @@ pub mod tests {
         transcript_p.absorb(&Fr::from_le_bytes_mod_order(b"init init"));
 
         // Run the prover side of the multifolding
-        let (proof, folded_lcccs, folded_witness) =
+        let (proof, folded_lcccs, folded_witness, _) =
             NIMFS::<Projective, PoseidonTranscript<Projective>>::prove(
                 &mut transcript_p,
                 &ccs,
@@ -543,7 +551,7 @@ pub mod tests {
             let (new_instance, w2) = ccs.to_cccs(&mut rng, &pedersen_params, &z_2).unwrap();
 
             // run the prover side of the multifolding
-            let (proof, folded_lcccs, folded_witness) =
+            let (proof, folded_lcccs, folded_witness, _) =
                 NIMFS::<Projective, PoseidonTranscript<Projective>>::prove(
                     &mut transcript_p,
                     &ccs,
@@ -624,7 +632,7 @@ pub mod tests {
         transcript_p.absorb(&Fr::from_le_bytes_mod_order(b"init init"));
 
         // Run the prover side of the multifolding
-        let (proof, folded_lcccs, folded_witness) =
+        let (proof, folded_lcccs, folded_witness, _) =
             NIMFS::<Projective, PoseidonTranscript<Projective>>::prove(
                 &mut transcript_p,
                 &ccs,
@@ -716,7 +724,7 @@ pub mod tests {
             }
 
             // Run the prover side of the multifolding
-            let (proof, folded_lcccs, folded_witness) =
+            let (proof, folded_lcccs, folded_witness, _) =
                 NIMFS::<Projective, PoseidonTranscript<Projective>>::prove(
                     &mut transcript_p,
                     &ccs,

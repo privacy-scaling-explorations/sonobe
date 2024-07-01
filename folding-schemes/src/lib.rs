@@ -69,6 +69,8 @@ pub enum Error {
     NotEnoughSteps,
     #[error("Evaluation failed")]
     EvaluationFail,
+    #[error("{0} can not be zero")]
+    CantBeZero(String),
 
     // Commitment errors
     #[error("Pedersen parameters length is not sufficient (generators.len={0} < vector.len={1} unsatisfied)")]
@@ -114,6 +116,7 @@ where
     type VerifierParam: Debug + Clone;
     type RunningInstance: Debug; // contains the CommittedInstance + Witness
     type IncomingInstance: Debug; // contains the CommittedInstance + Witness
+    type MultiCommittedInstanceWithWitness: Debug; // type used for the extra instances in the multi-instance folding setting
     type CFInstance: Debug; // CycleFold CommittedInstance & Witness
 
     fn preprocess(
@@ -131,6 +134,7 @@ where
         &mut self,
         rng: impl RngCore,
         external_inputs: Vec<C1::ScalarField>,
+        other_instances: Self::MultiCommittedInstanceWithWitness,
     ) -> Result<(), Error>;
 
     // returns the state at the current step
@@ -156,6 +160,26 @@ where
         incoming_instance: Self::IncomingInstance,
         cyclefold_instance: Self::CFInstance,
     ) -> Result<(), Error>;
+}
+
+/// Trait with auxiliary methods for multi-folding schemes (ie. HyperNova, ProtoGalaxy, etc),
+/// allowing to create new instances for the multifold.
+pub trait MultiFolding<C1: CurveGroup, C2: CurveGroup, FC>: Clone + Debug
+where
+    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2::BaseField: PrimeField,
+    FC: FCircuit<C1::ScalarField>,
+{
+    type RunningInstance: Debug;
+    type IncomingInstance: Debug;
+    type MultiInstance: Debug;
+
+    fn new_incoming_instance(
+        &self,
+        rng: impl RngCore,
+        state: Vec<C1::ScalarField>,
+        external_inputs: Vec<C1::ScalarField>,
+    ) -> Result<Self::IncomingInstance, Error>;
 }
 
 pub trait Decider<

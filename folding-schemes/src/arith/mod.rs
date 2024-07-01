@@ -11,5 +11,5 @@ pub trait Arith<F: PrimeField> {
 
     /// Returns the bytes that represent the parameters, that is, the matrices sizes, the amount of
     /// public inputs, etc, without the matrices/polynomials values.
-    fn params_to_bytes(&self) -> Vec<u8>;
+    fn params_to_le_bytes(&self) -> Vec<u8>;
 }

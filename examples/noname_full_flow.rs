@@ -86,7 +86,7 @@ fn main() {
     let nova_params = N::preprocess(&mut rng, &nova_preprocess_params).unwrap();
 
     // initialize the folding scheme engine, in our case we use Nova
-    let mut nova = N::init(nova_params.clone(), f_circuit.clone(), z_0).unwrap();
+    let mut nova = N::init(&nova_params, f_circuit.clone(), z_0).unwrap();
 
     // prepare the Decider prover & verifier params
     let (decider_pp, decider_vp) = D::preprocess(&mut rng, &nova_params, nova.clone()).unwrap();
@@ -94,7 +94,7 @@ fn main() {
     // run n steps of the folding iteration
     for (i, external_inputs_at_step) in external_inputs.iter().enumerate() {
         let start = Instant::now();
-        nova.prove_step(rng, external_inputs_at_step.clone())
+        nova.prove_step(rng, external_inputs_at_step.clone(), None)
             .unwrap();
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }

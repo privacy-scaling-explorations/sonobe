@@ -361,12 +361,12 @@ pub mod tests {
         let nova_params = N::preprocess(&mut rng, &prep_param).unwrap();
 
         let start = Instant::now();
-        let mut nova = N::init(nova_params.clone(), F_circuit, z_0.clone()).unwrap();
+        let mut nova = N::init(&nova_params, F_circuit, z_0.clone()).unwrap();
         println!("Nova initialized, {:?}", start.elapsed());
         let start = Instant::now();
-        nova.prove_step(&mut rng, vec![]).unwrap();
+        nova.prove_step(&mut rng, vec![], None).unwrap();
         println!("prove_step, {:?}", start.elapsed());
-        nova.prove_step(&mut rng, vec![]).unwrap(); // do a 2nd step
+        nova.prove_step(&mut rng, vec![], None).unwrap(); // do a 2nd step
 
         let mut rng = rand::rngs::OsRng;
 

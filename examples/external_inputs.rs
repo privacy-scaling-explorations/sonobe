@@ -190,14 +190,13 @@ fn main() {
     let nova_params = N::preprocess(&mut rng, &nova_preprocess_params).unwrap();
 
     println!("Initialize FoldingScheme");
-    let mut folding_scheme =
-        N::init(nova_params.clone(), F_circuit, initial_state.clone()).unwrap();
+    let mut folding_scheme = N::init(&nova_params, F_circuit, initial_state.clone()).unwrap();
 
     // compute a step of the IVC
     for (i, external_inputs_at_step) in external_inputs.iter().enumerate() {
         let start = Instant::now();
         folding_scheme
-            .prove_step(rng, external_inputs_at_step.clone())
+            .prove_step(rng, external_inputs_at_step.clone(), None)
             .unwrap();
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }

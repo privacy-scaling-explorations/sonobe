@@ -70,6 +70,8 @@ where
     pub cf_cs_params: CS2::ProverParams,
     // if ccs is set, it will be used, if not, it will be computed at runtime
     pub ccs: Option<CCS<C1::ScalarField>>,
+    pub max_mu: usize,
+    pub max_nu: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -136,6 +138,8 @@ where
     pub F: FC,
     /// public params hash
     pub pp_hash: C1::ScalarField,
+    pub max_mu: usize, // max number of LCCCS instances to be folded // TODO maybe not 'max_{mu/nu}' and use directly '{mu/nu}'
+    pub max_nu: usize, // max number of CCCS instances to be folded
     pub i: C1::ScalarField,
     /// initial state
     pub z_0: Vec<C1::ScalarField>,
@@ -150,6 +154,120 @@ where
     /// CycleFold running instance
     pub cf_W_i: NovaWitness<C2>,
     pub cf_U_i: CommittedInstance<C2>,
+}
+
+impl<C1, GC1, C2, GC2, FC, CS1, CS2> HyperNova<C1, GC1, C2, GC2, FC, CS1, CS2>
+where
+    C1: CurveGroup,
+    GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
+    C2: CurveGroup,
+    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+    FC: FCircuit<C1::ScalarField>,
+    CS1: CommitmentScheme<C1>,
+    CS2: CommitmentScheme<C2>,
+    <C1 as CurveGroup>::BaseField: PrimeField,
+    <C2 as CurveGroup>::BaseField: PrimeField,
+    <C1 as Group>::ScalarField: Absorb,
+    <C2 as Group>::ScalarField: Absorb,
+    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    for<'a> &'a GC1: GroupOpsBounds<'a, C1, GC1>,
+    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
+{
+    // creates a new CCCS instance from the given z_i
+    fn new_CCCS(
+        self,
+        mut rng: impl RngCore,
+        z_i: Vec<C1::ScalarField>,
+    ) -> Result<(CCCS<C1>, Witness<C1::ScalarField>), Error> {
+        // prepare the initial dummy instances
+        let W_i = Witness::<C1::ScalarField>::dummy(&self.ccs);
+        let U_i = LCCCS::<C1>::dummy(self.ccs.l, self.ccs.t, self.ccs.s);
+        let w_i = W_i.clone();
+        let mut u_i = CCCS::<C1>::dummy(self.ccs.l);
+        let (_, cf_U_i): (NovaWitness<C2>, CommittedInstance<C2>) = self.cf_r1cs.dummy_instance();
+
+        u_i.x = vec![
+            U_i.hash(
+                &self.poseidon_config,
+                self.pp_hash,
+                C1::ScalarField::zero(), // i
+                self.z_0.clone(),
+                z_i.clone(),
+            )?,
+            cf_U_i.hash_cyclefold(&self.poseidon_config, self.pp_hash)?,
+        ];
+
+        let mut transcript_p: PoseidonTranscript<C1> =
+            PoseidonTranscript::<C1>::new(&self.poseidon_config.clone());
+        transcript_p.absorb(&self.pp_hash);
+        let (nimfs_proof, U_i1, _, _) = NIMFS::<C1, PoseidonTranscript<C1>>::prove(
+            &mut transcript_p,
+            &self.ccs,
+            &vec![U_i.clone()],
+            &vec![u_i.clone()],
+            &vec![W_i],
+            &vec![w_i],
+        )?;
+
+        // compute u_{i+1}.x
+        let z_i1 = self.F.step_native(0, z_i.clone(), vec![])?;
+        let u_i1_x = U_i1.hash(
+            &self.poseidon_config,
+            self.pp_hash,
+            C1::ScalarField::one(), // i+1, where i=0
+            self.z_0.clone(),
+            z_i1.clone(),
+        )?;
+
+        let cf_u_i1_x = cf_U_i.hash_cyclefold(&self.poseidon_config, self.pp_hash)?;
+        let augmented_f_circuit = AugmentedFCircuit::<C1, C2, GC2, FC> {
+            _c2: PhantomData,
+            _gc2: PhantomData,
+            poseidon_config: self.poseidon_config.clone(),
+            ccs: self.ccs.clone(),
+            pp_hash: Some(self.pp_hash),
+            max_mu: self.max_mu,
+            max_nu: self.max_nu,
+            i: Some(C1::ScalarField::zero()),
+            i_usize: Some(0),
+            z_0: Some(self.z_0.clone()),
+            z_i: Some(z_i.clone()),
+            external_inputs: Some(vec![]),
+            U_i: Some(U_i.clone()),
+            Us: None,
+            u_i_C: Some(u_i.C),
+            us: None,
+            U_i1_C: Some(U_i1.C),
+            F: self.F,
+            x: Some(u_i1_x),
+            nimfs_proof: Some(nimfs_proof),
+
+            // cyclefold values
+            cf_u_i_cmW: None,
+            cf_U_i: None,
+            cf_x: Some(cf_u_i1_x),
+            cf_cmT: None,
+        };
+
+        let (cs, _) = augmented_f_circuit.compute_cs_ccs()?;
+        assert!(cs.is_satisfied()?);
+
+        let (r1cs_w_i1, r1cs_x_i1) = extract_w_x::<C1::ScalarField>(&cs); // includes 1 and public inputs
+        assert_eq!(r1cs_x_i1[0], augmented_f_circuit.x.unwrap());
+        let r1cs_z = [
+            vec![C1::ScalarField::one()],
+            r1cs_x_i1.clone(),
+            r1cs_w_i1.clone(),
+        ]
+        .concat();
+        // compute committed instances, w_{i+1}, u_{i+1}, which will be used as w_i, u_i, so we
+        // assign them directly to w_i, u_i.
+        let (u_i, w_i) = self
+            .ccs
+            .to_cccs::<_, _, CS1>(&mut rng, &self.cs_params, &r1cs_z)?;
+        u_i.check_relation(&self.ccs, &w_i)?;
+        Ok((u_i, w_i))
+    }
 }
 
 impl<C1, GC1, C2, GC2, FC, CS1, CS2> FoldingScheme<C1, C2, FC>
@@ -170,7 +288,8 @@ where
     for<'a> &'a GC1: GroupOpsBounds<'a, C1, GC1>,
     for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
-    type PreprocessorParam = PreprocessorParam<C1, C2, FC, CS1, CS2>;
+    /// the two usize are max_mu & max_nu respectively
+    type PreprocessorParam = (PreprocessorParam<C1, C2, FC, CS1, CS2>, usize, usize);
     type ProverParam = ProverParams<C1, C2, CS1, CS2>;
     type VerifierParam = VerifierParams<C1, C2, CS1, CS2>;
     type RunningCommittedInstanceWithWitness = (LCCCS<C1>, Witness<C1::ScalarField>);
@@ -181,14 +300,17 @@ where
         mut rng: impl RngCore,
         prep_param: &Self::PreprocessorParam,
     ) -> Result<(Self::ProverParam, Self::VerifierParam), Error> {
+        let (prep_param, max_mu, max_nu) = prep_param;
         let augmented_f_circuit = AugmentedFCircuit::<C1, C2, GC2, FC>::empty(
             &prep_param.poseidon_config,
             prep_param.F.clone(),
             None,
+            *max_mu,
+            *max_nu,
         )?;
         let ccs = augmented_f_circuit.ccs.clone();
 
-        let cf_circuit = CycleFoldCircuit::<C1, GC1>::empty();
+        let cf_circuit = CycleFoldCircuit::<C1, GC1>::empty(max_mu + max_nu);
         let cf_r1cs = get_r1cs_from_cs::<C2::ScalarField>(cf_circuit)?;
 
         // if cs params exist, use them, if not, generate new ones
@@ -215,6 +337,8 @@ where
             cs_params: cs_pp.clone(),
             cf_cs_params: cf_cs_pp.clone(),
             ccs: Some(ccs.clone()),
+            max_mu: *max_mu,
+            max_nu: *max_nu,
         };
         let vp = VerifierParams::<C1, C2, CS1, CS2> {
             poseidon_config: prep_param.poseidon_config.clone(),
@@ -240,10 +364,12 @@ where
             &pp.poseidon_config,
             F.clone(),
             pp.ccs.clone(),
+            pp.max_mu,
+            pp.max_nu,
         )?;
         let ccs = augmented_f_circuit.ccs.clone();
 
-        let cf_circuit = CycleFoldCircuit::<C1, GC1>::empty();
+        let cf_circuit = CycleFoldCircuit::<C1, GC1>::empty(pp.max_mu + pp.max_nu);
         let cf_r1cs = get_r1cs_from_cs::<C2::ScalarField>(cf_circuit)?;
 
         // compute the public params hash
@@ -280,6 +406,8 @@ where
             cf_cs_params: pp.cf_cs_params.clone(),
             F,
             pp_hash,
+            max_mu: pp.max_mu,
+            max_nu: pp.max_nu,
             i: C1::ScalarField::zero(),
             z_0: z_0.clone(),
             z_i: z_0,
@@ -298,6 +426,7 @@ where
         &mut self,
         mut rng: impl RngCore,
         external_inputs: Vec<C1::ScalarField>,
+        // TODO modify this interface to accept the Us & us
     ) -> Result<(), Error> {
         let augmented_f_circuit: AugmentedFCircuit<C1, C2, GC2, FC>;
 
@@ -368,6 +497,8 @@ where
                 poseidon_config: self.poseidon_config.clone(),
                 ccs: self.ccs.clone(),
                 pp_hash: Some(self.pp_hash),
+                max_mu: self.max_mu,
+                max_nu: self.max_nu,
                 i: Some(C1::ScalarField::zero()),
                 i_usize: Some(0),
                 z_0: Some(self.z_0.clone()),
@@ -390,8 +521,12 @@ where
             let rho_Fq = C2::ScalarField::from_bigint(BigInteger::from_bits_le(&rho_bits))
                 .ok_or(Error::OutOfBounds)?;
             // CycleFold part:
-            // get the vector used as public inputs 'x' in the CycleFold circuit
-            // cyclefold circuit for cmW
+            // get the vector used as public inputs 'x' in the CycleFold circuit.
+            // Place the random values and the points coordinates as the public input x:
+            // In Nova, this is: x == [r, p1, p2, p3].
+            // In multifolding schemes such as HyperNova, this is:
+            // computed_x = [r_0, r_1, r_2, ...,  r_n, p_0, p_1, p_2, ..., p_n],
+            // where each p_i is in fact p_i.to_constraint_field()
             let cf_u_i_x = [
                 vec![rho_Fq],
                 get_cm_coordinates(&self.U_i.C),

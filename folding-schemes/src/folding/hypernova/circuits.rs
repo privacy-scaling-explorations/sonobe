@@ -1042,6 +1042,7 @@ mod tests {
     pub fn test_lcccs_hash() {
         let mut rng = test_rng();
         let poseidon_config = poseidon_canonical_config::<Fr>();
+        let sponge = PoseidonSponge::<Fr>::new(&poseidon_config);
 
         let ccs = get_test_ccs();
         let z1 = get_test_z::<Fr>(3);
@@ -1058,11 +1059,11 @@ mod tests {
             .unwrap();
         let h = lcccs
             .clone()
-            .hash(&poseidon_config, pp_hash, i, z_0.clone(), z_i.clone());
+            .hash(&sponge, pp_hash, i, z_0.clone(), z_i.clone());
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        let sponge = PoseidonSpongeVar::<Fr>::new(cs.clone(), &poseidon_config);
+        let spongeVar = PoseidonSpongeVar::<Fr>::new(cs.clone(), &poseidon_config);
         let pp_hashVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(pp_hash)).unwrap();
         let iVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(i)).unwrap();
         let z_0Var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_0.clone())).unwrap();
@@ -1071,7 +1072,7 @@ mod tests {
         let (hVar, _) = lcccsVar
             .clone()
             .hash(
-                &sponge,
+                &spongeVar,
                 pp_hashVar,
                 iVar.clone(),
                 z_0Var.clone(),
@@ -1088,7 +1089,6 @@ mod tests {
     pub fn test_augmented_f_circuit() {
         let mut rng = test_rng();
         let poseidon_config = poseidon_canonical_config::<Fr>();
-        // `sponge` is for digest computation.
         let sponge = PoseidonSponge::<Fr>::new(&poseidon_config);
 
         let start = Instant::now();
@@ -1143,13 +1143,7 @@ mod tests {
         let mut cf_W_i = cf_W_dummy.clone();
         let mut cf_U_i = cf_U_dummy.clone();
         u_i.x = vec![
-            U_i.hash(
-                &poseidon_config,
-                pp_hash,
-                Fr::zero(),
-                z_0.clone(),
-                z_i.clone(),
-            ),
+            U_i.hash(&sponge, pp_hash, Fr::zero(), z_0.clone(), z_i.clone()),
             cf_U_i.hash_cyclefold(&sponge, pp_hash),
         ];
 
@@ -1166,13 +1160,7 @@ mod tests {
                 W_i1 = Witness::<Fr>::dummy(&ccs);
                 U_i1 = LCCCS::dummy(ccs.l, ccs.t, ccs.s);
 
-                let u_i1_x = U_i1.hash(
-                    &poseidon_config,
-                    pp_hash,
-                    Fr::one(),
-                    z_0.clone(),
-                    z_i1.clone(),
-                );
+                let u_i1_x = U_i1.hash(&sponge, pp_hash, Fr::one(), z_0.clone(), z_i1.clone());
 
                 // hash the initial (dummy) CycleFold instance, which is used as the 2nd public
                 // input in the AugmentedFCircuit
@@ -1222,13 +1210,8 @@ mod tests {
                 // sanity check: check the folded instance relation
                 U_i1.check_relation(&ccs, &W_i1).unwrap();
 
-                let u_i1_x = U_i1.hash(
-                    &poseidon_config,
-                    pp_hash,
-                    iFr + Fr::one(),
-                    z_0.clone(),
-                    z_i1.clone(),
-                );
+                let u_i1_x =
+                    U_i1.hash(&sponge, pp_hash, iFr + Fr::one(), z_0.clone(), z_i1.clone());
 
                 let rho_Fq = Fq::from_bigint(BigInteger::from_bits_le(&rho_bits)).unwrap();
                 // CycleFold part:
@@ -1323,13 +1306,8 @@ mod tests {
             assert_eq!(u_i.x, r1cs_x_i1);
             assert_eq!(u_i.x[0], augmented_f_circuit.x.unwrap());
             assert_eq!(u_i.x[1], augmented_f_circuit.cf_x.unwrap());
-            let expected_u_i1_x = U_i1.hash(
-                &poseidon_config,
-                pp_hash,
-                iFr + Fr::one(),
-                z_0.clone(),
-                z_i1.clone(),
-            );
+            let expected_u_i1_x =
+                U_i1.hash(&sponge, pp_hash, iFr + Fr::one(), z_0.clone(), z_i1.clone());
             let expected_cf_U_i1_x = cf_U_i.hash_cyclefold(&sponge, pp_hash);
             // u_i is already u_i1 at this point, check that has the expected value at x[0]
             assert_eq!(u_i.x[0], expected_u_i1_x);

@@ -260,7 +260,7 @@ where
             cf_r1cs.dummy_instance();
         u_dummy.x = vec![
             U_dummy.hash(
-                &pp.poseidon_config,
+                &sponge,
                 pp_hash,
                 C1::ScalarField::zero(),
                 z_0.clone(),
@@ -344,7 +344,7 @@ where
             U_i1 = LCCCS::dummy(self.ccs.l, self.ccs.t, self.ccs.s);
 
             let u_i1_x = U_i1.hash(
-                &self.poseidon_config,
+                &sponge,
                 self.pp_hash,
                 C1::ScalarField::one(),
                 self.z_0.clone(),
@@ -399,7 +399,7 @@ where
             U_i1.check_relation(&self.ccs, &W_i1)?;
 
             let u_i1_x = U_i1.hash(
-                &self.poseidon_config,
+                &sponge,
                 self.pp_hash,
                 self.i + C1::ScalarField::one(),
                 self.z_0.clone(),
@@ -559,7 +559,7 @@ where
 
         // check that u_i's output points to the running instance
         // u_i.X[0] == H(i, z_0, z_i, U_i)
-        let expected_u_i_x = U_i.hash(&vp.poseidon_config, pp_hash, num_steps, z_0, z_i.clone());
+        let expected_u_i_x = U_i.hash(&sponge, pp_hash, num_steps, z_0, z_i.clone());
         if expected_u_i_x != u_i.x[0] {
             return Err(Error::IVCVerificationFail);
         }

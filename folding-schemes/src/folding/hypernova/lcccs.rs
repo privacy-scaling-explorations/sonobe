@@ -8,10 +8,7 @@ use ark_std::Zero;
 
 use super::Witness;
 use crate::arith::ccs::CCS;
-use crate::commitment::{
-    pedersen::{Params as PedersenParams, Pedersen},
-    CommitmentScheme,
-};
+use crate::commitment::CommitmentScheme;
 use crate::transcript::{AbsorbNonNative, Transcript};
 use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::utils::vec::mat_vec_mul;

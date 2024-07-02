@@ -317,13 +317,11 @@ fn point2_to_eth_format(p: ark_bn254::G2Affine) -> Result<Vec<u8>, Error> {
 
 #[cfg(test)]
 pub mod tests {
-    use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as Projective};
-    use ark_groth16::Groth16;
+    use ark_bn254::{constraints::GVar, Fr, G1Projective as Projective};
     use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
     use std::time::Instant;
 
     use super::*;
-    use crate::commitment::kzg::KZG;
     use crate::commitment::pedersen::Pedersen;
     use crate::folding::nova::PreprocessorParam;
     use crate::frontend::tests::CubicFCircuit;

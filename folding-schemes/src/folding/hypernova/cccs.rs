@@ -9,10 +9,7 @@ use ark_std::rand::Rng;
 
 use super::Witness;
 use crate::arith::{ccs::CCS, Arith};
-use crate::commitment::{
-    pedersen::{Params as PedersenParams, Pedersen},
-    CommitmentScheme,
-};
+use crate::commitment::CommitmentScheme;
 use crate::transcript::AbsorbNonNative;
 use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::utils::vec::mat_vec_mul;

@@ -35,11 +35,28 @@ pub trait AbsorbNonNativeGadget<F: PrimeField> {
 }
 
 pub trait Transcript<F: PrimeField>: CryptographicSponge {
-    /// `absorb_point` is only for points whose `BaseField` is the field of the
-    /// sponge.
+    /// `absorb_point` is for absorbing points whose `BaseField` is the field of
+    /// the sponge, i.e., the type `C` of these points should satisfy
+    /// `C::BaseField = F`.
     ///
-    /// If sponge field is `C::ScalarField`, call `absorb_nonnative` instead.
+    /// If the sponge field `F` is `C::ScalarField`, call `absorb_nonnative`
+    /// instead.
     fn absorb_point<C: CurveGroup<BaseField = F>>(&mut self, v: &C);
+    /// `absorb_nonnative` is for structs that contain non-native (field or
+    /// group) elements, including:
+    ///
+    /// - A field element of type `T: PrimeField` that will be absorbed into a
+    ///   sponge that operates in another field `F != T`.
+    /// - A group element of type `C: CurveGroup` that will be absorbed into a
+    ///   sponge that operates in another field `F != C::BaseField`, e.g.,
+    ///   `F = C::ScalarField`.
+    /// - A `CommittedInstance` on the secondary curve (used for CycleFold) that
+    ///   will be absorbed into a sponge that operates in the (scalar field of
+    ///   the) primary curve.
+    ///
+    ///   Note that although a `CommittedInstance` for `AugmentedFCircuit` on
+    ///   the primary curve also contains non-native elements, we still regard
+    ///   it as native, because the sponge is on the same curve.
     fn absorb_nonnative<V: AbsorbNonNative<F>>(&mut self, v: &V);
 
     fn get_challenge(&mut self) -> F;
@@ -51,14 +68,31 @@ pub trait Transcript<F: PrimeField>: CryptographicSponge {
 pub trait TranscriptVar<F: PrimeField, S: CryptographicSponge>:
     CryptographicSpongeVar<F, S>
 {
-    /// `absorb_point` is only for points whose `BaseField` is the field of the
-    /// sponge.
+    /// `absorb_point` is for absorbing points whose `BaseField` is the field of
+    /// the sponge, i.e., the type `C` of these points should satisfy
+    /// `C::BaseField = F`.
     ///
-    /// If sponge field is `C::ScalarField`, call `absorb_nonnative` instead.
+    /// If the sponge field `F` is `C::ScalarField`, call `absorb_nonnative`
+    /// instead.
     fn absorb_point<C: CurveGroup<BaseField = F>, GC: CurveVar<C, F> + ToConstraintFieldGadget<F>>(
         &mut self,
         v: &GC,
     ) -> Result<(), SynthesisError>;
+    /// `absorb_nonnative` is for structs that contain non-native (field or
+    /// group) elements, including:
+    ///
+    /// - A field element of type `T: PrimeField` that will be absorbed into a
+    ///   sponge that operates in another field `F != T`.
+    /// - A group element of type `C: CurveGroup` that will be absorbed into a
+    ///   sponge that operates in another field `F != C::BaseField`, e.g.,
+    ///   `F = C::ScalarField`.
+    /// - A `CommittedInstance` on the secondary curve (used for CycleFold) that
+    ///   will be absorbed into a sponge that operates in the (scalar field of
+    ///   the) primary curve.
+    ///
+    ///   Note that although a `CommittedInstance` for `AugmentedFCircuit` on
+    ///   the primary curve also contains non-native elements, we still regard
+    ///   it as native, because the sponge is on the same curve.
     fn absorb_nonnative<V: AbsorbNonNativeGadget<F>>(
         &mut self,
         v: &V,

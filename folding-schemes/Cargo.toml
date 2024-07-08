@@ -24,8 +24,12 @@ color-eyre = "=0.6.2"
 ark-bn254 = {version="0.4.0"}
 ark-groth16 = { version = "^0.4.0" }
 sha3 = "0.10"
+ark-noname = { git = "https://github.com/dmpierre/ark-noname", branch="feat/sonobe-integration" }
+noname = { git = "https://github.com/dmpierre/noname" }
+serde_json = "1.0.85"                                                                # to (de)serialize JSON
+serde = "1.0.203"
 
-# tmp imports for espresso's sumcheck
+# tmp import for espresso's sumcheck
 espresso_subroutines = {git="https://github.com/EspressoSystems/hyperplonk", package="subroutines"}
 
 [dev-dependencies]

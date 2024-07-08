@@ -91,10 +91,12 @@ pub enum Error {
     NotSupported(String),
     #[error("max i-th step reached (usize limit reached)")]
     MaxStep,
-    #[error("Circom Witness calculation error: {0}")]
+    #[error("Witness calculation error: {0}")]
     WitnessCalculationError(String),
     #[error("BigInt to PrimeField conversion error: {0}")]
     BigIntConversionError(String),
+    #[error("Failed to serde: {0}")]
+    JSONSerdeError(String),
 }
 
 /// FoldingScheme defines trait that is implemented by the diverse folding schemes. It is defined

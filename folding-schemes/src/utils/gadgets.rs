@@ -107,3 +107,35 @@ impl<F: PrimeField> MatrixGadget<FpVar<F>> for SparseMatrixVar<F, F, FpVar<F>> {
             .collect())
     }
 }
+
+/// Interprets the given vector v as the evaluations of a dense multilinear extension of n_vars,
+/// and evaluates it at the given point. This method mimics the behavior of
+/// `utils/mle.rs#dense_vec_to_dense_mle` + `DenseMultilinearExtension::evaluate` but in R1CS
+/// constraints, since dense multilinear extensions are not supported in ark_r1cs_std.
+pub fn eval_mle<F: PrimeField>(
+    // n_vars indicates the number of variables in the MLE
+    n_vars: usize,
+    // v is the vector of the evaluations of the dense multilinear extension (MLE)
+    v: Vec<FpVar<F>>,
+    // point is the point at which we want to evaluate the MLE
+    point: Vec<FpVar<F>>,
+) -> FpVar<F> {
+    // pad to 2^n_vars
+    let mut poly: Vec<FpVar<F>> = [
+        v.to_owned(),
+        std::iter::repeat(FpVar::zero())
+            .take((1 << n_vars) - v.len())
+            .collect(),
+    ]
+    .concat();
+
+    for i in 1..n_vars + 1 {
+        let r = point[i - 1].clone();
+        for b in 0..(1 << (n_vars - 1)) {
+            let left = poly[b << 1].clone();
+            let right = poly[(b << 1) + 1].clone();
+            poly[b] = left.clone() + r.clone() * (right - left);
+        }
+    }
+    poly[0].clone()
+}

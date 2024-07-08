@@ -160,40 +160,6 @@ where
     }
 }
 
-/// In-circuit representation of the Witness associated to the CycleFoldCommittedInstance, but with
-/// non-native representation, since it is used to represent the CycleFold witness.
-#[derive(Debug, Clone)]
-pub struct CycleFoldWitnessVar<C: CurveGroup> {
-    pub E: Vec<NonNativeUintVar<CF2<C>>>,
-    pub rE: NonNativeUintVar<CF2<C>>,
-    pub W: Vec<NonNativeUintVar<CF2<C>>>,
-    pub rW: NonNativeUintVar<CF2<C>>,
-}
-
-impl<C> AllocVar<CycleFoldWitness<C>, CF2<C>> for CycleFoldWitnessVar<C>
-where
-    C: CurveGroup,
-    <C as ark_ec::CurveGroup>::BaseField: PrimeField,
-{
-    fn new_variable<T: Borrow<CycleFoldWitness<C>>>(
-        cs: impl Into<Namespace<CF2<C>>>,
-        f: impl FnOnce() -> Result<T, SynthesisError>,
-        mode: AllocationMode,
-    ) -> Result<Self, SynthesisError> {
-        f().and_then(|val| {
-            let cs = cs.into();
-
-            let E = Vec::new_variable(cs.clone(), || Ok(val.borrow().E.clone()), mode)?;
-            let rE = NonNativeUintVar::new_variable(cs.clone(), || Ok(val.borrow().rE), mode)?;
-
-            let W = Vec::new_variable(cs.clone(), || Ok(val.borrow().W.clone()), mode)?;
-            let rW = NonNativeUintVar::new_variable(cs.clone(), || Ok(val.borrow().rW), mode)?;
-
-            Ok(Self { E, rE, W, rW })
-        })
-    }
-}
-
 /// Circuit that implements the in-circuit checks needed for the onchain (Ethereum's EVM)
 /// verification.
 #[derive(Clone, Debug)]
@@ -262,6 +228,7 @@ where
     <C1 as Group>::ScalarField: Absorb,
     <C1 as CurveGroup>::BaseField: PrimeField,
 {
+    /// returns an instance of the DeciderEthCircuit from the given Nova struct
     pub fn from_nova<FC: FCircuit<C1::ScalarField>>(
         nova: Nova<C1, GC1, C2, GC2, FC, CS1, CS2, H>,
     ) -> Result<Self, Error> {
@@ -441,7 +408,7 @@ where
         (u_i.x[0]).enforce_equal(&u_i_x)?;
 
         #[cfg(feature = "light-test")]
-        println!("[WARNING]: Running with the 'light-test' feature, skipping the big part of the DeciderEthCircuit.\n           Only for testing purposes.");
+        log::warn!("[WARNING]: Running with the 'light-test' feature, skipping the big part of the DeciderEthCircuit.\n           Only for testing purposes.");
 
         // The following two checks (and their respective allocations) are disabled for normal
         // tests since they take several millions of constraints and would take several minutes
@@ -453,7 +420,9 @@ where
             // `#[cfg(not(test))]`
             use crate::commitment::pedersen::PedersenGadget;
             use crate::folding::{
-                circuits::cyclefold::{CycleFoldCommittedInstanceVar, CycleFoldConfig},
+                circuits::cyclefold::{
+                    CycleFoldCommittedInstanceVar, CycleFoldConfig, CycleFoldWitnessVar,
+                },
                 nova::NovaCycleFoldConfig,
             };
             use ark_r1cs_std::ToBitsGadget;
@@ -527,6 +496,7 @@ where
 
         // Check 7 is temporary disabled due
         // https://github.com/privacy-scaling-explorations/sonobe/issues/80
+        log::warn!("[WARNING]: issue #80 (https://github.com/privacy-scaling-explorations/sonobe/issues/80) is not resolved yet.");
         //
         // 7. check eval_W==p_W(c_W) and eval_E==p_E(c_E)
         // let incircuit_eval_W = evaluate_gadget::<CF1<C1>>(W_i1.W, incircuit_c_W)?;

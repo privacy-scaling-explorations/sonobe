@@ -122,7 +122,7 @@ mod tests {
     };
 
     #[test]
-    fn test_fold_nonnative_case() -> Result<(), Box<dyn Error>> {
+    fn test_fold_gadget() -> Result<(), Box<dyn Error>> {
         let k = 7;
         let (witness, instance, witnesses, instances) = prepare_inputs(k);
         let r1cs = get_test_r1cs::<Fr>();

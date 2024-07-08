@@ -537,7 +537,7 @@ pub mod tests {
     }
 
     #[test]
-    fn test_fold_native_case() {
+    fn test_fold() {
         let k = 7;
         let (witness, instance, witnesses, instances) = prepare_inputs(k);
         let r1cs = get_test_r1cs::<Fr>();

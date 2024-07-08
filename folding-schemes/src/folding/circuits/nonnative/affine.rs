@@ -57,7 +57,7 @@ impl<C: CurveGroup> ToConstraintFieldGadget<C::ScalarField> for NonNativeAffineV
 
 /// The out-circuit counterpart of `NonNativeAffineVar::to_constraint_field`
 #[allow(clippy::type_complexity)]
-fn nonnative_affine_to_field_elements<C: CurveGroup>(
+pub fn nonnative_affine_to_field_elements<C: CurveGroup>(
     p: C,
 ) -> (Vec<C::ScalarField>, Vec<C::ScalarField>) {
     let affine = p.into_affine();

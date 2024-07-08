@@ -156,40 +156,6 @@ where
     }
 }
 
-/// In-circuit representation of the Witness associated to the CommittedInstance, but with
-/// non-native representation, since it is used to represent the CycleFold witness.
-#[derive(Debug, Clone)]
-pub struct CycleFoldWitnessVar<C: CurveGroup> {
-    pub E: Vec<NonNativeUintVar<CF2<C>>>,
-    pub rE: NonNativeUintVar<CF2<C>>,
-    pub W: Vec<NonNativeUintVar<CF2<C>>>,
-    pub rW: NonNativeUintVar<CF2<C>>,
-}
-
-impl<C> AllocVar<Witness<C>, CF2<C>> for CycleFoldWitnessVar<C>
-where
-    C: CurveGroup,
-    <C as ark_ec::CurveGroup>::BaseField: PrimeField,
-{
-    fn new_variable<T: Borrow<Witness<C>>>(
-        cs: impl Into<Namespace<CF2<C>>>,
-        f: impl FnOnce() -> Result<T, SynthesisError>,
-        mode: AllocationMode,
-    ) -> Result<Self, SynthesisError> {
-        f().and_then(|val| {
-            let cs = cs.into();
-
-            let E = Vec::new_variable(cs.clone(), || Ok(val.borrow().E.clone()), mode)?;
-            let rE = NonNativeUintVar::new_variable(cs.clone(), || Ok(val.borrow().rE), mode)?;
-
-            let W = Vec::new_variable(cs.clone(), || Ok(val.borrow().W.clone()), mode)?;
-            let rW = NonNativeUintVar::new_variable(cs.clone(), || Ok(val.borrow().rW), mode)?;
-
-            Ok(Self { E, rE, W, rW })
-        })
-    }
-}
-
 /// Circuit that implements the in-circuit checks needed for the onchain (Ethereum's EVM)
 /// verification.
 #[derive(Clone, Debug)]
@@ -449,7 +415,9 @@ where
             // `#[cfg(not(test))]`
             use super::NOVA_CF_N_POINTS;
             use crate::commitment::pedersen::PedersenGadget;
-            use crate::folding::circuits::cyclefold::{cf_io_len, CycleFoldCommittedInstanceVar};
+            use crate::folding::circuits::cyclefold::{
+                cf_io_len, CycleFoldCommittedInstanceVar, CycleFoldWitnessVar,
+            };
             use ark_r1cs_std::ToBitsGadget;
 
             let cf_u_dummy_native = CommittedInstance::<C2>::dummy(cf_io_len(NOVA_CF_N_POINTS));

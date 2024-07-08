@@ -39,7 +39,7 @@ use traits::NovaR1CS;
 
 /// Number of points to be folded in the CycleFold circuit, in Nova's case, this is a fixed amount:
 /// 2 points to be folded.
-const NOVA_CF_N_POINTS: usize = 2_usize;
+pub const NOVA_CF_N_POINTS: usize = 2_usize;
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct CommittedInstance<C: CurveGroup> {

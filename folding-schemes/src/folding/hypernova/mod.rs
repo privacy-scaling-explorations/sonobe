@@ -14,6 +14,7 @@ use std::fmt::Debug;
 pub mod cccs;
 pub mod circuits;
 use circuits::AugmentedFCircuit;
+pub mod decider_eth_circuit;
 pub mod lcccs;
 pub mod nimfs;
 pub mod utils;

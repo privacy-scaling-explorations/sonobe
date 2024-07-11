@@ -137,7 +137,11 @@ impl<F: PrimeField + Absorb> SumCheckVerifier<F> for IOPVerifierState<F> {
         {
             let poly = DensePolynomial::from_coefficients_slice(coeffs);
             let eval_at_one: F = poly.iter().sum();
-            let eval_at_zero: F = poly.coeffs[0];
+            let eval_at_zero: F = if poly.coeffs.is_empty() {
+                F::zero()
+            } else {
+                poly.coeffs[0]
+            };
             let eval = eval_at_one + eval_at_zero;
 
             // the deferred check during the interactive phase:

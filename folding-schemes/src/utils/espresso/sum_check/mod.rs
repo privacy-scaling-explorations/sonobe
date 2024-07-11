@@ -219,29 +219,39 @@ pub mod tests {
 
     #[test]
     pub fn sumcheck_poseidon() {
+        let n_vars = 5;
+
         let mut rng = test_rng();
-        let poly_mle = DenseMultilinearExtension::rand(5, &mut rng);
+        let poly_mle = DenseMultilinearExtension::rand(n_vars, &mut rng);
         let virtual_poly = VirtualPolynomial::new_from_mle(&Arc::new(poly_mle), Fr::ONE);
+
+        sumcheck_poseidon_opt(virtual_poly);
+
+        // test with zero poly
+        let poly_mle = DenseMultilinearExtension::from_evaluations_vec(
+            n_vars,
+            vec![Fr::ZERO; 2u32.pow(n_vars as u32) as usize],
+        );
+        let virtual_poly = VirtualPolynomial::new_from_mle(&Arc::new(poly_mle), Fr::ONE);
+        sumcheck_poseidon_opt(virtual_poly);
+    }
+
+    fn sumcheck_poseidon_opt(virtual_poly: VirtualPolynomial<Fr>) {
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
         // sum-check prove
-        let mut poseidon_transcript_prove: PoseidonSponge<Fr> =
-            PoseidonSponge::<Fr>::new(&poseidon_config);
-        let sum_check = IOPSumCheck::<Fr, PoseidonSponge<Fr>>::prove(
-            &virtual_poly,
-            &mut poseidon_transcript_prove,
-        )
-        .unwrap();
+        let mut transcript_p: PoseidonSponge<Fr> = PoseidonSponge::<Fr>::new(&poseidon_config);
+        let sum_check =
+            IOPSumCheck::<Fr, PoseidonSponge<Fr>>::prove(&virtual_poly, &mut transcript_p).unwrap();
 
         // sum-check verify
         let claimed_sum = IOPSumCheck::<Fr, PoseidonSponge<Fr>>::extract_sum(&sum_check);
-        let mut poseidon_transcript_verify: PoseidonSponge<Fr> =
-            PoseidonSponge::<Fr>::new(&poseidon_config);
+        let mut transcript_v: PoseidonSponge<Fr> = PoseidonSponge::<Fr>::new(&poseidon_config);
         let res_verify = IOPSumCheck::<Fr, PoseidonSponge<Fr>>::verify(
             claimed_sum,
             &sum_check,
             &virtual_poly.aux_info,
-            &mut poseidon_transcript_verify,
+            &mut transcript_v,
         );
 
         assert!(res_verify.is_ok());

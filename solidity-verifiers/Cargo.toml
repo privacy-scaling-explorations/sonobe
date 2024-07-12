@@ -29,6 +29,7 @@ ark-bn254 = {version="0.4.0", features=["r1cs"]}
 ark-grumpkin = {version="0.4.0", features=["r1cs"]}
 rand = "0.8.5"
 folding-schemes = { path = "../folding-schemes/", features=["light-test"]}
+noname = { git = "https://github.com/dmpierre/noname" }
 
 [features]
 default = ["parallel"]
@@ -47,3 +48,7 @@ path = "../examples/full_flow.rs"
 [[example]]
 name = "circom_full_flow"
 path = "../examples/circom_full_flow.rs"
+
+[[example]]
+name = "noname_full_flow"
+path = "../examples/noname_full_flow.rs"

@@ -3,7 +3,7 @@
 #![allow(non_camel_case_types)]
 #![allow(clippy::upper_case_acronyms)]
 
-use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as Projective};
+use ark_bn254::Fr;
 use ark_crypto_primitives::{
     crh::{
         poseidon::constraints::{CRHGadget, CRHParametersVar},
@@ -13,18 +13,16 @@ use ark_crypto_primitives::{
     sponge::{poseidon::PoseidonConfig, Absorb},
 };
 use ark_ff::PrimeField;
-use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
 use ark_r1cs_std::alloc::AllocVar;
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 use core::marker::PhantomData;
 use std::time::Instant;
 
-use folding_schemes::commitment::{kzg::KZG, pedersen::Pedersen};
-use folding_schemes::folding::nova::{Nova, PreprocessorParam};
-use folding_schemes::frontend::FCircuit;
-use folding_schemes::transcript::poseidon::poseidon_canonical_config;
-use folding_schemes::{Error, FoldingScheme};
+use folding_schemes::{
+    folding::nova::PreprocessorParam, frontend::FCircuit, prebuilds::eth::NOVA,
+    transcript::poseidon::poseidon_canonical_config, Error, FoldingScheme,
+};
 
 /// This is the circuit that we want to fold, it implements the FCircuit trait. The parameter z_i
 /// denotes the current state which contains 1 element, and z_{i+1} denotes the next state which we
@@ -170,28 +168,15 @@ fn main() {
     let poseidon_config = poseidon_canonical_config::<Fr>();
     let F_circuit = ExternalInputsCircuit::<Fr>::new(poseidon_config.clone()).unwrap();
 
-    /// The idea here is that eventually we could replace the next line chunk that defines the
-    /// `type N = Nova<...>` by using another folding scheme that fulfills the `FoldingScheme`
-    /// trait, and the rest of our code would be working without needing to be updated.
-    type N = Nova<
-        Projective,
-        GVar,
-        Projective2,
-        GVar2,
-        ExternalInputsCircuit<Fr>,
-        KZG<'static, Bn254>,
-        Pedersen<Projective2>,
-    >;
-
     let mut rng = rand::rngs::OsRng;
 
     println!("Prepare Nova's ProverParams & VerifierParams");
     let nova_preprocess_params = PreprocessorParam::new(poseidon_config, F_circuit.clone());
-    let nova_params = N::preprocess(&mut rng, &nova_preprocess_params).unwrap();
+    let nova_params = NOVA::preprocess(&mut rng, &nova_preprocess_params).unwrap();
 
     println!("Initialize FoldingScheme");
     let mut folding_scheme =
-        N::init(nova_params.clone(), F_circuit, initial_state.clone()).unwrap();
+        NOVA::init(nova_params.clone(), F_circuit, initial_state.clone()).unwrap();
 
     // compute a step of the IVC
     for (i, external_inputs_at_step) in external_inputs.iter().enumerate() {
@@ -210,7 +195,7 @@ fn main() {
     let (running_instance, incoming_instance, cyclefold_instance) = folding_scheme.instances();
 
     println!("Run the Nova's IVC verifier");
-    N::verify(
+    NOVA::<ExternalInputsCircuit<Fr>>::verify(
         nova_params.1,
         initial_state.clone(),
         folding_scheme.state(), // latest state

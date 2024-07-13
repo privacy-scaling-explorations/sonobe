@@ -1,5 +1,4 @@
 /// This file implements the onchain (Ethereum's EVM) decider.
-use ark_bn254::Bn254;
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{AffineRepr, CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
@@ -251,7 +250,11 @@ pub fn prepare_calldata(
     z_i: Vec<ark_bn254::Fr>,
     running_instance: &CommittedInstance<ark_bn254::G1Projective>,
     incoming_instance: &CommittedInstance<ark_bn254::G1Projective>,
-    proof: Proof<ark_bn254::G1Projective, KZG<'static, Bn254>, Groth16<Bn254>>,
+    proof: Proof<
+        ark_bn254::G1Projective,
+        KZG<'static, ark_bn254::Bn254>,
+        Groth16<ark_bn254::Bn254>,
+    >,
 ) -> Result<Vec<u8>, Error> {
     Ok(vec![
         function_signature_check.to_vec(),
@@ -302,6 +305,8 @@ where
 
     Ok([x.into_bigint().to_bytes_be(), y.into_bigint().to_bytes_be()].concat())
 }
+
+// this method follows the specific format the EVM for the BN254::G2 points
 fn point2_to_eth_format(p: ark_bn254::G2Affine) -> Result<Vec<u8>, Error> {
     let zero_point = (&ark_bn254::Fq2::zero(), &ark_bn254::Fq2::zero());
     let (x, y) = p.xy().unwrap_or(zero_point);
@@ -317,7 +322,7 @@ fn point2_to_eth_format(p: ark_bn254::G2Affine) -> Result<Vec<u8>, Error> {
 
 #[cfg(test)]
 pub mod tests {
-    use ark_bn254::{constraints::GVar, Fr, G1Projective as Projective};
+    use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as Projective};
     use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
     use std::time::Instant;
 

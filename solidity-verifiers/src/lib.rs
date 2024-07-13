@@ -4,6 +4,6 @@ pub mod verifiers;
 
 pub use verifiers::*;
 pub use verifiers::{
-    get_decider_template_for_cyclefold_decider, Groth16VerifierKey, KZG10VerifierKey,
+    gen_solidity, get_function_selector, Groth16VerifierKey, KZG10VerifierKey,
     NovaCycleFoldVerifierKey, ProtocolVerifierKey,
 };

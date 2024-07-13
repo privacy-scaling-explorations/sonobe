@@ -7,6 +7,7 @@ use ark_groth16::VerifyingKey as ArkG16VerifierKey;
 use ark_poly_commit::kzg10::VerifierKey as ArkKZG10VerifierKey;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use askama::Template;
+use crypto::{digest::Digest, sha3::Sha3};
 
 use folding_schemes::folding::circuits::nonnative::uint::NonNativeUintVar;
 
@@ -15,14 +16,33 @@ use super::kzg::KZG10Verifier;
 use crate::utils::HeaderInclusion;
 use crate::{Groth16VerifierKey, KZG10VerifierKey, ProtocolVerifierKey, PRAGMA_GROTH16_VERIFIER};
 
-pub fn get_decider_template_for_cyclefold_decider(
-    nova_cyclefold_vk: NovaCycleFoldVerifierKey,
+/// Returns the generated Solidity contract code for the Nova+CycleFold onchain verifier. The input
+/// to this method are:
+/// - DeciderEth's VerifierParams: (pp_hash, G16vk, KZG10vk)
+/// - FCircuit's state_len
+pub fn gen_solidity(
+    // DeciderEth's VerifierParams: (pp_hash, G16vk, KZG10vk)
+    decider_vp: (Fr, ArkG16VerifierKey<Bn254>, ArkKZG10VerifierKey<Bn254>),
+    // FCircuit's state_len
+    state_len: usize,
 ) -> String {
+    let nova_cyclefold_vk = NovaCycleFoldVerifierKey::from((decider_vp.clone(), state_len));
     HeaderInclusion::<NovaCycleFoldDecider>::builder()
         .template(nova_cyclefold_vk)
         .build()
         .render()
         .unwrap()
+}
+
+/// Computes the function selector for the nova cyclefold verifier
+/// It is computed on the fly since it depends on the length of the first parameter array
+pub fn get_function_selector(first_param_array_length: usize) -> [u8; 4] {
+    let mut hasher = Sha3::keccak256();
+    let fn_sig = format!("verifyNovaProof(uint256[{}],uint256[4],uint256[3],uint256[4],uint256[4],uint256[2],uint256[2][2],uint256[2],uint256[4],uint256[2][2])", first_param_array_length);
+    hasher.input_str(&fn_sig);
+    let hash = &mut [0u8; 32];
+    hasher.result(hash);
+    [hash[0], hash[1], hash[2], hash[3]]
 }
 
 #[derive(Template, Default)]
@@ -157,12 +177,11 @@ mod tests {
         Decider, Error, FoldingScheme,
     };
 
-    use super::NovaCycleFoldDecider;
+    use super::{gen_solidity, get_function_selector, NovaCycleFoldDecider};
     use crate::verifiers::tests::{setup, DEFAULT_SETUP_LEN};
     use crate::{
         evm::{compile_solidity, save_solidity, Evm},
-        utils::{get_function_selector_for_nova_cyclefold_verifier, HeaderInclusion},
-        verifiers::nova_cyclefold::get_decider_template_for_cyclefold_decider,
+        utils::HeaderInclusion,
         NovaCycleFoldVerifierKey, ProtocolVerifierKey,
     };
 
@@ -353,12 +372,9 @@ mod tests {
 
         let f_circuit = FC::new(()).unwrap();
 
-        let nova_cyclefold_vk =
-            NovaCycleFoldVerifierKey::from((decider_vp.clone(), f_circuit.state_len()));
-
         let mut rng = rand::rngs::OsRng;
 
-        let mut nova = NOVA::<FC>::init(fs_params, f_circuit, z_0).unwrap();
+        let mut nova = NOVA::<FC>::init(fs_params, f_circuit.clone(), z_0).unwrap();
         for _ in 0..n_steps {
             nova.prove_step(&mut rng, vec![]).unwrap();
         }
@@ -368,7 +384,7 @@ mod tests {
         println!("generated Decider proof: {:?}", start.elapsed());
 
         let verified = DECIDER::<FC>::verify(
-            decider_vp,
+            decider_vp.clone(),
             nova.i,
             nova.z_0.clone(),
             nova.z_i.clone(),
@@ -379,8 +395,7 @@ mod tests {
         .unwrap();
         assert!(verified);
 
-        let function_selector =
-            get_function_selector_for_nova_cyclefold_verifier(nova.z_0.len() * 2 + 1);
+        let function_selector = get_function_selector(nova.z_0.len() * 2 + 1);
 
         let calldata: Vec<u8> = prepare_calldata(
             function_selector,
@@ -393,7 +408,7 @@ mod tests {
         )
         .unwrap();
 
-        let decider_solidity_code = get_decider_template_for_cyclefold_decider(nova_cyclefold_vk);
+        let decider_solidity_code = gen_solidity(decider_vp, f_circuit.state_len());
 
         let nova_cyclefold_verifier_bytecode =
             compile_solidity(decider_solidity_code, "NovaDecider");

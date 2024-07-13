@@ -16,7 +16,7 @@ pub mod nova_cyclefold;
 
 pub use g16::Groth16VerifierKey;
 pub use kzg::KZG10VerifierKey;
-pub use nova_cyclefold::{get_decider_template_for_cyclefold_decider, NovaCycleFoldVerifierKey};
+pub use nova_cyclefold::{gen_solidity, get_function_selector, NovaCycleFoldVerifierKey};
 
 pub trait ProtocolVerifierKey: CanonicalDeserialize + CanonicalSerialize {
     const PROTOCOL_NAME: &'static str;

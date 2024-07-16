@@ -28,7 +28,7 @@ impl<F: PrimeField> Arith<F> for R1CS<F> {
         Ok(())
     }
 
-    fn params_to_bytes(&self) -> Vec<u8> {
+    fn params_to_le_bytes(&self) -> Vec<u8> {
         [
             self.l.to_le_bytes(),
             self.A.n_rows.to_le_bytes(),

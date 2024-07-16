@@ -60,9 +60,9 @@ where
     hasher.update(C1::ScalarField::MODULUS_BIT_SIZE.to_le_bytes());
     hasher.update(C2::ScalarField::MODULUS_BIT_SIZE.to_le_bytes());
     // AugmentedFCircuit Arith params
-    hasher.update(arith.params_to_bytes());
+    hasher.update(arith.params_to_le_bytes());
     // CycleFold Circuit Arith params
-    hasher.update(cf_arith.params_to_bytes());
+    hasher.update(cf_arith.params_to_le_bytes());
     // cs_vp & cf_cs_vp (commitments setup)
     let mut cs_vp_bytes = Vec::new();
     cs_vp.serialize_uncompressed(&mut cs_vp_bytes)?;

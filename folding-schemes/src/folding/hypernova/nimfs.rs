@@ -73,7 +73,7 @@ where
         sigmas_thetas: &SigmasThetas<C::ScalarField>,
         r_x_prime: Vec<C::ScalarField>,
         rho: C::ScalarField,
-    ) -> LCCCS<C> {
+    ) -> (LCCCS<C>, Vec<C::ScalarField>) {
         let (sigmas, thetas) = (sigmas_thetas.0.clone(), sigmas_thetas.1.clone());
         let mut C_folded = C::zero();
         let mut u_folded = C::ScalarField::zero();
@@ -81,6 +81,7 @@ where
         let mut v_folded: Vec<C::ScalarField> = vec![C::ScalarField::zero(); sigmas[0].len()];
 
         let mut rho_i = C::ScalarField::one();
+        let mut rho_powers = vec![C::ScalarField::zero(); lcccs.len() + cccs.len() - 1];
         for i in 0..(lcccs.len() + cccs.len()) {
             let c: C;
             let u: C::ScalarField;
@@ -120,16 +121,28 @@ where
                 .map(|(a_i, b_i)| *a_i + b_i)
                 .collect();
 
+            // compute the next power of rho
             rho_i *= rho;
+            // crop the size of rho_i to N_BITS_RO
+            let rho_i_bits = rho_i.into_bigint().to_bits_le();
+            rho_i = C::ScalarField::from_bigint(BigInteger::from_bits_le(&rho_i_bits[..N_BITS_RO]))
+                .unwrap();
+            if i < lcccs.len() + cccs.len() - 1 {
+                // store the cropped rho_i into the rho_powers vector
+                rho_powers[i] = rho_i;
+            }
         }
 
-        LCCCS::<C> {
-            C: C_folded,
-            u: u_folded,
-            x: x_folded,
-            r_x: r_x_prime,
-            v: v_folded,
-        }
+        (
+            LCCCS::<C> {
+                C: C_folded,
+                u: u_folded,
+                x: x_folded,
+                r_x: r_x_prime,
+                v: v_folded,
+            },
+            rho_powers,
+        )
     }
 
     pub fn fold_witness(
@@ -140,8 +153,9 @@ where
         let mut w_folded: Vec<C::ScalarField> = vec![C::ScalarField::zero(); w_lcccs[0].w.len()];
         let mut r_w_folded = C::ScalarField::zero();
 
+        let mut rho_i = C::ScalarField::one();
         for i in 0..(w_lcccs.len() + w_cccs.len()) {
-            let rho_i = rho.pow([i as u64]);
+            // let rho_i = rho.pow([i as u64]);
             let w: Vec<C::ScalarField>;
             let r_w: C::ScalarField;
 
@@ -164,6 +178,13 @@ where
                 .collect();
 
             r_w_folded += rho_i * r_w;
+
+            // compute the next power of rho
+            rho_i *= rho;
+            // crop the size of rho_i to N_BITS_RO
+            let rho_i_bits = rho_i.into_bigint().to_bits_le();
+            rho_i = C::ScalarField::from_bigint(BigInteger::from_bits_le(&rho_i_bits[..N_BITS_RO]))
+                .unwrap();
         }
         Witness {
             w: w_folded,
@@ -183,7 +204,16 @@ where
         new_instances: &[CCCS<C>],
         w_lcccs: &[Witness<C::ScalarField>],
         w_cccs: &[Witness<C::ScalarField>],
-    ) -> Result<(NIMFSProof<C>, LCCCS<C>, Witness<C::ScalarField>, Vec<bool>), Error> {
+    ) -> Result<
+        (
+            NIMFSProof<C>,
+            LCCCS<C>,
+            Witness<C::ScalarField>,
+            // Vec<bool>,
+            Vec<C::ScalarField>,
+        ),
+        Error,
+    > {
         // absorb instances to transcript
         transcript.absorb(&running_instances);
         transcript.absorb(&new_instances);
@@ -247,7 +277,7 @@ where
             C::ScalarField::from_bigint(BigInteger::from_bits_le(&rho_bits)).unwrap();
 
         // Step 7: Create the folded instance
-        let folded_lcccs = Self::fold(
+        let (folded_lcccs, rho_powers) = Self::fold(
             running_instances,
             new_instances,
             &sigmas_thetas,
@@ -265,7 +295,7 @@ where
             },
             folded_lcccs,
             folded_witness,
-            rho_bits,
+            rho_powers,
         ))
     }
 
@@ -372,7 +402,8 @@ where
             &proof.sigmas_thetas,
             r_x_prime,
             rho,
-        ))
+        )
+        .0)
     }
 }
 
@@ -422,7 +453,7 @@ pub mod tests {
         let mut rng = test_rng();
         let rho = Fr::rand(&mut rng);
 
-        let folded = NIMFS::<Projective, PoseidonSponge<Fr>>::fold(
+        let (folded, _) = NIMFS::<Projective, PoseidonSponge<Fr>>::fold(
             &[lcccs],
             &[cccs],
             &sigmas_thetas,

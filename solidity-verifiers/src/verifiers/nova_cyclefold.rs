@@ -324,7 +324,7 @@ mod tests {
         );
         let nova_params = NOVA::preprocess(&mut rng, &prep_param).unwrap();
         let nova = NOVA::init(
-            nova_params.clone(),
+            &nova_params,
             f_circuit.clone(),
             vec![Fr::zero(); f_circuit.state_len()].clone(),
         )
@@ -358,9 +358,9 @@ mod tests {
 
         let mut rng = rand::rngs::OsRng;
 
-        let mut nova = NOVA::<FC>::init(fs_params, f_circuit, z_0).unwrap();
+        let mut nova = NOVA::<FC>::init(&fs_params, f_circuit, z_0).unwrap();
         for _ in 0..n_steps {
-            nova.prove_step(&mut rng, vec![]).unwrap();
+            nova.prove_step(&mut rng, vec![], None).unwrap();
         }
 
         let start = Instant::now();

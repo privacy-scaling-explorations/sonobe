@@ -67,7 +67,7 @@ impl<F: PrimeField> Arith<F> for CCS<F> {
         Ok(())
     }
 
-    fn params_to_bytes(&self) -> Vec<u8> {
+    fn params_to_le_bytes(&self) -> Vec<u8> {
         [
             self.l.to_le_bytes(),
             self.m.to_le_bytes(),

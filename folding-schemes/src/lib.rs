@@ -41,6 +41,8 @@ pub enum Error {
     SNARKVerificationFail,
     #[error("IVC verification failed")]
     IVCVerificationFail,
+    #[error("zkIVC verification failed")]
+    zkIVCVerificationFail,
     #[error("R1CS instance is expected to not be relaxed")]
     R1CSUnrelaxedFail,
     #[error("Could not find the inner ConstraintSystem")]

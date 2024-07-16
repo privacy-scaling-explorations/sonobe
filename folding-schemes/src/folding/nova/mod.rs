@@ -37,7 +37,7 @@ pub mod decider_eth_circuit;
 pub mod nifs;
 pub mod serialize;
 pub mod traits;
-
+pub mod zk;
 use circuits::{AugmentedFCircuit, ChallengeGadget};
 use nifs::NIFS;
 use traits::NovaR1CS;
@@ -944,25 +944,32 @@ pub mod tests {
         test_ivc_opt::<Pedersen<Projective>, Pedersen<Projective2>, false>(
             poseidon_config.clone(),
             F_circuit,
+            3,
         );
+
         test_ivc_opt::<Pedersen<Projective, true>, Pedersen<Projective2, true>, true>(
             poseidon_config.clone(),
             F_circuit,
+            3,
         );
 
         // run the test using KZG for the commitments on the main curve, and Pedersen for the
         // commitments on the secondary curve
-        test_ivc_opt::<KZG<Bn254>, Pedersen<Projective2>, false>(poseidon_config, F_circuit);
+        test_ivc_opt::<KZG<Bn254>, Pedersen<Projective2>, false>(poseidon_config, F_circuit, 3);
     }
 
     // test_ivc allowing to choose the CommitmentSchemes
-    fn test_ivc_opt<
+    pub(crate) fn test_ivc_opt<
         CS1: CommitmentScheme<Projective, H>,
         CS2: CommitmentScheme<Projective2, H>,
         const H: bool,
     >(
         poseidon_config: PoseidonConfig<Fr>,
         F_circuit: CubicFCircuit<Fr>,
+        num_steps: usize,
+    ) -> (
+        Vec<Fr>,
+        Nova<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>, CS1, CS2, H>,
     ) {
         let mut rng = ark_std::test_rng();
 
@@ -996,7 +1003,6 @@ pub mod tests {
             )
             .unwrap();
 
-        let num_steps: usize = 3;
         for _ in 0..num_steps {
             nova.prove_step(&mut rng, vec![], None).unwrap();
         }
@@ -1005,13 +1011,15 @@ pub mod tests {
         let (running_instance, incoming_instance, cyclefold_instance) = nova.instances();
         Nova::<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>, CS1, CS2, H>::verify(
             nova_params.1, // Nova's verifier params
-            z_0,
-            nova.z_i,
+            z_0.clone(),
+            nova.z_i.clone(),
             nova.i,
             running_instance,
             incoming_instance,
             cyclefold_instance,
         )
         .unwrap();
+
+        (z_0, nova)
     }
 }

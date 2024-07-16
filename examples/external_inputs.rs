@@ -181,6 +181,7 @@ fn main() {
         ExternalInputsCircuit<Fr>,
         KZG<'static, Bn254>,
         Pedersen<Projective2>,
+        false,
     >;
 
     let mut rng = rand::rngs::OsRng;

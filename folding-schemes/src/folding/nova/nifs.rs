@@ -12,12 +12,13 @@ use crate::Error;
 
 /// Implements the Non-Interactive Folding Scheme described in section 4 of
 /// [Nova](https://eprint.iacr.org/2021/370.pdf)
-pub struct NIFS<C: CurveGroup, CS: CommitmentScheme<C>> {
+/// `H` specifies whether the NIFS will use a blinding factor
+pub struct NIFS<C: CurveGroup, CS: CommitmentScheme<C, H>, const H: bool = false> {
     _c: PhantomData<C>,
     _cp: PhantomData<CS>,
 }
 
-impl<C: CurveGroup, CS: CommitmentScheme<C>> NIFS<C, CS>
+impl<C: CurveGroup, CS: CommitmentScheme<C, H>, const H: bool> NIFS<C, CS, H>
 where
     <C as Group>::ScalarField: Absorb,
 {
@@ -141,10 +142,10 @@ where
     ) -> Result<(Witness<C>, CommittedInstance<C>), Error> {
         // fold witness
         // use r_T=0 since we don't need hiding property for cm(T)
-        let w3 = NIFS::<C, CS>::fold_witness(r, w1, w2, T, C::ScalarField::zero())?;
+        let w3 = NIFS::<C, CS, H>::fold_witness(r, w1, w2, T, C::ScalarField::zero())?;
 
         // fold committed instances
-        let ci3 = NIFS::<C, CS>::fold_committed_instance(r, ci1, ci2, &cmT);
+        let ci3 = NIFS::<C, CS, H>::fold_committed_instance(r, ci1, ci2, &cmT);
 
         Ok((w3, ci3))
     }
@@ -158,7 +159,7 @@ where
         ci2: &CommittedInstance<C>,
         cmT: &C,
     ) -> CommittedInstance<C> {
-        NIFS::<C, CS>::fold_committed_instance(r, ci1, ci2, cmT)
+        NIFS::<C, CS, H>::fold_committed_instance(r, ci1, ci2, cmT)
     }
 
     /// Verify committed folded instance (ci) relations. Notice that this method does not open the
@@ -249,10 +250,10 @@ pub mod tests {
 
         // compute committed instances
         let ci1 = w1
-            .commit::<Pedersen<C>>(&pedersen_params, x1.clone())
+            .commit::<Pedersen<C>, false>(&pedersen_params, x1.clone())
             .unwrap();
         let ci2 = w2
-            .commit::<Pedersen<C>>(&pedersen_params, x2.clone())
+            .commit::<Pedersen<C>, false>(&pedersen_params, x2.clone())
             .unwrap();
 
         // NIFS.P
@@ -306,7 +307,7 @@ pub mod tests {
         // dummy instance, witness and public inputs zeroes
         let w_dummy = Witness::<Projective>::new(vec![Fr::zero(); w1.len()], r1cs.A.n_rows);
         let mut u_dummy = w_dummy
-            .commit::<Pedersen<Projective>>(&pedersen_params, vec![Fr::zero(); x1.len()])
+            .commit::<Pedersen<Projective>, false>(&pedersen_params, vec![Fr::zero(); x1.len()])
             .unwrap();
         u_dummy.u = Fr::zero();
 
@@ -353,7 +354,7 @@ pub mod tests {
         // check that folded commitments from folded instance (ci) are equal to folding the
         // use folded rE, rW to commit w3
         let ci3_expected = w3
-            .commit::<Pedersen<Projective>>(&pedersen_params, ci3.x.clone())
+            .commit::<Pedersen<Projective>, false>(&pedersen_params, ci3.x.clone())
             .unwrap();
         assert_eq!(ci3_expected.cmE, ci3.cmE);
         assert_eq!(ci3_expected.cmW, ci3.cmW);
@@ -419,7 +420,7 @@ pub mod tests {
         // prepare the running instance
         let mut running_instance_w = Witness::<Projective>::new(w.clone(), r1cs.A.n_rows);
         let mut running_committed_instance = running_instance_w
-            .commit::<Pedersen<Projective>>(&pedersen_params, x)
+            .commit::<Pedersen<Projective>, false>(&pedersen_params, x)
             .unwrap();
 
         r1cs.check_relaxed_instance_relation(&running_instance_w, &running_committed_instance)
@@ -432,7 +433,7 @@ pub mod tests {
             let (w, x) = r1cs.split_z(&incoming_instance_z);
             let incoming_instance_w = Witness::<Projective>::new(w.clone(), r1cs.A.n_rows);
             let incoming_committed_instance = incoming_instance_w
-                .commit::<Pedersen<Projective>>(&pedersen_params, x)
+                .commit::<Pedersen<Projective>, false>(&pedersen_params, x)
                 .unwrap();
             r1cs.check_relaxed_instance_relation(
                 &incoming_instance_w,

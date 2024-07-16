@@ -21,13 +21,14 @@ use crate::{
     frontend::FCircuit,
 };
 
-impl<C1, GC1, C2, GC2, FC, CS1, CS2> CanonicalSerialize for Nova<C1, GC1, C2, GC2, FC, CS1, CS2>
+impl<C1, GC1, C2, GC2, FC, CS1, CS2, const H: bool> CanonicalSerialize
+    for Nova<C1, GC1, C2, GC2, FC, CS1, CS2, H>
 where
     C1: CurveGroup,
     C2: CurveGroup,
     FC: FCircuit<C1::ScalarField>,
-    CS1: CommitmentScheme<C1>,
-    CS2: CommitmentScheme<C2>,
+    CS1: CommitmentScheme<C1, H>,
+    CS2: CommitmentScheme<C2, H>,
     <C1 as CurveGroup>::BaseField: PrimeField,
     <C2 as CurveGroup>::BaseField: PrimeField,
     <C1 as Group>::ScalarField: Absorb,
@@ -53,7 +54,8 @@ where
         self.W_i.serialize_with_mode(&mut writer, compress)?;
         self.U_i.serialize_with_mode(&mut writer, compress)?;
         self.cf_W_i.serialize_with_mode(&mut writer, compress)?;
-        self.cf_U_i.serialize_with_mode(&mut writer, compress)
+        self.cf_U_i.serialize_with_mode(&mut writer, compress)?;
+        self.cs_is_hiding.serialize_with_mode(&mut writer, compress)
     }
 
     fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
@@ -67,6 +69,7 @@ where
             + self.U_i.serialized_size(compress)
             + self.cf_W_i.serialized_size(compress)
             + self.cf_U_i.serialized_size(compress)
+            + self.cs_is_hiding.serialized_size(compress)
     }
 
     fn serialize_compressed<W: Write>(
@@ -94,13 +97,13 @@ where
 
 // Note that we can't derive or implement `CanonicalDeserialize` directly.
 // This is because `CurveVar` notably does not implement the `Sync` trait.
-impl<C1, GC1, C2, GC2, FC, CS1, CS2> Nova<C1, GC1, C2, GC2, FC, CS1, CS2>
+impl<C1, GC1, C2, GC2, FC, CS1, CS2, const H: bool> Nova<C1, GC1, C2, GC2, FC, CS1, CS2, H>
 where
     C1: CurveGroup,
     C2: CurveGroup,
     FC: FCircuit<CF1<C1>, Params = ()>,
-    CS1: CommitmentScheme<C1>,
-    CS2: CommitmentScheme<C2>,
+    CS1: CommitmentScheme<C1, H>,
+    CS2: CommitmentScheme<C2, H>,
     <C1 as CurveGroup>::BaseField: PrimeField,
     <C2 as CurveGroup>::BaseField: PrimeField,
     <C1 as Group>::ScalarField: Absorb,
@@ -117,7 +120,7 @@ where
         mut reader: R,
         compress: ark_serialize::Compress,
         validate: ark_serialize::Validate,
-        prover_params: ProverParams<C1, C2, CS1, CS2>,
+        prover_params: ProverParams<C1, C2, CS1, CS2, H>,
         poseidon_config: PoseidonConfig<C1::ScalarField>,
     ) -> Result<Self, ark_serialize::SerializationError> {
         let pp_hash = C1::ScalarField::deserialize_with_mode(&mut reader, compress, validate)?;
@@ -152,7 +155,7 @@ where
         cs2.finalize();
         let cs2 = cs2.into_inner().ok_or(SerializationError::InvalidData)?;
         let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2);
-
+        let cs_is_hiding = bool::deserialize_with_mode(&mut reader, compress, validate)?;
         Ok(Nova {
             _gc1: PhantomData,
             _c2: PhantomData,
@@ -173,6 +176,7 @@ where
             U_i,
             cf_W_i,
             cf_U_i,
+            cs_is_hiding,
         })
     }
 }
@@ -207,6 +211,7 @@ pub mod tests {
             CubicFCircuit<Fr>,
             KZG<'static, Bn254>,
             Pedersen<Projective2>,
+            false,
         >;
         let prep_param = PreprocessorParam::new(poseidon_config.clone(), F_circuit);
         let nova_params = N::preprocess(&mut rng, &prep_param).unwrap();
@@ -242,6 +247,7 @@ pub mod tests {
             CubicFCircuit<Fr>,
             KZG<Bn254>,
             Pedersen<Projective2>,
+            false,
         >::deserialize_nova(
             bytes.as_slice(),
             Compress::No,

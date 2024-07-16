@@ -242,7 +242,7 @@ pub mod tests {
         let (pedersen_params, _) =
             Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
         let (lcccs_instance, _) = ccs
-            .to_lcccs::<_, _, Pedersen<Projective>>(&mut rng, &pedersen_params, &z1)
+            .to_lcccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &z1)
             .unwrap();
 
         let sigmas_thetas =
@@ -292,7 +292,7 @@ pub mod tests {
         let (pedersen_params, _) =
             Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
         let (lcccs_instance, _) = ccs
-            .to_lcccs::<_, _, Pedersen<Projective>>(&mut rng, &pedersen_params, &z1)
+            .to_lcccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &z1)
             .unwrap();
 
         // Compute g(x) with that r_x

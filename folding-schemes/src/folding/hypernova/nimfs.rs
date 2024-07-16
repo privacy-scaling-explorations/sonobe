@@ -441,10 +441,10 @@ pub mod tests {
             Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
 
         let (lcccs, w1) = ccs
-            .to_lcccs::<_, Projective, Pedersen<Projective>>(&mut rng, &pedersen_params, &z1)
+            .to_lcccs::<_, Projective, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &z1)
             .unwrap();
         let (cccs, w2) = ccs
-            .to_cccs::<_, Projective, Pedersen<Projective>>(&mut rng, &pedersen_params, &z2)
+            .to_cccs::<_, Projective, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &z2)
             .unwrap();
 
         lcccs.check_relation(&ccs, &w1).unwrap();
@@ -484,11 +484,11 @@ pub mod tests {
 
         // Create the LCCCS instance out of z_1
         let (running_instance, w1) = ccs
-            .to_lcccs::<_, _, Pedersen<Projective>>(&mut rng, &pedersen_params, &z_1)
+            .to_lcccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &z_1)
             .unwrap();
         // Create the CCCS instance out of z_2
         let (new_instance, w2) = ccs
-            .to_cccs::<_, _, Pedersen<Projective>>(&mut rng, &pedersen_params, &z_2)
+            .to_cccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &z_2)
             .unwrap();
 
         // Prover's transcript
@@ -540,7 +540,7 @@ pub mod tests {
         // LCCCS witness
         let z_1 = get_test_z(2);
         let (mut running_instance, mut w1) = ccs
-            .to_lcccs::<_, _, Pedersen<Projective>>(&mut rng, &pedersen_params, &z_1)
+            .to_lcccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &z_1)
             .unwrap();
 
         let poseidon_config = poseidon_canonical_config::<Fr>();
@@ -557,7 +557,7 @@ pub mod tests {
             let z_2 = get_test_z(i);
 
             let (new_instance, w2) = ccs
-                .to_cccs::<_, _, Pedersen<Projective>>(&mut rng, &pedersen_params, &z_2)
+                .to_cccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &z_2)
                 .unwrap();
 
             // run the prover side of the multifolding
@@ -621,7 +621,7 @@ pub mod tests {
         let mut w_lcccs = Vec::new();
         for z_i in z_lcccs.iter() {
             let (running_instance, w) = ccs
-                .to_lcccs::<_, _, Pedersen<Projective>>(&mut rng, &pedersen_params, z_i)
+                .to_lcccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, z_i)
                 .unwrap();
             lcccs_instances.push(running_instance);
             w_lcccs.push(w);
@@ -631,7 +631,7 @@ pub mod tests {
         let mut w_cccs = Vec::new();
         for z_i in z_cccs.iter() {
             let (new_instance, w) = ccs
-                .to_cccs::<_, _, Pedersen<Projective>>(&mut rng, &pedersen_params, z_i)
+                .to_cccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, z_i)
                 .unwrap();
             cccs_instances.push(new_instance);
             w_cccs.push(w);
@@ -717,7 +717,7 @@ pub mod tests {
             let mut w_lcccs = Vec::new();
             for z_i in z_lcccs.iter() {
                 let (running_instance, w) = ccs
-                    .to_lcccs::<_, _, Pedersen<Projective>>(&mut rng, &pedersen_params, z_i)
+                    .to_lcccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, z_i)
                     .unwrap();
                 lcccs_instances.push(running_instance);
                 w_lcccs.push(w);
@@ -727,7 +727,7 @@ pub mod tests {
             let mut w_cccs = Vec::new();
             for z_i in z_cccs.iter() {
                 let (new_instance, w) = ccs
-                    .to_cccs::<_, _, Pedersen<Projective>>(&mut rng, &pedersen_params, z_i)
+                    .to_cccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, z_i)
                     .unwrap();
                 cccs_instances.push(new_instance);
                 w_cccs.push(w);

@@ -81,7 +81,8 @@ fn main() {
 
     let f_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
 
-    pub type N = Nova<G1, GVar, G2, GVar2, CubicFCircuit<Fr>, KZG<'static, Bn254>, Pedersen<G2>>;
+    pub type N =
+        Nova<G1, GVar, G2, GVar2, CubicFCircuit<Fr>, KZG<'static, Bn254>, Pedersen<G2>, false>;
     pub type D = DeciderEth<
         G1,
         GVar,

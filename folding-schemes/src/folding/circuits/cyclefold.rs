@@ -382,7 +382,7 @@ where
 /// scheme struct because it is used both by Nova & HyperNova's CycleFold.
 #[allow(clippy::type_complexity)]
 #[allow(clippy::too_many_arguments)]
-pub fn fold_cyclefold_circuit<C1, GC1, C2, GC2, FC, CS1, CS2>(
+pub fn fold_cyclefold_circuit<C1, GC1, C2, GC2, FC, CS1, CS2, const H: bool>(
     _n_points: usize,
     transcript: &mut impl Transcript<C1::ScalarField>,
     cf_r1cs: R1CS<C2::ScalarField>,
@@ -409,8 +409,8 @@ where
     C2: CurveGroup,
     GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
     FC: FCircuit<C1::ScalarField>,
-    CS1: CommitmentScheme<C1>,
-    CS2: CommitmentScheme<C2>,
+    CS1: CommitmentScheme<C1, H>,
+    CS2: CommitmentScheme<C2, H>,
     <C1 as CurveGroup>::BaseField: PrimeField,
     <C2 as CurveGroup>::BaseField: PrimeField,
     <C1 as Group>::ScalarField: Absorb,
@@ -433,10 +433,10 @@ where
 
     // fold cyclefold instances
     let cf_w_i = Witness::<C2>::new(cf_w_i.clone(), cf_r1cs.A.n_rows);
-    let cf_u_i: CommittedInstance<C2> = cf_w_i.commit::<CS2>(&cf_cs_params, cf_x_i.clone())?;
+    let cf_u_i: CommittedInstance<C2> = cf_w_i.commit::<CS2, H>(&cf_cs_params, cf_x_i.clone())?;
 
     // compute T* and cmT* for CycleFoldCircuit
-    let (cf_T, cf_cmT) = NIFS::<C2, CS2>::compute_cyclefold_cmT(
+    let (cf_T, cf_cmT) = NIFS::<C2, CS2, H>::compute_cyclefold_cmT(
         &cf_cs_params,
         &cf_r1cs,
         &cf_w_i,
@@ -455,7 +455,7 @@ where
     let cf_r_Fq = C1::BaseField::from_bigint(BigInteger::from_bits_le(&cf_r_bits))
         .expect("cf_r_bits out of bounds");
 
-    let (cf_W_i1, cf_U_i1) = NIFS::<C2, CS2>::fold_instances(
+    let (cf_W_i1, cf_U_i1) = NIFS::<C2, CS2, H>::fold_instances(
         cf_r_Fq, &cf_W_i, &cf_U_i, &cf_w_i, &cf_u_i, &cf_T, cf_cmT,
     )?;
     Ok((cf_w_i, cf_u_i, cf_W_i1, cf_U_i1, cf_cmT, cf_r_Fq))

@@ -949,7 +949,7 @@ mod tests {
         let mut lcccs_instances = Vec::new();
         for z_i in z_lcccs.iter() {
             let (inst, _) = ccs
-                .to_lcccs::<_, _, Pedersen<Projective>>(&mut rng, &pedersen_params, z_i)
+                .to_lcccs::<_, _, Pedersen<Projective, true>, true>(&mut rng, &pedersen_params, z_i)
                 .unwrap();
             lcccs_instances.push(inst);
         }
@@ -957,7 +957,7 @@ mod tests {
         let mut cccs_instances = Vec::new();
         for z_i in z_cccs.iter() {
             let (inst, _) = ccs
-                .to_cccs::<_, _, Pedersen<Projective>>(&mut rng, &pedersen_params, z_i)
+                .to_cccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, z_i)
                 .unwrap();
             cccs_instances.push(inst);
         }
@@ -1045,7 +1045,11 @@ mod tests {
         let mut w_lcccs = Vec::new();
         for z_i in z_lcccs.iter() {
             let (running_instance, w) = ccs
-                .to_lcccs::<_, _, Pedersen<Projective>>(&mut rng, &pedersen_params, z_i)
+                .to_lcccs::<_, _, Pedersen<Projective, false>, false>(
+                    &mut rng,
+                    &pedersen_params,
+                    z_i,
+                )
                 .unwrap();
             lcccs_instances.push(running_instance);
             w_lcccs.push(w);
@@ -1055,7 +1059,7 @@ mod tests {
         let mut w_cccs = Vec::new();
         for z_i in z_cccs.iter() {
             let (new_instance, w) = ccs
-                .to_cccs::<_, _, Pedersen<Projective>>(&mut rng, &pedersen_params, z_i)
+                .to_cccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, z_i)
                 .unwrap();
             cccs_instances.push(new_instance);
             w_cccs.push(w);
@@ -1139,7 +1143,7 @@ mod tests {
         let z_0 = vec![Fr::from(3_u32)];
         let z_i = vec![Fr::from(3_u32)];
         let (lcccs, _) = ccs
-            .to_lcccs::<_, _, Pedersen<Projective>>(&mut rng, &pedersen_params, &z1)
+            .to_lcccs::<_, _, Pedersen<Projective, true>, true>(&mut rng, &pedersen_params, &z1)
             .unwrap();
         let h = lcccs
             .clone()
@@ -1378,6 +1382,7 @@ mod tests {
                     CubicFCircuit<Fr>,
                     Pedersen<Projective>,
                     Pedersen<Projective2>,
+                    false,
                 >(
                     mu + nu,
                     &mut transcript_p,
@@ -1439,7 +1444,7 @@ mod tests {
             // compute committed instances, w_{i+1}, u_{i+1}, which will be used as w_i, u_i, so we
             // assign them directly to w_i, u_i.
             (u_i, w_i) = ccs
-                .to_cccs::<_, _, Pedersen<Projective>>(&mut rng, &pedersen_params, &r1cs_z)
+                .to_cccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &r1cs_z)
                 .unwrap();
             u_i.check_relation(&ccs, &w_i).unwrap();
 

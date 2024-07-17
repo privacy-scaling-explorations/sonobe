@@ -410,7 +410,7 @@ pub mod tests {
     use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
     use ark_crypto_primitives::sponge::CryptographicSponge;
     use ark_pallas::{Fr, Projective};
-    use ark_std::UniformRand;
+    use ark_std::{rand::Rng, UniformRand};
 
     use crate::arith::r1cs::tests::{get_test_r1cs, get_test_z, get_test_z_split};
     use crate::commitment::{pedersen::Pedersen, CommitmentScheme};
@@ -461,8 +461,9 @@ pub mod tests {
 
     #[test]
     fn test_eval_f() {
+        let mut rng = ark_std::test_rng();
         let r1cs = get_test_r1cs::<Fr>();
-        let mut z = get_test_z::<Fr>(3);
+        let mut z = get_test_z::<Fr>(rng.gen::<u16>() as usize);
 
         let f_w = eval_f(&r1cs, &z).unwrap();
         assert!(is_zero_vec(&f_w));
@@ -483,9 +484,10 @@ pub mod tests {
         Vec<CommittedInstance<Projective>>,
     ) {
         let mut rng = ark_std::test_rng();
-        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, 100).unwrap(); // 100 is wip, will get it from actual vec
 
-        let (u, x, w) = get_test_z_split::<Fr>(3);
+        let (u, x, w) = get_test_z_split::<Fr>(rng.gen::<u16>() as usize);
+
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, w.len()).unwrap();
 
         let n = 1 + x.len() + w.len();
         let t = log2(n) as usize;
@@ -510,8 +512,8 @@ pub mod tests {
         let mut witnesses: Vec<Witness<Fr>> = Vec::new();
         let mut instances: Vec<CommittedInstance<Projective>> = Vec::new();
         #[allow(clippy::needless_range_loop)]
-        for i in 0..k {
-            let (u_i, x_i, w_i) = get_test_z_split::<Fr>(i + 4);
+        for _ in 0..k {
+            let (u_i, x_i, w_i) = get_test_z_split::<Fr>(rng.gen::<u16>() as usize);
             let witness_i = Witness::<Fr> {
                 w: w_i,
                 r_w: Fr::rand(&mut rng),

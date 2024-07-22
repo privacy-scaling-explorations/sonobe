@@ -166,16 +166,20 @@ impl<C: CurveGroup> Witness<C>
 where
     <C as Group>::ScalarField: Absorb,
 {
-    pub fn new(w: Vec<C::ScalarField>, e_len: usize) -> Self {
-        // note: at the current version, we don't use the blinding factors and we set them to 0
-        // always.
+    pub fn new(
+        w: Vec<C::ScalarField>,
+        rW: C::ScalarField,
+        e_len: usize,
+        rE: C::ScalarField,
+    ) -> Self {
         Self {
             E: vec![C::ScalarField::zero(); e_len],
-            rE: C::ScalarField::zero(),
+            rE,
             W: w,
-            rW: C::ScalarField::zero(),
+            rW,
         }
     }
+
     pub fn commit<CS: CommitmentScheme<C, H>, const H: bool>(
         &self,
         params: &CS::ProverParams,
@@ -282,8 +286,9 @@ where
 
 /// Implements Nova+CycleFold's IVC, described in [Nova](https://eprint.iacr.org/2021/370.pdf) and
 /// [CycleFold](https://eprint.iacr.org/2023/1192.pdf), following the FoldingScheme trait
+/// The `H` const generic specifies whether the homorphic commitment scheme is blinding
 #[derive(Clone, Debug)]
-pub struct Nova<C1, GC1, C2, GC2, FC, CS1, CS2, const H: bool>
+pub struct Nova<C1, GC1, C2, GC2, FC, CS1, CS2, const H: bool = false>
 where
     C1: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
@@ -323,7 +328,6 @@ where
     /// CycleFold running instance
     pub cf_W_i: Witness<C2>,
     pub cf_U_i: CommittedInstance<C2>,
-    cs_is_hiding: bool,
 }
 
 impl<C1, GC1, C2, GC2, FC, CS1, CS2, const H: bool> FoldingScheme<C1, C2, FC>
@@ -450,7 +454,6 @@ where
             // cyclefold running instance
             cf_W_i: cf_w_dummy.clone(),
             cf_U_i: cf_u_dummy.clone(),
-            cs_is_hiding: H,
         })
     }
 
@@ -462,6 +465,20 @@ where
         // Nova does not support multi-instances folding
         _other_instances: Option<Self::MultiCommittedInstanceWithWitness>,
     ) -> Result<(), Error> {
+        // ensure that commitments are blinding if user has specified so.
+        if H {
+            let blinding_commitments = if self.i == C1::ScalarField::zero() {
+                vec![self.w_i.rW, self.w_i.rE]
+            } else {
+                vec![self.w_i.rW, self.w_i.rE, self.W_i.rW, self.W_i.rE]
+            };
+            if blinding_commitments.contains(&C1::ScalarField::zero()) {
+                return Err(Error::IncorrectBlinding(
+                    H,
+                    format!("{:?}", blinding_commitments),
+                ));
+            }
+        }
         // `sponge` is for digest computation.
         let sponge = PoseidonSponge::<C1::ScalarField>::new(&self.poseidon_config);
         // `transcript` is for challenge generation.
@@ -677,7 +694,7 @@ where
         // set values for next iteration
         self.i += C1::ScalarField::one();
         self.z_i = z_i1;
-        self.w_i = Witness::<C1>::new(w_i1, self.r1cs.A.n_rows);
+        self.w_i = Witness::<C1>::new(w_i1, self.w_i.rW, self.r1cs.A.n_rows, self.w_i.rE);
         self.u_i = self.w_i.commit::<CS1, H>(&self.cs_pp, x_i1)?;
         self.W_i = W_i1;
         self.U_i = U_i1;
@@ -840,7 +857,7 @@ where
             self.cf_r1cs.clone(),
             self.cf_cs_pp.clone(),
             self.pp_hash,
-            cf_W_i,
+            cf_W_i.clone(),
             cf_U_i,
             cf_u_i_x,
             cf_circuit,
@@ -917,6 +934,7 @@ pub mod tests {
     use crate::commitment::kzg::KZG;
     use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as Projective};
     use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
+    use ark_std::UniformRand;
 
     use super::*;
     use crate::commitment::pedersen::Pedersen;
@@ -986,6 +1004,11 @@ pub mod tests {
                 z_0.clone(),
             )
             .unwrap();
+
+        if H {
+            nova.w_i.rW = <Projective as Group>::ScalarField::rand(&mut rng);
+            nova.w_i.rE = <Projective as Group>::ScalarField::rand(&mut rng);
+        }
 
         let num_steps: usize = 3;
         for _ in 0..num_steps {

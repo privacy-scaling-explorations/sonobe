@@ -506,6 +506,22 @@ where
         external_inputs: Vec<C1::ScalarField>,
         other_instances: Option<Self::MultiCommittedInstanceWithWitness>,
     ) -> Result<(), Error> {
+        // ensure that commitments are blinding if user has specified so.
+
+        if H {
+            let blinding_commitments = if self.i == C1::ScalarField::zero() {
+                vec![self.w_i.r_w]
+            } else {
+                vec![self.w_i.r_w, self.W_i.r_w]
+            };
+            if blinding_commitments.contains(&C1::ScalarField::zero()) {
+                return Err(Error::IncorrectBlinding(
+                    H,
+                    format!("{:?}", blinding_commitments),
+                ));
+            }
+        }
+
         // `sponge` is for digest computation.
         let sponge = PoseidonSponge::<C1::ScalarField>::new(&self.poseidon_config);
 
@@ -573,10 +589,11 @@ where
 
         // u_{i+1}.x[1] = H(cf_U_{i+1})
         let cf_u_i1_x: C1::ScalarField;
-        let (U_i1, W_i1);
+        let (U_i1, mut W_i1);
 
         if self.i == C1::ScalarField::zero() {
             W_i1 = Witness::<C1::ScalarField>::dummy(&self.ccs);
+            W_i1.r_w = self.W_i.r_w;
             U_i1 = LCCCS::dummy(self.ccs.l, self.ccs.t, self.ccs.s);
 
             let u_i1_x = U_i1.hash(
@@ -862,6 +879,7 @@ mod tests {
     use crate::commitment::kzg::KZG;
     use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as Projective};
     use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
+    use ark_std::UniformRand;
 
     use super::*;
     use crate::commitment::pedersen::Pedersen;
@@ -932,6 +950,14 @@ mod tests {
             H,
         >::init(&hypernova_params, F_circuit, z_0.clone())
         .unwrap();
+
+        let (w_i_blinding, W_i_blinding) = if H {
+            (Fr::rand(&mut rng), Fr::rand(&mut rng))
+        } else {
+            (Fr::zero(), Fr::zero())
+        };
+        hypernova.w_i.r_w = w_i_blinding;
+        hypernova.W_i.r_w = W_i_blinding;
 
         let num_steps: usize = 3;
         for _ in 0..num_steps {

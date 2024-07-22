@@ -54,8 +54,7 @@ where
         self.W_i.serialize_with_mode(&mut writer, compress)?;
         self.U_i.serialize_with_mode(&mut writer, compress)?;
         self.cf_W_i.serialize_with_mode(&mut writer, compress)?;
-        self.cf_U_i.serialize_with_mode(&mut writer, compress)?;
-        self.cs_is_hiding.serialize_with_mode(&mut writer, compress)
+        self.cf_U_i.serialize_with_mode(&mut writer, compress)
     }
 
     fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
@@ -69,7 +68,6 @@ where
             + self.U_i.serialized_size(compress)
             + self.cf_W_i.serialized_size(compress)
             + self.cf_U_i.serialized_size(compress)
-            + self.cs_is_hiding.serialized_size(compress)
     }
 
     fn serialize_compressed<W: Write>(
@@ -155,7 +153,6 @@ where
         cs2.finalize();
         let cs2 = cs2.into_inner().ok_or(SerializationError::InvalidData)?;
         let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2);
-        let cs_is_hiding = bool::deserialize_with_mode(&mut reader, compress, validate)?;
         Ok(Nova {
             _gc1: PhantomData,
             _c2: PhantomData,
@@ -176,7 +173,6 @@ where
             U_i,
             cf_W_i,
             cf_U_i,
-            cs_is_hiding,
         })
     }
 }

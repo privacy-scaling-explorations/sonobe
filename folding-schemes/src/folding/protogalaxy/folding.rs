@@ -14,7 +14,7 @@ use super::utils::{all_powers, betas_star, exponential_powers};
 use super::ProtoGalaxyError;
 use super::{CommittedInstance, Witness};
 
-use crate::arith::r1cs::R1CS;
+use crate::arith::{r1cs::R1CS, Arith};
 use crate::transcript::Transcript;
 use crate::utils::vec::*;
 use crate::utils::virtual_polynomial::bit_decompose;
@@ -96,7 +96,7 @@ where
         let delta = transcript.get_challenge();
         let deltas = exponential_powers(delta, t);
 
-        let mut f_z = eval_f(r1cs, &z)?;
+        let mut f_z = r1cs.eval_relation(&z)?;
         if f_z.len() != n {
             return Err(Error::NotSameLength(
                 "number of constraints in R1CS".to_string(),
@@ -179,7 +179,7 @@ where
                     inner[j] += Lh * zj;
                 }
             }
-            let f_ev = eval_f(r1cs, &inner)?;
+            let f_ev = r1cs.eval_relation(&inner)?;
 
             G_evals[hi] = cfg_into_iter!(f_ev)
                 .enumerate()
@@ -411,16 +411,6 @@ pub fn lagrange_polys<F: PrimeField>(
     lagrange_polynomials
 }
 
-// f(w) in R1CS context. For the moment we use R1CS, in the future we will abstract this with a
-// trait
-fn eval_f<F: PrimeField>(r1cs: &R1CS<F>, z: &[F]) -> Result<Vec<F>, Error> {
-    let Az = mat_vec_mul(&r1cs.A, z)?;
-    let Bz = mat_vec_mul(&r1cs.B, z)?;
-    let Cz = mat_vec_mul(&r1cs.C, z)?;
-    let AzBz = hadamard(&Az, &Bz)?;
-    vec_sub(&AzBz, &Cz)
-}
-
 #[cfg(test)]
 pub mod tests {
     use super::*;
@@ -458,7 +448,7 @@ pub mod tests {
             ));
         }
 
-        let f_z = eval_f(r1cs, &z)?; // f(z)
+        let f_z = r1cs.eval_relation(&z)?; // f(z)
 
         let mut r = C::ScalarField::zero();
         for (i, f_z_i) in f_z.iter().enumerate() {
@@ -483,20 +473,6 @@ pub mod tests {
         for i in 0..n {
             assert_eq!(pow_i(i, &betas), not_betas[i]);
         }
-    }
-
-    #[test]
-    fn test_eval_f() {
-        let mut rng = ark_std::test_rng();
-        let r1cs = get_test_r1cs::<Fr>();
-        let mut z = get_test_z::<Fr>(rng.gen::<u16>() as usize);
-
-        let f_w = eval_f(&r1cs, &z).unwrap();
-        assert!(is_zero_vec(&f_w));
-
-        z[1] = Fr::from(111);
-        let f_w = eval_f(&r1cs, &z).unwrap();
-        assert!(!is_zero_vec(&f_w));
     }
 
     // k represents the number of instances to be fold, apart from the running instance
@@ -571,14 +547,14 @@ pub mod tests {
 
         let (folded_instance, folded_witness, F_coeffs, K_coeffs, _, _) =
             Folding::<Projective>::prove(
-            &mut transcript_p,
-            &r1cs,
-            &instance,
-            &witness,
-            &instances,
-            &witnesses,
-        )
-        .unwrap();
+                &mut transcript_p,
+                &r1cs,
+                &instance,
+                &witness,
+                &instances,
+                &witnesses,
+            )
+            .unwrap();
 
         // verifier
         let folded_instance_v = Folding::<Projective>::verify(

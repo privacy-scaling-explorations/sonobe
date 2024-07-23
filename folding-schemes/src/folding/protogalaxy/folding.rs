@@ -48,6 +48,8 @@ where
             Witness<C::ScalarField>,
             Vec<C::ScalarField>, // F_X coeffs
             Vec<C::ScalarField>, // K_X coeffs
+            Vec<C::ScalarField>, // L_X evals
+            Vec<C>,              // phi_stars
         ),
         Error,
     > {
@@ -200,6 +202,8 @@ where
             .map(|L| L.evaluate(&gamma))
             .collect::<Vec<_>>();
 
+        let mut phi_stars = vec![];
+
         let e_star = F_alpha * L_X_evals[0] + Z_X.evaluate(&gamma) * K_X.evaluate(&gamma);
         let mut w_star = vec_scalar_mul(&w.w, &L_X_evals[0]);
         let mut r_w_star = w.r_w * L_X_evals[0];
@@ -209,6 +213,7 @@ where
         for i in 0..k {
             w_star = vec_add(&w_star, &vec_scalar_mul(&vec_w[i].w, &L_X_evals[i + 1]))?;
             r_w_star += vec_w[i].r_w * L_X_evals[i + 1];
+            phi_stars.push(phi_star); // Push before updating. We don't need the last one
             phi_star += vec_instances[i].phi * L_X_evals[i + 1];
             u_star += vec_instances[i].u * L_X_evals[i + 1];
             x_star = vec_add(
@@ -231,6 +236,8 @@ where
             },
             F_X_dense.coeffs,
             K_X.coeffs,
+            L_X_evals,
+            phi_stars,
         ))
     }
 
@@ -549,7 +556,8 @@ pub mod tests {
         let mut transcript_p = PoseidonSponge::<Fr>::new(&poseidon_config);
         let mut transcript_v = PoseidonSponge::<Fr>::new(&poseidon_config);
 
-        let (folded_instance, folded_witness, F_coeffs, K_coeffs) = Folding::<Projective>::prove(
+        let (folded_instance, folded_witness, F_coeffs, K_coeffs, _, _) =
+            Folding::<Projective>::prove(
             &mut transcript_p,
             &r1cs,
             &instance,
@@ -598,7 +606,7 @@ pub mod tests {
             // generate the instances to be fold
             let (_, _, witnesses, instances) = prepare_inputs(k);
 
-            let (folded_instance, folded_witness, F_coeffs, K_coeffs) =
+            let (folded_instance, folded_witness, F_coeffs, K_coeffs, _, _) =
                 Folding::<Projective>::prove(
                     &mut transcript_p,
                     &r1cs,

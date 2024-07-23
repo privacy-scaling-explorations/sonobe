@@ -14,6 +14,8 @@ use super::utils::{all_powers, betas_star, exponential_powers};
 use super::ProtoGalaxyError;
 use super::{CommittedInstance, Witness};
 
+#[cfg(test)]
+use crate::arith::r1cs::RelaxedR1CS;
 use crate::arith::{r1cs::R1CS, Arith};
 use crate::transcript::Transcript;
 use crate::utils::vec::*;
@@ -126,15 +128,14 @@ where
         // sanity check: check that the new randomized instance (the original instance but with
         // 'refreshed' randomness) satisfies the relation.
         #[cfg(test)]
-        tests::check_instance(
-            r1cs,
+        r1cs.check_relaxed_relation(
+            w,
             &CommittedInstance {
                 phi: instance.phi,
                 betas: betas_star.clone(),
                 e: F_alpha,
                 x: instance.x.clone(),
             },
-            w,
         )?;
 
         let zs: Vec<Vec<C::ScalarField>> = std::iter::once(z.clone())
@@ -323,7 +324,7 @@ where
 }
 
 // naive impl of pow_i for betas, assuming that betas=(b, b^2, b^4, ..., b^{2^{t-1}})
-fn pow_i<F: PrimeField>(i: usize, betas: &[F]) -> F {
+pub fn pow_i<F: PrimeField>(i: usize, betas: &[F]) -> F {
     // WIP check if makes more sense to do it with ifs instead of arithmetic
 
     let n = 2_u64.pow(betas.len() as u32);
@@ -331,11 +332,9 @@ fn pow_i<F: PrimeField>(i: usize, betas: &[F]) -> F {
 
     let mut r: F = F::one();
     for (j, beta_j) in betas.iter().enumerate() {
-        let mut b_j = F::zero();
         if b[j] {
-            b_j = F::one();
+            r *= beta_j;
         }
-        r *= (F::one() - b_j) + b_j * beta_j;
     }
     r
 }
@@ -412,46 +411,9 @@ pub mod tests {
     use ark_pallas::{Fr, Projective};
     use ark_std::{rand::Rng, UniformRand};
 
-    use crate::arith::r1cs::tests::{get_test_r1cs, get_test_z, get_test_z_split};
+    use crate::arith::r1cs::tests::{get_test_r1cs, get_test_z_split};
     use crate::commitment::{pedersen::Pedersen, CommitmentScheme};
     use crate::transcript::poseidon::poseidon_canonical_config;
-
-    pub(crate) fn check_instance<C: CurveGroup>(
-        r1cs: &R1CS<C::ScalarField>,
-        instance: &CommittedInstance<C>,
-        w: &Witness<C::ScalarField>,
-    ) -> Result<(), Error> {
-    let z = [vec![C::ScalarField::one()], instance.x.clone(), w.w.clone()].concat();
-
-        if instance.betas.len() != log2(r1cs.A.n_rows) as usize {
-            return Err(Error::NotSameLength(
-                "instance.betas.len()".to_string(),
-                instance.betas.len(),
-                "log2(number of constraints in R1CS)".to_string(),
-                log2(r1cs.A.n_rows) as usize,
-            ));
-        }
-
-        if z.len() != r1cs.A.n_cols {
-            return Err(Error::NotSameLength(
-                "z.len()".to_string(),
-                z.len(),
-                "number of variables in R1CS".to_string(),
-                r1cs.A.n_cols,
-            ));
-        }
-
-        let f_z = r1cs.eval_relation(&z)?; // f(z)
-
-        let mut r = C::ScalarField::zero();
-        for (i, f_z_i) in f_z.iter().enumerate() {
-            r += pow_i(i, &instance.betas) * f_z_i;
-        }
-        if instance.e == r {
-            return Ok(());
-        }
-        Err(Error::NotSatisfied)
-    }
 
     #[test]
     fn test_pow_i() {
@@ -480,7 +442,7 @@ pub mod tests {
     ) {
         let mut rng = ark_std::test_rng();
 
-        let (u, x, w) = get_test_z_split::<C::ScalarField>(rng.gen::<u16>() as usize);
+        let (_, x, w) = get_test_z_split::<C::ScalarField>(rng.gen::<u16>() as usize);
 
         let (pedersen_params, _) = Pedersen::<C>::setup(&mut rng, w.len()).unwrap();
 
@@ -505,7 +467,7 @@ pub mod tests {
         let mut instances: Vec<CommittedInstance<C>> = Vec::new();
         #[allow(clippy::needless_range_loop)]
         for _ in 0..k {
-            let (u_i, x_i, w_i) = get_test_z_split::<C::ScalarField>(rng.gen::<u16>() as usize);
+            let (_, x_i, w_i) = get_test_z_split::<C::ScalarField>(rng.gen::<u16>() as usize);
             let witness_i = Witness::<C::ScalarField> {
                 w: w_i,
                 r_w: C::ScalarField::zero(),
@@ -564,7 +526,8 @@ pub mod tests {
         assert!(!folded_instance.e.is_zero());
 
         // check that the folded instance satisfies the relation
-        check_instance(&r1cs, &folded_instance, &folded_witness).unwrap();
+        r1cs.check_relaxed_relation(&folded_witness, &folded_instance)
+            .unwrap();
     }
 
     #[test]
@@ -612,7 +575,8 @@ pub mod tests {
             assert!(!folded_instance.e.is_zero());
 
             // check that the folded instance satisfies the relation
-            check_instance(&r1cs, &folded_instance, &folded_witness).unwrap();
+            r1cs.check_relaxed_relation(&folded_witness, &folded_instance)
+                .unwrap();
 
             running_witness = folded_witness;
             running_instance = folded_instance;

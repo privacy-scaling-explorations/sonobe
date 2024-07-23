@@ -1215,7 +1215,7 @@ mod tests {
         let (cf_W_dummy, cf_U_dummy): (
             CycleFoldWitness<Projective2>,
             CycleFoldCommittedInstance<Projective2>,
-        ) = cf_r1cs.dummy_instance();
+        ) = cf_r1cs.dummy_running_instance();
 
         // set the initial dummy instances
         let mut W_i = W_dummy.clone();

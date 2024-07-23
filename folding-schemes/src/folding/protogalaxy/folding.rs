@@ -503,58 +503,53 @@ pub mod tests {
 
     // k represents the number of instances to be fold, apart from the running instance
     #[allow(clippy::type_complexity)]
-    pub fn prepare_inputs(
+    pub fn prepare_inputs<C: CurveGroup>(
         k: usize,
     ) -> (
-        Witness<Fr>,
-        CommittedInstance<Projective>,
-        Vec<Witness<Fr>>,
-        Vec<CommittedInstance<Projective>>,
+        Witness<C::ScalarField>,
+        CommittedInstance<C>,
+        Vec<Witness<C::ScalarField>>,
+        Vec<CommittedInstance<C>>,
     ) {
         let mut rng = ark_std::test_rng();
 
-        let (u, x, w) = get_test_z_split::<Fr>(rng.gen::<u16>() as usize);
+        let (u, x, w) = get_test_z_split::<C::ScalarField>(rng.gen::<u16>() as usize);
 
-        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, w.len()).unwrap();
+        let (pedersen_params, _) = Pedersen::<C>::setup(&mut rng, w.len()).unwrap();
 
-        let t = log2(get_test_r1cs::<Fr>().A.n_rows) as usize;
+        let t = log2(get_test_r1cs::<C::ScalarField>().A.n_rows) as usize;
 
-        let beta = Fr::rand(&mut rng);
+        let beta = C::ScalarField::rand(&mut rng);
         let betas = exponential_powers(beta, t);
 
-        let witness = Witness::<Fr> {
+        let witness = Witness::<C::ScalarField> {
             w,
-            r_w: Fr::rand(&mut rng),
+            r_w: C::ScalarField::zero(),
         };
-        let phi = Pedersen::<Projective, true>::commit(&pedersen_params, &witness.w, &witness.r_w)
-            .unwrap();
-        let instance = CommittedInstance::<Projective> {
+        let phi = Pedersen::<C>::commit(&pedersen_params, &witness.w, &witness.r_w).unwrap();
+        let instance = CommittedInstance::<C> {
             phi,
             betas: betas.clone(),
-            e: Fr::zero(),
+            e: C::ScalarField::zero(),
             u,
             x,
         };
         // same for the other instances
-        let mut witnesses: Vec<Witness<Fr>> = Vec::new();
-        let mut instances: Vec<CommittedInstance<Projective>> = Vec::new();
+        let mut witnesses: Vec<Witness<C::ScalarField>> = Vec::new();
+        let mut instances: Vec<CommittedInstance<C>> = Vec::new();
         #[allow(clippy::needless_range_loop)]
         for _ in 0..k {
-            let (u_i, x_i, w_i) = get_test_z_split::<Fr>(rng.gen::<u16>() as usize);
-            let witness_i = Witness::<Fr> {
+            let (u_i, x_i, w_i) = get_test_z_split::<C::ScalarField>(rng.gen::<u16>() as usize);
+            let witness_i = Witness::<C::ScalarField> {
                 w: w_i,
-                r_w: Fr::rand(&mut rng),
+                r_w: C::ScalarField::zero(),
             };
-            let phi_i = Pedersen::<Projective, true>::commit(
-                &pedersen_params,
-                &witness_i.w,
-                &witness_i.r_w,
-            )
-            .unwrap();
-            let instance_i = CommittedInstance::<Projective> {
+            let phi_i =
+                Pedersen::<C>::commit(&pedersen_params, &witness_i.w, &witness_i.r_w).unwrap();
+            let instance_i = CommittedInstance::<C> {
                 phi: phi_i,
                 betas: vec![],
-                e: Fr::zero(),
+                e: C::ScalarField::zero(),
                 u: u_i,
                 x: x_i,
             };

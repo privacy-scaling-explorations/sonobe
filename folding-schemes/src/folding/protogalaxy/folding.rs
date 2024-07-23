@@ -111,7 +111,9 @@ where
         let F_X: SparsePolynomial<C::ScalarField> =
             calc_f_from_btree(&f_z, &instance.betas, &deltas).expect("Error calculating F[x]");
         let F_X_dense = DensePolynomial::from(F_X.clone());
-        transcript.absorb(&F_X_dense.coeffs);
+        let mut F_coeffs = F_X_dense.coeffs;
+        F_coeffs.resize(t, C::ScalarField::zero());
+        transcript.absorb(&F_coeffs);
 
         let alpha = transcript.get_challenge();
 
@@ -207,7 +209,9 @@ where
             return Err(Error::ProtoGalaxy(ProtoGalaxyError::RemainderNotZero));
         }
 
-        transcript.absorb(&K_X.coeffs);
+        let mut K_coeffs = K_X.coeffs.clone();
+        K_coeffs.resize(d * k + 1, C::ScalarField::zero());
+        transcript.absorb(&K_coeffs);
 
         let gamma = transcript.get_challenge();
 
@@ -249,8 +253,8 @@ where
                 w: w_star,
                 r_w: r_w_star,
             },
-            F_X_dense.coeffs,
-            K_X.coeffs,
+            F_coeffs,
+            K_coeffs,
             L_X_evals,
             phi_stars,
         ))
@@ -291,6 +295,8 @@ where
 
         let betas_star = betas_star(&instance.betas, &deltas, alpha);
 
+        transcript.absorb(&K_coeffs);
+
         let k = vec_instances.len();
         let H =
             GeneralEvaluationDomain::<C::ScalarField>::new(k + 1).ok_or(Error::NewDomainFail)?;
@@ -298,8 +304,6 @@ where
         let Z_X: DensePolynomial<C::ScalarField> = H.vanishing_polynomial().into();
         let K_X: DensePolynomial<C::ScalarField> =
             DensePolynomial::<C::ScalarField>::from_coefficients_vec(K_coeffs);
-
-        transcript.absorb(&K_X.coeffs);
 
         let gamma = transcript.get_challenge();
 

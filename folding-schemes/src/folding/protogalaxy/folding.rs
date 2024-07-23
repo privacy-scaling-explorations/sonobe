@@ -7,7 +7,7 @@ use ark_poly::{
     DenseUVPolynomial, EvaluationDomain, Evaluations, GeneralEvaluationDomain, Polynomial,
 };
 use ark_std::{cfg_into_iter, log2, Zero};
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use rayon::prelude::*;
 use std::marker::PhantomData;
 
 use super::utils::{all_powers, betas_star, exponential_powers};
@@ -172,26 +172,19 @@ where
             // each iteration evaluates G(h)
             // inner = L_0(x) * z + \sum_k L_i(x) * z_j
             let mut inner: Vec<C::ScalarField> = vec![C::ScalarField::zero(); zs[0].len()];
-            for (i, z) in zs.iter().enumerate() {
+            for (z, L) in zs.iter().zip(&L_X) {
                 // Li_z_h = (Li(X)*zj)(h) = Li(h) * zj
-                let mut Liz_h: Vec<C::ScalarField> = vec![C::ScalarField::zero(); z.len()];
+                let Lh = L.evaluate(&h);
                 for (j, zj) in z.iter().enumerate() {
-                    Liz_h[j] = (&L_X[i] * *zj).evaluate(&h);
-                }
-
-                for j in 0..inner.len() {
-                    inner[j] += Liz_h[j];
+                    inner[j] += Lh * zj;
                 }
             }
             let f_ev = eval_f(r1cs, &inner)?;
 
-            let mut Gsum = C::ScalarField::zero();
-            for (i, f_ev_i) in f_ev.iter().enumerate() {
-                let pow_i_betas = pow_i(i, &betas_star);
-                let curr = pow_i_betas * f_ev_i;
-                Gsum += curr;
-            }
-            G_evals[hi] = Gsum;
+            G_evals[hi] = cfg_into_iter!(f_ev)
+                .enumerate()
+                .map(|(i, f_ev_i)| pow_i(i, &betas_star) * f_ev_i)
+                .sum();
         }
         let G_X: DensePolynomial<C::ScalarField> =
             Evaluations::<C::ScalarField>::from_vec_and_domain(G_evals, G_domain).interpolate();

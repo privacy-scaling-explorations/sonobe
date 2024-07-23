@@ -21,7 +21,6 @@ use circuits::AugmentedFCircuit;
 use lcccs::LCCCS;
 use nimfs::NIMFS;
 
-use crate::commitment::CommitmentScheme;
 use crate::constants::NOVA_N_BITS_RO;
 use crate::folding::circuits::{
     cyclefold::{
@@ -30,10 +29,11 @@ use crate::folding::circuits::{
     },
     CF2,
 };
-use crate::folding::nova::{get_r1cs_from_cs, traits::NovaR1CS, PreprocessorParam};
+use crate::folding::nova::{get_r1cs_from_cs, PreprocessorParam};
 use crate::frontend::FCircuit;
 use crate::utils::{get_cm_coordinates, pp_hash};
 use crate::Error;
+use crate::{arith::r1cs::RelaxedR1CS, commitment::CommitmentScheme};
 use crate::{
     arith::{
         ccs::CCS,
@@ -884,8 +884,7 @@ where
         u_i.check_relation(&vp.ccs, &w_i)?;
 
         // check CycleFold's RelaxedR1CS satisfiability
-        vp.cf_r1cs
-            .check_relaxed_instance_relation(&cf_W_i, &cf_U_i)?;
+        vp.cf_r1cs.check_relaxed_relation(&cf_W_i, &cf_U_i)?;
 
         Ok(())
     }

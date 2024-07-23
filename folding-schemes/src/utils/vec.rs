@@ -82,7 +82,7 @@ pub fn vec_add<F: PrimeField>(a: &[F], b: &[F]) -> Result<Vec<F>, Error> {
             b.len(),
         ));
     }
-    Ok(a.iter().zip(b.iter()).map(|(x, y)| *x + y).collect())
+    Ok(cfg_iter!(a).zip(b).map(|(x, y)| *x + y).collect())
 }
 
 pub fn vec_sub<F: PrimeField>(a: &[F], b: &[F]) -> Result<Vec<F>, Error> {
@@ -94,15 +94,15 @@ pub fn vec_sub<F: PrimeField>(a: &[F], b: &[F]) -> Result<Vec<F>, Error> {
             b.len(),
         ));
     }
-    Ok(a.iter().zip(b.iter()).map(|(x, y)| *x - y).collect())
+    Ok(cfg_iter!(a).zip(b).map(|(x, y)| *x - y).collect())
 }
 
 pub fn vec_scalar_mul<F: PrimeField>(vec: &[F], c: &F) -> Vec<F> {
-    vec.iter().map(|a| *a * c).collect()
+    cfg_iter!(vec).map(|a| *a * c).collect()
 }
 
 pub fn is_zero_vec<F: PrimeField>(vec: &[F]) -> bool {
-    vec.iter().all(|a| a.is_zero())
+    cfg_iter!(vec).all(|a| a.is_zero())
 }
 
 pub fn mat_vec_mul_dense<F: PrimeField>(M: &[Vec<F>], z: &[F]) -> Result<Vec<F>, Error> {
@@ -118,13 +118,9 @@ pub fn mat_vec_mul_dense<F: PrimeField>(M: &[Vec<F>], z: &[F]) -> Result<Vec<F>,
         ));
     }
 
-    let mut r: Vec<F> = vec![F::zero(); M.len()];
-    for (i, M_i) in M.iter().enumerate() {
-        for (j, M_ij) in M_i.iter().enumerate() {
-            r[i] += *M_ij * z[j];
-        }
-    }
-    Ok(r)
+    Ok(cfg_iter!(M)
+        .map(|row| row.iter().zip(z).map(|(a, b)| *a * b).sum())
+        .collect())
 }
 
 pub fn mat_vec_mul<F: PrimeField>(M: &SparseMatrix<F>, z: &[F]) -> Result<Vec<F>, Error> {
@@ -136,13 +132,9 @@ pub fn mat_vec_mul<F: PrimeField>(M: &SparseMatrix<F>, z: &[F]) -> Result<Vec<F>
             z.len(),
         ));
     }
-    let mut res = vec![F::zero(); M.n_rows];
-    for (row_i, row) in M.coeffs.iter().enumerate() {
-        for &(value, col_i) in row.iter() {
-            res[row_i] += value * z[col_i];
-        }
-    }
-    Ok(res)
+    Ok(cfg_iter!(M.coeffs)
+        .map(|row| row.iter().map(|(value, col_i)| *value * z[*col_i]).sum())
+        .collect())
 }
 
 pub fn mat_from_str_mat<F: PrimeField>(str_mat: Vec<Vec<&str>>) -> Result<Vec<Vec<F>>, Error> {

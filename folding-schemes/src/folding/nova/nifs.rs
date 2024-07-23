@@ -210,10 +210,12 @@ pub mod tests {
     use ark_pallas::{Fr, Projective};
     use ark_std::{ops::Mul, test_rng, UniformRand};
 
-    use crate::arith::r1cs::tests::{get_test_r1cs, get_test_z};
+    use crate::arith::r1cs::{
+        tests::{get_test_r1cs, get_test_z},
+        RelaxedR1CS,
+    };
     use crate::commitment::pedersen::{Params as PedersenParams, Pedersen};
     use crate::folding::nova::circuits::ChallengeGadget;
-    use crate::folding::nova::traits::NovaR1CS;
     use crate::transcript::poseidon::poseidon_canonical_config;
 
     #[allow(clippy::type_complexity)]
@@ -316,8 +318,8 @@ pub mod tests {
         let u_i = u_dummy.clone();
         let W_i = w_dummy.clone();
         let U_i = u_dummy.clone();
-        r1cs.check_relaxed_instance_relation(&w_i, &u_i).unwrap();
-        r1cs.check_relaxed_instance_relation(&W_i, &U_i).unwrap();
+        r1cs.check_relaxed_relation(&w_i, &u_i).unwrap();
+        r1cs.check_relaxed_relation(&W_i, &U_i).unwrap();
 
         let r_Fr = Fr::from(3_u32);
 
@@ -334,7 +336,7 @@ pub mod tests {
             r_Fr, &w_i, &u_i, &W_i, &U_i, &T, cmT,
         )
         .unwrap();
-        r1cs.check_relaxed_instance_relation(&W_i1, &U_i1).unwrap();
+        r1cs.check_relaxed_relation(&W_i1, &U_i1).unwrap();
     }
 
     // fold 2 instances into one
@@ -348,9 +350,9 @@ pub mod tests {
         assert_eq!(ci3_v, ci3);
 
         // check that relations hold for the 2 inputted instances and the folded one
-        r1cs.check_relaxed_instance_relation(&w1, &ci1).unwrap();
-        r1cs.check_relaxed_instance_relation(&w2, &ci2).unwrap();
-        r1cs.check_relaxed_instance_relation(&w3, &ci3).unwrap();
+        r1cs.check_relaxed_relation(&w1, &ci1).unwrap();
+        r1cs.check_relaxed_relation(&w2, &ci2).unwrap();
+        r1cs.check_relaxed_relation(&w3, &ci3).unwrap();
 
         // check that folded commitments from folded instance (ci) are equal to folding the
         // use folded rE, rW to commit w3
@@ -425,7 +427,7 @@ pub mod tests {
             .commit::<Pedersen<Projective>, false>(&pedersen_params, x)
             .unwrap();
 
-        r1cs.check_relaxed_instance_relation(&running_instance_w, &running_committed_instance)
+        r1cs.check_relaxed_relation(&running_instance_w, &running_committed_instance)
             .unwrap();
 
         let num_iters = 10;
@@ -438,11 +440,8 @@ pub mod tests {
             let incoming_committed_instance = incoming_instance_w
                 .commit::<Pedersen<Projective>, false>(&pedersen_params, x)
                 .unwrap();
-            r1cs.check_relaxed_instance_relation(
-                &incoming_instance_w,
-                &incoming_committed_instance,
-            )
-            .unwrap();
+            r1cs.check_relaxed_relation(&incoming_instance_w, &incoming_committed_instance)
+                .unwrap();
 
             let r = Fr::rand(&mut rng); // folding challenge would come from the RO
 
@@ -475,7 +474,7 @@ pub mod tests {
                 &cmT,
             );
 
-            r1cs.check_relaxed_instance_relation(&folded_w, &folded_committed_instance)
+            r1cs.check_relaxed_relation(&folded_w, &folded_committed_instance)
                 .unwrap();
 
             // set running_instance for next loop iteration

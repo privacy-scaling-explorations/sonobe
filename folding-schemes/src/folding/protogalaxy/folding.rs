@@ -64,20 +64,26 @@ where
         let d = 2; // for the moment hardcoded to 2 since it only supports R1CS
         let k = vec_instances.len();
         let t = instance.betas.len();
-        let n = r1cs.A.n_cols;
+        let m = r1cs.A.n_cols;
+        let n = r1cs.A.n_rows;
 
         let z = [vec![instance.u], instance.x.clone(), w.w.clone()].concat();
 
-        if z.len() != n {
+        if z.len() != m {
             return Err(Error::NotSameLength(
                 "z.len()".to_string(),
                 z.len(),
-                "n".to_string(),
-                n,
+                "number of variables in R1CS".to_string(), // hardcoded to R1CS
+                m,
             ));
         }
         if log2(n) as usize != t {
-            return Err(Error::NotEqual);
+            return Err(Error::NotSameLength(
+                "log2(number of constraints in R1CS)".to_string(),
+                log2(n) as usize,
+                "instance.betas.len()".to_string(),
+                t,
+            ));
         }
         if !(k + 1).is_power_of_two() {
             return Err(Error::ProtoGalaxy(ProtoGalaxyError::WrongNumInstances(k)));
@@ -90,7 +96,16 @@ where
         let delta = transcript.get_challenge();
         let deltas = exponential_powers(delta, t);
 
-        let f_z = eval_f(r1cs, &z)?;
+        let mut f_z = eval_f(r1cs, &z)?;
+        if f_z.len() != n {
+            return Err(Error::NotSameLength(
+                "number of constraints in R1CS".to_string(),
+                n,
+                "f_z.len()".to_string(),
+                f_z.len(),
+            ));
+        }
+        f_z.resize(1 << t, C::ScalarField::zero());
 
         // F(X)
         let F_X: SparsePolynomial<C::ScalarField> =
@@ -128,12 +143,12 @@ where
                     .zip(vec_instances)
                     .map(|(wj, uj)| {
                         let zj = [vec![uj.u], uj.x.clone(), wj.w.clone()].concat();
-                        if zj.len() != n {
+                        if zj.len() != m {
                             return Err(Error::NotSameLength(
                                 "zj.len()".to_string(),
                                 zj.len(),
-                                "n".to_string(),
-                                n,
+                                "number of variables in R1CS".to_string(),
+                                m,
                             ));
                         }
                         Ok(zj)
@@ -266,7 +281,7 @@ where
         transcript.absorb(&F_coeffs);
 
         let alpha = transcript.get_challenge();
-        let alphas = all_powers(alpha, n);
+        let alphas = all_powers(alpha, t);
 
         // F(alpha) = e + \sum_t F_i * alpha^i
         let mut F_alpha = instance.e;
@@ -430,12 +445,21 @@ pub mod tests {
     ) -> Result<(), Error> {
         let z = [vec![instance.u], instance.x.clone(), w.w.clone()].concat();
 
-        if instance.betas.len() != log2(z.len()) as usize {
+        if instance.betas.len() != log2(r1cs.A.n_rows) as usize {
             return Err(Error::NotSameLength(
                 "instance.betas.len()".to_string(),
                 instance.betas.len(),
-                "log2(z.len())".to_string(),
-                log2(z.len()) as usize,
+                "log2(number of constraints in R1CS)".to_string(),
+                log2(r1cs.A.n_rows) as usize,
+            ));
+        }
+
+        if z.len() != r1cs.A.n_cols {
+            return Err(Error::NotSameLength(
+                "z.len()".to_string(),
+                z.len(),
+                "number of variables in R1CS".to_string(),
+                r1cs.A.n_cols,
             ));
         }
 
@@ -496,8 +520,7 @@ pub mod tests {
 
         let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, w.len()).unwrap();
 
-        let n = 1 + x.len() + w.len();
-        let t = log2(n) as usize;
+        let t = log2(get_test_r1cs::<Fr>().A.n_rows) as usize;
 
         let beta = Fr::rand(&mut rng);
         let betas = exponential_powers(beta, t);

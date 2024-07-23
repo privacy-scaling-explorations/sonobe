@@ -6,7 +6,7 @@ use ark_poly::{
     univariate::{DensePolynomial, SparsePolynomial},
     DenseUVPolynomial, EvaluationDomain, Evaluations, GeneralEvaluationDomain, Polynomial,
 };
-use ark_std::{cfg_into_iter, log2, Zero};
+use ark_std::{cfg_into_iter, log2, One, Zero};
 use rayon::prelude::*;
 use std::marker::PhantomData;
 
@@ -67,7 +67,7 @@ where
         let m = r1cs.A.n_cols;
         let n = r1cs.A.n_rows;
 
-        let z = [vec![instance.u], instance.x.clone(), w.w.clone()].concat();
+        let z = [vec![C::ScalarField::one()], instance.x.clone(), w.w.clone()].concat();
 
         if z.len() != m {
             return Err(Error::NotSameLength(
@@ -132,7 +132,6 @@ where
                 phi: instance.phi,
                 betas: betas_star.clone(),
                 e: F_alpha,
-                u: instance.u,
                 x: instance.x.clone(),
             },
             w,
@@ -144,7 +143,7 @@ where
                     .iter()
                     .zip(vec_instances)
                     .map(|(wj, uj)| {
-                        let zj = [vec![uj.u], uj.x.clone(), wj.w.clone()].concat();
+                        let zj = [vec![C::ScalarField::one()], uj.x.clone(), wj.w.clone()].concat();
                         if zj.len() != m {
                             return Err(Error::NotSameLength(
                                 "zj.len()".to_string(),
@@ -220,14 +219,12 @@ where
         let mut w_star = vec_scalar_mul(&w.w, &L_X_evals[0]);
         let mut r_w_star = w.r_w * L_X_evals[0];
         let mut phi_star = instance.phi * L_X_evals[0];
-        let mut u_star = instance.u * L_X_evals[0];
         let mut x_star = vec_scalar_mul(&instance.x, &L_X_evals[0]);
         for i in 0..k {
             w_star = vec_add(&w_star, &vec_scalar_mul(&vec_w[i].w, &L_X_evals[i + 1]))?;
             r_w_star += vec_w[i].r_w * L_X_evals[i + 1];
             phi_stars.push(phi_star); // Push before updating. We don't need the last one
             phi_star += vec_instances[i].phi * L_X_evals[i + 1];
-            u_star += vec_instances[i].u * L_X_evals[i + 1];
             x_star = vec_add(
                 &x_star,
                 &vec_scalar_mul(&vec_instances[i].x, &L_X_evals[i + 1]),
@@ -239,7 +236,6 @@ where
                 betas: betas_star,
                 phi: phi_star,
                 e: e_star,
-                u: u_star,
                 x: x_star,
             },
             Witness {
@@ -307,11 +303,9 @@ where
         let e_star = F_alpha * L_X_evals[0] + Z_X.evaluate(&gamma) * K_X.evaluate(&gamma);
 
         let mut phi_star = instance.phi * L_X_evals[0];
-        let mut u_star = instance.u * L_X_evals[0];
         let mut x_star = vec_scalar_mul(&instance.x, &L_X_evals[0]);
         for i in 0..k {
             phi_star += vec_instances[i].phi * L_X_evals[i + 1];
-            u_star += vec_instances[i].u * L_X_evals[i + 1];
             x_star = vec_add(
                 &x_star,
                 &vec_scalar_mul(&vec_instances[i].x, &L_X_evals[i + 1]),
@@ -323,7 +317,6 @@ where
             betas: betas_star,
             phi: phi_star,
             e: e_star,
-            u: u_star,
             x: x_star,
         })
     }
@@ -428,7 +421,7 @@ pub mod tests {
         instance: &CommittedInstance<C>,
         w: &Witness<C::ScalarField>,
     ) -> Result<(), Error> {
-        let z = [vec![instance.u], instance.x.clone(), w.w.clone()].concat();
+    let z = [vec![C::ScalarField::one()], instance.x.clone(), w.w.clone()].concat();
 
         if instance.betas.len() != log2(r1cs.A.n_rows) as usize {
             return Err(Error::NotSameLength(
@@ -505,7 +498,6 @@ pub mod tests {
             phi,
             betas: betas.clone(),
             e: C::ScalarField::zero(),
-            u,
             x,
         };
         // same for the other instances
@@ -524,7 +516,6 @@ pub mod tests {
                 phi: phi_i,
                 betas: vec![],
                 e: C::ScalarField::zero(),
-                u: u_i,
                 x: x_i,
             };
             witnesses.push(witness_i);

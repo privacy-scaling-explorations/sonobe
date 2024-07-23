@@ -22,7 +22,6 @@ where
             .to_sponge_field_elements(dest);
         self.betas.to_sponge_field_elements(dest);
         self.e.to_sponge_field_elements(dest);
-        self.u.to_sponge_field_elements(dest);
         self.x.to_sponge_field_elements(dest);
     }
 }
@@ -38,7 +37,6 @@ impl<C: CurveGroup> AbsorbGadget<C::ScalarField> for CommittedInstanceVar<C> {
             self.phi.to_constraint_field()?,
             self.betas.to_sponge_field_elements()?,
             self.e.to_sponge_field_elements()?,
-            self.u.to_sponge_field_elements()?,
             self.x.to_sponge_field_elements()?,
         ]
         .concat())

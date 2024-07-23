@@ -899,7 +899,7 @@ mod tests {
 
     use super::*;
     use crate::commitment::pedersen::Pedersen;
-    use crate::frontend::tests::CubicFCircuit;
+    use crate::frontend::utils::CubicFCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
 
     #[test]

@@ -342,7 +342,7 @@ pub mod tests {
     use crate::folding::nova::{
         PreprocessorParam, ProverParams as NovaProverParams, VerifierParams as NovaVerifierParams,
     };
-    use crate::frontend::tests::CubicFCircuit;
+    use crate::frontend::utils::CubicFCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
 
     #[test]

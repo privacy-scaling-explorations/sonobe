@@ -606,7 +606,7 @@ pub mod tests {
     };
     use crate::commitment::pedersen::Pedersen;
     use crate::folding::nova::PreprocessorParam;
-    use crate::frontend::tests::{CubicFCircuit, CustomFCircuit, WrapperCircuit};
+    use crate::frontend::utils::{CubicFCircuit, CustomFCircuit, WrapperCircuit};
     use crate::transcript::poseidon::poseidon_canonical_config;
     use crate::FoldingScheme;
 

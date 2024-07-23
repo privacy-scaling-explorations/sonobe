@@ -258,7 +258,7 @@ pub mod tests {
 
         // Allocates z_i1 by using step_native function.
         let z_i = vec![Fr::from(3_u32)];
-        let wrapper_circuit = crate::frontend::tests::WrapperCircuit {
+        let wrapper_circuit = crate::frontend::utils::WrapperCircuit {
             FC: circom_fcircuit.clone(),
             z_i: Some(z_i.clone()),
             z_i1: Some(circom_fcircuit.step_native(0, z_i.clone(), vec![]).unwrap()),
@@ -367,7 +367,7 @@ pub mod tests {
 
         // Allocates z_i1 by using step_native function.
         let z_i = vec![Fr::from(3_u32)];
-        let wrapper_circuit = crate::frontend::tests::WrapperCircuit {
+        let wrapper_circuit = crate::frontend::utils::WrapperCircuit {
             FC: circom_fcircuit.clone(),
             z_i: Some(z_i.clone()),
             z_i1: Some(circom_fcircuit.step_native(0, z_i.clone(), vec![]).unwrap()),

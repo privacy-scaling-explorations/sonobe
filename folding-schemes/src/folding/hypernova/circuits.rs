@@ -901,7 +901,7 @@ mod tests {
                 HyperNovaCycleFoldCircuit,
             },
         },
-        frontend::tests::CubicFCircuit,
+        frontend::utils::CubicFCircuit,
         transcript::poseidon::poseidon_canonical_config,
         utils::get_cm_coordinates,
     };

@@ -549,8 +549,9 @@ where
         let pp_hash = vp.pp_hash()?;
 
         // setup the dummy instances
-        let (w_dummy, u_dummy) = r1cs.dummy_instance();
-        let (cf_w_dummy, cf_u_dummy) = cf_r1cs.dummy_instance();
+        let (W_dummy, U_dummy) = r1cs.dummy_running_instance();
+        let (w_dummy, u_dummy) = r1cs.dummy_incoming_instance();
+        let (cf_W_dummy, cf_U_dummy) = cf_r1cs.dummy_running_instance();
 
         // W_dummy=W_0 is a 'dummy witness', all zeroes, but with the size corresponding to the
         // R1CS that we're working with.
@@ -568,13 +569,13 @@ where
             i: C1::ScalarField::zero(),
             z_0: z_0.clone(),
             z_i: z_0,
-            w_i: w_dummy.clone(),
-            u_i: u_dummy.clone(),
-            W_i: w_dummy,
-            U_i: u_dummy,
+            w_i: w_dummy,
+            u_i: u_dummy,
+            W_i: W_dummy,
+            U_i: U_dummy,
             // cyclefold running instance
-            cf_W_i: cf_w_dummy.clone(),
-            cf_U_i: cf_u_dummy.clone(),
+            cf_W_i: cf_W_dummy,
+            cf_U_i: cf_U_dummy,
         })
     }
 

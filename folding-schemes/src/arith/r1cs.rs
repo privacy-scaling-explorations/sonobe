@@ -22,6 +22,15 @@ pub struct R1CS<F: PrimeField> {
 
 impl<F: PrimeField> Arith<F> for R1CS<F> {
     fn eval_relation(&self, z: &[F]) -> Result<Vec<F>, Error> {
+        if z.len() != self.A.n_cols {
+            return Err(Error::NotSameLength(
+                "z.len()".to_string(),
+                z.len(),
+                "number of variables in R1CS".to_string(),
+                self.A.n_cols,
+            ));
+        }
+
         let Az = mat_vec_mul(&self.A, z)?;
         let Bz = mat_vec_mul(&self.B, z)?;
         let Cz = mat_vec_mul(&self.C, z)?;
@@ -67,8 +76,11 @@ impl<F: PrimeField> R1CS<F> {
 }
 
 pub trait RelaxedR1CS<F: PrimeField, W, U>: Arith<F> {
-    /// returns a dummy instance (Witness and CommittedInstance) for the current R1CS structure
-    fn dummy_instance(&self) -> (W, U);
+    /// returns a dummy running instance (Witness and CommittedInstance) for the current R1CS structure
+    fn dummy_running_instance(&self) -> (W, U);
+
+    /// returns a dummy incoming instance (Witness and CommittedInstance) for the current R1CS structure
+    fn dummy_incoming_instance(&self) -> (W, U);
 
     /// checks if the given instance is relaxed
     fn is_relaxed(w: &W, u: &U) -> bool;

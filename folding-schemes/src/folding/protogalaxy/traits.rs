@@ -3,9 +3,15 @@ use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_r1cs_std::{fields::fp::FpVar, uint8::UInt8, ToConstraintFieldGadget};
 use ark_relations::r1cs::SynthesisError;
+use ark_std::{cfg_iter, log2, One, Zero};
+use rayon::prelude::*;
 
-use super::{CommittedInstance, CommittedInstanceVar};
-use crate::transcript::AbsorbNonNative;
+use super::{folding::pow_i, CommittedInstance, CommittedInstanceVar, Witness};
+use crate::{
+    arith::r1cs::{RelaxedR1CS, R1CS},
+    transcript::AbsorbNonNative,
+    Error,
+};
 
 // Implements the trait for absorbing ProtoGalaxy's CommittedInstance.
 impl<C: CurveGroup> Absorb for CommittedInstance<C>
@@ -40,5 +46,56 @@ impl<C: CurveGroup> AbsorbGadget<C::ScalarField> for CommittedInstanceVar<C> {
             self.x.to_sponge_field_elements()?,
         ]
         .concat())
+    }
+}
+
+impl<C: CurveGroup> RelaxedR1CS<C::ScalarField, Witness<C::ScalarField>, CommittedInstance<C>>
+    for R1CS<C::ScalarField>
+{
+    fn dummy_running_instance(&self) -> (Witness<C::ScalarField>, CommittedInstance<C>) {
+        let w_len = self.A.n_cols - 1 - self.l;
+        let w_dummy = Witness::new(vec![C::ScalarField::zero(); w_len]);
+        let u_dummy = CommittedInstance::<C>::dummy_running(self.l, log2(self.A.n_rows) as usize);
+        (w_dummy, u_dummy)
+    }
+
+    fn dummy_incoming_instance(&self) -> (Witness<C::ScalarField>, CommittedInstance<C>) {
+        let w_len = self.A.n_cols - 1 - self.l;
+        let w_dummy = Witness::new(vec![C::ScalarField::zero(); w_len]);
+        let u_dummy = CommittedInstance::<C>::dummy_incoming(self.l);
+        (w_dummy, u_dummy)
+    }
+
+    fn is_relaxed(_w: &Witness<C::ScalarField>, u: &CommittedInstance<C>) -> bool {
+        u.e != C::ScalarField::zero() || !u.betas.is_empty()
+    }
+
+    fn extract_z(w: &Witness<C::ScalarField>, u: &CommittedInstance<C>) -> Vec<C::ScalarField> {
+        [&[C::ScalarField::one()][..], &u.x, &w.w].concat()
+    }
+
+    fn check_error_terms(
+        _w: &Witness<C::ScalarField>,
+        u: &CommittedInstance<C>,
+        e: Vec<C::ScalarField>,
+    ) -> Result<(), Error> {
+        if u.betas.len() != log2(e.len()) as usize {
+            return Err(Error::NotSameLength(
+                "instance.betas.len()".to_string(),
+                u.betas.len(),
+                "log2(e.len())".to_string(),
+                log2(e.len()) as usize,
+            ));
+        }
+
+        let r = cfg_iter!(e)
+            .enumerate()
+            .map(|(i, e_i)| pow_i(i, &u.betas) * e_i)
+            .sum();
+        if u.e == r {
+            Ok(())
+        } else {
+            Err(Error::NotSatisfied)
+        }
     }
 }

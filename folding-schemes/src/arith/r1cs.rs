@@ -21,16 +21,12 @@ pub struct R1CS<F: PrimeField> {
 }
 
 impl<F: PrimeField> Arith<F> for R1CS<F> {
-    /// check that a R1CS structure is satisfied by a z vector. Only for testing.
-    fn check_relation(&self, z: &[F]) -> Result<(), Error> {
+    fn eval_relation(&self, z: &[F]) -> Result<Vec<F>, Error> {
         let Az = mat_vec_mul(&self.A, z)?;
         let Bz = mat_vec_mul(&self.B, z)?;
         let Cz = mat_vec_mul(&self.C, z)?;
         let AzBz = hadamard(&Az, &Bz)?;
-        if AzBz != Cz {
-            return Err(Error::NotSatisfied);
-        }
-        Ok(())
+        vec_sub(&AzBz, &Cz)
     }
 
     fn params_to_le_bytes(&self) -> Vec<u8> {
@@ -231,7 +227,10 @@ pub mod tests {
     use super::*;
     use crate::{
         commitment::pedersen::Pedersen,
-        utils::vec::tests::{to_F_matrix, to_F_vec},
+        utils::vec::{
+            is_zero_vec,
+            tests::{to_F_matrix, to_F_vec},
+        },
     };
 
     use ark_pallas::{Fr, Projective};
@@ -302,7 +301,21 @@ pub mod tests {
     }
 
     #[test]
-    fn test_check_relation() {
+    fn test_eval_r1cs_relation() {
+        let mut rng = ark_std::test_rng();
+        let r1cs = get_test_r1cs::<Fr>();
+        let mut z = get_test_z::<Fr>(rng.gen::<u16>() as usize);
+
+        let f_w = r1cs.eval_relation(&z).unwrap();
+        assert!(is_zero_vec(&f_w));
+
+        z[1] = Fr::from(111);
+        let f_w = r1cs.eval_relation(&z).unwrap();
+        assert!(!is_zero_vec(&f_w));
+    }
+
+    #[test]
+    fn test_check_r1cs_relation() {
         let r1cs = get_test_r1cs::<Fr>();
         let z = get_test_z(5);
         r1cs.check_relation(&z).unwrap();

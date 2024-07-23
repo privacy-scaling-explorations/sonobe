@@ -907,7 +907,7 @@ mod tests {
     use crate::{
         arith::{
             ccs::tests::{get_test_ccs, get_test_z},
-            r1cs::extract_w_x,
+            r1cs::{extract_w_x, RelaxedR1CS},
         },
         commitment::{pedersen::Pedersen, CommitmentScheme},
         folding::{
@@ -916,7 +916,6 @@ mod tests {
                 utils::{compute_c, compute_sigmas_thetas},
                 HyperNovaCycleFoldCircuit,
             },
-            nova::traits::NovaR1CS,
         },
         frontend::tests::CubicFCircuit,
         transcript::poseidon::poseidon_canonical_config,
@@ -1486,9 +1485,7 @@ mod tests {
             u_i.check_relation(&ccs, &w_i).unwrap();
 
             // check the CycleFold instance relation
-            cf_r1cs
-                .check_relaxed_instance_relation(&cf_W_i, &cf_U_i)
-                .unwrap();
+            cf_r1cs.check_relaxed_relation(&cf_W_i, &cf_U_i).unwrap();
 
             println!("augmented_f_circuit step {}: {:?}", i, start.elapsed());
         }

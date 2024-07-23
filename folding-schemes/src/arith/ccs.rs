@@ -105,7 +105,10 @@ impl<F: PrimeField> CCS<F> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::{arith::r1cs::tests::{get_test_r1cs, get_test_z as r1cs_get_test_z}, utils::vec::is_zero_vec};
+    use crate::{
+        arith::r1cs::tests::{get_test_r1cs, get_test_z as r1cs_get_test_z},
+        utils::vec::is_zero_vec,
+    };
     use ark_pallas::Fr;
 
     pub fn get_test_ccs<F: PrimeField>() -> CCS<F> {

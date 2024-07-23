@@ -12,7 +12,7 @@ pub trait Arith<F: PrimeField> {
 
     /// Checks that the given Arith structure is satisfied by a z vector, i.e.,
     /// if the evaluation is a zero vector
-    /// 
+    ///
     /// Used only for testing.
     fn check_relation(&self, z: &[F]) -> Result<(), Error> {
         if self.eval_relation(z)?.iter().all(|f| f.is_zero()) {

@@ -147,7 +147,6 @@ mod tests {
 
         let folded_instance = Folding::<Projective>::verify(
             &mut transcript_v,
-            &r1cs,
             &instance,
             &instances,
             F_coeffs.clone(),

@@ -22,7 +22,6 @@ pub struct CommittedInstance<C: CurveGroup> {
     phi: C,
     betas: Vec<C::ScalarField>,
     e: C::ScalarField,
-    u: C::ScalarField,
     x: Vec<C::ScalarField>,
 }
 
@@ -31,7 +30,6 @@ pub struct CommittedInstanceVar<C: CurveGroup> {
     phi: NonNativeAffineVar<C>,
     betas: Vec<FpVar<C::ScalarField>>,
     e: FpVar<C::ScalarField>,
-    u: FpVar<C::ScalarField>,
     x: Vec<FpVar<C::ScalarField>>,
 }
 
@@ -50,7 +48,6 @@ impl<C: CurveGroup> AllocVar<CommittedInstance<C>, C::ScalarField> for Committed
                 phi: NonNativeAffineVar::new_variable(cs.clone(), || Ok(u.phi), mode)?,
                 betas: Vec::new_variable(cs.clone(), || Ok(u.betas.clone()), mode)?,
                 e: FpVar::new_variable(cs.clone(), || Ok(u.e), mode)?,
-                u: FpVar::new_variable(cs.clone(), || Ok(u.u), mode)?,
                 x: Vec::new_variable(cs.clone(), || Ok(u.x.clone()), mode)?,
             })
         })

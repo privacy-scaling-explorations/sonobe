@@ -88,10 +88,8 @@ impl FoldingGadget {
 
         let e_star = F_alpha * &L_X_evals[0] + Z_X.evaluate(&gamma)? * K_X.evaluate(&gamma)?;
 
-        let mut u_star = &instance.u * &L_X_evals[0];
         let mut x_star = instance.x.mul_scalar(&L_X_evals[0])?;
         for i in 0..k {
-            u_star += &vec_instances[i].u * &L_X_evals[i + 1];
             x_star = x_star.add(&vec_instances[i].x.mul_scalar(&L_X_evals[i + 1])?)?;
         }
 
@@ -101,7 +99,6 @@ impl FoldingGadget {
             // phi will be computed in CycleFold
             phi: NonNativeAffineVar::new_constant(ConstraintSystemRef::None, C::zero())?,
             e: e_star,
-            u: u_star,
             x: x_star,
         })
     }
@@ -169,7 +166,6 @@ mod tests {
         )?;
         assert_eq!(folded_instance.betas, folded_instance_var.betas.value()?);
         assert_eq!(folded_instance.e, folded_instance_var.e.value()?);
-        assert_eq!(folded_instance.u, folded_instance_var.u.value()?);
         assert_eq!(folded_instance.x, folded_instance_var.x.value()?);
         assert!(cs.is_satisfied()?);
 

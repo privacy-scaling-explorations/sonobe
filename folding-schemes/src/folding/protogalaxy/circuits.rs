@@ -136,7 +136,7 @@ mod tests {
         let mut transcript_p = PoseidonSponge::new(&poseidon_config);
         let mut transcript_v = PoseidonSponge::new(&poseidon_config);
 
-        let (_, _, F_coeffs, K_coeffs) = Folding::<Projective>::prove(
+        let (_, _, F_coeffs, K_coeffs, _, _) = Folding::<Projective>::prove(
             &mut transcript_p,
             &r1cs,
             &instance,

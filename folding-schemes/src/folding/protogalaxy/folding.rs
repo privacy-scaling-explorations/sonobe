@@ -256,7 +256,6 @@ where
     /// implements the non-interactive Verifier from the folding scheme described in section 4
     pub fn verify(
         transcript: &mut impl Transcript<C::ScalarField>,
-        r1cs: &R1CS<C::ScalarField>,
         // running instance
         instance: &CommittedInstance<C>,
         // incoming instances
@@ -266,7 +265,6 @@ where
         K_coeffs: Vec<C::ScalarField>,
     ) -> Result<CommittedInstance<C>, Error> {
         let t = instance.betas.len();
-        let n = r1cs.A.n_cols;
 
         // absorb the committed instances
         transcript.absorb(instance);
@@ -585,7 +583,6 @@ pub mod tests {
         // verifier
         let folded_instance_v = Folding::<Projective>::verify(
             &mut transcript_v,
-            &r1cs,
             &instance,
             &instances,
             F_coeffs,
@@ -635,7 +632,6 @@ pub mod tests {
             // verifier
             let folded_instance_v = Folding::<Projective>::verify(
                 &mut transcript_v,
-                &r1cs,
                 &running_instance,
                 &instances,
                 F_coeffs,

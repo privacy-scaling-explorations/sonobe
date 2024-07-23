@@ -1,10 +1,12 @@
-use ark_ec::{AffineRepr, CurveGroup};
+use ark_ec::{short_weierstrass::SWFlags, AffineRepr, CurveGroup};
+use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     fields::fp::FpVar,
-    ToConstraintFieldGadget,
+    R1CSVar, ToConstraintFieldGadget,
 };
-use ark_relations::r1cs::{Namespace, SynthesisError};
+use ark_relations::r1cs::{ConstraintSystemRef, Namespace, SynthesisError};
+use ark_serialize::{CanonicalSerialize, CanonicalSerializeWithFlags};
 use ark_std::Zero;
 use core::borrow::Borrow;
 
@@ -42,6 +44,39 @@ where
 
             Ok(Self { x, y })
         })
+    }
+}
+
+impl<C: CurveGroup> R1CSVar<C::ScalarField> for NonNativeAffineVar<C> {
+    type Value = C;
+
+    fn cs(&self) -> ConstraintSystemRef<C::ScalarField> {
+        self.x.cs().or(self.y.cs())
+    }
+
+    fn value(&self) -> Result<Self::Value, SynthesisError> {
+        debug_assert_eq!(C::BaseField::extension_degree(), 1);
+
+        let x = <C::BaseField as Field>::BasePrimeField::from_le_bytes_mod_order(
+            &self.x.value()?.to_bytes_le(),
+        );
+        let y = <C::BaseField as Field>::BasePrimeField::from_le_bytes_mod_order(
+            &self.y.value()?.to_bytes_le(),
+        );
+        let mut bytes = vec![];
+        x.serialize_uncompressed(&mut bytes).unwrap();
+        y.serialize_with_flags(
+            &mut bytes,
+            if x.is_zero() && y.is_zero() {
+                SWFlags::PointAtInfinity
+            } else if y <= -y {
+                SWFlags::YIsPositive
+            } else {
+                SWFlags::YIsNegative
+            },
+        )
+        .unwrap();
+        Ok(C::deserialize_uncompressed_unchecked(&bytes[..]).unwrap())
     }
 }
 
@@ -83,6 +118,10 @@ impl<C: CurveGroup> NonNativeAffineVar<C> {
         let y = NonNativeUintVar::inputize(*y);
         Ok((x, y))
     }
+
+    pub fn zero() -> Self {
+        Self::new_constant(ConstraintSystemRef::None, C::zero()).unwrap()
+    }
 }
 
 impl<C: CurveGroup> AbsorbNonNative<C::ScalarField> for C {
@@ -105,7 +144,6 @@ impl<C: CurveGroup> AbsorbNonNativeGadget<C::ScalarField> for NonNativeAffineVar
 mod tests {
     use super::*;
     use ark_pallas::{Fr, Projective};
-    use ark_r1cs_std::R1CSVar;
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::UniformRand;
 

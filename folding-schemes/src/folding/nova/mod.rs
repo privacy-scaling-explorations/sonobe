@@ -857,7 +857,7 @@ where
             self.cf_r1cs.clone(),
             self.cf_cs_pp.clone(),
             self.pp_hash,
-            cf_W_i.clone(),
+            cf_W_i,
             cf_U_i,
             cf_u_i_x,
             cf_circuit,

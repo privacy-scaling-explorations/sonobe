@@ -45,6 +45,9 @@ jobs:
           - feature: default
     steps:
       - uses: actions/checkout@v2
+      - uses: noir-lang/noirup@v0.1.3
+        with:
+          toolchain: nightly 
       - uses: actions-rs/toolchain@v1
       # use the more efficient nextest
       - uses: taiki-e/install-action@nextest
@@ -61,6 +64,8 @@ jobs:
           chmod +x /usr/local/bin/solc
       - name: Execute compile.sh to generate .r1cs and .wasm from .circom
         run: ./folding-schemes/src/frontend/circom/test_folder/compile.sh
+      - name: Execute compile.sh to generate .json from noir
+        run: ./folding-schemes/src/frontend/noir/test_folder/compile.sh
       - name: Build
         # This build will be reused by nextest,
         # and also checks (--all-targets) that benches don't bit-rot
@@ -79,6 +84,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
+      - uses: noir-lang/noirup@v0.1.3
+        with:
+          toolchain: nightly 
       - name: Download Circom
         run: |
           mkdir -p $HOME/bin
@@ -91,6 +99,8 @@ jobs:
           chmod +x /usr/local/bin/solc
       - name: Execute compile.sh to generate .r1cs and .wasm from .circom
         run: ./folding-schemes/src/frontend/circom/test_folder/compile.sh 
+      - name: Execute compile.sh to generate .json from noir
+        run: ./folding-schemes/src/frontend/noir/test_folder/compile.sh 
       - name: Run examples tests
         run: cargo test --examples
       - name: Run examples

@@ -11,7 +11,7 @@ use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::fmt::Debug;
 use ark_std::rand::RngCore;
-use ark_std::{One, Zero};
+use ark_std::{One, UniformRand, Zero};
 use core::marker::PhantomData;
 
 use crate::commitment::CommitmentScheme;
@@ -460,7 +460,7 @@ where
     /// Implements IVC.P of Nova+CycleFold
     fn prove_step(
         &mut self,
-        _rng: impl RngCore,
+        mut rng: impl RngCore,
         external_inputs: Vec<C1::ScalarField>,
         // Nova does not support multi-instances folding
         _other_instances: Option<Self::MultiCommittedInstanceWithWitness>,
@@ -691,10 +691,20 @@ where
             return Err(Error::NotExpectedLength(x_i1.len(), 2));
         }
 
+        // if hiding, sample new blinding values
+        let (rW, rE) = if H {
+            (
+                C1::ScalarField::rand(&mut rng),
+                C1::ScalarField::rand(&mut rng),
+            )
+        } else {
+            (C1::ScalarField::zero(), C1::ScalarField::zero())
+        };
+
         // set values for next iteration
         self.i += C1::ScalarField::one();
         self.z_i = z_i1;
-        self.w_i = Witness::<C1>::new(w_i1, self.w_i.rW, self.r1cs.A.n_rows, self.w_i.rE);
+        self.w_i = Witness::<C1>::new(w_i1, rW, self.r1cs.A.n_rows, rE);
         self.u_i = self.w_i.commit::<CS1, H>(&self.cs_pp, x_i1)?;
         self.W_i = W_i1;
         self.U_i = U_i1;

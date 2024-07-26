@@ -725,6 +725,7 @@ where
                     self.cf_U_i.clone(), // CycleFold running instance
                     cf_u_i_x,
                     cf_circuit,
+                    &mut rng,
                 )?;
 
             cf_u_i1_x = cf_U_i1.hash_cyclefold(&sponge, self.pp_hash);

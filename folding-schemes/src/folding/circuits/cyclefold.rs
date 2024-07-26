@@ -16,6 +16,7 @@ use ark_relations::r1cs::{
     ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, Namespace, SynthesisError,
 };
 use ark_std::fmt::Debug;
+use ark_std::rand::RngCore;
 use ark_std::Zero;
 use core::{borrow::Borrow, marker::PhantomData};
 
@@ -392,6 +393,7 @@ pub fn fold_cyclefold_circuit<C1, GC1, C2, GC2, FC, CS1, CS2, const H: bool>(
     cf_U_i: CommittedInstance<C2>, // running instance
     cf_u_i_x: Vec<C2::ScalarField>,
     cf_circuit: CycleFoldCircuit<C1, GC1>,
+    mut rng: impl RngCore,
 ) -> Result<
     (
         Witness<C2>,
@@ -432,7 +434,7 @@ where
     assert_eq!(cf_x_i.len(), cf_io_len(_n_points));
 
     // fold cyclefold instances
-    let cf_w_i = Witness::<C2>::new(cf_w_i.clone(), cf_W_i.rW, cf_r1cs.A.n_rows, cf_W_i.rE);
+    let cf_w_i = Witness::<C2>::new::<H>(cf_w_i.clone(), cf_r1cs.A.n_rows, &mut rng);
     let cf_u_i: CommittedInstance<C2> = cf_w_i.commit::<CS2, H>(&cf_cs_params, cf_x_i.clone())?;
 
     // compute T* and cmT* for CycleFoldCircuit

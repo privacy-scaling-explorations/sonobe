@@ -207,7 +207,7 @@ pub mod tests {
     };
     use ark_ff::{BigInteger, PrimeField};
     use ark_pallas::{Fr, Projective};
-    use ark_std::{ops::Mul, UniformRand};
+    use ark_std::{ops::Mul, test_rng, UniformRand};
 
     use crate::arith::r1cs::tests::{get_test_r1cs, get_test_z};
     use crate::commitment::pedersen::{Params as PedersenParams, Pedersen};
@@ -242,18 +242,8 @@ pub mod tests {
         let (w1, x1) = r1cs.split_z(&z1);
         let (w2, x2) = r1cs.split_z(&z2);
 
-        let w1 = Witness::<C>::new(
-            w1.clone(),
-            C::ScalarField::zero(),
-            r1cs.A.n_rows,
-            C::ScalarField::zero(),
-        );
-        let w2 = Witness::<C>::new(
-            w2.clone(),
-            C::ScalarField::zero(),
-            r1cs.A.n_rows,
-            C::ScalarField::zero(),
-        );
+        let w1 = Witness::<C>::new::<false>(w1.clone(), r1cs.A.n_rows, test_rng());
+        let w2 = Witness::<C>::new::<false>(w2.clone(), r1cs.A.n_rows, test_rng());
 
         let mut rng = ark_std::test_rng();
         let (pedersen_params, _) = Pedersen::<C>::setup(&mut rng, r1cs.A.n_cols).unwrap();
@@ -315,11 +305,10 @@ pub mod tests {
         let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, r1cs.A.n_cols).unwrap();
 
         // dummy instance, witness and public inputs zeroes
-        let w_dummy = Witness::<Projective>::new(
+        let w_dummy = Witness::<Projective>::new::<false>(
             vec![Fr::zero(); w1.len()],
-            Fr::zero(),
             r1cs.A.n_rows,
-            Fr::zero(),
+            test_rng(),
         );
         let mut u_dummy = w_dummy
             .commit::<Pedersen<Projective>, false>(&pedersen_params, vec![Fr::zero(); x1.len()])
@@ -434,7 +423,7 @@ pub mod tests {
 
         // prepare the running instance
         let mut running_instance_w =
-            Witness::<Projective>::new(w.clone(), Fr::zero(), r1cs.A.n_rows, Fr::zero());
+            Witness::<Projective>::new::<false>(w.clone(), r1cs.A.n_rows, test_rng());
         let mut running_committed_instance = running_instance_w
             .commit::<Pedersen<Projective>, false>(&pedersen_params, x)
             .unwrap();
@@ -448,7 +437,7 @@ pub mod tests {
             let incoming_instance_z = get_test_z(i + 4);
             let (w, x) = r1cs.split_z(&incoming_instance_z);
             let incoming_instance_w =
-                Witness::<Projective>::new(w.clone(), Fr::zero(), r1cs.A.n_rows, Fr::zero());
+                Witness::<Projective>::new::<false>(w.clone(), r1cs.A.n_rows, test_rng());
             let incoming_committed_instance = incoming_instance_w
                 .commit::<Pedersen<Projective>, false>(&pedersen_params, x)
                 .unwrap();

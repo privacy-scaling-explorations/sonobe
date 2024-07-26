@@ -1393,6 +1393,7 @@ mod tests {
                     cf_U_i.clone(), // CycleFold running instance
                     cf_u_i_x,       // CycleFold incoming instance
                     cf_circuit,
+                    &mut rng,
                 )
                 .unwrap();
 

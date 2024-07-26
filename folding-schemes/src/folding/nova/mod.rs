@@ -166,12 +166,16 @@ impl<C: CurveGroup> Witness<C>
 where
     <C as Group>::ScalarField: Absorb,
 {
-    pub fn new(
-        w: Vec<C::ScalarField>,
-        rW: C::ScalarField,
-        e_len: usize,
-        rE: C::ScalarField,
-    ) -> Self {
+    pub fn new<const H: bool>(w: Vec<C::ScalarField>, e_len: usize, mut rng: impl RngCore) -> Self {
+        let (rW, rE) = if H {
+            (
+                C::ScalarField::rand(&mut rng),
+                C::ScalarField::rand(&mut rng),
+            )
+        } else {
+            (C::ScalarField::zero(), C::ScalarField::zero())
+        };
+
         Self {
             E: vec![C::ScalarField::zero(); e_len],
             rE,
@@ -180,7 +184,7 @@ where
         }
     }
 
-    pub fn commit<CS: CommitmentScheme<C, H>, const H: bool>(
+    pub fn commit<CS: CommitmentScheme<C, HC>, const HC: bool>(
         &self,
         params: &CS::ProverParams,
         x: Vec<C::ScalarField>,
@@ -466,8 +470,9 @@ where
         _other_instances: Option<Self::MultiCommittedInstanceWithWitness>,
     ) -> Result<(), Error> {
         // ensure that commitments are blinding if user has specified so.
-        if H {
-            let blinding_commitments = if self.i == C1::ScalarField::zero() {
+        if H && self.i >= C1::ScalarField::one() {
+            let blinding_commitments = if self.i == C1::ScalarField::one() {
+                // blinding values of the running instances are zero at the first iteration
                 vec![self.w_i.rW, self.w_i.rE]
             } else {
                 vec![self.w_i.rW, self.w_i.rE, self.W_i.rW, self.W_i.rE]
@@ -624,6 +629,7 @@ where
                 self.cf_U_i.clone(), // CycleFold running instance
                 cfW_u_i_x,
                 cfW_circuit,
+                &mut rng,
             )?;
             // fold [the output from folding self.cf_U_i + cfW_U] + cfE_U = folded_running_with_cfW + cfE
             let (_cfE_w_i, cfE_u_i, cf_W_i1, cf_U_i1, cf_cmT, _) = self.fold_cyclefold_circuit(
@@ -632,6 +638,7 @@ where
                 cfW_U_i1.clone(),
                 cfE_u_i_x,
                 cfE_circuit,
+                &mut rng,
             )?;
 
             cf_u_i1_x = cf_U_i1.hash_cyclefold(&sponge, self.pp_hash);
@@ -691,20 +698,10 @@ where
             return Err(Error::NotExpectedLength(x_i1.len(), 2));
         }
 
-        // if hiding, sample new blinding values
-        let (rW, rE) = if H {
-            (
-                C1::ScalarField::rand(&mut rng),
-                C1::ScalarField::rand(&mut rng),
-            )
-        } else {
-            (C1::ScalarField::zero(), C1::ScalarField::zero())
-        };
-
         // set values for next iteration
         self.i += C1::ScalarField::one();
         self.z_i = z_i1;
-        self.w_i = Witness::<C1>::new(w_i1, rW, self.r1cs.A.n_rows, rE);
+        self.w_i = Witness::<C1>::new::<H>(w_i1, self.r1cs.A.n_rows, &mut rng);
         self.u_i = self.w_i.commit::<CS1, H>(&self.cs_pp, x_i1)?;
         self.W_i = W_i1;
         self.U_i = U_i1;
@@ -850,6 +847,7 @@ where
         cf_U_i: CommittedInstance<C2>, // running instance
         cf_u_i_x: Vec<C2::ScalarField>,
         cf_circuit: CycleFoldCircuit<C1, GC1>,
+        rng: &mut impl RngCore,
     ) -> Result<
         (
             Witness<C2>,
@@ -871,6 +869,7 @@ where
             cf_U_i,
             cf_u_i_x,
             cf_circuit,
+            rng,
         )
     }
 }
@@ -944,7 +943,6 @@ pub mod tests {
     use crate::commitment::kzg::KZG;
     use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as Projective};
     use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
-    use ark_std::UniformRand;
 
     use super::*;
     use crate::commitment::pedersen::Pedersen;
@@ -1014,11 +1012,6 @@ pub mod tests {
                 z_0.clone(),
             )
             .unwrap();
-
-        if H {
-            nova.w_i.rW = <Projective as Group>::ScalarField::rand(&mut rng);
-            nova.w_i.rE = <Projective as Group>::ScalarField::rand(&mut rng);
-        }
 
         let num_steps: usize = 3;
         for _ in 0..num_steps {

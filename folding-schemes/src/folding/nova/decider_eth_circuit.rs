@@ -19,7 +19,7 @@ use ark_r1cs_std::{
     ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
-use ark_std::{log2, Zero};
+use ark_std::{log2, test_rng, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::{circuits::ChallengeGadget, nifs::NIFS};
@@ -376,11 +376,10 @@ where
         })?;
 
         let u_dummy_native = CommittedInstance::<C1>::dummy(2);
-        let w_dummy_native = Witness::<C1>::new(
+        let w_dummy_native = Witness::<C1>::new::<false>(
             vec![C1::ScalarField::zero(); self.r1cs.A.n_cols - 3 /* (3=2+1, since u_i.x.len=2) */],
-            C1::ScalarField::zero(),
             self.E_len,
-            C1::ScalarField::zero(),
+            test_rng(),
         );
 
         let u_i = CommittedInstanceVar::<C1>::new_witness(cs.clone(), || {
@@ -455,11 +454,10 @@ where
             use ark_r1cs_std::ToBitsGadget;
 
             let cf_u_dummy_native = CommittedInstance::<C2>::dummy(cf_io_len(NOVA_CF_N_POINTS));
-            let w_dummy_native = Witness::<C2>::new(
+            let w_dummy_native = Witness::<C2>::new::<false>(
                 vec![C2::ScalarField::zero(); self.cf_r1cs.A.n_cols - 1 - self.cf_r1cs.l],
-                C2::ScalarField::zero(),
                 self.cf_E_len,
-                C2::ScalarField::zero(),
+                test_rng(),
             );
             let cf_U_i = CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || {
                 Ok(self.cf_U_i.unwrap_or_else(|| cf_u_dummy_native.clone()))

@@ -184,6 +184,18 @@ where
         }
     }
 
+    pub fn dummy(w_len: usize, e_len: usize) -> Self {
+        let (rW, rE) = (C::ScalarField::zero(), C::ScalarField::zero());
+        let w = vec![C::ScalarField::zero(); w_len];
+
+        Self {
+            E: vec![C::ScalarField::zero(); e_len],
+            rE,
+            W: w,
+            rW,
+        }
+    }
+
     pub fn commit<CS: CommitmentScheme<C, HC>, const HC: bool>(
         &self,
         params: &CS::ProverParams,

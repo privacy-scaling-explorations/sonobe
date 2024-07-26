@@ -34,11 +34,7 @@ where
 {
     fn dummy_instance(&self) -> (Witness<C>, CommittedInstance<C>) {
         let w_len = self.A.n_cols - 1 - self.l;
-        let w_dummy = Witness::<C>::new::<false>(
-            vec![C::ScalarField::zero(); w_len],
-            self.A.n_rows,
-            test_rng(),
-        );
+        let w_dummy = Witness::<C>::dummy(w_len, self.A.n_rows);
         let u_dummy = CommittedInstance::<C>::dummy(self.l);
         (w_dummy, u_dummy)
     }

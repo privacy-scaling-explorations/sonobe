@@ -305,11 +305,7 @@ pub mod tests {
         let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, r1cs.A.n_cols).unwrap();
 
         // dummy instance, witness and public inputs zeroes
-        let w_dummy = Witness::<Projective>::new::<false>(
-            vec![Fr::zero(); w1.len()],
-            r1cs.A.n_rows,
-            test_rng(),
-        );
+        let w_dummy = Witness::<Projective>::dummy(w1.len(), r1cs.A.n_rows);
         let mut u_dummy = w_dummy
             .commit::<Pedersen<Projective>, false>(&pedersen_params, vec![Fr::zero(); x1.len()])
             .unwrap();

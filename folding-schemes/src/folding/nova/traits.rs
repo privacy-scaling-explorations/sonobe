@@ -1,6 +1,6 @@
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{CurveGroup, Group};
-use ark_std::{test_rng, One, Zero};
+use ark_std::One;
 
 use super::{CommittedInstance, Witness};
 use crate::arith::{r1cs::R1CS, Arith};

@@ -19,7 +19,7 @@ use ark_r1cs_std::{
     ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
-use ark_std::{log2, test_rng, Zero};
+use ark_std::{log2, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::{circuits::ChallengeGadget, nifs::NIFS};

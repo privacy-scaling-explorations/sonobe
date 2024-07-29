@@ -81,10 +81,10 @@ where
     for<'b> &'b GC1: GroupOpsBounds<'b, C1, GC1>,
     for<'b> &'b GC2: GroupOpsBounds<'b, C2, GC2>,
     // constrain FS into Nova, since this is a Decider specifically for Nova
-    Nova<C1, GC1, C2, GC2, FC, CS1, CS2>: From<FS>,
-    crate::folding::nova::ProverParams<C1, C2, CS1, CS2>:
+    Nova<C1, GC1, C2, GC2, FC, CS1, CS2, false>: From<FS>,
+    crate::folding::nova::ProverParams<C1, C2, CS1, CS2, false>:
         From<<FS as FoldingScheme<C1, C2, FC>>::ProverParam>,
-    crate::folding::nova::VerifierParams<C1, C2, CS1, CS2>:
+    crate::folding::nova::VerifierParams<C1, C2, CS1, CS2, false>:
         From<<FS as FoldingScheme<C1, C2, FC>>::VerifierParam>,
 {
     type PreprocessorParam = (FS::ProverParam, FS::VerifierParam);
@@ -108,14 +108,17 @@ where
 
         // get the FoldingScheme prover & verifier params from Nova
         #[allow(clippy::type_complexity)]
-        let nova_pp:
-            <Nova<C1, GC1, C2, GC2, FC, CS1, CS2> as FoldingScheme<C1, C2, FC>>::ProverParam =
-                prep_param.0.clone().into()
-            ;
+        let nova_pp: <Nova<C1, GC1, C2, GC2, FC, CS1, CS2, false> as FoldingScheme<
+            C1,
+            C2,
+            FC,
+        >>::ProverParam = prep_param.0.clone().into();
         #[allow(clippy::type_complexity)]
-        let nova_vp:
-            <Nova<C1, GC1, C2, GC2, FC, CS1, CS2> as FoldingScheme<C1, C2, FC>>::VerifierParam =
-                prep_param.1.clone().into();
+        let nova_vp: <Nova<C1, GC1, C2, GC2, FC, CS1, CS2, false> as FoldingScheme<
+            C1,
+            C2,
+            FC,
+        >>::VerifierParam = prep_param.1.clone().into();
         let pp_hash = nova_vp.pp_hash()?;
 
         let pp = (g16_pk, nova_pp.cs_pp);
@@ -338,6 +341,7 @@ pub mod tests {
             CubicFCircuit<Fr>,
             KZG<'static, Bn254>,
             Pedersen<Projective2>,
+            false,
         >;
         type D = Decider<
             Projective,

@@ -64,7 +64,8 @@ fn main() {
     let f_circuit_params = (r1cs_path, wasm_path, 1, 2);
     let f_circuit = CircomFCircuit::<Fr>::new(f_circuit_params).unwrap();
 
-    pub type N = Nova<G1, GVar, G2, GVar2, CircomFCircuit<Fr>, KZG<'static, Bn254>, Pedersen<G2>>;
+    pub type N =
+        Nova<G1, GVar, G2, GVar2, CircomFCircuit<Fr>, KZG<'static, Bn254>, Pedersen<G2>, false>;
     pub type D = DeciderEth<
         G1,
         GVar,

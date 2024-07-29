@@ -30,7 +30,7 @@ pub struct LCCCS<C: CurveGroup> {
 }
 
 impl<F: PrimeField> CCS<F> {
-    pub fn to_lcccs<R: Rng, C: CurveGroup, CS: CommitmentScheme<C>>(
+    pub fn to_lcccs<R: Rng, C: CurveGroup, CS: CommitmentScheme<C, H>, const H: bool>(
         &self,
         rng: &mut R,
         cs_params: &CS::ProverParams,
@@ -221,7 +221,11 @@ pub mod tests {
             Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
 
         let (lcccs, _) = ccs
-            .to_lcccs::<_, Projective, Pedersen<Projective>>(&mut rng, &pedersen_params, &z)
+            .to_lcccs::<_, Projective, Pedersen<Projective, false>, false>(
+                &mut rng,
+                &pedersen_params,
+                &z,
+            )
             .unwrap();
         // with our test vector coming from R1CS, v should have length 3
         assert_eq!(lcccs.v.len(), 3);
@@ -255,7 +259,7 @@ pub mod tests {
             Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
         // Compute v_j with the right z
         let (lcccs, _) = ccs
-            .to_lcccs::<_, Projective, Pedersen<Projective>>(&mut rng, &pedersen_params, &z)
+            .to_lcccs::<_, Projective, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &z)
             .unwrap();
         // with our test vector coming from R1CS, v should have length 3
         assert_eq!(lcccs.v.len(), 3);

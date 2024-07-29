@@ -77,6 +77,8 @@ pub enum Error {
     PedersenParamsLen(usize, usize),
     #[error("Blinding factor not 0 for Commitment without hiding")]
     BlindingNotZero,
+    #[error("Blinding factors incorrect, blinding is set to {0} but blinding values are {1}")]
+    IncorrectBlinding(bool, String),
     #[error("Commitment verification failed")]
     CommitmentVerificationFail,
 

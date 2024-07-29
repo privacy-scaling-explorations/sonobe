@@ -1,6 +1,6 @@
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{CurveGroup, Group};
-use ark_std::{One, Zero};
+use ark_std::One;
 
 use super::{CommittedInstance, Witness};
 use crate::arith::{r1cs::R1CS, Arith};
@@ -34,7 +34,7 @@ where
 {
     fn dummy_instance(&self) -> (Witness<C>, CommittedInstance<C>) {
         let w_len = self.A.n_cols - 1 - self.l;
-        let w_dummy = Witness::<C>::new(vec![C::ScalarField::zero(); w_len], self.A.n_rows);
+        let w_dummy = Witness::<C>::dummy(w_len, self.A.n_rows);
         let u_dummy = CommittedInstance::<C>::dummy(self.l);
         (w_dummy, u_dummy)
     }

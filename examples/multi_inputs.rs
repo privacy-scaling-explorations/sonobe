@@ -137,6 +137,7 @@ fn main() {
         MultiInputsFCircuit<Fr>,
         KZG<'static, Bn254>,
         Pedersen<Projective2>,
+        false,
     >;
 
     println!("Prepare Nova ProverParams & VerifierParams");

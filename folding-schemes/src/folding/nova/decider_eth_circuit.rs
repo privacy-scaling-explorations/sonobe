@@ -193,14 +193,14 @@ where
 /// Circuit that implements the in-circuit checks needed for the onchain (Ethereum's EVM)
 /// verification.
 #[derive(Clone, Debug)]
-pub struct DeciderEthCircuit<C1, GC1, C2, GC2, CS1, CS2>
+pub struct DeciderEthCircuit<C1, GC1, C2, GC2, CS1, CS2, const H: bool = false>
 where
     C1: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>>,
     C2: CurveGroup,
     GC2: CurveVar<C2, CF2<C2>>,
-    CS1: CommitmentScheme<C1>,
-    CS2: CommitmentScheme<C2>,
+    CS1: CommitmentScheme<C1, H>,
+    CS2: CommitmentScheme<C2, H>,
 {
     _c1: PhantomData<C1>,
     _gc1: PhantomData<GC1>,
@@ -246,25 +246,25 @@ where
     pub eval_W: Option<C1::ScalarField>,
     pub eval_E: Option<C1::ScalarField>,
 }
-impl<C1, GC1, C2, GC2, CS1, CS2> DeciderEthCircuit<C1, GC1, C2, GC2, CS1, CS2>
+impl<C1, GC1, C2, GC2, CS1, CS2, const H: bool> DeciderEthCircuit<C1, GC1, C2, GC2, CS1, CS2, H>
 where
     C1: CurveGroup,
     C2: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
     GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
-    CS1: CommitmentScheme<C1>,
+    CS1: CommitmentScheme<C1, H>,
     // enforce that the CS2 is Pedersen commitment scheme, since we're at Ethereum's EVM decider
-    CS2: CommitmentScheme<C2, ProverParams = PedersenParams<C2>>,
+    CS2: CommitmentScheme<C2, H, ProverParams = PedersenParams<C2>>,
     <C1 as Group>::ScalarField: Absorb,
     <C1 as CurveGroup>::BaseField: PrimeField,
 {
     pub fn from_nova<FC: FCircuit<C1::ScalarField>>(
-        nova: Nova<C1, GC1, C2, GC2, FC, CS1, CS2>,
+        nova: Nova<C1, GC1, C2, GC2, FC, CS1, CS2, H>,
     ) -> Result<Self, Error> {
         let mut transcript = PoseidonSponge::<C1::ScalarField>::new(&nova.poseidon_config);
 
         // compute the U_{i+1}, W_{i+1}
-        let (T, cmT) = NIFS::<C1, CS1>::compute_cmT(
+        let (T, cmT) = NIFS::<C1, CS1, H>::compute_cmT(
             &nova.cs_pp,
             &nova.r1cs.clone(),
             &nova.w_i.clone(),
@@ -281,7 +281,7 @@ where
         );
         let r_Fr = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
             .ok_or(Error::OutOfBounds)?;
-        let (W_i1, U_i1) = NIFS::<C1, CS1>::fold_instances(
+        let (W_i1, U_i1) = NIFS::<C1, CS1, H>::fold_instances(
             r_Fr, &nova.W_i, &nova.U_i, &nova.w_i, &nova.u_i, &T, cmT,
         )?;
 
@@ -376,8 +376,8 @@ where
         })?;
 
         let u_dummy_native = CommittedInstance::<C1>::dummy(2);
-        let w_dummy_native = Witness::<C1>::new(
-            vec![C1::ScalarField::zero(); self.r1cs.A.n_cols - 3 /* (3=2+1, since u_i.x.len=2) */],
+        let w_dummy_native = Witness::<C1>::dummy(
+            self.r1cs.A.n_cols - 3, /* (3=2+1, since u_i.x.len=2) */
             self.E_len,
         );
 
@@ -453,10 +453,8 @@ where
             use ark_r1cs_std::ToBitsGadget;
 
             let cf_u_dummy_native = CommittedInstance::<C2>::dummy(cf_io_len(NOVA_CF_N_POINTS));
-            let w_dummy_native = Witness::<C2>::new(
-                vec![C2::ScalarField::zero(); self.cf_r1cs.A.n_cols - 1 - self.cf_r1cs.l],
-                self.cf_E_len,
-            );
+            let w_dummy_native =
+                Witness::<C2>::dummy(self.cf_r1cs.A.n_cols - 1 - self.cf_r1cs.l, self.cf_E_len);
             let cf_U_i = CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || {
                 Ok(self.cf_U_i.unwrap_or_else(|| cf_u_dummy_native.clone()))
             })?;
@@ -788,6 +786,7 @@ pub mod tests {
             CubicFCircuit<Fr>,
             Pedersen<Projective>,
             Pedersen<Projective2>,
+            false,
         >;
 
         let prep_param = PreprocessorParam::<
@@ -796,6 +795,7 @@ pub mod tests {
             CubicFCircuit<Fr>,
             Pedersen<Projective>,
             Pedersen<Projective2>,
+            false,
         >::new(poseidon_config, F_circuit);
         let nova_params = N::preprocess(&mut rng, &prep_param).unwrap();
 

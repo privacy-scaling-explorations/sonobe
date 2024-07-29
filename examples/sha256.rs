@@ -119,6 +119,7 @@ fn main() {
         Sha256FCircuit<Fr>,
         KZG<'static, Bn254>,
         Pedersen<Projective2>,
+        false,
     >;
 
     let poseidon_config = poseidon_canonical_config::<Fr>();

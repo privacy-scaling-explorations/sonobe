@@ -461,7 +461,7 @@ where
             let cf_u_dummy_native =
                 CycleFoldCommittedInstance::<C2>::dummy(NovaCycleFoldConfig::<C1>::IO_LEN);
             let w_dummy_native = CycleFoldWitness::<C2>::dummy(
-                vec![C2::ScalarField::zero(); self.cf_r1cs.A.n_cols - 1 - self.cf_r1cs.l],
+                self.cf_r1cs.A.n_cols - 1 - self.cf_r1cs.l,
                 self.cf_E_len,
             );
             let cf_U_i = CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || {

@@ -130,8 +130,18 @@ where
 /// * `MU` - the number of LCCCS instances to be folded
 /// * `NU` - the number of CCCS instances to be folded
 #[derive(Clone, Debug)]
-pub struct HyperNova<C1, GC1, C2, GC2, FC, CS1, CS2, const MU: usize, const NU: usize, const H: bool>
-where
+pub struct HyperNova<
+    C1,
+    GC1,
+    C2,
+    GC2,
+    FC,
+    CS1,
+    CS2,
+    const MU: usize,
+    const NU: usize,
+    const H: bool,
+> where
     C1: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
     C2: CurveGroup,
@@ -173,8 +183,8 @@ where
     pub cf_U_i: CycleFoldCommittedInstance<C2>,
 }
 
-impl<C1, GC1, C2, GC2, FC, CS1, CS2, const MU: usize, const NU: usize, const H: bool> MultiFolding<C1, C2, FC>
-    for HyperNova<C1, GC1, C2, GC2, FC, CS1, CS2, MU, NU, H>
+impl<C1, GC1, C2, GC2, FC, CS1, CS2, const MU: usize, const NU: usize, const H: bool>
+    MultiFolding<C1, C2, FC> for HyperNova<C1, GC1, C2, GC2, FC, CS1, CS2, MU, NU, H>
 where
     C1: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
@@ -268,7 +278,8 @@ where
         // prepare the initial dummy instances
         let U_i = LCCCS::<C1>::dummy(self.ccs.l, self.ccs.t, self.ccs.s);
         let mut u_i = CCCS::<C1>::dummy(self.ccs.l);
-        let (_, cf_U_i): (CycleFoldWitness<C2>, CycleFoldCommittedInstance<C2>) = self.cf_r1cs.dummy_instance();
+        let (_, cf_U_i): (CycleFoldWitness<C2>, CycleFoldCommittedInstance<C2>) =
+            self.cf_r1cs.dummy_instance();
 
         let sponge = PoseidonSponge::<C1::ScalarField>::new(&self.poseidon_config);
 
@@ -346,8 +357,8 @@ where
     }
 }
 
-impl<C1, GC1, C2, GC2, FC, CS1, CS2, const MU: usize, const NU: usize, const H: bool> FoldingScheme<C1, C2, FC>
-    for HyperNova<C1, GC1, C2, GC2, FC, CS1, CS2, MU, NU, H>
+impl<C1, GC1, C2, GC2, FC, CS1, CS2, const MU: usize, const NU: usize, const H: bool>
+    FoldingScheme<C1, C2, FC> for HyperNova<C1, GC1, C2, GC2, FC, CS1, CS2, MU, NU, H>
 where
     C1: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
@@ -936,8 +947,7 @@ mod tests {
         let hypernova_params = HN::preprocess(&mut rng, &prep_param).unwrap();
 
         let z_0 = vec![Fr::from(3_u32)];
-        let mut hypernova = HN::init(&hypernova_params, F_circuit, z_0.clone())
-        .unwrap();
+        let mut hypernova = HN::init(&hypernova_params, F_circuit, z_0.clone()).unwrap();
 
         let (w_i_blinding, W_i_blinding) = if H {
             (Fr::rand(&mut rng), Fr::rand(&mut rng))

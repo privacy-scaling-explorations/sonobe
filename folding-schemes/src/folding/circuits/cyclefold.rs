@@ -156,7 +156,7 @@ where
     /// hash implements the committed instance hash compatible with the native
     /// implementation `CycleFoldCommittedInstance::hash_cyclefold`.
     /// Returns `H(U_i)`, where `U` is a `CycleFoldCommittedInstanceVar`.
-    /// 
+    ///
     /// Additionally it returns the vector of the field elements from the self
     /// parameters, so they can be reused in other gadgets without recalculating
     /// (reconstraining) them.

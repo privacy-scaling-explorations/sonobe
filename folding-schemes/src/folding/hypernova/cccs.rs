@@ -26,7 +26,7 @@ pub struct CCCS<C: CurveGroup> {
 }
 
 impl<F: PrimeField> CCS<F> {
-    pub fn to_cccs<R: Rng, C: CurveGroup, CS: CommitmentScheme<C, H>, const H: bool>(
+    pub fn to_cccs<R: Rng, C, CS: CommitmentScheme<C, H>, const H: bool>(
         &self,
         rng: &mut R,
         cs_params: &CS::ProverParams,

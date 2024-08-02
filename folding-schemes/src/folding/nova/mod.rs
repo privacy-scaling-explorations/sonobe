@@ -959,6 +959,7 @@ pub mod tests {
     }
 
     // test_ivc allowing to choose the CommitmentSchemes
+    #[allow(clippy::type_complexity)]
     pub(crate) fn test_ivc_opt<
         CS1: CommitmentScheme<Projective, H>,
         CS2: CommitmentScheme<Projective2, H>,

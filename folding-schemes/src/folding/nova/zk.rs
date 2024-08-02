@@ -218,6 +218,7 @@ where
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn verify<
         CS1: CommitmentScheme<C1, true>,
         GC2: CurveVar<C2, CF2<C2>>,

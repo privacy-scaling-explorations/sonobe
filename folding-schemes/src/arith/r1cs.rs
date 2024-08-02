@@ -112,8 +112,7 @@ impl<F: PrimeField> RelaxedR1CS<F> {
 
         let Cz = mat_vec_mul(C, z)?;
         let uCz = vec_scalar_mul(&Cz, u);
-        let E = vec_sub(&AzBz, &uCz);
-        E
+        vec_sub(&AzBz, &uCz)
     }
 
     // implements sampling a (committed) RelaxedR1CS from https://eprint.iacr.org/2023/573.pdf
@@ -219,8 +218,7 @@ pub mod tests {
     pub fn sample_relaxed_r1cs() {
         let rng = rand::rngs::OsRng;
         let r1cs = get_test_r1cs::<Fr>();
-        let (prover_params, verifier_params) =
-            Pedersen::<Projective>::setup(rng, r1cs.A.n_rows).unwrap();
+        let (prover_params, _) = Pedersen::<Projective>::setup(rng, r1cs.A.n_rows).unwrap();
 
         let relaxed_r1cs = r1cs.relax();
         relaxed_r1cs

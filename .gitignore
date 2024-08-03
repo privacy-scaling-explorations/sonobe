@@ -6,6 +6,9 @@ folding-schemes/src/frontend/circom/test_folder/*_js/
 *.r1cs
 *.sym
 
+# Noir generated files
+folding-schemes/src/frontend/noir/test_folder/*/target/*
+
 # generated contracts at test time
 solidity-verifiers/generated
 examples/*.sol

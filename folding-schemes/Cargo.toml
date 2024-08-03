@@ -28,6 +28,8 @@ ark-noname = { git = "https://github.com/dmpierre/ark-noname", branch="feat/sono
 noname = { git = "https://github.com/dmpierre/noname" }
 serde_json = "1.0.85"                                                                # to (de)serialize JSON
 serde = "1.0.203"
+acvm = { git = "https://github.com/noir-lang/noir", rev="2b4853e", default-features = false }
+arkworks_backend = { git = "https://github.com/dmpierre/arkworks_backend", branch="feat/sonobe-integration" }
 
 # tmp import for espresso's sumcheck
 espresso_subroutines = {git="https://github.com/EspressoSystems/hyperplonk", package="subroutines"}

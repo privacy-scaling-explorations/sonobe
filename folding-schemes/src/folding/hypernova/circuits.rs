@@ -457,6 +457,24 @@ fn compute_c_gadget<F: PrimeField>(
     Ok(c)
 }
 
+/// `AugmentedFCircuit` enhances the original step function `F`, so that it can
+/// be used in recursive arguments such as IVC.
+///
+/// The method for converting `F` to `AugmentedFCircuit` (`F'`) is defined in
+/// [Nova](https://eprint.iacr.org/2021/370.pdf), where `AugmentedFCircuit` not
+/// only invokes `F`, but also adds additional constraints for verifying the
+/// correct folding of primary instances (i.e., the instances over `C1`).
+/// In the paper, the primary instances are Nova's `CommittedInstance`, but we
+/// extend this method to support using HyperNova's `LCCCS` and `CCCS` instances
+/// as primary instances.
+///
+/// Furthermore, to reduce circuit size over `C2`, we implement the constraints
+/// defined in [CycleFold](https://eprint.iacr.org/2023/1192.pdf). These extra
+/// constraints verify the correct folding of CycleFold instances.
+///
+/// For multi-instance folding, one needs to specify the const generics below:
+/// * `MU` - the number of LCCCS instances to be folded
+/// * `NU` - the number of CCCS instances to be folded
 #[derive(Debug, Clone)]
 pub struct AugmentedFCircuit<
     C1: CurveGroup,

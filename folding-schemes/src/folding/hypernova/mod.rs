@@ -127,6 +127,7 @@ where
 /// [HyperNova](https://eprint.iacr.org/2023/573.pdf) and
 /// [CycleFold](https://eprint.iacr.org/2023/1192.pdf), following the FoldingScheme trait
 ///
+/// For multi-instance folding, one needs to specify the const generics below:
 /// * `MU` - the number of LCCCS instances to be folded
 /// * `NU` - the number of CCCS instances to be folded
 #[derive(Clone, Debug)]

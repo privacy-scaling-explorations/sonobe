@@ -216,9 +216,18 @@ where
     }
 }
 
-/// AugmentedFCircuit implements the F' circuit (augmented F) defined in
-/// [Nova](https://eprint.iacr.org/2021/370.pdf) together with the extra constraints defined in
-/// [CycleFold](https://eprint.iacr.org/2023/1192.pdf).
+/// `AugmentedFCircuit` enhances the original step function `F`, so that it can
+/// be used in recursive arguments such as IVC.
+///
+/// The method for converting `F` to `AugmentedFCircuit` (`F'`) is defined in
+/// [Nova](https://eprint.iacr.org/2021/370.pdf), where `AugmentedFCircuit` not
+/// only invokes `F`, but also adds additional constraints for verifying the
+/// correct folding of primary instances (i.e., Nova's `CommittedInstance`s over
+/// `C1`).
+///
+/// Furthermore, to reduce circuit size over `C2`, we implement the constraints
+/// defined in [CycleFold](https://eprint.iacr.org/2023/1192.pdf). These extra
+/// constraints verify the correct folding of CycleFold instances.
 #[derive(Debug, Clone)]
 pub struct AugmentedFCircuit<
     C1: CurveGroup,

@@ -326,20 +326,25 @@ where
 }
 
 pub trait CycleFoldConfig {
+    /// `N_INPUT_POINTS` specifies the number of input points that are folded in
+    /// [`CycleFoldCircuit`] via random linear combinations.
     const N_INPUT_POINTS: usize;
+    /// `RANDOMNESS_BIT_LENGTH` is the (maximum) bit length of randomness `r`.
     const RANDOMNESS_BIT_LENGTH: usize;
+    /// `FIELD_CAPACITY` is the maximum number of bits that can be stored in a
+    /// field element.
+    ///
+    /// E.g., given a randomness `r` with `RANDOMNESS_BIT_LENGTH` bits, we need
+    /// `RANDOMNESS_BIT_LENGTH / FIELD_CAPACITY` field elements to represent `r`
+    /// compactly in-circuit.
     const FIELD_CAPACITY: usize = CF2::<Self::C>::MODULUS_BIT_SIZE as usize - 1;
 
-    /// Public inputs length for the CycleFoldCircuit:
+    /// Public inputs length for the CycleFoldCircuit.
+    /// * For Nova this is: `|[r, p1.x,y, p2.x,y, p3.x,y]|`
+    /// * In general, `|[r * (n_points-1), (p_i.x,y)*n_points, p_folded.x,y]|`.
     ///
-    /// * For Nova this is: |[r, p1.x,y, p2.x,y, p3.x,y]|
-    /// * In general, |[r * (n_points-1), (p_i.x,y)*n_points, p_folded.x,y]|.
-    ///
-    /// Here, the randomness r has |r| bits, storing which in the circuit
-    /// requires |r| / field_capacity field elements.
-    ///
-    /// Thus, io len is:
-    /// |r| / field_capacity * (n_points - 1) + 2 * n_points + 2
+    /// Thus, `IO_LEN` is:
+    /// `RANDOMNESS_BIT_LENGTH / FIELD_CAPACITY * (N_INPUT_POINTS - 1) + 2 * N_INPUT_POINTS + 2`
     const IO_LEN: usize = {
         Self::RANDOMNESS_BIT_LENGTH.div_ceil(Self::FIELD_CAPACITY) * (Self::N_INPUT_POINTS - 1)
             + 2 * Self::N_INPUT_POINTS
@@ -362,7 +367,8 @@ pub struct CycleFoldCircuit<CFG: CycleFoldConfig, GC: CurveVar<CFG::C, CFG::F>> 
     pub r_bits: Option<Vec<Vec<bool>>>,
     /// points to be folded in the CycleFoldCircuit
     pub points: Option<Vec<CFG::C>>,
-    pub x: Option<Vec<CFG::F>>, // public inputs (cf_u_{i+1}.x)
+    /// public inputs (cf_u_{i+1}.x)
+    pub x: Option<Vec<CFG::F>>,
 }
 
 impl<CFG: CycleFoldConfig, GC: CurveVar<CFG::C, CFG::F>> CycleFoldCircuit<CFG, GC> {

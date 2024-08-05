@@ -160,7 +160,11 @@ impl<C: CurveGroup> R1CSVar<C::ScalarField> for CommittedInstanceVar<C> {
     }
 }
 
-impl<C: CurveGroup<ScalarField: Absorb, BaseField: PrimeField>> CommittedInstanceVar<C> {
+impl<C: CurveGroup> CommittedInstanceVar<C>
+where
+    C::ScalarField: Absorb,
+    C::BaseField: PrimeField,
+{
     /// hash implements the committed instance hash compatible with the native implementation from
     /// CommittedInstance.hash.
     /// Returns `H(i, z_0, z_i, U_i)`, where `i` can be `i` but also `i+1`, and `U` is the
@@ -610,7 +614,8 @@ where
         // u_{i+1}.x[1] = H(cf_U_{i+1})
         let cf_u_i1_x: C1::ScalarField;
 
-        if self.i.is_zero() { // Take extra care of the base case
+        if self.i.is_zero() {
+            // Take extra care of the base case
             // `U_{i+1}` (i.e., `U_1`) is fixed to `U_dummy`, so we just use
             // `self.U_i = U_0 = U_dummy`.
             u_i1_x = self.U_i.hash(

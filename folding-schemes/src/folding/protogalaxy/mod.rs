@@ -610,7 +610,9 @@ where
         // u_{i+1}.x[1] = H(cf_U_{i+1})
         let cf_u_i1_x: C1::ScalarField;
 
-        if self.i == C1::ScalarField::zero() {
+        if self.i.is_zero() { // Take extra care of the base case
+            // `U_{i+1}` (i.e., `U_1`) is fixed to `U_dummy`, so we just use
+            // `self.U_i = U_0 = U_dummy`.
             u_i1_x = self.U_i.hash(
                 &sponge,
                 self.pp_hash,
@@ -618,9 +620,10 @@ where
                 self.z_0.clone(),
                 z_i1.clone(),
             );
-
+            // `cf_U_{i+1}` (i.e., `cf_U_1`) is fixed to `cf_U_dummy`, so we
+            // just use `self.cf_U_i = cf_U_0 = cf_U_dummy`.
             cf_u_i1_x = self.cf_U_i.hash_cyclefold(&sponge, self.pp_hash);
-            // base case
+
             augmented_F_circuit = AugmentedFCircuit::empty(
                 &self.poseidon_config,
                 self.F.clone(),
@@ -634,7 +637,11 @@ where
             augmented_F_circuit
                 .external_inputs
                 .clone_from(&external_inputs);
+
+            // There is no need to update `self.U_i` etc. as they are unchanged.
         } else {
+            // Primary part:
+            // Compute `U_{i+1}` by folding `u_i` into `U_i`.
             let (U_i1, W_i1, F_coeffs, K_coeffs, L_evals, phi_stars) = Folding::prove(
                 &mut transcript_prover,
                 &self.r1cs,
@@ -710,6 +717,7 @@ where
                 &mut rng,
             )?;
 
+            // Derive `u_{i+1}.x[0], u_{i+1}.x[1]` by hashing folded instances
             u_i1_x = U_i1.hash(
                 &sponge,
                 self.pp_hash,

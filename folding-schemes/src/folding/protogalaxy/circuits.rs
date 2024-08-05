@@ -154,6 +154,7 @@ impl AugmentationGadget {
             })
             .collect::<Vec<_>>();
 
+        // Fold the incoming instances `us` into the running instance `U`.
         let (mut U, L_X_evals) =
             FoldingGadget::fold_committed_instance(transcript, &U, &us, F_coeffs, K_coeffs)?;
         // Notice that FoldingGadget::fold_committed_instance does not fold phi.
@@ -184,11 +185,16 @@ impl AugmentationGadget {
         assert_eq!(cf_u_cmWs.len(), cf_u_xs.len());
         assert_eq!(cf_u_xs.len(), cf_cmTs.len());
 
+        // Fold the incoming CycleFold instances into the running CycleFold
+        // instance in a iterative way, since `NIFSFullGadget` only supports
+        // folding one incoming instance at a time.
         for ((cmW, x), cmT) in cf_u_cmWs.into_iter().zip(cf_u_xs).zip(cf_cmTs) {
+            // Prepare the incoming CycleFold instance `cf_u` for the current
+            // iteration.
+            // For each CycleFold instance `cf_u`, we have `cf_u.cmE = 0`, and
+            // `cf_u.u = 1`.
             let cf_u = CycleFoldCommittedInstanceVar {
-                // cf_u.cmE = 0
                 cmE: GC2::zero(),
-                // cf_u.u = 1
                 u: NonNativeUintVar::new_constant(ConstraintSystemRef::None, C1::BaseField::one())?,
                 cmW,
                 x,
@@ -201,7 +207,8 @@ impl AugmentationGadget {
                 cf_u.clone(),
                 cmT.clone(),
             )?;
-            // Fold cf_u & cf_U into cf_U
+            // Fold the current incoming CycleFold instance `cf_u` into the
+            // running CycleFold instance `cf_U`.
             cf_U = NIFSFullGadget::fold_committed_instance(cf_r_bits, cmT, cf_U, cf_u)?;
         }
 

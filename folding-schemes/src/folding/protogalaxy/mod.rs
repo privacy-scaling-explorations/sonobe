@@ -969,15 +969,14 @@ mod tests {
         poseidon_config: PoseidonConfig<Fr>,
         F_circuit: CubicFCircuit<Fr>,
     ) {
-        type PROTOGALAXY<CS1, CS2> =
+        type PG<CS1, CS2> =
             ProtoGalaxy<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>, CS1, CS2>;
 
         let params =
-            PROTOGALAXY::<CS1, CS2>::preprocess(&mut test_rng(), &(poseidon_config, F_circuit))
-                .unwrap();
+            PG::<CS1, CS2>::preprocess(&mut test_rng(), &(poseidon_config, F_circuit)).unwrap();
 
         let z_0 = vec![Fr::from(3_u32)];
-        let mut protogalaxy = PROTOGALAXY::init(&params, F_circuit, z_0.clone()).unwrap();
+        let mut protogalaxy = PG::init(&params, F_circuit, z_0.clone()).unwrap();
 
         let num_steps: usize = 3;
         for _ in 0..num_steps {
@@ -988,7 +987,7 @@ mod tests {
         assert_eq!(Fr::from(num_steps as u32), protogalaxy.i);
 
         let (running_instance, incoming_instance, cyclefold_instance) = protogalaxy.instances();
-        PROTOGALAXY::<CS1, CS2>::verify(
+        PG::<CS1, CS2>::verify(
             params.1,
             z_0,
             protogalaxy.z_i,

@@ -22,14 +22,18 @@ use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace,
 use ark_std::{log2, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
-use super::{circuits::ChallengeGadget, nifs::NIFS};
+use super::{
+    circuits::{ChallengeGadget, CommittedInstanceVar},
+    nifs::NIFS,
+    CommittedInstance, Nova, Witness,
+};
 use crate::arith::r1cs::R1CS;
 use crate::commitment::{pedersen::Params as PedersenParams, CommitmentScheme};
 use crate::folding::circuits::{
+    cyclefold::{CycleFoldCommittedInstance, CycleFoldWitness},
     nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
     CF1, CF2,
 };
-use crate::folding::nova::{circuits::CommittedInstanceVar, CommittedInstance, Nova, Witness};
 use crate::frontend::FCircuit;
 use crate::transcript::{Transcript, TranscriptVar};
 use crate::utils::{
@@ -156,7 +160,7 @@ where
     }
 }
 
-/// In-circuit representation of the Witness associated to the CommittedInstance, but with
+/// In-circuit representation of the Witness associated to the CycleFoldCommittedInstance, but with
 /// non-native representation, since it is used to represent the CycleFold witness.
 #[derive(Debug, Clone)]
 pub struct CycleFoldWitnessVar<C: CurveGroup> {
@@ -166,12 +170,12 @@ pub struct CycleFoldWitnessVar<C: CurveGroup> {
     pub rW: NonNativeUintVar<CF2<C>>,
 }
 
-impl<C> AllocVar<Witness<C>, CF2<C>> for CycleFoldWitnessVar<C>
+impl<C> AllocVar<CycleFoldWitness<C>, CF2<C>> for CycleFoldWitnessVar<C>
 where
     C: CurveGroup,
     <C as ark_ec::CurveGroup>::BaseField: PrimeField,
 {
-    fn new_variable<T: Borrow<Witness<C>>>(
+    fn new_variable<T: Borrow<CycleFoldWitness<C>>>(
         cs: impl Into<Namespace<CF2<C>>>,
         f: impl FnOnce() -> Result<T, SynthesisError>,
         mode: AllocationMode,
@@ -237,8 +241,8 @@ where
     pub cmT: Option<C1>,
     pub r: Option<C1::ScalarField>,
     /// CycleFold running instance
-    pub cf_U_i: Option<CommittedInstance<C2>>,
-    pub cf_W_i: Option<Witness<C2>>,
+    pub cf_U_i: Option<CycleFoldCommittedInstance<C2>>,
+    pub cf_W_i: Option<CycleFoldWitness<C2>>,
 
     /// KZG challenges
     pub kzg_c_W: Option<C1::ScalarField>,
@@ -447,14 +451,19 @@ where
         {
             // imports here instead of at the top of the file, so we avoid having multiple
             // `#[cfg(not(test))]`
-            use super::NOVA_CF_N_POINTS;
             use crate::commitment::pedersen::PedersenGadget;
-            use crate::folding::circuits::cyclefold::{cf_io_len, CycleFoldCommittedInstanceVar};
+            use crate::folding::{
+                circuits::cyclefold::{CycleFoldCommittedInstanceVar, CycleFoldConfig},
+                nova::NovaCycleFoldConfig,
+            };
             use ark_r1cs_std::ToBitsGadget;
 
-            let cf_u_dummy_native = CommittedInstance::<C2>::dummy(cf_io_len(NOVA_CF_N_POINTS));
-            let w_dummy_native =
-                Witness::<C2>::dummy(self.cf_r1cs.A.n_cols - 1 - self.cf_r1cs.l, self.cf_E_len);
+            let cf_u_dummy_native =
+                CycleFoldCommittedInstance::<C2>::dummy(NovaCycleFoldConfig::<C1>::IO_LEN);
+            let w_dummy_native = CycleFoldWitness::<C2>::dummy(
+                self.cf_r1cs.A.n_cols - 1 - self.cf_r1cs.l,
+                self.cf_E_len,
+            );
             let cf_U_i = CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || {
                 Ok(self.cf_U_i.unwrap_or_else(|| cf_u_dummy_native.clone()))
             })?;

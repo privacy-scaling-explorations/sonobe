@@ -20,11 +20,12 @@ use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace,
 use ark_std::{fmt::Debug, One, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
-use super::{CommittedInstance, NOVA_CF_N_POINTS};
-use crate::constants::N_BITS_RO;
+use super::{CommittedInstance, NovaCycleFoldConfig};
+use crate::constants::NOVA_N_BITS_RO;
 use crate::folding::circuits::{
     cyclefold::{
-        cf_io_len, CycleFoldChallengeGadget, CycleFoldCommittedInstanceVar, NIFSFullGadget,
+        CycleFoldChallengeGadget, CycleFoldCommittedInstance, CycleFoldCommittedInstanceVar,
+        CycleFoldConfig, NIFSFullGadget,
     },
     nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
     CF1, CF2,
@@ -196,7 +197,7 @@ where
         transcript.absorb(&U_i);
         transcript.absorb(&u_i);
         transcript.absorb_nonnative(&cmT);
-        transcript.squeeze_bits(N_BITS_RO)
+        transcript.squeeze_bits(NOVA_N_BITS_RO)
     }
 
     // compatible with the native get_challenge_native
@@ -211,13 +212,22 @@ where
         transcript.absorb(&U_i_vec)?;
         transcript.absorb(&u_i)?;
         transcript.absorb_nonnative(&cmT)?;
-        transcript.squeeze_bits(N_BITS_RO)
+        transcript.squeeze_bits(NOVA_N_BITS_RO)
     }
 }
 
-/// AugmentedFCircuit implements the F' circuit (augmented F) defined in
-/// [Nova](https://eprint.iacr.org/2021/370.pdf) together with the extra constraints defined in
-/// [CycleFold](https://eprint.iacr.org/2023/1192.pdf).
+/// `AugmentedFCircuit` enhances the original step function `F`, so that it can
+/// be used in recursive arguments such as IVC.
+///
+/// The method for converting `F` to `AugmentedFCircuit` (`F'`) is defined in
+/// [Nova](https://eprint.iacr.org/2021/370.pdf), where `AugmentedFCircuit` not
+/// only invokes `F`, but also adds additional constraints for verifying the
+/// correct folding of primary instances (i.e., Nova's `CommittedInstance`s over
+/// `C1`).
+///
+/// Furthermore, to reduce circuit size over `C2`, we implement the constraints
+/// defined in [CycleFold](https://eprint.iacr.org/2023/1192.pdf). These extra
+/// constraints verify the correct folding of CycleFold instances.
 #[derive(Debug, Clone)]
 pub struct AugmentedFCircuit<
     C1: CurveGroup,
@@ -246,9 +256,9 @@ pub struct AugmentedFCircuit<
     // cyclefold verifier on C1
     // Here 'cf1, cf2' are for each of the CycleFold circuits, corresponding to the fold of cmW and
     // cmE respectively
-    pub cf1_u_i_cmW: Option<C2>,               // input
-    pub cf2_u_i_cmW: Option<C2>,               // input
-    pub cf_U_i: Option<CommittedInstance<C2>>, // input
+    pub cf1_u_i_cmW: Option<C2>,                        // input
+    pub cf2_u_i_cmW: Option<C2>,                        // input
+    pub cf_U_i: Option<CycleFoldCommittedInstance<C2>>, // input
     pub cf1_cmT: Option<C2>,
     pub cf2_cmT: Option<C2>,
     pub cf_x: Option<CF1<C1>>, // public input (u_{i+1}.x[1])
@@ -337,7 +347,7 @@ where
         let cmT =
             NonNativeAffineVar::new_witness(cs.clone(), || Ok(self.cmT.unwrap_or_else(C1::zero)))?;
 
-        let cf_u_dummy = CommittedInstance::dummy(cf_io_len(NOVA_CF_N_POINTS));
+        let cf_u_dummy = CycleFoldCommittedInstance::dummy(NovaCycleFoldConfig::<C1>::IO_LEN);
         let cf_U_i = CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || {
             Ok(self.cf_U_i.unwrap_or(cf_u_dummy.clone()))
         })?;
@@ -481,19 +491,9 @@ where
             cf1_u_i.clone(),
             cf1_cmT.clone(),
         )?;
-        // Convert cf1_r_bits to a `NonNativeFieldVar`
-        let cf1_r_nonnat = {
-            let mut bits = cf1_r_bits.clone();
-            bits.resize(C1::BaseField::MODULUS_BIT_SIZE as usize, Boolean::FALSE);
-            NonNativeUintVar::from(&bits)
-        };
         // Fold cf1_u_i & cf_U_i into cf1_U_{i+1}
         let cf1_U_i1 = NIFSFullGadget::<C2, GC2>::fold_committed_instance(
-            cf1_r_bits,
-            cf1_r_nonnat,
-            cf1_cmT,
-            cf_U_i,
-            cf1_u_i,
+            cf1_r_bits, cf1_cmT, cf_U_i, cf1_u_i,
         )?;
 
         // same for cf2_r:
@@ -504,16 +504,8 @@ where
             cf2_u_i.clone(),
             cf2_cmT.clone(),
         )?;
-        let cf2_r_nonnat = {
-            let mut bits = cf2_r_bits.clone();
-            bits.resize(C1::BaseField::MODULUS_BIT_SIZE as usize, Boolean::FALSE);
-            NonNativeUintVar::from(&bits)
-        };
         let cf_U_i1 = NIFSFullGadget::<C2, GC2>::fold_committed_instance(
-            cf2_r_bits,
-            cf2_r_nonnat,
-            cf2_cmT,
-            cf1_U_i1, // the output from NIFS.V(cf1_r, cf_U, cfE_u)
+            cf2_r_bits, cf2_cmT, cf1_U_i1, // the output from NIFS.V(cf1_r, cf_U, cfE_u)
             cf2_u_i,
         )?;
 
@@ -566,7 +558,7 @@ pub mod tests {
         assert_eq!(ciVar.x.value().unwrap(), ci.x);
         // the values cmE and cmW are checked in the CycleFold's circuit
         // CommittedInstanceInCycleFoldVar in
-        // nova::cyclefold::tests::test_committed_instance_cyclefold_var
+        // cyclefold::tests::test_committed_instance_cyclefold_var
     }
 
     #[test]

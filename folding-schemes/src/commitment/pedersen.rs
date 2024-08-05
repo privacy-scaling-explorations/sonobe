@@ -257,15 +257,21 @@ mod tests {
         Pedersen::<Projective, hiding>::verify(&params, &mut transcript_v, &cm, &proof).unwrap();
     }
 
+    /// To run this test:
+    /// > cargo test --release test_pedersen_circuit -- --nocapture
     #[test]
     fn test_pedersen_circuit() {
         test_pedersen_circuit_opt::<false>();
-        test_pedersen_circuit_opt::<true>();
+        // test_pedersen_circuit_opt::<true>();
     }
     fn test_pedersen_circuit_opt<const hiding: bool>() {
         let mut rng = ark_std::test_rng();
 
-        let n: usize = 8;
+        // toy value:
+        // let n: usize = 8;
+        // real CycleFold value:
+        let n: usize = 1355;
+
         // setup params
         let (params, _) = Pedersen::<Projective, hiding>::setup(&mut rng, n).unwrap();
 
@@ -299,8 +305,14 @@ mod tests {
         let expected_cmVar = GVar::new_witness(cs.clone(), || Ok(cm)).unwrap();
 
         // use the gadget
+        // THIS is the method that takes ~3.5M r1cs constraints (and in the actual circuit we do
+        // this circuit 2 times):
         let cmVar =
             PedersenGadget::<Projective, GVar, hiding>::commit(&hVar, &gVar, &vVar, &rVar).unwrap();
         cmVar.enforce_equal(&expected_cmVar).unwrap();
+        println!(
+            "num_constraints Pedersen check natively: {}",
+            cs.num_constraints()
+        );
     }
 }

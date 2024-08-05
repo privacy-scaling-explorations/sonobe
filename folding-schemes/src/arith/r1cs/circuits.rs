@@ -130,7 +130,7 @@ pub mod tests {
         FCircuit,
     };
 
-    fn prepare_instances<C: CurveGroup, CS: CommitmentScheme<C>, R: Rng>(
+    pub fn prepare_instances<C: CurveGroup, CS: CommitmentScheme<C>, R: Rng>(
         mut rng: R,
         r1cs: &R1CS<C::ScalarField>,
         z: &[C::ScalarField],

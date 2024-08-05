@@ -272,4 +272,70 @@ pub mod tests {
         decider_circuit.generate_constraints(cs.clone()).unwrap();
         assert!(cs.is_satisfied().unwrap());
     }
+
+    /// This test is like the test `test_relaxed_r1cs_nonnative_circuit` (from
+    /// arith/r1cs/circuits.rs), but instead of using a very small circuit, here we're using a real
+    /// CycleFold circuit.
+    /// To run this test:
+    /// > cargo test --release test_relaxed_r1cs_nonnative_cyclefold_circuit -- --nocapture
+    #[test]
+    fn test_relaxed_r1cs_nonnative_cyclefold_circuit() {
+        use crate::arith::{
+            r1cs::{
+                circuits::{tests::prepare_instances, R1CSMatricesVar},
+                extract_r1cs, extract_w_x,
+            },
+            ArithGadget,
+        };
+        use crate::folding::circuits::{
+            cyclefold::{CycleFoldCommittedInstanceVar, CycleFoldWitnessVar},
+            nonnative::uint::NonNativeUintVar,
+        };
+        use ark_pallas::Fq;
+        use ark_std::{rand::thread_rng, One};
+
+        let rng = &mut thread_rng();
+
+        let cs = ConstraintSystem::<Fq>::new_ref();
+        use crate::folding::nova::NovaCycleFoldCircuit;
+        let cf_circuit = NovaCycleFoldCircuit::<Projective, GVar>::empty();
+        cf_circuit.generate_constraints(cs.clone()).unwrap();
+        cs.finalize();
+        let cs = cs.into_inner().unwrap();
+        let r1cs = extract_r1cs::<Fq>(&cs).unwrap();
+        let (w, x) = extract_w_x::<Fq>(&cs);
+        let z = [vec![Fq::one()], x, w].concat();
+
+        let (w, u) = prepare_instances::<_, Pedersen<Projective2>, _>(rng, &r1cs, &z);
+
+        // natively
+        let cs = ConstraintSystem::<Fq>::new_ref();
+        let wVar = WitnessVar::new_witness(cs.clone(), || Ok(&w)).unwrap();
+        let uVar = CommittedInstanceVar::new_witness(cs.clone(), || Ok(&u)).unwrap();
+        let r1csVar =
+            R1CSMatricesVar::<Fq, FpVar<Fq>>::new_witness(cs.clone(), || Ok(&r1cs)).unwrap();
+        r1csVar.enforce_relation(&wVar, &uVar).unwrap();
+        println!(
+            "num_constraints RelaxedR1CS relation check natively: {}",
+            cs.num_constraints()
+        );
+
+        // non-natively
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        let wVar = CycleFoldWitnessVar::new_witness(cs.clone(), || Ok(w)).unwrap();
+        let uVar =
+            CycleFoldCommittedInstanceVar::<_, GVar2>::new_witness(cs.clone(), || Ok(u)).unwrap();
+        let r1csVar =
+            R1CSMatricesVar::<Fq, NonNativeUintVar<Fr>>::new_witness(cs.clone(), || Ok(r1cs))
+                .unwrap();
+        // THIS is the method that takes ~5.1M r1cs constraints, which internally uses the method
+        // `R1CSMatricesVar.eval_at_z`, which is the one that takes the big amount of constraints
+        // (internally it computes `Az o Bz` and `u*Cz` non-natively.
+        r1csVar.enforce_relation(&wVar, &uVar).unwrap();
+
+        println!(
+            "num_constraints RelaxedR1CS relation check non-natively: {}",
+            cs.num_constraints()
+        );
+    }
 }

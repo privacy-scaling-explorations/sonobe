@@ -10,6 +10,7 @@ use ark_std::{fmt::Debug, marker::PhantomData, rand::RngCore, One, Zero};
 
 pub mod cccs;
 pub mod circuits;
+pub mod decider_eth_circuit;
 pub mod lcccs;
 pub mod nimfs;
 pub mod utils;

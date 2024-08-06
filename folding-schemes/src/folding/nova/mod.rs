@@ -42,12 +42,15 @@ use circuits::{AugmentedFCircuit, ChallengeGadget};
 use nifs::NIFS;
 use traits::NovaR1CS;
 
-struct NovaCycleFoldConfig<C: CurveGroup> {
+pub struct NovaCycleFoldConfig<C: CurveGroup> {
     _c: PhantomData<C>,
 }
 
 impl<C: CurveGroup> CycleFoldConfig for NovaCycleFoldConfig<C> {
     const RANDOMNESS_BIT_LENGTH: usize = NOVA_N_BITS_RO;
+    // Number of points to be folded in the CycleFold circuit, in Nova's case, this is a fixed
+    // amount:
+    // 2 points to be folded.
     const N_INPUT_POINTS: usize = 2;
     type C = C;
     type F = C::BaseField;

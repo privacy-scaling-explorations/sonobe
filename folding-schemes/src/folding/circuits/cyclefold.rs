@@ -215,6 +215,41 @@ where
     }
 }
 
+/// In-circuit representation of the Witness associated to the CommittedInstance, but with
+/// non-native representation, since it is used to represent the CycleFold witness. This struct is
+/// used in the Decider circuit.
+#[derive(Debug, Clone)]
+pub struct CycleFoldWitnessVar<C: CurveGroup> {
+    pub E: Vec<NonNativeUintVar<CF2<C>>>,
+    pub rE: NonNativeUintVar<CF2<C>>,
+    pub W: Vec<NonNativeUintVar<CF2<C>>>,
+    pub rW: NonNativeUintVar<CF2<C>>,
+}
+
+impl<C> AllocVar<CycleFoldWitness<C>, CF2<C>> for CycleFoldWitnessVar<C>
+where
+    C: CurveGroup,
+    <C as ark_ec::CurveGroup>::BaseField: PrimeField,
+{
+    fn new_variable<T: Borrow<CycleFoldWitness<C>>>(
+        cs: impl Into<Namespace<CF2<C>>>,
+        f: impl FnOnce() -> Result<T, SynthesisError>,
+        mode: AllocationMode,
+    ) -> Result<Self, SynthesisError> {
+        f().and_then(|val| {
+            let cs = cs.into();
+
+            let E = Vec::new_variable(cs.clone(), || Ok(val.borrow().E.clone()), mode)?;
+            let rE = NonNativeUintVar::new_variable(cs.clone(), || Ok(val.borrow().rE), mode)?;
+
+            let W = Vec::new_variable(cs.clone(), || Ok(val.borrow().W.clone()), mode)?;
+            let rW = NonNativeUintVar::new_variable(cs.clone(), || Ok(val.borrow().rW), mode)?;
+
+            Ok(Self { E, rE, W, rW })
+        })
+    }
+}
+
 /// This is the gadget used in the AugmentedFCircuit to verify the CycleFold instances folding,
 /// which checks the correct RLC of u,x,cmE,cmW (hence the name containing 'Full', since it checks
 /// all the RLC values, not only the native ones). It assumes that ci2.cmE=0, ci2.u=1.

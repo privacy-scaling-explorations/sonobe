@@ -115,7 +115,8 @@ impl<F: PrimeField> RelaxedR1CS<F> {
         vec_sub(&AzBz, &uCz)
     }
 
-    // implements sampling a (committed) RelaxedR1CS from https://eprint.iacr.org/2023/573.pdf
+    // Implements sampling a (committed) RelaxedR1CS
+    // See construction 5 in https://eprint.iacr.org/2023/573.pdf
     pub fn sample<C, CS>(
         &self,
         params: &CS::ProverParams,

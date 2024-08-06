@@ -277,7 +277,7 @@ pub mod tests {
     /// arith/r1cs/circuits.rs), but instead of using a very small circuit, here we're using a real
     /// CycleFold circuit.
     /// To run this test:
-    /// > cargo test --release test_relaxed_r1cs_nonnative_cyclefold_circuit -- --nocapture
+    /// > cargo test --release -p folding-schemes test_relaxed_r1cs_nonnative_cyclefold_circuit -- --nocapture
     #[test]
     fn test_relaxed_r1cs_nonnative_cyclefold_circuit() {
         use crate::arith::{

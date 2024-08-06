@@ -49,9 +49,9 @@ path = "../examples/full_flow.rs"
 name = "circom_full_flow"
 path = "../examples/circom_full_flow.rs"
 
-[[example]]
-name = "noname_full_flow"
-path = "../examples/noname_full_flow.rs"
+# [[example]]
+# name = "noname_full_flow"
+# path = "../examples/noname_full_flow.rs"
 
 [[example]]
 name = "noir_full_flow"

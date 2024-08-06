@@ -6,7 +6,7 @@ use ark_std::fmt::Debug;
 
 pub mod circom;
 pub mod noir;
-pub mod noname;
+// pub mod noname;
 
 /// FCircuit defines the trait of the circuit of the F function, which is the one being folded (ie.
 /// inside the agmented F' function).

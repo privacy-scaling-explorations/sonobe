@@ -14,7 +14,8 @@ resolver = "2"
 # https://github.com/arkworks-rs/r1cs-std/pull/124 and
 # https://github.com/arkworks-rs/r1cs-std/pull/126, without including other
 # changes done between v0.4.0 and this fix which would break compatibility.
-ark-r1cs-std = { git = "https://github.com/winderica/r1cs-std", branch="cherry-pick" }
+# ark-r1cs-std = { git = "https://github.com/winderica/r1cs-std", branch="cherry-pick" }
+ark-r1cs-std = { path = "../r1cs-std-tmpfix" }
 # patch ark_curves to use a cherry-picked version which contains
 # bn254::constraints & grumpkin for v0.4.0 (once arkworks v0.5.0 is released
 # this will no longer be needed)

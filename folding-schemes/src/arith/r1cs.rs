@@ -4,7 +4,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::rand::Rng;
 
 use super::Arith;
-use crate::utils::vec::{hadamard, mat_vec_mul, vec_add, vec_scalar_mul, SparseMatrix};
+use crate::utils::vec::{hadamard, mat_vec_mul, vec_scalar_mul, vec_sub, SparseMatrix};
 use crate::Error;
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
@@ -16,16 +16,24 @@ pub struct R1CS<F: PrimeField> {
 }
 
 impl<F: PrimeField> Arith<F> for R1CS<F> {
-    /// check that a R1CS structure is satisfied by a z vector. Only for testing.
-    fn check_relation(&self, z: &[F]) -> Result<(), Error> {
+    fn eval_relation(&self, z: &[F]) -> Result<Vec<F>, Error> {
+        if z.len() != self.A.n_cols {
+            return Err(Error::NotSameLength(
+                "z.len()".to_string(),
+                z.len(),
+                "number of variables in R1CS".to_string(),
+                self.A.n_cols,
+            ));
+        }
+
         let Az = mat_vec_mul(&self.A, z)?;
         let Bz = mat_vec_mul(&self.B, z)?;
         let Cz = mat_vec_mul(&self.C, z)?;
+        // Multiply Cz by z[0] (u) here, allowing this method to be reused for
+        // both relaxed and unrelaxed R1CS.
+        let uCz = vec_scalar_mul(&Cz, &z[0]);
         let AzBz = hadamard(&Az, &Bz)?;
-        if AzBz != Cz {
-            return Err(Error::NotSatisfied);
-        }
-        Ok(())
+        vec_sub(&AzBz, &uCz)
     }
 
     fn params_to_le_bytes(&self) -> Vec<u8> {
@@ -52,45 +60,40 @@ impl<F: PrimeField> R1CS<F> {
     pub fn split_z(&self, z: &[F]) -> (Vec<F>, Vec<F>) {
         (z[self.l + 1..].to_vec(), z[1..self.l + 1].to_vec())
     }
+}
 
-    /// converts the R1CS instance into a RelaxedR1CS as described in
-    /// [Nova](https://eprint.iacr.org/2021/370.pdf) section 4.1.
-    pub fn relax(self) -> RelaxedR1CS<F> {
-        RelaxedR1CS::<F> {
-            l: self.l,
-            E: vec![F::zero(); self.A.n_rows],
-            A: self.A,
-            B: self.B,
-            C: self.C,
-            u: F::one(),
+pub trait RelaxedR1CS<F: PrimeField, W, U>: Arith<F> {
+    /// returns a dummy running instance (Witness and CommittedInstance) for the current R1CS structure
+    fn dummy_running_instance(&self) -> (W, U);
+
+    /// returns a dummy incoming instance (Witness and CommittedInstance) for the current R1CS structure
+    fn dummy_incoming_instance(&self) -> (W, U);
+
+    /// checks if the given instance is relaxed
+    fn is_relaxed(w: &W, u: &U) -> bool;
+
+    /// extracts `z`, the vector of variables, from the given Witness and CommittedInstance
+    fn extract_z(w: &W, u: &U) -> Vec<F>;
+
+    /// checks if the computed error terms correspond to the actual one in `w`
+    /// or `u`
+    fn check_error_terms(w: &W, u: &U, e: Vec<F>) -> Result<(), Error>;
+
+    /// checks the tight (unrelaxed) R1CS relation
+    fn check_tight_relation(&self, w: &W, u: &U) -> Result<(), Error> {
+        if Self::is_relaxed(w, u) {
+            return Err(Error::R1CSUnrelaxedFail);
         }
+
+        let z = Self::extract_z(w, u);
+        self.check_relation(&z)
     }
-}
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct RelaxedR1CS<F: PrimeField> {
-    pub l: usize, // io len
-    pub A: SparseMatrix<F>,
-    pub B: SparseMatrix<F>,
-    pub C: SparseMatrix<F>,
-    pub u: F,
-    pub E: Vec<F>,
-}
-
-impl<F: PrimeField> RelaxedR1CS<F> {
-    /// check that a RelaxedR1CS structure is satisfied by a z vector. Only for testing.
-    pub fn check_relation(&self, z: &[F]) -> Result<(), Error> {
-        let Az = mat_vec_mul(&self.A, z)?;
-        let Bz = mat_vec_mul(&self.B, z)?;
-        let Cz = mat_vec_mul(&self.C, z)?;
-        let uCz = vec_scalar_mul(&Cz, &self.u);
-        let uCzE = vec_add(&uCz, &self.E)?;
-        let AzBz = hadamard(&Az, &Bz)?;
-        if AzBz != uCzE {
-            return Err(Error::NotSatisfied);
-        }
-
-        Ok(())
+    /// checks the relaxed R1CS relation
+    fn check_relaxed_relation(&self, w: &W, u: &U) -> Result<(), Error> {
+        let z = Self::extract_z(w, u);
+        let e = self.eval_relation(&z)?;
+        Self::check_error_terms(w, u, e)
     }
 }
 
@@ -138,7 +141,10 @@ pub fn extract_w_x<F: PrimeField>(cs: &ConstraintSystem<F>) -> (Vec<F>, Vec<F>) 
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::utils::vec::tests::{to_F_matrix, to_F_vec};
+    use crate::utils::vec::{
+        is_zero_vec,
+        tests::{to_F_matrix, to_F_vec},
+    };
 
     use ark_pallas::Fr;
 
@@ -196,10 +202,23 @@ pub mod tests {
     }
 
     #[test]
-    fn test_check_relation() {
+    fn test_eval_r1cs_relation() {
+        let mut rng = ark_std::test_rng();
+        let r1cs = get_test_r1cs::<Fr>();
+        let mut z = get_test_z::<Fr>(rng.gen::<u16>() as usize);
+
+        let f_w = r1cs.eval_relation(&z).unwrap();
+        assert!(is_zero_vec(&f_w));
+
+        z[1] = Fr::from(111);
+        let f_w = r1cs.eval_relation(&z).unwrap();
+        assert!(!is_zero_vec(&f_w));
+    }
+
+    #[test]
+    fn test_check_r1cs_relation() {
         let r1cs = get_test_r1cs::<Fr>();
         let z = get_test_z(5);
         r1cs.check_relation(&z).unwrap();
-        r1cs.relax().check_relation(&z).unwrap();
     }
 }

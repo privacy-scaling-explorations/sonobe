@@ -20,7 +20,6 @@ use circuits::AugmentedFCircuit;
 use lcccs::LCCCS;
 use nimfs::NIMFS;
 
-use crate::commitment::CommitmentScheme;
 use crate::constants::NOVA_N_BITS_RO;
 use crate::folding::circuits::{
     cyclefold::{
@@ -29,10 +28,11 @@ use crate::folding::circuits::{
     },
     CF2,
 };
-use crate::folding::nova::{get_r1cs_from_cs, traits::NovaR1CS, PreprocessorParam};
+use crate::folding::nova::{get_r1cs_from_cs, PreprocessorParam};
 use crate::frontend::FCircuit;
 use crate::utils::{get_cm_coordinates, pp_hash};
 use crate::Error;
+use crate::{arith::r1cs::RelaxedR1CS, commitment::CommitmentScheme};
 use crate::{
     arith::{
         ccs::CCS,
@@ -281,7 +281,7 @@ where
         let U_i = LCCCS::<C1>::dummy(self.ccs.l, self.ccs.t, self.ccs.s);
         let mut u_i = CCCS::<C1>::dummy(self.ccs.l);
         let (_, cf_U_i): (CycleFoldWitness<C2>, CycleFoldCommittedInstance<C2>) =
-            self.cf_r1cs.dummy_instance();
+            self.cf_r1cs.dummy_running_instance();
 
         let sponge = PoseidonSponge::<C1::ScalarField>::new(&self.poseidon_config);
 
@@ -475,7 +475,7 @@ where
         let w_dummy = W_dummy.clone();
         let mut u_dummy = CCCS::<C1>::dummy(ccs.l);
         let (cf_W_dummy, cf_U_dummy): (CycleFoldWitness<C2>, CycleFoldCommittedInstance<C2>) =
-            cf_r1cs.dummy_instance();
+            cf_r1cs.dummy_running_instance();
         u_dummy.x = vec![
             U_dummy.hash(
                 &sponge,
@@ -883,8 +883,7 @@ where
         u_i.check_relation(&vp.ccs, &w_i)?;
 
         // check CycleFold's RelaxedR1CS satisfiability
-        vp.cf_r1cs
-            .check_relaxed_instance_relation(&cf_W_i, &cf_U_i)?;
+        vp.cf_r1cs.check_relaxed_relation(&cf_W_i, &cf_U_i)?;
 
         Ok(())
     }
@@ -899,7 +898,7 @@ mod tests {
 
     use super::*;
     use crate::commitment::pedersen::Pedersen;
-    use crate::frontend::tests::CubicFCircuit;
+    use crate::frontend::utils::CubicFCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
 
     #[test]

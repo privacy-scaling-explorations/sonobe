@@ -81,10 +81,9 @@ where
         C1::BaseField::from_bigint(BigInteger::from_bits_le(&cf_r_bits)).ok_or(Error::OutOfBounds)
     }
 
-    /// Computes a zero-knowledge proof of a Nova IVC proof
-    /// It implements the prover of section D.4. using folding.
-    /// For further details on the construction and and why folding is hiding,
-    /// see section D.4. and Lemma 9 in https://eprint.iacr.org/2023/573.pdf
+    /// Compute a zero-knowledge proof of a Nova IVC proof
+    /// It implements the prover of appendix D.4.in https://eprint.iacr.org/2023/573.pdf
+    /// For further details on why folding is hiding, see lemma 9
     pub fn new<
         GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
         GC2: CurveVar<C2, CF2<C2>>,
@@ -222,6 +221,8 @@ where
         })
     }
 
+    /// Verify a zero-knowledge proof of a Nova IVC proof
+    /// It implements the verifier of appendix D.4. in https://eprint.iacr.org/2023/573.pdf
     #[allow(clippy::too_many_arguments)]
     pub fn verify<
         CS1: CommitmentScheme<C1, true>,

@@ -115,6 +115,18 @@ impl<F: PrimeField> RelaxedR1CS<F> {
         vec_sub(&AzBz, &uCz)
     }
 
+    pub fn check_sampled_relaxed_r1cs(&self, u: F, E: &[F], z: &[F]) -> bool {
+        let sampled = RelaxedR1CS {
+            l: self.l,
+            A: self.A.clone(),
+            B: self.B.clone(),
+            C: self.C.clone(),
+            u,
+            E: E.to_vec(),
+        };
+        sampled.check_relation(z).is_ok()
+    }
+
     // Implements sampling a (committed) RelaxedR1CS
     // See construction 5 in https://eprint.iacr.org/2023/573.pdf
     pub fn sample<C, CS>(
@@ -142,22 +154,23 @@ impl<F: PrimeField> RelaxedR1CS<F> {
 
         let E = RelaxedR1CS::compute_E(&self.A, &self.B, &self.C, &z, &u)?;
 
-        #[cfg(test)]
-        {
-            assert_eq!(z.len(), self.A.n_cols);
-            let sampled = RelaxedR1CS {
-                l: self.l,
-                A: self.A.clone(),
-                B: self.B.clone(),
-                C: self.C.clone(),
-                u,
-                E: E.clone(),
-            };
-            sampled.check_relation(&z)?;
-        }
+        debug_assert!(
+            z.len() == self.A.n_cols,
+            "Length of z is {}, while A has {} columns.",
+            z.len(),
+            self.A.n_cols
+        );
+
+        debug_assert!(
+            self.check_sampled_relaxed_r1cs(u, &E, &z),
+            "Sampled a non satisfiable relaxed R1CS, sampled u: {}, computed E: {:?}",
+            u,
+            E
+        );
 
         let witness = Witness { E, rE, W, rW };
         let mut cm_witness = witness.commit::<CS, true>(params, x)?;
+
         // witness.commit() sets u to 1, we set it to the sampled u value
         cm_witness.u = u;
         Ok((cm_witness, witness))

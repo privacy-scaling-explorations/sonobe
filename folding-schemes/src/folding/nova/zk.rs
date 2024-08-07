@@ -233,7 +233,7 @@ where
         pp_hash: C1::ScalarField,
         poseidon_config: &PoseidonConfig<C1::ScalarField>,
         i: C1::ScalarField,
-        z_0: Vec<C1::ScalarField>,
+        z_0: &Vec<C1::ScalarField>,
         z_i: Vec<C1::ScalarField>,
         proof: &RandomizedIVCProof<C1, C2>,
     ) -> Result<(), Error>

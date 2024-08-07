@@ -257,7 +257,7 @@ where
         }
 
         // 1. Check that u_i.x is correct
-        let sponge = PoseidonSponge::<C1::ScalarField>::new(&poseidon_config);
+        let mut sponge = PoseidonSponge::<C1::ScalarField>::new(&poseidon_config);
         let expected_u_i_x = proof.U_i.hash(&sponge, pp_hash, i, z_0, z_i);
         if expected_u_i_x != proof.u_i.x[0] {
             return Err(Error::zkIVCVerificationFail);
@@ -270,9 +270,8 @@ where
 
         // 3. Obtain the U_f folded instance
         // a. Compute folding challenge
-        let mut challenges_sponge = PoseidonSponge::<C1::ScalarField>::new(&poseidon_config);
         let r = RandomizedIVCProof::<C1, C2>::get_folding_challenge(
-            &mut challenges_sponge,
+            &mut sponge,
             pp_hash,
             proof.U_i.clone(),
             proof.u_i.clone(),
@@ -290,7 +289,7 @@ where
         // 4. Obtain the U^{\prime}_i folded instance
         // a. Compute folding challenge
         let r_2 = RandomizedIVCProof::<C1, C2>::get_folding_challenge(
-            &mut challenges_sponge,
+            &mut sponge,
             pp_hash,
             U_f.clone(),
             proof.U_r.clone(),
@@ -322,7 +321,7 @@ where
         // 6. Check cyclefold proof
         // a. Compute folding challenge
         let cf_r = RandomizedIVCProof::<C1, C2>::get_cyclefold_folding_challenge::<GC2>(
-            &mut challenges_sponge,
+            &mut sponge,
             pp_hash,
             proof.cf_U_i.clone(),
             proof.cf_U_j.clone(),

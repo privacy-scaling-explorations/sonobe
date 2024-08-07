@@ -231,7 +231,7 @@ where
         r1cs: R1CS<C1::ScalarField>,
         cf_r1cs: R1CS<C2::ScalarField>,
         pp_hash: C1::ScalarField,
-        poseidon_config: PoseidonConfig<C1::ScalarField>,
+        poseidon_config: &PoseidonConfig<C1::ScalarField>,
         i: C1::ScalarField,
         z_0: Vec<C1::ScalarField>,
         z_i: Vec<C1::ScalarField>,

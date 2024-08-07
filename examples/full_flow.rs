@@ -52,20 +52,15 @@ impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
     fn external_inputs_len(&self) -> usize {
         0
     }
-    fn step_native(
-        &self,
-        _i: usize,
-        z_i: Vec<F>,
-        _external_inputs: Vec<F>,
-    ) -> Result<Vec<F>, Error> {
+    fn step_native(&self, _i: usize, z_i: &[F], _external_inputs: &[F]) -> Result<Vec<F>, Error> {
         Ok(vec![z_i[0] * z_i[0] * z_i[0] + z_i[0] + F::from(5_u32)])
     }
     fn generate_step_constraints(
         &self,
         cs: ConstraintSystemRef<F>,
         _i: usize,
-        z_i: Vec<FpVar<F>>,
-        _external_inputs: Vec<FpVar<F>>,
+        z_i: &[FpVar<F>],
+        _external_inputs: &[FpVar<F>],
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let five = FpVar::<F>::new_constant(cs.clone(), F::from(5u32))?;
         let z_i = z_i[0].clone();

@@ -49,12 +49,12 @@ impl<F: PrimeField, BF: BackendField> FCircuit<F> for NonameFCircuit<F, BF> {
     fn step_native(
         &self,
         _i: usize,
-        z_i: Vec<F>,
-        external_inputs: Vec<F>,
+        z_i: &[F],
+        external_inputs: &[F],
     ) -> Result<Vec<F>, crate::Error> {
         let wtns_external_inputs =
-            NonameInputs::from((&external_inputs, "external_inputs".to_string()));
-        let wtns_ivc_inputs = NonameInputs::from((&z_i, "ivc_inputs".to_string()));
+            NonameInputs::from((&external_inputs.to_vec(), "external_inputs".to_string()));
+        let wtns_ivc_inputs = NonameInputs::from((&z_i.to_vec(), "ivc_inputs".to_string()));
 
         let noname_witness = self
             .circuit
@@ -76,12 +76,12 @@ impl<F: PrimeField, BF: BackendField> FCircuit<F> for NonameFCircuit<F, BF> {
         &self,
         cs: ConstraintSystemRef<F>,
         _i: usize,
-        z_i: Vec<FpVar<F>>,
-        external_inputs: Vec<FpVar<F>>,
+        z_i: &[FpVar<F>],
+        external_inputs: &[FpVar<F>],
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let wtns_external_inputs =
-            NonameInputs::from_fpvars((&external_inputs, "external_inputs".to_string()))?;
-        let wtns_ivc_inputs = NonameInputs::from_fpvars((&z_i, "ivc_inputs".to_string()))?;
+            NonameInputs::from_fpvars((&external_inputs.to_vec(), "external_inputs".to_string()))?;
+        let wtns_ivc_inputs = NonameInputs::from_fpvars((&z_i.to_vec(), "ivc_inputs".to_string()))?;
         let noname_witness = self
             .circuit
             .generate_witness(wtns_ivc_inputs.0, wtns_external_inputs.0)
@@ -102,9 +102,9 @@ impl<F: PrimeField, BF: BackendField> FCircuit<F> for NonameFCircuit<F, BF> {
         let noname_circuit = NonameSonobeCircuit {
             compiled_circuit: self.circuit.clone(),
             witness: noname_witness,
-            assigned_z_i: &z_i,
-            assigned_external_inputs: &external_inputs,
-            assigned_z_i1: &assigned_z_i1,
+            assigned_z_i: &z_i.to_vec(),
+            assigned_external_inputs: &external_inputs.to_vec(),
+            assigned_z_i1: &assigned_z_i1.to_vec(),
         };
         noname_circuit.generate_constraints(cs.clone())?;
 
@@ -152,10 +152,10 @@ mod tests {
             Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs_private.clone())).unwrap();
 
         let z_i1 = circuit
-            .generate_step_constraints(cs.clone(), 0, ivc_inputs_var, external_inputs_var)
+            .generate_step_constraints(cs.clone(), 0, &ivc_inputs_var, &external_inputs_var)
             .unwrap();
         let z_i1_native = circuit
-            .step_native(0, inputs_public, inputs_private)
+            .step_native(0, &inputs_public, &inputs_private)
             .unwrap();
 
         assert_eq!(z_i1[0].value().unwrap(), z_i1_native[0]);
@@ -176,7 +176,7 @@ mod tests {
             Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs_private)).unwrap();
 
         let z_i1 = circuit
-            .generate_step_constraints(cs.clone(), 0, ivc_inputs_var, external_inputs_var)
+            .generate_step_constraints(cs.clone(), 0, &ivc_inputs_var, &external_inputs_var)
             .unwrap();
         assert!(cs.is_satisfied().unwrap());
         assert_eq!(z_i1[0].value().unwrap(), Fr::from(10_u8));
@@ -194,7 +194,7 @@ mod tests {
 
         let f_circuit = NonameFCircuit::<Fr, R1csBn254Field>::new(params).unwrap();
         f_circuit
-            .generate_step_constraints(cs.clone(), 0, ivc_inputs_var, vec![])
+            .generate_step_constraints(cs.clone(), 0, &ivc_inputs_var, &[])
             .unwrap();
         assert!(cs.is_satisfied().unwrap());
     }

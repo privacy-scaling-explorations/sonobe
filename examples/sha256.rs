@@ -49,12 +49,7 @@ impl<F: PrimeField> FCircuit<F> for Sha256FCircuit<F> {
 
     /// computes the next state values in place, assigning z_{i+1} into z_i, and computing the new
     /// z_{i+1}
-    fn step_native(
-        &self,
-        _i: usize,
-        z_i: Vec<F>,
-        _external_inputs: Vec<F>,
-    ) -> Result<Vec<F>, Error> {
+    fn step_native(&self, _i: usize, z_i: &[F], _external_inputs: &[F]) -> Result<Vec<F>, Error> {
         let out_bytes = Sha256::evaluate(&(), z_i[0].into_bigint().to_bytes_le()).unwrap();
         let out: Vec<F> = out_bytes.to_field_elements().unwrap();
 
@@ -66,8 +61,8 @@ impl<F: PrimeField> FCircuit<F> for Sha256FCircuit<F> {
         &self,
         _cs: ConstraintSystemRef<F>,
         _i: usize,
-        z_i: Vec<FpVar<F>>,
-        _external_inputs: Vec<FpVar<F>>,
+        z_i: &[FpVar<F>],
+        _external_inputs: &[FpVar<F>],
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let unit_var = UnitVar::default();
         let out_bytes = Sha256Gadget::evaluate(&unit_var, &z_i[0].to_bytes()?)?;

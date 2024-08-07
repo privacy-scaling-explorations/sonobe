@@ -755,9 +755,9 @@ where
 
         // get z_{i+1} from the F circuit
         let i_usize = self.i_usize.unwrap_or(0);
-        let z_i1 =
-            self.F
-                .generate_step_constraints(cs.clone(), i_usize, z_i.clone(), external_inputs)?;
+        let z_i1 = self
+            .F
+            .generate_step_constraints(cs.clone(), i_usize, &z_i, &external_inputs)?;
 
         let is_basecase = i.is_zero()?;
         let is_not_basecase = is_basecase.not();
@@ -869,10 +869,10 @@ where
         // cf_r_bits is denoted by rho* in the paper.
         let cf_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_gadget(
             &mut transcript,
-            pp_hash.clone(),
-            cf_U_i_vec,
-            cf_u_i.clone(),
-            cf_cmT.clone(),
+            &pp_hash,
+            &cf_U_i_vec,
+            &cf_u_i,
+            &cf_cmT,
         )?;
         // Fold cf1_u_i & cf_U_i into cf1_U_{i+1}
         let cf_U_i1 =
@@ -1261,7 +1261,7 @@ mod tests {
             let all_Ws = [vec![W_i.clone()], Ws].concat();
             let all_ws = [vec![w_i.clone()], ws].concat();
 
-            let z_i1 = F_circuit.step_native(i, z_i.clone(), vec![]).unwrap();
+            let z_i1 = F_circuit.step_native(i, &z_i, &[]).unwrap();
 
             let (U_i1, W_i1);
 
@@ -1394,12 +1394,12 @@ mod tests {
                     false,
                 >(
                     &mut transcript_p,
-                    cf_r1cs.clone(),
-                    cf_pedersen_params.clone(),
-                    pp_hash,
-                    cf_W_i.clone(), // CycleFold running instance witness
-                    cf_U_i.clone(), // CycleFold running instance
-                    cf_u_i_x,       // CycleFold incoming instance
+                    &cf_r1cs,
+                    &cf_pedersen_params,
+                    &pp_hash,
+                    &cf_W_i,   // CycleFold running instance witness
+                    &cf_U_i,   // CycleFold running instance
+                    &cf_u_i_x, // CycleFold incoming instance
                     cf_circuit,
                     &mut rng,
                 )

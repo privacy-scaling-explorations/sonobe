@@ -63,8 +63,8 @@ impl<F: PrimeField> FCircuit<F> for NoirFCircuit<F> {
     fn step_native(
         &self,
         _i: usize,
-        z_i: Vec<F>,
-        external_inputs: Vec<F>, // inputs that are not part of the state
+        z_i: &[F],
+        external_inputs: &[F], // inputs that are not part of the state
     ) -> Result<Vec<F>, crate::Error> {
         let mut acvm = ACVM::new(
             &StubbedBlackBoxSolver,
@@ -127,8 +127,8 @@ impl<F: PrimeField> FCircuit<F> for NoirFCircuit<F> {
         &self,
         cs: ConstraintSystemRef<F>,
         _i: usize,
-        z_i: Vec<FpVar<F>>,
-        external_inputs: Vec<FpVar<F>>, // inputs that are not part of the state
+        z_i: &[FpVar<F>],
+        external_inputs: &[FpVar<F>], // inputs that are not part of the state
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let mut acvm = ACVM::new(
             &StubbedBlackBoxSolver,
@@ -244,7 +244,7 @@ mod tests {
             external_inputs_len: 2,
         };
         let inputs = vec![Fr::from(2), Fr::from(5)];
-        let res = noirfcircuit.step_native(0, inputs.clone(), inputs);
+        let res = noirfcircuit.step_native(0, &inputs, &inputs);
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), vec![Fr::from(4), Fr::from(25)]);
     }
@@ -267,7 +267,7 @@ mod tests {
         let z_i = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs.clone())).unwrap();
         let external_inputs = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs)).unwrap();
         let output = noirfcircuit
-            .generate_step_constraints(cs.clone(), 0, z_i, external_inputs)
+            .generate_step_constraints(cs.clone(), 0, &z_i, &external_inputs)
             .unwrap();
         assert_eq!(output[0].value().unwrap(), Fr::from(4));
         assert_eq!(output[1].value().unwrap(), Fr::from(25));
@@ -291,7 +291,7 @@ mod tests {
         let z_i = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs.clone())).unwrap();
         let external_inputs = vec![];
         let output = noirfcircuit
-            .generate_step_constraints(cs.clone(), 0, z_i, external_inputs)
+            .generate_step_constraints(cs.clone(), 0, &z_i, &external_inputs)
             .unwrap();
         assert_eq!(output[0].value().unwrap(), Fr::from(4));
         assert_eq!(output[1].value().unwrap(), Fr::from(25));

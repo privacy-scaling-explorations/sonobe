@@ -112,8 +112,8 @@ where
         sponge: &T,
         pp_hash: FpVar<CF1<C>>,
         i: FpVar<CF1<C>>,
-        z_0: Vec<FpVar<CF1<C>>>,
-        z_i: Vec<FpVar<CF1<C>>>,
+        z_0: &[FpVar<CF1<C>>],
+        z_i: &[FpVar<CF1<C>>],
     ) -> Result<(FpVar<CF1<C>>, Vec<FpVar<CF1<C>>>), SynthesisError> {
         let mut sponge = sponge.clone();
         let U_vec = self.to_sponge_field_elements()?;
@@ -188,30 +188,30 @@ where
 {
     pub fn get_challenge_native<T: Transcript<C::ScalarField>>(
         transcript: &mut T,
-        pp_hash: C::ScalarField, // public params hash
-        U_i: CommittedInstance<C>,
-        u_i: CommittedInstance<C>,
-        cmT: C,
+        pp_hash: &C::ScalarField, // public params hash
+        U_i: &CommittedInstance<C>,
+        u_i: &CommittedInstance<C>,
+        cmT: &C,
     ) -> Vec<bool> {
         transcript.absorb(&pp_hash);
         transcript.absorb(&U_i);
         transcript.absorb(&u_i);
-        transcript.absorb_nonnative(&cmT);
+        transcript.absorb_nonnative(cmT);
         transcript.squeeze_bits(NOVA_N_BITS_RO)
     }
 
     // compatible with the native get_challenge_native
     pub fn get_challenge_gadget<S: CryptographicSponge, T: TranscriptVar<CF1<C>, S>>(
         transcript: &mut T,
-        pp_hash: FpVar<CF1<C>>,      // public params hash
-        U_i_vec: Vec<FpVar<CF1<C>>>, // apready processed input, so we don't have to recompute these values
-        u_i: CommittedInstanceVar<C>,
-        cmT: NonNativeAffineVar<C>,
+        pp_hash: &FpVar<CF1<C>>,   // public params hash
+        U_i_vec: &[FpVar<CF1<C>>], // apready processed input, so we don't have to recompute these values
+        u_i: &CommittedInstanceVar<C>,
+        cmT: &NonNativeAffineVar<C>,
     ) -> Result<Vec<Boolean<C::ScalarField>>, SynthesisError> {
         transcript.absorb(&pp_hash)?;
         transcript.absorb(&U_i_vec)?;
         transcript.absorb(&u_i)?;
-        transcript.absorb_nonnative(&cmT)?;
+        transcript.absorb_nonnative(cmT)?;
         transcript.squeeze_bits(NOVA_N_BITS_RO)
     }
 }
@@ -361,22 +361,18 @@ where
 
         // get z_{i+1} from the F circuit
         let i_usize = self.i_usize.unwrap_or(0);
-        let z_i1 =
-            self.F
-                .generate_step_constraints(cs.clone(), i_usize, z_i.clone(), external_inputs)?;
+        let z_i1 = self
+            .F
+            .generate_step_constraints(cs.clone(), i_usize, &z_i, &external_inputs)?;
 
         let is_basecase = i.is_zero()?;
 
         // Primary Part
         // P.1. Compute u_i.x
         // u_i.x[0] = H(i, z_0, z_i, U_i)
-        let (u_i_x, U_i_vec) = U_i.clone().hash(
-            &sponge,
-            pp_hash.clone(),
-            i.clone(),
-            z_0.clone(),
-            z_i.clone(),
-        )?;
+        let (u_i_x, U_i_vec) = U_i
+            .clone()
+            .hash(&sponge, pp_hash.clone(), i.clone(), &z_0, &z_i)?;
         // u_i.x[1] = H(cf_U_i)
         let (cf_u_i_x, cf_U_i_vec) = cf_U_i.clone().hash(&sponge, pp_hash.clone())?;
 
@@ -399,10 +395,10 @@ where
         // compute r = H(u_i, U_i, cmT)
         let r_bits = ChallengeGadget::<C1>::get_challenge_gadget(
             &mut transcript,
-            pp_hash.clone(),
-            U_i_vec,
-            u_i.clone(),
-            cmT.clone(),
+            &pp_hash,
+            &U_i_vec,
+            &u_i,
+            &cmT,
         )?;
         let r = Boolean::le_bits_to_fp_var(&r_bits)?;
         // Also convert r_bits to a `NonNativeFieldVar`
@@ -427,15 +423,15 @@ where
             &sponge,
             pp_hash.clone(),
             i + FpVar::<CF1<C1>>::one(),
-            z_0.clone(),
-            z_i1.clone(),
+            &z_0,
+            &z_i1,
         )?;
         let (u_i1_x_base, _) = CommittedInstanceVar::new_constant(cs.clone(), u_dummy)?.hash(
             &sponge,
             pp_hash.clone(),
             FpVar::<CF1<C1>>::one(),
-            z_0.clone(),
-            z_i1.clone(),
+            &z_0,
+            &z_i1,
         )?;
         let x = FpVar::new_input(cs.clone(), || Ok(self.x.unwrap_or(u_i1_x_base.value()?)))?;
         x.enforce_equal(&is_basecase.select(&u_i1_x_base, &u_i1_x)?)?;
@@ -486,10 +482,10 @@ where
         // cf_r_bits is denoted by rho* in the paper.
         let cf1_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_gadget(
             &mut transcript,
-            pp_hash.clone(),
-            cf_U_i_vec,
-            cf1_u_i.clone(),
-            cf1_cmT.clone(),
+            &pp_hash,
+            &cf_U_i_vec,
+            &cf1_u_i,
+            &cf1_cmT,
         )?;
         // Fold cf1_u_i & cf_U_i into cf1_U_{i+1}
         let cf1_U_i1 = NIFSFullGadget::<C2, GC2>::fold_committed_instance(
@@ -499,10 +495,10 @@ where
         // same for cf2_r:
         let cf2_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_gadget(
             &mut transcript,
-            pp_hash.clone(),
-            cf1_U_i1.to_native_sponge_field_elements()?,
-            cf2_u_i.clone(),
-            cf2_cmT.clone(),
+            &pp_hash,
+            &cf1_U_i1.to_native_sponge_field_elements()?,
+            &cf2_u_i,
+            &cf2_cmT,
         )?;
         let cf_U_i1 = NIFSFullGadget::<C2, GC2>::fold_committed_instance(
             cf2_r_bits, cf2_cmT, cf1_U_i1, // the output from NIFS.V(cf1_r, cf_U, cfE_u)
@@ -609,7 +605,7 @@ pub mod tests {
         };
 
         // compute the CommittedInstance hash natively
-        let h = ci.hash(&sponge, pp_hash, i, z_0.clone(), z_i.clone());
+        let h = ci.hash(&sponge, pp_hash, i, &z_0, &z_i);
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
@@ -624,7 +620,7 @@ pub mod tests {
 
         // compute the CommittedInstance hash in-circuit
         let (hVar, _) = ciVar
-            .hash(&sponge, pp_hashVar, iVar, z_0Var, z_iVar)
+            .hash(&sponge, pp_hashVar, iVar, &z_0Var, &z_iVar)
             .unwrap();
         assert!(cs.is_satisfied().unwrap());
 
@@ -658,10 +654,10 @@ pub mod tests {
         // compute the challenge natively
         let r_bits = ChallengeGadget::<Projective>::get_challenge_native(
             &mut transcript,
-            pp_hash,
-            U_i.clone(),
-            u_i.clone(),
-            cmT,
+            &pp_hash,
+            &U_i,
+            &u_i,
+            &cmT,
         );
         let r = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
 
@@ -686,10 +682,10 @@ pub mod tests {
         .concat();
         let r_bitsVar = ChallengeGadget::<Projective>::get_challenge_gadget(
             &mut transcriptVar,
-            pp_hashVar,
-            U_iVar_vec,
-            u_iVar,
-            cmTVar,
+            &pp_hashVar,
+            &U_iVar_vec,
+            &u_iVar,
+            &cmTVar,
         )
         .unwrap();
         assert!(cs.is_satisfied().unwrap());

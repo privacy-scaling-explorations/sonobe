@@ -16,7 +16,7 @@ use std::{fmt, usize};
 pub mod utils;
 use utils::CircomWrapper;
 
-type ClosurePointer<F> = Rc<dyn Fn(usize, Vec<F>, Vec<F>) -> Result<Vec<F>, Error>>;
+type ClosurePointer<F> = Rc<dyn Fn(usize, &[F], &[F]) -> Result<Vec<F>, Error>>;
 
 #[derive(Clone)]
 struct CustomStepNative<F: PrimeField> {
@@ -51,8 +51,8 @@ impl<F: PrimeField> CircomFCircuit<F> {
     pub fn execute_custom_step_native(
         &self,
         _i: usize,
-        z_i: Vec<F>,
-        external_inputs: Vec<F>,
+        z_i: &[F],
+        external_inputs: &[F],
     ) -> Result<Vec<F>, Error> {
         if let Some(code) = &self.custom_step_native_code {
             (code.func)(_i, z_i, external_inputs)
@@ -116,12 +116,7 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
         self.external_inputs_len
     }
 
-    fn step_native(
-        &self,
-        _i: usize,
-        z_i: Vec<F>,
-        external_inputs: Vec<F>,
-    ) -> Result<Vec<F>, Error> {
+    fn step_native(&self, _i: usize, z_i: &[F], external_inputs: &[F]) -> Result<Vec<F>, Error> {
         self.execute_custom_step_native(_i, z_i, external_inputs)
     }
 
@@ -129,19 +124,19 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
         &self,
         cs: ConstraintSystemRef<F>,
         _i: usize,
-        z_i: Vec<FpVar<F>>,
-        external_inputs: Vec<FpVar<F>>,
+        z_i: &[FpVar<F>],
+        external_inputs: &[FpVar<F>],
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         #[cfg(test)]
         assert_eq!(z_i.len(), self.state_len());
         #[cfg(test)]
         assert_eq!(external_inputs.len(), self.external_inputs_len());
 
-        let input_values = self.fpvars_to_bigints(&z_i)?;
+        let input_values = self.fpvars_to_bigints(z_i)?;
         let mut inputs_map = vec![("ivc_input".to_string(), input_values)];
 
         if self.external_inputs_len() > 0 {
-            let external_inputs_bi = self.fpvars_to_bigints(&external_inputs)?;
+            let external_inputs_bi = self.fpvars_to_bigints(external_inputs)?;
             inputs_map.push(("external_inputs".to_string(), external_inputs_bi));
         }
 
@@ -219,7 +214,7 @@ pub mod tests {
         let circom_fcircuit = CircomFCircuit::<Fr>::new((r1cs_path, wasm_path, 1, 0)).unwrap(); // state_len:1, external_inputs_len:0
 
         let z_i = vec![Fr::from(3u32)];
-        let z_i1 = circom_fcircuit.step_native(1, z_i, vec![]).unwrap();
+        let z_i1 = circom_fcircuit.step_native(1, &z_i, &[]).unwrap();
         assert_eq!(z_i1, vec![Fr::from(35u32)]);
     }
 
@@ -238,7 +233,7 @@ pub mod tests {
 
         let z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i)).unwrap();
         let z_i1_var = circom_fcircuit
-            .generate_step_constraints(cs.clone(), 1, z_i_var, vec![])
+            .generate_step_constraints(cs.clone(), 1, &z_i_var, &[])
             .unwrap();
         assert_eq!(z_i1_var.value().unwrap(), vec![Fr::from(35u32)]);
     }
@@ -257,7 +252,7 @@ pub mod tests {
         let wrapper_circuit = crate::frontend::tests::WrapperCircuit {
             FC: circom_fcircuit.clone(),
             z_i: Some(z_i.clone()),
-            z_i1: Some(circom_fcircuit.step_native(0, z_i.clone(), vec![]).unwrap()),
+            z_i1: Some(circom_fcircuit.step_native(0, &z_i, &[]).unwrap()),
         };
 
         let cs = ConstraintSystem::<Fr>::new_ref();
@@ -283,7 +278,7 @@ pub mod tests {
 
         // run native step
         let z_i1_native = circom_fcircuit
-            .step_native(1, z_i.clone(), external_inputs.clone())
+            .step_native(1, &z_i, &external_inputs)
             .unwrap();
 
         // run gadget step
@@ -291,7 +286,7 @@ pub mod tests {
         let external_inputs_var =
             Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(external_inputs.clone())).unwrap();
         let z_i1_var = circom_fcircuit
-            .generate_step_constraints(cs.clone(), 1, z_i_var, external_inputs_var)
+            .generate_step_constraints(cs.clone(), 1, &z_i_var, &external_inputs_var)
             .unwrap();
 
         assert_eq!(z_i1_var.value().unwrap(), z_i1_native);
@@ -305,8 +300,8 @@ pub mod tests {
         let _z_i1_var = circom_fcircuit.generate_step_constraints(
             cs.clone(),
             1,
-            wrong_z_i_var,
-            external_inputs_var,
+            &wrong_z_i_var,
+            &external_inputs_var,
         );
         // TODO:: https://github.com/privacy-scaling-explorations/sonobe/issues/104
         // Disable check for now
@@ -325,11 +320,11 @@ pub mod tests {
         let z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i.clone())).unwrap();
 
         // run native step
-        let z_i1_native = circom_fcircuit.step_native(1, z_i.clone(), vec![]).unwrap();
+        let z_i1_native = circom_fcircuit.step_native(1, &z_i, &[]).unwrap();
 
         // run gadget step
         let z_i1_var = circom_fcircuit
-            .generate_step_constraints(cs.clone(), 1, z_i_var, vec![])
+            .generate_step_constraints(cs.clone(), 1, &z_i_var, &[])
             .unwrap();
 
         assert_eq!(z_i1_var.value().unwrap(), z_i1_native);
@@ -339,7 +334,7 @@ pub mod tests {
         let wrong_z_i = vec![Fr::from(0u32), Fr::from(4u32), Fr::from(5u32)];
         let wrong_z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(wrong_z_i)).unwrap();
         let _z_i1_var =
-            circom_fcircuit.generate_step_constraints(cs.clone(), 1, wrong_z_i_var, vec![]);
+            circom_fcircuit.generate_step_constraints(cs.clone(), 1, &wrong_z_i_var, &[]);
         // TODO:: https://github.com/privacy-scaling-explorations/sonobe/issues/104
         // Disable check for now
         // assert!(z_i1_var.is_err())
@@ -363,7 +358,7 @@ pub mod tests {
         let wrapper_circuit = crate::frontend::tests::WrapperCircuit {
             FC: circom_fcircuit.clone(),
             z_i: Some(z_i.clone()),
-            z_i1: Some(circom_fcircuit.step_native(0, z_i.clone(), vec![]).unwrap()),
+            z_i1: Some(circom_fcircuit.step_native(0, &z_i, &[]).unwrap()),
         };
 
         let cs = ConstraintSystem::<Fr>::new_ref();

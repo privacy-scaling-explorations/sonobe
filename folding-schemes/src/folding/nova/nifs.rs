@@ -266,13 +266,8 @@ pub mod tests {
         let mut transcript = PoseidonSponge::<C::ScalarField>::new(&poseidon_config);
 
         let pp_hash = C::ScalarField::from(42u32); // only for test
-        let r_bits = ChallengeGadget::<C>::get_challenge_native(
-            &mut transcript,
-            pp_hash,
-            ci1.clone(),
-            ci2.clone(),
-            cmT,
-        );
+        let r_bits =
+            ChallengeGadget::<C>::get_challenge_native(&mut transcript, &pp_hash, &ci1, &ci2, &cmT);
         let r_Fr = C::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
 
         let (w3, ci3) =

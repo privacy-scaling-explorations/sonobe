@@ -237,18 +237,18 @@ where
         // compute the U_{i+1}, W_{i+1}
         let (T, cmT) = NIFS::<C1, CS1, H>::compute_cmT(
             &nova.cs_pp,
-            &nova.r1cs.clone(),
-            &nova.w_i.clone(),
-            &nova.u_i.clone(),
-            &nova.W_i.clone(),
-            &nova.U_i.clone(),
+            &nova.r1cs,
+            &nova.w_i,
+            &nova.u_i,
+            &nova.W_i,
+            &nova.U_i,
         )?;
         let r_bits = ChallengeGadget::<C1>::get_challenge_native(
             &mut transcript,
-            nova.pp_hash,
-            nova.U_i.clone(),
-            nova.u_i.clone(),
-            cmT,
+            &nova.pp_hash,
+            &nova.U_i,
+            &nova.u_i,
+            &cmT,
         );
         let r_Fr = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
             .ok_or(Error::OutOfBounds)?;
@@ -398,13 +398,9 @@ where
         (u_i.u.is_one()?).enforce_equal(&Boolean::TRUE)?;
 
         // 3.a u_i.x[0] == H(i, z_0, z_i, U_i)
-        let (u_i_x, U_i_vec) = U_i.clone().hash(
-            &sponge,
-            pp_hash.clone(),
-            i.clone(),
-            z_0.clone(),
-            z_i.clone(),
-        )?;
+        let (u_i_x, U_i_vec) = U_i
+            .clone()
+            .hash(&sponge, pp_hash.clone(), i.clone(), &z_0, &z_i)?;
         (u_i.x[0]).enforce_equal(&u_i_x)?;
 
         #[cfg(feature = "light-test")]
@@ -482,10 +478,10 @@ where
             NonNativeAffineVar::new_input(cs.clone(), || Ok(self.cmT.unwrap_or_else(C1::zero)))?;
         let r_bits = ChallengeGadget::<C1>::get_challenge_gadget(
             &mut transcript,
-            pp_hash,
-            U_i_vec,
-            u_i.clone(),
-            cmT.clone(),
+            &pp_hash,
+            &U_i_vec,
+            &u_i,
+            &cmT,
         )?;
         let (incircuit_c_W, incircuit_c_E) =
             KZGChallengesGadget::<C1>::get_challenges_gadget(&mut transcript, U_i1.clone())?;
@@ -659,7 +655,7 @@ pub mod tests {
         let circuit = WrapperCircuit::<Fr, CubicFCircuit<Fr>> {
             FC: cubic_circuit,
             z_i: Some(z_i.clone()),
-            z_i1: Some(cubic_circuit.step_native(0, z_i, vec![]).unwrap()),
+            z_i1: Some(cubic_circuit.step_native(0, &z_i, &[]).unwrap()),
         };
 
         test_relaxed_r1cs_gadget(circuit);
@@ -702,7 +698,7 @@ pub mod tests {
         let circuit = WrapperCircuit::<Fr, CustomFCircuit<Fr>> {
             FC: custom_circuit,
             z_i: Some(z_i.clone()),
-            z_i1: Some(custom_circuit.step_native(0, z_i, vec![]).unwrap()),
+            z_i1: Some(custom_circuit.step_native(0, &z_i, &[]).unwrap()),
         };
         test_relaxed_r1cs_gadget(circuit);
     }
@@ -718,7 +714,7 @@ pub mod tests {
         let circuit = WrapperCircuit::<Fq, CustomFCircuit<Fq>> {
             FC: custom_circuit,
             z_i: Some(z_i.clone()),
-            z_i1: Some(custom_circuit.step_native(0, z_i, vec![]).unwrap()),
+            z_i1: Some(custom_circuit.step_native(0, &z_i, &[]).unwrap()),
         };
         circuit.generate_constraints(cs.clone()).unwrap();
         cs.finalize();

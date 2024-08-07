@@ -297,9 +297,7 @@ where
         ];
         let us = vec![u_i.clone(); NU - 1];
 
-        let z_i1 = self
-            .F
-            .step_native(0, state.clone(), external_inputs.clone())?;
+        let z_i1 = self.F.step_native(0, &state, &external_inputs)?;
 
         // compute u_{i+1}.x
         let U_i1 = LCCCS::dummy(self.ccs.l, self.ccs.t, self.ccs.s);
@@ -597,9 +595,7 @@ where
         i_bytes.copy_from_slice(&self.i.into_bigint().to_bytes_le()[..8]);
         let i_usize: usize = usize::from_le_bytes(i_bytes);
 
-        let z_i1 = self
-            .F
-            .step_native(i_usize, self.z_i.clone(), external_inputs.clone())?;
+        let z_i1 = self.F.step_native(i_usize, &self.z_i, &external_inputs)?;
 
         // u_{i+1}.x[1] = H(cf_U_{i+1})
         let cf_u_i1_x: C1::ScalarField;
@@ -735,12 +731,12 @@ where
                 H,
             >(
                 &mut transcript_p,
-                self.cf_r1cs.clone(),
-                self.cf_cs_params.clone(),
-                self.pp_hash,
-                self.cf_W_i.clone(), // CycleFold running instance witness
-                self.cf_U_i.clone(), // CycleFold running instance
-                cf_u_i_x,
+                &self.cf_r1cs,
+                &self.cf_cs_params,
+                &self.pp_hash,
+                &self.cf_W_i, // CycleFold running instance witness
+                &self.cf_U_i, // CycleFold running instance
+                &cf_u_i_x,
                 cf_circuit,
                 &mut rng,
             )?;

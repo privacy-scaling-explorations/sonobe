@@ -115,8 +115,8 @@ where
         sponge: &T,
         pp_hash: C::ScalarField, // public params hash
         i: C::ScalarField,
-        z_0: Vec<C::ScalarField>,
-        z_i: Vec<C::ScalarField>,
+        z_0: &[C::ScalarField],
+        z_i: &[C::ScalarField],
     ) -> C::ScalarField {
         let mut sponge = sponge.clone();
         sponge.absorb(&pp_hash);
@@ -506,9 +506,7 @@ where
         i_bytes.copy_from_slice(&self.i.into_bigint().to_bytes_le()[..8]);
         let i_usize: usize = usize::from_le_bytes(i_bytes);
 
-        let z_i1 = self
-            .F
-            .step_native(i_usize, self.z_i.clone(), external_inputs.clone())?;
+        let z_i1 = self.F.step_native(i_usize, &self.z_i, &external_inputs)?;
 
         // compute T and cmT for AugmentedFCircuit
         let (T, cmT) = self.compute_cmT()?;
@@ -516,10 +514,10 @@ where
         // r_bits is the r used to the RLC of the F' instances
         let r_bits = ChallengeGadget::<C1>::get_challenge_native(
             &mut transcript,
-            self.pp_hash,
-            self.U_i.clone(),
-            self.u_i.clone(),
-            cmT,
+            &self.pp_hash,
+            &self.U_i,
+            &self.u_i,
+            &cmT,
         );
         let r_Fr = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
             .ok_or(Error::OutOfBounds)?;
@@ -538,8 +536,8 @@ where
             &sponge,
             self.pp_hash,
             self.i + C1::ScalarField::one(),
-            self.z_0.clone(),
-            z_i1.clone(),
+            &self.z_0,
+            &z_i1,
         );
         // u_{i+1}.x[1] = H(cf_U_{i+1})
         let cf_u_i1_x: C1::ScalarField;
@@ -601,7 +599,7 @@ where
             };
             let cfE_circuit = NovaCycleFoldCircuit::<C1, GC1> {
                 _gc: PhantomData,
-                r_bits: Some(vec![r_bits.clone()]),
+                r_bits: Some(vec![r_bits]),
                 points: Some(vec![self.U_i.clone().cmE, cmT]),
                 x: Some(cfE_u_i_x.clone()),
             };
@@ -609,18 +607,18 @@ where
             // fold self.cf_U_i + cfW_U -> folded running with cfW
             let (_cfW_w_i, cfW_u_i, cfW_W_i1, cfW_U_i1, cfW_cmT, _) = self.fold_cyclefold_circuit(
                 &mut transcript,
-                self.cf_W_i.clone(), // CycleFold running instance witness
-                self.cf_U_i.clone(), // CycleFold running instance
-                cfW_u_i_x,
+                &self.cf_W_i, // CycleFold running instance witness
+                &self.cf_U_i, // CycleFold running instance
+                &cfW_u_i_x,
                 cfW_circuit,
                 &mut rng,
             )?;
             // fold [the output from folding self.cf_U_i + cfW_U] + cfE_U = folded_running_with_cfW + cfE
             let (_cfE_w_i, cfE_u_i, cf_W_i1, cf_U_i1, cf_cmT, _) = self.fold_cyclefold_circuit(
                 &mut transcript,
-                cfW_W_i1,
-                cfW_U_i1.clone(),
-                cfE_u_i_x,
+                &cfW_W_i1,
+                &cfW_U_i1,
+                &cfE_u_i_x,
                 cfE_circuit,
                 &mut rng,
             )?;
@@ -750,7 +748,7 @@ where
 
         // check that u_i's output points to the running instance
         // u_i.X[0] == H(i, z_0, z_i, U_i)
-        let expected_u_i_x = U_i.hash(&sponge, pp_hash, num_steps, z_0, z_i.clone());
+        let expected_u_i_x = U_i.hash(&sponge, pp_hash, num_steps, &z_0, &z_i);
         if expected_u_i_x != u_i.x[0] {
             return Err(Error::IVCVerificationFail);
         }
@@ -827,9 +825,9 @@ where
     fn fold_cyclefold_circuit<T: Transcript<C1::ScalarField>>(
         &self,
         transcript: &mut T,
-        cf_W_i: CycleFoldWitness<C2>, // witness of the running instance
-        cf_U_i: CycleFoldCommittedInstance<C2>, // running instance
-        cf_u_i_x: Vec<C2::ScalarField>,
+        cf_W_i: &CycleFoldWitness<C2>, // witness of the running instance
+        cf_U_i: &CycleFoldCommittedInstance<C2>, // running instance
+        cf_u_i_x: &[C2::ScalarField],
         cf_circuit: NovaCycleFoldCircuit<C1, GC1>,
         rng: &mut impl RngCore,
     ) -> Result<
@@ -845,9 +843,9 @@ where
     > {
         fold_cyclefold_circuit::<NovaCycleFoldConfig<C1>, C1, GC1, C2, GC2, CS2, H>(
             transcript,
-            self.cf_r1cs.clone(),
-            self.cf_cs_pp.clone(),
-            self.pp_hash,
+            &self.cf_r1cs,
+            &self.cf_cs_pp,
+            &self.pp_hash,
             cf_W_i,
             cf_U_i,
             cf_u_i_x,

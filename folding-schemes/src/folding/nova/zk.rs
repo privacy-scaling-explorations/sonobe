@@ -228,8 +228,8 @@ where
         GC2: CurveVar<C2, CF2<C2>>,
         CS2: CommitmentScheme<C2, true>,
     >(
-        r1cs: R1CS<C1::ScalarField>,
-        cf_r1cs: R1CS<C2::ScalarField>,
+        r1cs: &R1CS<C1::ScalarField>,
+        cf_r1cs: &R1CS<C2::ScalarField>,
         pp_hash: C1::ScalarField,
         poseidon_config: &PoseidonConfig<C1::ScalarField>,
         i: C1::ScalarField,

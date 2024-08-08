@@ -75,7 +75,7 @@ pub fn vec_add<F: PrimeField>(a: &[F], b: &[F]) -> Result<Vec<F>, Error> {
             b.len(),
         ));
     }
-    Ok(a.iter().zip(b.iter()).map(|(x, y)| *x + y).collect())
+    Ok(cfg_iter!(a).zip(b).map(|(x, y)| *x + y).collect())
 }
 
 pub fn vec_sub<F: PrimeField>(a: &[F], b: &[F]) -> Result<Vec<F>, Error> {
@@ -87,15 +87,15 @@ pub fn vec_sub<F: PrimeField>(a: &[F], b: &[F]) -> Result<Vec<F>, Error> {
             b.len(),
         ));
     }
-    Ok(a.iter().zip(b.iter()).map(|(x, y)| *x - y).collect())
+    Ok(cfg_iter!(a).zip(b).map(|(x, y)| *x - y).collect())
 }
 
-pub fn vec_scalar_mul<F: PrimeField>(vec: &[F], c: &F) -> Vec<F> {
-    vec.iter().map(|a| *a * c).collect()
+pub fn vec_scalar_mul<F: PrimeField>(vec: &[F], s: &F) -> Vec<F> {
+    cfg_iter!(vec).map(|v| *v * s).collect()
 }
 
 pub fn is_zero_vec<F: PrimeField>(vec: &[F]) -> bool {
-    vec.iter().all(|a| a.is_zero())
+    cfg_iter!(vec).all(|a| a.is_zero())
 }
 
 pub fn mat_vec_mul_dense<F: PrimeField>(M: &[Vec<F>], z: &[F]) -> Result<Vec<F>, Error> {
@@ -247,5 +247,12 @@ pub mod tests {
             vec_add(&a, &b).unwrap(),
             to_F_vec(vec![8, 10, 12, 14, 16, 18])
         );
+    }
+
+    #[test]
+    fn test_vec_scalar_mul() {
+        let a: Vec<Fr> = to_F_vec::<Fr>(vec![1, 2, 3, 4, 5, 6]);
+        let s: Fr = Fr::from(3_u32);
+        assert_eq!(vec_scalar_mul(&a, &s), to_F_vec(vec![3, 6, 9, 12, 15, 18]));
     }
 }

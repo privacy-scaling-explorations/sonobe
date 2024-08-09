@@ -4,8 +4,13 @@ use ark_r1cs_std::fields::fp::FpVar;
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 use ark_std::fmt::Debug;
 
+// we use features to activate specific frontends, to reduce the amount of dependencies and compile
+// time
+#[cfg(feature = "circom")]
 pub mod circom;
+#[cfg(feature = "noir")]
 pub mod noir;
+#[cfg(feature = "noname")]
 pub mod noname;
 
 /// FCircuit defines the trait of the circuit of the F function, which is the one being folded (ie.

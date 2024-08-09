@@ -2,6 +2,9 @@
 #![allow(non_camel_case_types)]
 #![allow(clippy::upper_case_acronyms)]
 ///
+/// To run:
+/// > cargo run --release --example noname_full_flow -- --nocapture
+///
 /// This example performs the full flow:
 /// - define the circuit to be folded
 /// - fold the circuit with Nova+CycleFold's IVC

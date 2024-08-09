@@ -3,6 +3,9 @@
 #![allow(non_camel_case_types)]
 #![allow(clippy::upper_case_acronyms)]
 
+///
+/// To run:
+/// > cargo run --release --example multi_inputs -- --nocapture
 use ark_ff::PrimeField;
 use ark_r1cs_std::alloc::AllocVar;
 use ark_r1cs_std::fields::fp::FpVar;

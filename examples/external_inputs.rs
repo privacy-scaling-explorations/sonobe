@@ -3,6 +3,9 @@
 #![allow(non_camel_case_types)]
 #![allow(clippy::upper_case_acronyms)]
 
+///
+/// To run:
+/// > cargo run --release --example external_inputs -- --nocapture
 use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as Projective};
 use ark_crypto_primitives::{
     crh::{

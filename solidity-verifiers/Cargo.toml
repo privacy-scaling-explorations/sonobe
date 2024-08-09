@@ -28,7 +28,8 @@ tracing-subscriber = { version = "0.2" }
 ark-bn254 = {version="0.4.0", features=["r1cs"]}
 ark-grumpkin = {version="0.4.0", features=["r1cs"]}
 rand = "0.8.5"
-folding-schemes = { path = "../folding-schemes/", features=["light-test"]}
+# use the diverse frontend features for the examples
+folding-schemes = { path = "../folding-schemes/", features=["light-test", "circom", "noname", "noir"]}
 noname = { git = "https://github.com/dmpierre/noname" }
 
 [features]
@@ -56,4 +57,3 @@ path = "../examples/noname_full_flow.rs"
 [[example]]
 name = "noir_full_flow"
 path = "../examples/noir_full_flow.rs"
-

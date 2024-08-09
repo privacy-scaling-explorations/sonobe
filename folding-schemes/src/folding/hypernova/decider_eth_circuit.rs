@@ -168,9 +168,8 @@ where
     pub U_i1: Option<LCCCS<C1>>,
     pub W_i1: Option<Witness<C1::ScalarField>>,
     pub nimfs_proof: Option<NIMFSProof<C1>>,
-    // rho_0 is the first and only rho in the 'rho_powers' array, since it comes from NIMFS-folding
-    // only 2 instances.
-    pub rho_0: Option<C1::ScalarField>,
+    // rho is the 'random' value used for the fold of the last 2 instances
+    pub rho: Option<C1::ScalarField>,
     /// CycleFold running instance
     pub cf_U_i: Option<CycleFoldCommittedInstance<C2>>,
     pub cf_W_i: Option<CycleFoldWitness<C2>>,
@@ -199,15 +198,14 @@ where
         // compute the U_{i+1}, W_{i+1}, by folding the last running & incoming instances
         let mut transcript = PoseidonSponge::<C1::ScalarField>::new(&hn.poseidon_config);
         transcript.absorb(&hn.pp_hash);
-        let (nimfs_proof, U_i1, W_i1, rho_powers) =
-            NIMFS::<C1, PoseidonSponge<C1::ScalarField>>::prove(
-                &mut transcript,
-                &hn.ccs,
-                &[hn.U_i.clone()],
-                &[hn.u_i.clone()],
-                &[hn.W_i.clone()],
-                &[hn.w_i.clone()],
-            )?;
+        let (nimfs_proof, U_i1, W_i1, rho) = NIMFS::<C1, PoseidonSponge<C1::ScalarField>>::prove(
+            &mut transcript,
+            &hn.ccs,
+            &[hn.U_i.clone()],
+            &[hn.u_i.clone()],
+            &[hn.W_i.clone()],
+            &[hn.w_i.clone()],
+        )?;
 
         // compute the KZG challenges used as inputs in the circuit
         let kzg_challenge =
@@ -221,11 +219,6 @@ where
         );
         let p_W = poly_from_vec(W.to_vec())?;
         let eval_W = p_W.evaluate(&kzg_challenge);
-
-        // ensure that we only have 1 element in rho_powers, since we only NIMFS-fold 2 instances
-        if rho_powers.len() != 1 {
-            return Err(Error::NotExpectedLength(rho_powers.len(), 1));
-        }
 
         Ok(Self {
             _c1: PhantomData,
@@ -251,7 +244,7 @@ where
             U_i1: Some(U_i1),
             W_i1: Some(W_i1),
             nimfs_proof: Some(nimfs_proof),
-            rho_0: Some(rho_powers[0]),
+            rho: Some(rho),
             cf_U_i: Some(hn.cf_U_i),
             cf_W_i: Some(hn.cf_W_i),
             kzg_challenge: Some(kzg_challenge),
@@ -428,7 +421,7 @@ where
         // The following steps are in non-increasing order because the `computed_U_i1` is computed
         // at step 8, and later used at step 6. Notice that in Nova, we compute U_i1 outside of the
         // circuit, in the smart contract, but here we're computing it in-circuit, and we reuse the
-        // `rho_vec` computed along the way of computing `computed_U_i1` for the later `rho_powers`
+        // `rho_bits` computed along the way of computing `computed_U_i1` for the later `rho_powers`
         // check (6.b).
 
         // Check 7 is temporary disabled due
@@ -445,7 +438,7 @@ where
         // Notice that the NIMFSGadget performs all the logic except of checking the fold of the
         // instances C parameter, which would require non-native arithmetic, henceforth we perform
         // that check outside the circuit.
-        let (computed_U_i1, rho_vec) = NIMFSGadget::<C1>::verify(
+        let (computed_U_i1, rho_bits) = NIMFSGadget::<C1>::verify(
             cs.clone(),
             &self.ccs.clone(),
             &mut transcript,
@@ -471,20 +464,11 @@ where
         computed_U_i1.v.enforce_equal(&U_i1.v)?;
 
         // 8.b check that the in-circuit computed r is equal to the inputted r.
-        // Notice that rho_vec only contains one element, since at the final fold we are only
-        // folding 2-to-1 instances.
 
-        // Ensure that rho_vec is of length 1, note that this is not enforced at the constraint
-        // level but more as a check for the prover.
-        if rho_vec.len() != 1 {
-            return Err(SynthesisError::Unsatisfiable);
-        }
-
-        let rho_0 = Boolean::le_bits_to_fp_var(&rho_vec[0])?;
-        let external_rho_0 = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
-            Ok(self.rho_0.unwrap_or(CF1::<C1>::zero()))
-        })?;
-        rho_0.enforce_equal(&external_rho_0)?;
+        let rho = Boolean::le_bits_to_fp_var(&rho_bits)?;
+        let external_rho =
+            FpVar::<CF1<C1>>::new_input(cs.clone(), || Ok(self.rho.unwrap_or(CF1::<C1>::zero())))?;
+        rho.enforce_equal(&external_rho)?;
 
         Ok(())
     }

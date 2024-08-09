@@ -14,7 +14,7 @@ use ark_r1cs_std::{
     fields::{fp::FpVar, FieldVar},
     groups::GroupOpsBounds,
     prelude::CurveVar,
-    R1CSVar, ToBitsGadget, ToConstraintFieldGadget,
+    R1CSVar, ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{
     ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, Namespace, SynthesisError,
@@ -234,7 +234,7 @@ where
         new_instances: &[CCCSVar<C>],      // u
         proof: ProofVar<C>,
         enabled: Boolean<C::ScalarField>,
-    ) -> Result<(LCCCSVar<C>, Vec<Vec<Boolean<CF1<C>>>>), SynthesisError> {
+    ) -> Result<(LCCCSVar<C>, Vec<Boolean<CF1<C>>>), SynthesisError> {
         // absorb instances to transcript
         for U_i in running_instances {
             let v = [
@@ -317,15 +317,16 @@ where
         let rho_bits: Vec<Boolean<CF1<C>>> = transcript.get_challenge_nbits(NOVA_N_BITS_RO)?;
         let rho = Boolean::le_bits_to_fp_var(&rho_bits)?;
 
-        // Self::fold will return the folded instance, together with the rho's powers vector so
-        // they can be used in other parts of the AugmentedFCircuit
-        Self::fold(
+        // Self::fold will return the folded instance
+        let folded_lcccs = Self::fold(
             running_instances,
             new_instances,
             proof.sigmas_thetas,
             r_x_prime,
             rho,
-        )
+        )?;
+        // return the rho_bits so it can be used in other parts of the AugmentedFCircuit
+        Ok((folded_lcccs, rho_bits))
     }
 
     /// Runs (in-circuit) the verifier side of the fold, computing the new folded LCCCS instance
@@ -336,14 +337,12 @@ where
         sigmas_thetas: (Vec<Vec<FpVar<CF1<C>>>>, Vec<Vec<FpVar<CF1<C>>>>),
         r_x_prime: Vec<FpVar<CF1<C>>>,
         rho: FpVar<CF1<C>>,
-    ) -> Result<(LCCCSVar<C>, Vec<Vec<Boolean<CF1<C>>>>), SynthesisError> {
+    ) -> Result<LCCCSVar<C>, SynthesisError> {
         let (sigmas, thetas) = (sigmas_thetas.0.clone(), sigmas_thetas.1.clone());
         let mut u_folded: FpVar<CF1<C>> = FpVar::zero();
         let mut x_folded: Vec<FpVar<CF1<C>>> = vec![FpVar::zero(); lcccs[0].x.len()];
         let mut v_folded: Vec<FpVar<CF1<C>>> = vec![FpVar::zero(); sigmas[0].len()];
 
-        let mut rho_vec: Vec<Vec<Boolean<CF1<C>>>> =
-            vec![vec![Boolean::FALSE; NOVA_N_BITS_RO]; lcccs.len() + cccs.len() - 1];
         let mut rho_i = FpVar::one();
         for i in 0..(lcccs.len() + cccs.len()) {
             let u: FpVar<CF1<C>>;
@@ -382,28 +381,18 @@ where
 
             // compute the next power of rho
             rho_i *= rho.clone();
-            // crop the size of rho_i to NOVA_N_BITS_RO
-            let rho_i_bits = rho_i.to_bits_le()?;
-            rho_i = Boolean::le_bits_to_fp_var(&rho_i_bits[..NOVA_N_BITS_RO])?;
-            if i < lcccs.len() + cccs.len() - 1 {
-                // store the cropped rho_i into the rho_vec
-                rho_vec[i] = rho_i_bits[..NOVA_N_BITS_RO].to_vec();
-            }
         }
 
         // return the folded instance, together with the rho's powers vector so they can be used in
         // other parts of the AugmentedFCircuit
-        Ok((
-            LCCCSVar::<C> {
-                // C this is later overwritten by the U_{i+1}.C value checked by the cyclefold circuit
-                C: lcccs[0].C.clone(),
-                u: u_folded,
-                x: x_folded,
-                r_x: r_x_prime,
-                v: v_folded,
-            },
-            rho_vec,
-        ))
+        Ok(LCCCSVar::<C> {
+            // C this is later overwritten by the U_{i+1}.C value checked by the cyclefold circuit
+            C: lcccs[0].C.clone(),
+            u: u_folded,
+            x: x_folded,
+            r_x: r_x_prime,
+            v: v_folded,
+        })
     }
 }
 
@@ -734,7 +723,7 @@ where
             Ok(self.Us.unwrap_or(vec![U_dummy.clone(); MU - 1]))
         })?;
         let us = Vec::<CCCSVar<C1>>::new_witness(cs.clone(), || {
-            Ok(self.us.unwrap_or(vec![u_dummy.clone(); MU - 1]))
+            Ok(self.us.unwrap_or(vec![u_dummy.clone(); NU - 1]))
         })?;
         let U_i1_C = NonNativeAffineVar::new_witness(cs.clone(), || {
             Ok(self.U_i1_C.unwrap_or_else(C1::zero))
@@ -794,7 +783,7 @@ where
         // other curve.
         let mut transcript = PoseidonSpongeVar::new(cs.clone(), &self.poseidon_config);
         transcript.absorb(&pp_hash)?;
-        let (mut U_i1, rho_vec) = NIMFSGadget::<C1>::verify(
+        let (mut U_i1, rho_bits) = NIMFSGadget::<C1>::verify(
             cs.clone(),
             &self.ccs.clone(),
             &mut transcript,
@@ -824,19 +813,14 @@ where
         x.enforce_equal(&is_basecase.select(&u_i1_x_base, &u_i1_x)?)?;
 
         // convert rho_bits of the rho_vec to a `NonNativeFieldVar`
-        let rho_vec_nonnat = rho_vec
-            .iter()
-            .map(|rho_i| {
-                let mut bits = rho_i.clone();
-                bits.resize(C1::BaseField::MODULUS_BIT_SIZE as usize, Boolean::FALSE);
-                NonNativeUintVar::from(&bits)
-            })
-            .collect();
+        let mut rho_bits_resized = rho_bits.clone();
+        rho_bits_resized.resize(C1::BaseField::MODULUS_BIT_SIZE as usize, Boolean::FALSE);
+        let rho_nonnat = NonNativeUintVar::from(&rho_bits_resized);
 
         // CycleFold part
         // C.1. Compute cf1_u_i.x and cf2_u_i.x
         let cf_x: Vec<NonNativeUintVar<CF2<C2>>> = [
-            rho_vec_nonnat,
+            vec![rho_nonnat],
             all_Us
                 .iter()
                 .flat_map(|U| vec![U.C.x.clone(), U.C.y.clone()])
@@ -1312,17 +1296,16 @@ mod tests {
                 let mut transcript_p: PoseidonSponge<Fr> =
                     PoseidonSponge::<Fr>::new(&poseidon_config.clone());
                 transcript_p.absorb(&pp_hash);
-                let (rho_powers, nimfs_proof);
-                (nimfs_proof, U_i1, W_i1, rho_powers) =
-                    NIMFS::<Projective, PoseidonSponge<Fr>>::prove(
-                        &mut transcript_p,
-                        &ccs,
-                        &all_Us,
-                        &all_us,
-                        &all_Ws,
-                        &all_ws,
-                    )
-                    .unwrap();
+                let (rho, nimfs_proof);
+                (nimfs_proof, U_i1, W_i1, rho) = NIMFS::<Projective, PoseidonSponge<Fr>>::prove(
+                    &mut transcript_p,
+                    &ccs,
+                    &all_Us,
+                    &all_us,
+                    &all_Ws,
+                    &all_ws,
+                )
+                .unwrap();
 
                 // sanity check: check the folded instance relation
                 U_i1.check_relation(&ccs, &W_i1).unwrap();
@@ -1330,23 +1313,13 @@ mod tests {
                 let u_i1_x =
                     U_i1.hash(&sponge, pp_hash, iFr + Fr::one(), z_0.clone(), z_i1.clone());
 
-                let rho_powers_Fq: Vec<Fq> = rho_powers
-                    .iter()
-                    .map(|rho_i| {
-                        Fq::from_bigint(BigInteger::from_bits_le(&rho_i.into_bigint().to_bits_le()))
-                            .unwrap()
-                    })
-                    .collect();
-                let rho_powers_bits: Vec<Vec<bool>> = rho_powers
-                    .iter()
-                    .map(|rho_i| rho_i.into_bigint().to_bits_le()[..NOVA_N_BITS_RO].to_vec())
-                    .collect();
+                let rho_bits = rho.into_bigint().to_bits_le()[..NOVA_N_BITS_RO].to_vec();
+                let rho_Fq = Fq::from_bigint(BigInteger::from_bits_le(&rho_bits)).unwrap();
 
                 // CycleFold part:
                 // get the vector used as public inputs 'x' in the CycleFold circuit
                 let cf_u_i_x = [
-                    // all values for multiple instances
-                    rho_powers_Fq,
+                    vec![rho_Fq],
                     get_cm_coordinates(&U_i.C),
                     Us.iter()
                         .flat_map(|Us_i| get_cm_coordinates(&Us_i.C))
@@ -1361,7 +1334,7 @@ mod tests {
 
                 let cf_circuit = HyperNovaCycleFoldCircuit::<Projective, GVar, MU, NU> {
                     _gc: PhantomData,
-                    r_bits: Some(rho_powers_bits.clone()),
+                    r_bits: Some(rho_bits.clone()),
                     points: Some(
                         [
                             vec![U_i.clone().C],
@@ -1375,10 +1348,6 @@ mod tests {
                 };
 
                 // ensure that the CycleFoldCircuit is well defined
-                assert_eq!(
-                    cf_circuit.r_bits.clone().unwrap().len(),
-                    HyperNovaCycleFoldConfig::<Projective, MU, NU>::N_INPUT_POINTS - 1
-                );
                 assert_eq!(
                     cf_circuit.points.clone().unwrap().len(),
                     HyperNovaCycleFoldConfig::<Projective, MU, NU>::N_INPUT_POINTS

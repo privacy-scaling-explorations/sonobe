@@ -16,7 +16,7 @@ use ark_ff::PrimeField;
 use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, R1CSVar};
 use ark_relations::r1cs::ConstraintSynthesizer;
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
-use arkworks_backend::{read_program_from_file, sonobe_bridge::AcirCircuitSonobe};
+use noir_arkworks_backend::{read_program_from_file, sonobe_bridge::AcirCircuitSonobe};
 
 #[derive(Clone, Debug)]
 pub struct NoirFCircuit<F: PrimeField> {

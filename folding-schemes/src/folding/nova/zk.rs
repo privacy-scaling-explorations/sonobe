@@ -1,11 +1,11 @@
 // Implements nova's zero-knowledge layer, as described in https://eprint.iacr.org/2023/573.pdf
+use crate::folding::nova::traits::NovaR1CS;
 use ark_crypto_primitives::sponge::CryptographicSponge;
 use ark_ff::{BigInteger, PrimeField};
 use ark_std::{One, Zero};
 
 use crate::{
     arith::r1cs::{RelaxedR1CS, R1CS},
-    folding::circuits::cyclefold::CycleFoldChallengeGadget,
     RngCore,
 };
 use ark_crypto_primitives::sponge::{
@@ -35,10 +35,8 @@ pub struct RandomizedIVCProof<C1: CurveGroup, C2: CurveGroup> {
     pub pi: FoldingProof<C1>,
     pub pi_prime: FoldingProof<C1>,
     pub W_i_prime: Witness<C1>,
-    pub cf_pi: FoldingProof<C2>,
     pub cf_U_i: CommittedInstance<C2>,
-    pub cf_U_j: CommittedInstance<C2>,
-    pub cf_W_r: Witness<C2>,
+    pub cf_W_i: Witness<C2>,
 }
 
 impl<C1: CurveGroup, C2: CurveGroup> RandomizedIVCProof<C1, C2>
@@ -56,29 +54,6 @@ where
     ) -> Result<C1::ScalarField, Error> {
         let r_bits = ChallengeGadget::<C1>::get_challenge_native(sponge, pp_hash, U_i, u_i, cmT);
         C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits)).ok_or(Error::OutOfBounds)
-    }
-
-    /// Computes challenge required before folding cyclefold instances
-    fn get_cyclefold_folding_challenge<GC2: CurveVar<C2, CF2<C2>>>(
-        sponge: &mut PoseidonSponge<C1::ScalarField>,
-        pp_hash: C1::ScalarField,
-        cf_U_i: CommittedInstance<C2>,
-        cf_U_j: CommittedInstance<C2>,
-        cf_cmT: C2,
-    ) -> Result<C1::BaseField, Error>
-    where
-        GC2: CurveVar<C2, CF2<C2>>,
-        <C2 as CurveGroup>::BaseField: PrimeField,
-        <C2 as CurveGroup>::BaseField: Absorb,
-        <C2 as Group>::ScalarField: PrimeField,
-        for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
-        GC2: ToConstraintFieldGadget<<C2 as CurveGroup>::BaseField>,
-        C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    {
-        let cf_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_native(
-            sponge, pp_hash, cf_U_i, cf_U_j, cf_cmT,
-        );
-        C1::BaseField::from_bigint(BigInteger::from_bits_le(&cf_r_bits)).ok_or(Error::OutOfBounds)
     }
 
     /// Compute a zero-knowledge proof of a Nova IVC proof
@@ -167,46 +142,6 @@ where
         // d. Store folding proof
         let pi_prime = FoldingProof { cmT: cmT_i_prime };
 
-        // II. Compute proofs for cyclefold instance
-        // 1. Sample a satisfying relaxed R1CS instance-witness pair (U_r, W_r)
-        let cf_relaxed_instance = nova.cf_r1cs.clone().relax();
-        let (cf_U_j, cf_W_j) = cf_relaxed_instance.sample::<C2, CS2>(&nova.cf_cs_pp, &mut rng)?;
-
-        // 2. Fold the running cyclefold instance-witness pair (U_{cf, i}, W_{cf, i}) with the
-        //    (U_{cf, j}, W_{cf, j})
-        // a. Compute T
-        let (cf_T, cf_cmT) = NIFS::<C2, CS2, true>::compute_cmT(
-            &nova.cf_cs_pp,
-            &nova.cf_r1cs,
-            &nova.cf_W_i,
-            &nova.cf_U_i,
-            &cf_W_j,
-            &cf_U_j,
-        )?;
-
-        // b. Compute folding challenge
-        let cf_r = RandomizedIVCProof::<C1, C2>::get_cyclefold_folding_challenge::<GC2>(
-            &mut challenges_sponge,
-            nova.pp_hash,
-            nova.cf_U_i.clone(),
-            cf_U_j.clone(),
-            cf_cmT,
-        )?;
-
-        // c. Compute fold
-        let (cf_W_r, _) = NIFS::<C2, CS2, true>::fold_instances(
-            cf_r,
-            &nova.cf_W_i,
-            &nova.cf_U_i,
-            &cf_W_j,
-            &cf_U_j,
-            &cf_T,
-            cf_cmT,
-        )?;
-
-        // d. Store folding proof
-        let cf_pi = FoldingProof { cmT: cf_cmT };
-
         Ok(RandomizedIVCProof {
             U_i: nova.U_i.clone(),
             u_i: nova.u_i.clone(),
@@ -215,9 +150,7 @@ where
             pi_prime,
             W_i_prime,
             cf_U_i: nova.cf_U_i.clone(),
-            cf_pi,
-            cf_U_j,
-            cf_W_r,
+            cf_W_i: nova.cf_W_i.clone(),
         })
     }
 
@@ -256,11 +189,16 @@ where
             }
         }
 
-        // 1. Check that u_i.x is correct
-        let mut sponge = PoseidonSponge::<C1::ScalarField>::new(&poseidon_config);
+        // 1. Check that u_i.x is correct - including the cyclefold running instance
+        let mut sponge = PoseidonSponge::<C1::ScalarField>::new(poseidon_config);
         let expected_u_i_x = proof.U_i.hash(&sponge, pp_hash, i, z_0, z_i);
         if expected_u_i_x != proof.u_i.x[0] {
             return Err(Error::zkIVCVerificationFail);
+        }
+
+        let expected_cf_u_i_x = proof.cf_U_i.hash_cyclefold(&sponge, pp_hash);
+        if expected_cf_u_i_x != proof.u_i.x[1] {
+            return Err(Error::IVCVerificationFail);
         }
 
         // 2. Check that u_i values are correct
@@ -318,37 +256,8 @@ where
         };
         relaxed_r1cs.check_relation(&z)?;
 
-        // 6. Check cyclefold proof
-        // a. Compute folding challenge
-        let cf_r = RandomizedIVCProof::<C1, C2>::get_cyclefold_folding_challenge::<GC2>(
-            &mut sponge,
-            pp_hash,
-            proof.cf_U_i.clone(),
-            proof.cf_U_j.clone(),
-            proof.cf_pi.cmT,
-        )?;
-
-        // b. Compute fold
-        let cf_U_r = NIFS::<C2, CS2, true>::fold_committed_instance(
-            cf_r,
-            &proof.cf_U_i,
-            &proof.cf_U_j,
-            &proof.cf_pi.cmT,
-        );
-
-        // c. Check that W_{cf, r} is a satisfying witness
-        let mut z = vec![cf_U_r.u];
-        z.extend(&cf_U_r.x);
-        z.extend(&proof.cf_W_r.W);
-        let cf_relaxed_r1cs = RelaxedR1CS {
-            l: cf_r1cs.l,
-            A: cf_r1cs.A.clone(),
-            B: cf_r1cs.B.clone(),
-            C: cf_r1cs.C.clone(),
-            u: cf_U_r.u,
-            E: proof.cf_W_r.E.clone(),
-        };
-        cf_relaxed_r1cs.check_relation(&z)?;
+        // 6. Check that the cyclefold instance-witness pair satisfies the cyclefold relaxed r1cs
+        cf_r1cs.check_relaxed_instance_relation(&proof.cf_W_i, &proof.cf_U_i)?;
 
         Ok(())
     }

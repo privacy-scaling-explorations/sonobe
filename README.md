@@ -37,6 +37,20 @@ Available frontends to define the folded circuit:
 
 ## Usage
 
+### Build & test
+You can test the library for both, WASM-targets and regular ones.
+#### Regular targets
+Tier-S targets allow the user to simply run `cargo test` or `cargo build` without needing to worry about anything.
+**We strongly recommend to test using the `light-test` feature.** Which will omit the computationally intensive parts of the tests such as
+generating a SNARK of 4~5M constraints to then verify it.
+
+#### WASM targets
+In order to build the lib for WASM-targets, use the following command:
+`cargo build -p folding-schemes --no-default-features --target wasm32-unknown-unknown --features "wasm, parallel"`.
+Where the target can be any WASM one and the `parallel` feature is optional.
+
+**Trying to build for a WASM-target without the `wasm` feature or viceversa will end up in a compilation error.**
+
 ### Docs
 
 Detailed usage and design documentation can be found at [Sonobe docs](https://privacy-scaling-explorations.github.io/sonobe-docs/).

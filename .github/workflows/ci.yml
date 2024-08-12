@@ -65,6 +65,8 @@ jobs:
         run: ./folding-schemes/src/frontend/circom/test_folder/compile.sh
       - name: Execute compile.sh to generate .json from noir
         run: ./folding-schemes/src/frontend/noir/test_folder/compile.sh
+      - name: Clean tmp
+        run: cargo clean
       - name: Build
         # This build will be reused by nextest,
         # and also checks (--all-targets) that benches don't bit-rot

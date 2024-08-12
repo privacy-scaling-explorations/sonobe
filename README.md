@@ -41,6 +41,23 @@ Available frontends to define the folded circuit:
 
 Detailed usage and design documentation can be found at [Sonobe docs](https://privacy-scaling-explorations.github.io/sonobe-docs/).
 
+### WASM-compatibility & features
+
+The `sonobe/folding-schemes` crate is the only workspace member that supports WASM-target compilation. But, to have it working, `getrandom/js` needs
+to be imported in the `Cargo.toml` of the crate that uses it as dependency.
+```toml
+[dependencies]
+folding-schemes = { version = "0.1.0", default-features = false, features = ["parallel", "wasm"] }
+getrandom = { version = "0.2", features = ["js"] }
+```
+See more details about `getrandom` here: https://docs.rs/getrandom/latest/getrandom/#webassembly-support.
+
+Also, notice that:
+- `wasm` feature **IS MANDATORY** if compilation to WASM targets is desired.
+- `parallel` feature enables some parallelization optimizations available in the crate.
+- `light-test` feature runs the computationally-intensive parts of the testing such as the full proof generation for the Eth-decider circuit
+of Nova which is aproximately 4-5M constraints. **This feature only matters when it comes to running Sonobe's tests.**
+
 ### Folding Schemes introduction
 
 Folding schemes efficiently achieve incrementally verifiable computation (IVC), where the prover recursively proves the correct execution of the incremental computations.

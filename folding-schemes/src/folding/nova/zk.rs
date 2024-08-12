@@ -190,6 +190,12 @@ where
         }
 
         // 1. Check that u_i.x is correct - including the cyclefold running instance
+        // a. Check length
+        if proof.u_i.x.len() != 2 {
+            return Err(Error::IVCVerificationFail);
+        }
+
+        // b. Check computed hashes are correct
         let mut sponge = PoseidonSponge::<C1::ScalarField>::new(poseidon_config);
         let expected_u_i_x = proof.U_i.hash(&sponge, pp_hash, i, z_0, z_i);
         if expected_u_i_x != proof.u_i.x[0] {

@@ -235,9 +235,9 @@ pub mod tests {
         let (prover_params, _) = Pedersen::<Projective>::setup(rng, r1cs.A.n_rows).unwrap();
 
         let relaxed_r1cs = r1cs.relax();
-        relaxed_r1cs
-            .sample::<Projective, Pedersen<Projective, true>>(&prover_params, rng)
-            .unwrap();
+        let sampled =
+            relaxed_r1cs.sample::<Projective, Pedersen<Projective, true>>(&prover_params, rng);
+        assert!(sampled.is_ok());
     }
 
     pub fn get_test_r1cs<F: PrimeField>() -> R1CS<F> {

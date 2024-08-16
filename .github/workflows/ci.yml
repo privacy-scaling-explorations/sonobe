@@ -161,18 +161,20 @@ jobs:
           - feature_set: basic
             features: --features default,light-test
           - feature_set: wasm
-            features: --features wasm,parallel
+            features: --features wasm,parallel --target wasm32-unknown-unknown
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Add target
+        run: rustup target add wasm32-unknown-unknown
       - name: Run clippy
         uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: --all-targets --no-default-features ${{ matrix.features }} -- -D warnings
+          args: --no-default-features ${{ matrix.features }} -- -D warnings
 
   typos:
     if: github.event.pull_request.draft == false

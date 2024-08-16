@@ -70,7 +70,7 @@ Also, notice that:
 - `wasm` feature **IS MANDATORY** if compilation to WASM targets is desired.
 - `parallel` feature enables some parallelization optimizations available in the crate.
 - `light-test` feature runs the computationally-intensive parts of the testing such as the full proof generation for the Eth-decider circuit
-of Nova which is aproximately 4-5M constraints. **This feature only matters when it comes to running Sonobe's tests.**
+of Nova which is approximately 4-5M constraints. **This feature only matters when it comes to running Sonobe's tests.**
 
 ### Folding Schemes introduction
 

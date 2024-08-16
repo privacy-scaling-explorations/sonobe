@@ -131,9 +131,7 @@ jobs:
       - name: Execute compile.sh to generate .json from noir
         run: ./folding-schemes/src/frontend/noir/test_folder/compile.sh
       - name: Run examples tests
-        run: |
-          cargo update
-          cargo test --examples
+        run: cargo test --examples
       - name: Run examples
         run: cargo run --release --example 2>&1 | grep -E '^ ' | xargs -n1 cargo run --release --example
 

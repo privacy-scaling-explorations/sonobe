@@ -201,7 +201,7 @@ where
         let (cmW_x, cmW_y) = NonNativeAffineVar::inputize(U.cmW)?;
         let (cmT_x, cmT_y) = NonNativeAffineVar::inputize(proof.cmT)?;
 
-        let public_input: Vec<C1::ScalarField> = vec![
+        let public_input: Vec<C1::ScalarField> = [
             vec![pp_hash, i],
             z_0,
             z_i,

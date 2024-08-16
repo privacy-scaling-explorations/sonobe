@@ -40,7 +40,7 @@ espresso_subroutines = {git="https://github.com/EspressoSystems/hyperplonk", pac
 ark-pallas = {version="0.4.0", features=["r1cs"]}
 ark-vesta = {version="0.4.0", features=["r1cs"]}
 ark-bn254 = {version="0.4.0", features=["r1cs"]}
-ark-grumpkin = {version="0.4.0", features=["r1cs"]}
+ark-grumpkin = {version="0.5.0-alpha.0", features=["r1cs"]}
 rand = "0.8.5"
 tracing = { version = "0.1", default-features = false, features = [ "attributes" ] }
 tracing-subscriber = { version = "0.2" }

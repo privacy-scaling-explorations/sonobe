@@ -1,10 +1,15 @@
+use crate::commitment::CommitmentScheme;
+use crate::folding::nova::{CommittedInstance, Witness};
+use crate::RngCore;
+use ark_crypto_primitives::sponge::Absorb;
+use ark_ec::{CurveGroup, Group};
 use ark_ff::PrimeField;
 use ark_relations::r1cs::ConstraintSystem;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::rand::Rng;
 
 use super::Arith;
-use crate::utils::vec::{hadamard, mat_vec_mul, vec_add, vec_scalar_mul, SparseMatrix};
+use crate::utils::vec::{hadamard, mat_vec_mul, vec_add, vec_scalar_mul, vec_sub, SparseMatrix};
 use crate::Error;
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
@@ -92,6 +97,84 @@ impl<F: PrimeField> RelaxedR1CS<F> {
 
         Ok(())
     }
+
+    // Computes the E term, given A, B, C, z, u
+    fn compute_E(
+        A: &SparseMatrix<F>,
+        B: &SparseMatrix<F>,
+        C: &SparseMatrix<F>,
+        z: &[F],
+        u: &F,
+    ) -> Result<Vec<F>, Error> {
+        let Az = mat_vec_mul(A, z)?;
+        let Bz = mat_vec_mul(B, z)?;
+        let AzBz = hadamard(&Az, &Bz)?;
+
+        let Cz = mat_vec_mul(C, z)?;
+        let uCz = vec_scalar_mul(&Cz, u);
+        vec_sub(&AzBz, &uCz)
+    }
+
+    pub fn check_sampled_relaxed_r1cs(&self, u: F, E: &[F], z: &[F]) -> bool {
+        let sampled = RelaxedR1CS {
+            l: self.l,
+            A: self.A.clone(),
+            B: self.B.clone(),
+            C: self.C.clone(),
+            u,
+            E: E.to_vec(),
+        };
+        sampled.check_relation(z).is_ok()
+    }
+
+    // Implements sampling a (committed) RelaxedR1CS
+    // See construction 5 in https://eprint.iacr.org/2023/573.pdf
+    pub fn sample<C, CS>(
+        &self,
+        params: &CS::ProverParams,
+        mut rng: impl RngCore,
+    ) -> Result<(CommittedInstance<C>, Witness<C>), Error>
+    where
+        C: CurveGroup,
+        C: CurveGroup<ScalarField = F>,
+        <C as Group>::ScalarField: Absorb,
+        CS: CommitmentScheme<C, true>,
+    {
+        let u = C::ScalarField::rand(&mut rng);
+        let rE = C::ScalarField::rand(&mut rng);
+        let rW = C::ScalarField::rand(&mut rng);
+
+        let W = (0..self.A.n_cols - self.l - 1)
+            .map(|_| F::rand(&mut rng))
+            .collect();
+        let x = (0..self.l).map(|_| F::rand(&mut rng)).collect::<Vec<F>>();
+        let mut z = vec![u];
+        z.extend(&x);
+        z.extend(&W);
+
+        let E = RelaxedR1CS::compute_E(&self.A, &self.B, &self.C, &z, &u)?;
+
+        debug_assert!(
+            z.len() == self.A.n_cols,
+            "Length of z is {}, while A has {} columns.",
+            z.len(),
+            self.A.n_cols
+        );
+
+        debug_assert!(
+            self.check_sampled_relaxed_r1cs(u, &E, &z),
+            "Sampled a non satisfiable relaxed R1CS, sampled u: {}, computed E: {:?}",
+            u,
+            E
+        );
+
+        let witness = Witness { E, rE, W, rW };
+        let mut cm_witness = witness.commit::<CS, true>(params, x)?;
+
+        // witness.commit() sets u to 1, we set it to the sampled u value
+        cm_witness.u = u;
+        Ok((cm_witness, witness))
+    }
 }
 
 /// extracts arkworks ConstraintSystem matrices into crate::utils::vec::SparseMatrix format as R1CS
@@ -138,9 +221,24 @@ pub fn extract_w_x<F: PrimeField>(cs: &ConstraintSystem<F>) -> (Vec<F>, Vec<F>) 
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::utils::vec::tests::{to_F_matrix, to_F_vec};
+    use crate::{
+        commitment::pedersen::Pedersen,
+        utils::vec::tests::{to_F_matrix, to_F_vec},
+    };
 
-    use ark_pallas::Fr;
+    use ark_pallas::{Fr, Projective};
+
+    #[test]
+    pub fn sample_relaxed_r1cs() {
+        let rng = rand::rngs::OsRng;
+        let r1cs = get_test_r1cs::<Fr>();
+        let (prover_params, _) = Pedersen::<Projective>::setup(rng, r1cs.A.n_rows).unwrap();
+
+        let relaxed_r1cs = r1cs.relax();
+        let sampled =
+            relaxed_r1cs.sample::<Projective, Pedersen<Projective, true>>(&prover_params, rng);
+        assert!(sampled.is_ok());
+    }
 
     pub fn get_test_r1cs<F: PrimeField>() -> R1CS<F> {
         // R1CS for: x^3 + x + 5 = y (example from article

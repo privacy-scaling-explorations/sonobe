@@ -37,9 +37,40 @@ Available frontends to define the folded circuit:
 
 ## Usage
 
+### Build & test
+You can test the library for both, WASM-targets and regular ones.
+#### Regular targets
+Tier-S targets allow the user to simply run `cargo test` or `cargo build` without needing to worry about anything.
+**We strongly recommend to test using the `light-test` feature.** Which will omit the computationally intensive parts of the tests such as
+generating a SNARK of 4~5M constraints to then verify it.
+
+#### WASM targets
+In order to build the lib for WASM-targets, use the following command:
+`cargo build -p folding-schemes --no-default-features --target wasm32-unknown-unknown --features "wasm, parallel"`.
+Where the target can be any WASM one and the `parallel` feature is optional.
+
+**Trying to build for a WASM-target without the `wasm` feature or viceversa will end up in a compilation error.**
+
 ### Docs
 
 Detailed usage and design documentation can be found at [Sonobe docs](https://privacy-scaling-explorations.github.io/sonobe-docs/).
+
+### WASM-compatibility & features
+
+The `sonobe/folding-schemes` crate is the only workspace member that supports WASM-target compilation. But, to have it working, `getrandom/js` needs
+to be imported in the `Cargo.toml` of the crate that uses it as dependency.
+```toml
+[dependencies]
+folding-schemes = { version = "0.1.0", default-features = false, features = ["parallel", "wasm"] }
+getrandom = { version = "0.2", features = ["js"] }
+```
+See more details about `getrandom` here: https://docs.rs/getrandom/latest/getrandom/#webassembly-support.
+
+Also, notice that:
+- `wasm` feature **IS MANDATORY** if compilation to WASM targets is desired.
+- `parallel` feature enables some parallelization optimizations available in the crate.
+- `light-test` feature runs the computationally-intensive parts of the testing such as the full proof generation for the Eth-decider circuit
+of Nova which is approximately 4-5M constraints. **This feature only matters when it comes to running Sonobe's tests.**
 
 ### Folding Schemes introduction
 

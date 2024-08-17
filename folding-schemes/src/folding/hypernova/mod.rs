@@ -593,9 +593,21 @@ where
             return Err(Error::MaxStep);
         }
 
-        let mut i_bytes: [u8; 8] = [0; 8];
-        i_bytes.copy_from_slice(&self.i.into_bigint().to_bytes_le()[..8]);
-        let i_usize: usize = usize::from_le_bytes(i_bytes);
+        let i_usize;
+
+        #[cfg(target_pointer_width = "64")]
+        {
+            let mut i_bytes: [u8; 8] = [0; 8];
+            i_bytes.copy_from_slice(&self.i.into_bigint().to_bytes_le()[..8]);
+            i_usize = usize::from_le_bytes(i_bytes);
+        }
+
+        #[cfg(target_pointer_width = "32")]
+        {
+            let mut i_bytes: [u8; 4] = [0; 4];
+            i_bytes.copy_from_slice(&self.i.into_bigint().to_bytes_le()[..4]);
+            i_usize = usize::from_le_bytes(i_bytes);
+        }
 
         let z_i1 = self
             .F

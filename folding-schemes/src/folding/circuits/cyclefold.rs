@@ -376,14 +376,12 @@ pub trait CycleFoldConfig {
 
     /// Public inputs length for the CycleFoldCircuit.
     /// * For Nova this is: `|[r, p1.x,y, p2.x,y, p3.x,y]|`
-    /// * In general, `|[r * (n_points-1), (p_i.x,y)*n_points, p_folded.x,y]|`.
+    /// * In general, `|[r, (p_i.x,y)*n_points, p_folded.x,y]|`.
     ///
     /// Thus, `IO_LEN` is:
-    /// `RANDOMNESS_BIT_LENGTH / FIELD_CAPACITY * (N_INPUT_POINTS - 1) + 2 * N_INPUT_POINTS + 2`
+    /// `RANDOMNESS_BIT_LENGTH / FIELD_CAPACITY  + 2 * N_INPUT_POINTS + 2`
     const IO_LEN: usize = {
-        Self::RANDOMNESS_BIT_LENGTH.div_ceil(Self::FIELD_CAPACITY) * (Self::N_INPUT_POINTS - 1)
-            + 2 * Self::N_INPUT_POINTS
-            + 2
+        Self::RANDOMNESS_BIT_LENGTH.div_ceil(Self::FIELD_CAPACITY) + 2 * Self::N_INPUT_POINTS + 2
     };
 
     type F: Field;
@@ -396,10 +394,9 @@ pub trait CycleFoldConfig {
 #[derive(Debug, Clone)]
 pub struct CycleFoldCircuit<CFG: CycleFoldConfig, GC: CurveVar<CFG::C, CFG::F>> {
     pub _gc: PhantomData<GC>,
-    /// r_bits is a vector containing the r_bits, one for each point except for the first one. They
-    /// are used for the scalar multiplication of the points. The r_bits are the bit
-    /// representation of each power of r (in Fr, while the CycleFoldCircuit is in Fq).
-    pub r_bits: Option<Vec<Vec<bool>>>,
+    /// r_bits is the bit representation of the r whose powers are used in the
+    /// random-linear-combination inside the CycleFoldCircuit
+    pub r_bits: Option<Vec<bool>>,
     /// points to be folded in the CycleFoldCircuit
     pub points: Option<Vec<CFG::C>>,
     /// public inputs (cf_u_{i+1}.x)
@@ -426,18 +423,11 @@ where
     for<'a> &'a GC: GroupOpsBounds<'a, CFG::C, GC>,
 {
     fn generate_constraints(self, cs: ConstraintSystemRef<CFG::F>) -> Result<(), SynthesisError> {
-        let r_bits: Vec<Vec<Boolean<CFG::F>>> = self
-            .r_bits
-            // n_points-1, bcs is one for each point except for the first one
-            .unwrap_or(vec![
-                vec![false; CFG::RANDOMNESS_BIT_LENGTH];
-                CFG::N_INPUT_POINTS - 1
-            ])
-            .iter()
-            .map(|r_bits_i| {
-                Vec::<Boolean<CFG::F>>::new_witness(cs.clone(), || Ok(r_bits_i.clone()))
-            })
-            .collect::<Result<_, _>>()?;
+        let r_bits = Vec::<Boolean<CFG::F>>::new_witness(cs.clone(), || {
+            Ok(self
+                .r_bits
+                .unwrap_or(vec![false; CFG::RANDOMNESS_BIT_LENGTH]))
+        })?;
         let points = Vec::<GC>::new_witness(cs.clone(), || {
             Ok(self
                 .points
@@ -447,10 +437,7 @@ where
         #[cfg(test)]
         {
             assert_eq!(CFG::N_INPUT_POINTS, points.len());
-            assert_eq!(CFG::N_INPUT_POINTS - 1, r_bits.len());
-            for r_bits_i in &r_bits {
-                assert_eq!(r_bits_i.len(), CFG::RANDOMNESS_BIT_LENGTH);
-            }
+            assert_eq!(CFG::RANDOMNESS_BIT_LENGTH, r_bits.len());
         }
 
         // Fold the original points of the instances natively in CycleFold.
@@ -458,11 +445,13 @@ where
         // - for the cmW we're computing: U_i1.cmW = U_i.cmW + r * u_i.cmW
         // - for the cmE we're computing: U_i1.cmE = U_i.cmE + r * cmT + r^2 * u_i.cmE, where u_i.cmE
         // is assumed to be 0, so, U_i1.cmE = U_i.cmE + r * cmT
-        let mut p_folded: GC = points[0].clone();
-        // iter over n_points-1 because the first point is not multiplied by r^i (it is multiplied
-        // by r^0=1)
-        for i in 0..CFG::N_INPUT_POINTS - 1 {
-            p_folded += points[i + 1].scalar_mul_le(r_bits[i].iter())?;
+        // We want to compute
+        // P_folded = p_0 + r * P_1 + r^2 * P_2 + r^3 * P_3 + ... + r^{n-2} * P_{n-2} + r^{n-1} * P_{n-1}
+        // so in order to do it more efficiently (less constraints) we do
+        // P_folded = (((P_{n-1} * r + P_{n-2}) * r + P_{n-3})... ) * r + P_0
+        let mut p_folded: GC = points[CFG::N_INPUT_POINTS - 1].clone();
+        for i in (0..CFG::N_INPUT_POINTS - 1).rev() {
+            p_folded = p_folded.scalar_mul_le(r_bits.iter())? + points[i].clone();
         }
 
         let x = Vec::<FpVar<CFG::F>>::new_input(cs.clone(), || {
@@ -474,24 +463,23 @@ where
         // Check that the points coordinates are placed as the public input x:
         // In Nova, this is: x == [r, p1, p2, p3] (wheere p3 is the p_folded).
         // In multifolding schemes such as HyperNova, this is:
-        // computed_x = [r_0, r_1, r_2, ...,  r_n, p_0, p_1, p_2, ..., p_n, p_folded],
+        // computed_x = [r, p_0, p_1, p_2, ..., p_n, p_folded],
         // where each p_i is in fact p_i.to_constraint_field()
-        let computed_x: Vec<FpVar<CFG::F>> = r_bits
+        let r_fp = Boolean::le_bits_to_fp_var(&r_bits)?;
+        let points_aux: Vec<FpVar<CFG::F>> = points
             .iter()
-            .map(|r_bits_i| {
-                r_bits_i
-                    .chunks(CFG::FIELD_CAPACITY)
-                    .map(Boolean::le_bits_to_fp_var)
-                    .collect::<Result<Vec<_>, _>>()
-            })
-            .chain(
-                points
-                    .iter()
-                    .chain(&[p_folded])
-                    .map(|p_i| Ok(p_i.to_constraint_field()?[..2].to_vec())),
-            )
-            .collect::<Result<Vec<_>, _>>()?
-            .concat();
+            .map(|p_i| Ok(p_i.to_constraint_field()?[..2].to_vec()))
+            .collect::<Result<Vec<_>, SynthesisError>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+
+        let computed_x: Vec<FpVar<CFG::F>> = [
+            vec![r_fp],
+            points_aux,
+            p_folded.to_constraint_field()?[..2].to_vec(),
+        ]
+        .concat();
         computed_x.enforce_equal(&x)?;
 
         Ok(())
@@ -596,13 +584,13 @@ pub mod tests {
     use crate::transcript::poseidon::poseidon_canonical_config;
     use crate::utils::get_cm_coordinates;
 
-    struct TestCycleFoldConfig<C: CurveGroup> {
+    struct TestCycleFoldConfig<C: CurveGroup, const N: usize> {
         _c: PhantomData<C>,
     }
 
-    impl<C: CurveGroup> CycleFoldConfig for TestCycleFoldConfig<C> {
+    impl<C: CurveGroup, const N: usize> CycleFoldConfig for TestCycleFoldConfig<C, N> {
         const RANDOMNESS_BIT_LENGTH: usize = NOVA_N_BITS_RO;
-        const N_INPUT_POINTS: usize = 2;
+        const N_INPUT_POINTS: usize = N;
         type C = C;
         type F = C::BaseField;
     }
@@ -630,46 +618,45 @@ pub mod tests {
     }
 
     #[test]
-    fn test_CycleFoldCircuit_constraints() {
-        let (_, _, _, _, ci1, _, ci2, _, ci3, _, cmT, r_bits, _) = prepare_simple_fold_inputs();
-        let r_Fq = Fq::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
+    fn test_CycleFoldCircuit_n_points_constraints() {
+        const n: usize = 16;
+        let mut rng = ark_std::test_rng();
+
+        // points to random-linear-combine
+        let points: Vec<Projective> = std::iter::repeat_with(|| Projective::rand(&mut rng))
+            .take(n)
+            .collect();
+
+        use std::ops::Mul;
+        let rho_raw = Fq::rand(&mut rng);
+        let rho_bits = rho_raw.into_bigint().to_bits_le()[..NOVA_N_BITS_RO].to_vec();
+        let rho_Fq = Fq::from_bigint(BigInteger::from_bits_le(&rho_bits)).unwrap();
+        let rho_Fr = Fr::from_bigint(BigInteger::from_bits_le(&rho_bits)).unwrap();
+        let mut res = Projective::zero();
+        use ark_std::One;
+        let mut rho_i = Fr::one();
+        for point_i in points.iter() {
+            res += point_i.mul(rho_i);
+            rho_i *= rho_Fr;
+        }
 
         // cs is the Constraint System on the Curve Cycle auxiliary curve constraints field
         // (E1::Fq=E2::Fr)
         let cs = ConstraintSystem::<Fq>::new_ref();
 
-        let cfW_u_i_x: Vec<Fq> = [
-            vec![r_Fq],
-            get_cm_coordinates(&ci1.cmW),
-            get_cm_coordinates(&ci2.cmW),
-            get_cm_coordinates(&ci3.cmW),
+        let x: Vec<Fq> = [
+            vec![rho_Fq],
+            points.iter().flat_map(get_cm_coordinates).collect(),
+            get_cm_coordinates(&res),
         ]
         .concat();
-        let cfW_circuit = CycleFoldCircuit::<TestCycleFoldConfig<Projective>, GVar> {
+        let cf_circuit = CycleFoldCircuit::<TestCycleFoldConfig<Projective, n>, GVar> {
             _gc: PhantomData,
-            r_bits: Some(vec![r_bits.clone()]),
-            points: Some(vec![ci1.clone().cmW, ci2.clone().cmW]),
-            x: Some(cfW_u_i_x.clone()),
+            r_bits: Some(rho_bits),
+            points: Some(points),
+            x: Some(x.clone()),
         };
-        cfW_circuit.generate_constraints(cs.clone()).unwrap();
-        assert!(cs.is_satisfied().unwrap());
-
-        // same for E:
-        let cs = ConstraintSystem::<Fq>::new_ref();
-        let cfE_u_i_x = [
-            vec![r_Fq],
-            get_cm_coordinates(&ci1.cmE),
-            get_cm_coordinates(&cmT),
-            get_cm_coordinates(&ci3.cmE),
-        ]
-        .concat();
-        let cfE_circuit = CycleFoldCircuit::<TestCycleFoldConfig<Projective>, GVar> {
-            _gc: PhantomData,
-            r_bits: Some(vec![r_bits.clone()]),
-            points: Some(vec![ci1.clone().cmE, cmT]),
-            x: Some(cfE_u_i_x.clone()),
-        };
-        cfE_circuit.generate_constraints(cs.clone()).unwrap();
+        cf_circuit.generate_constraints(cs.clone()).unwrap();
         assert!(cs.is_satisfied().unwrap());
     }
 
@@ -714,7 +701,7 @@ pub mod tests {
             u: Fr::zero(),
             cmW: Projective::rand(&mut rng),
             x: std::iter::repeat_with(|| Fr::rand(&mut rng))
-                .take(TestCycleFoldConfig::<Projective>::IO_LEN)
+                .take(TestCycleFoldConfig::<Projective, 2>::IO_LEN)
                 .collect(),
         };
         let U_i = CycleFoldCommittedInstance::<Projective> {
@@ -722,7 +709,7 @@ pub mod tests {
             u: Fr::rand(&mut rng),
             cmW: Projective::rand(&mut rng),
             x: std::iter::repeat_with(|| Fr::rand(&mut rng))
-                .take(TestCycleFoldConfig::<Projective>::IO_LEN)
+                .take(TestCycleFoldConfig::<Projective, 2>::IO_LEN)
                 .collect(),
         };
         let cmT = Projective::rand(&mut rng);
@@ -781,7 +768,7 @@ pub mod tests {
             u: Fr::rand(&mut rng),
             cmW: Projective::rand(&mut rng),
             x: std::iter::repeat_with(|| Fr::rand(&mut rng))
-                .take(TestCycleFoldConfig::<Projective>::IO_LEN)
+                .take(TestCycleFoldConfig::<Projective, 2>::IO_LEN)
                 .collect(),
         };
         let pp_hash = Fq::from(42u32); // only for test

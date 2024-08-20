@@ -608,13 +608,13 @@ where
 
             let cfW_circuit = NovaCycleFoldCircuit::<C1, GC1> {
                 _gc: PhantomData,
-                r_bits: Some(vec![r_bits.clone()]),
+                r_bits: Some(r_bits.clone()),
                 points: Some(vec![self.U_i.clone().cmW, self.u_i.clone().cmW]),
                 x: Some(cfW_u_i_x.clone()),
             };
             let cfE_circuit = NovaCycleFoldCircuit::<C1, GC1> {
                 _gc: PhantomData,
-                r_bits: Some(vec![r_bits.clone()]),
+                r_bits: Some(r_bits.clone()),
                 points: Some(vec![self.U_i.clone().cmE, cmT]),
                 x: Some(cfE_u_i_x.clone()),
             };

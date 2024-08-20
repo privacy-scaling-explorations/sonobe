@@ -664,16 +664,15 @@ where
             let mut transcript_p: PoseidonSponge<C1::ScalarField> =
                 PoseidonSponge::<C1::ScalarField>::new(&self.poseidon_config);
             transcript_p.absorb(&self.pp_hash);
-            let (rho_powers, nimfs_proof);
-            (nimfs_proof, U_i1, W_i1, rho_powers) =
-                NIMFS::<C1, PoseidonSponge<C1::ScalarField>>::prove(
-                    &mut transcript_p,
-                    &self.ccs,
-                    &[vec![self.U_i.clone()], Us.clone()].concat(),
-                    &[vec![self.u_i.clone()], us.clone()].concat(),
-                    &[vec![self.W_i.clone()], Ws].concat(),
-                    &[vec![self.w_i.clone()], ws].concat(),
-                )?;
+            let (rho, nimfs_proof);
+            (nimfs_proof, U_i1, W_i1, rho) = NIMFS::<C1, PoseidonSponge<C1::ScalarField>>::prove(
+                &mut transcript_p,
+                &self.ccs,
+                &[vec![self.U_i.clone()], Us.clone()].concat(),
+                &[vec![self.u_i.clone()], us.clone()].concat(),
+                &[vec![self.W_i.clone()], Ws].concat(),
+                &[vec![self.w_i.clone()], ws].concat(),
+            )?;
 
             // sanity check: check the folded instance relation
             #[cfg(test)]
@@ -687,29 +686,18 @@ where
                 z_i1.clone(),
             );
 
-            let rho_powers_Fq: Vec<C1::BaseField> = rho_powers
-                .iter()
-                .map(|rho_i| {
-                    C1::BaseField::from_bigint(BigInteger::from_bits_le(
-                        &rho_i.into_bigint().to_bits_le(),
-                    ))
-                    .unwrap()
-                })
-                .collect();
-            let rho_powers_bits: Vec<Vec<bool>> = rho_powers
-                .iter()
-                .map(|rho_i| rho_i.into_bigint().to_bits_le()[..NOVA_N_BITS_RO].to_vec())
-                .collect();
+            let rho_bits = rho.into_bigint().to_bits_le()[..NOVA_N_BITS_RO].to_vec();
+            let rho_Fq = C1::BaseField::from_bigint(BigInteger::from_bits_le(&rho_bits)).unwrap();
 
             // CycleFold part:
             // get the vector used as public inputs 'x' in the CycleFold circuit.
             // Place the random values and the points coordinates as the public input x:
             // In Nova, this is: x == [r, p1, p2, p3].
             // In multifolding schemes such as HyperNova, this is:
-            // computed_x = [r_0, r_1, r_2, ...,  r_n, p_0, p_1, p_2, ..., p_n],
+            // computed_x = [r, p_0, p_1, p_2, ..., p_n],
             // where each p_i is in fact p_i.to_constraint_field()
             let cf_u_i_x = [
-                rho_powers_Fq,
+                vec![rho_Fq],
                 get_cm_coordinates(&self.U_i.C),
                 Us.iter()
                     .flat_map(|Us_i| get_cm_coordinates(&Us_i.C))
@@ -724,7 +712,7 @@ where
 
             let cf_circuit = HyperNovaCycleFoldCircuit::<C1, GC1, MU, NU> {
                 _gc: PhantomData,
-                r_bits: Some(rho_powers_bits.clone()),
+                r_bits: Some(rho_bits.clone()),
                 points: Some(
                     [
                         vec![self.U_i.clone().C],
@@ -991,7 +979,6 @@ mod tests {
                 cccs.push((u, w));
             }
 
-            dbg!(&hypernova.i);
             hypernova
                 .prove_step(&mut rng, vec![], Some((lcccs, cccs)))
                 .unwrap();

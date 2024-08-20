@@ -5,7 +5,12 @@ use ark_circom::{
 use ark_ff::{BigInteger, PrimeField};
 use color_eyre::Result;
 use num_bigint::{BigInt, Sign};
-use std::{fs::File, io::BufReader, marker::PhantomData, path::PathBuf};
+use std::{
+    fs::File,
+    io::{BufReader, Cursor},
+    marker::PhantomData,
+    path::PathBuf,
+};
 
 use crate::Error;
 
@@ -13,17 +18,17 @@ use crate::Error;
 // based on file paths to Circom's .r1cs and .wasm.
 #[derive(Clone, Debug)]
 pub struct CircomWrapper<F: PrimeField> {
-    r1cs_filepath: PathBuf,
-    wasm_filepath: PathBuf,
+    r1csfile_bytes: Vec<u8>,
+    wasmfile_bytes: Vec<u8>,
     _marker: PhantomData<F>,
 }
 
 impl<F: PrimeField> CircomWrapper<F> {
     // Creates a new instance of the CircomWrapper with the file paths.
-    pub fn new(r1cs_filepath: PathBuf, wasm_filepath: PathBuf) -> Self {
+    pub fn new(r1csfile_bytes: Vec<u8>, wasmfile_bytes: Vec<u8>) -> Self {
         CircomWrapper {
-            r1cs_filepath,
-            wasm_filepath,
+            r1csfile_bytes,
+            wasmfile_bytes,
             _marker: PhantomData,
         }
     }
@@ -34,9 +39,7 @@ impl<F: PrimeField> CircomWrapper<F> {
         inputs: &[(String, Vec<BigInt>)],
     ) -> Result<(R1CS<F>, Option<Vec<F>>), Error> {
         // Extracts the R1CS
-        let file = File::open(&self.r1cs_filepath)?;
-        let reader = BufReader::new(file);
-        let r1cs_file = r1cs_reader::R1CSFile::<F>::new(reader)?;
+        let r1cs_file = r1cs_reader::R1CSFile::<F>::new(Cursor::new(self.r1csfile_bytes))?;
         let r1cs = r1cs_reader::R1CS::<F>::from(r1cs_file);
 
         // Extracts the witness vector
@@ -46,9 +49,7 @@ impl<F: PrimeField> CircomWrapper<F> {
     }
 
     pub fn extract_r1cs(&self) -> Result<R1CS<F>, Error> {
-        let file = File::open(&self.r1cs_filepath)?;
-        let reader = BufReader::new(file);
-        let r1cs_file = r1cs_reader::R1CSFile::<F>::new(reader)?;
+        let r1cs_file = r1cs_reader::R1CSFile::<F>::new(Cursor::new(self.r1csfile_bytes))?;
         let mut r1cs = r1cs_reader::R1CS::<F>::from(r1cs_file);
         r1cs.wire_mapping = None;
         Ok(r1cs)
@@ -75,7 +76,7 @@ impl<F: PrimeField> CircomWrapper<F> {
         &self,
         inputs: &[(String, Vec<BigInt>)],
     ) -> Result<Vec<BigInt>, Error> {
-        let mut calculator = WitnessCalculator::new(&self.wasm_filepath).map_err(|e| {
+        let mut calculator = WitnessCalculator::new(&self.wasmfile_bytes).map_err(|e| {
             Error::WitnessCalculationError(format!("Failed to create WitnessCalculator: {}", e))
         })?;
         calculator

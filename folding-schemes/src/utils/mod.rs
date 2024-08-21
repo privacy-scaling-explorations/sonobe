@@ -1,3 +1,6 @@
+use std::path::Path;
+use std::path::PathBuf;
+
 use ark_crypto_primitives::sponge::poseidon::PoseidonConfig;
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::PrimeField;
@@ -99,4 +102,32 @@ where
     Ok(C1::ScalarField::from_le_bytes_mod_order(
         &public_params_hash,
     ))
+}
+
+/// Tiny utility enum that allows to import circuits and wasm modules from files by passing their path
+/// or passing their content already read.
+///
+/// This enum implements the [`From`] trait for both [`Path`], [`PathBuf`] and [`Vec<u8>`].
+#[derive(Debug, Clone)]
+pub enum PathOrBin {
+    Path(PathBuf),
+    Bin(Vec<u8>),
+}
+
+impl From<&Path> for PathOrBin {
+    fn from(value: &Path) -> Self {
+        PathOrBin::Path(value.into())
+    }
+}
+
+impl From<PathBuf> for PathOrBin {
+    fn from(value: PathBuf) -> Self {
+        PathOrBin::Path(value)
+    }
+}
+
+impl From<Vec<u8>> for PathOrBin {
+    fn from(value: Vec<u8>) -> Self {
+        PathOrBin::Bin(value)
+    }
 }

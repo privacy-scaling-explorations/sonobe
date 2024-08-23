@@ -33,7 +33,7 @@ impl<F: PrimeField> FCircuit<F> for NoirFCircuit<F> {
     fn new(params: Self::Params) -> Result<Self, crate::Error> {
         let (source, state_len, external_inputs_len) = params;
         let program = match source {
-            PathOrBin::Path(path) => read_program_from_file(&path),
+            PathOrBin::Path(path) => read_program_from_file(path),
             PathOrBin::Bin(bytes) => read_program_from_binary(&bytes),
         }
         .map_err(|ee| Error::Other(format!("{:?}", ee)))?;

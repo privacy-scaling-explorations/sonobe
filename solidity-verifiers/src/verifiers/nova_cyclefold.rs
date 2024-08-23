@@ -115,6 +115,33 @@ impl
     }
 }
 
+// TODO: document
+// impl
+//     From<(
+//         folding_schemes::folding::nova::decider_eth::VerifierParam<Fr, >,
+//         usize,
+//     )> for NovaCycleFoldVerifierKey
+// {
+//     fn from(
+//         value: (
+//
+//             (Fr, ArkG16VerifierKey<Bn254>, ArkKZG10VerifierKey<Bn254>),
+//             usize,
+//         ),
+//     ) -> Self {
+//         let decider_vp = value.0;
+//         let g16_vk = Groth16VerifierKey::from(decider_vp.1);
+//         // pass `Vec::new()` since batchCheck will not be used
+//         let kzg_vk = KZG10VerifierKey::from((decider_vp.2, Vec::new()));
+//         Self {
+//             pp_hash: decider_vp.0,
+//             g16_vk,
+//             kzg_vk,
+//             z_len: value.1,
+//         }
+//     }
+// }
+
 impl NovaCycleFoldVerifierKey {
     pub fn new(
         pp_hash: Fr,
@@ -355,7 +382,8 @@ mod tests {
         let f_circuit = FC::new(()).unwrap();
 
         let nova_cyclefold_vk =
-            NovaCycleFoldVerifierKey::from((decider_vp.clone(), f_circuit.state_len()));
+            // NovaCycleFoldVerifierKey::from((decider_vp.clone(), f_circuit.state_len()));
+            NovaCycleFoldVerifierKey::from(((decider_vp.pp_hash.clone(), decider_vp.snark_vp.clone(), decider_vp.cs_vp.clone()), f_circuit.state_len()));
 
         let mut rng = rand::rngs::OsRng;
 

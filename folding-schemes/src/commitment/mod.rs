@@ -15,7 +15,7 @@ pub mod pedersen;
 pub trait CommitmentScheme<C: CurveGroup, const H: bool = false>: Clone + Debug {
     type ProverParams: Clone + Debug;
     type VerifierParams: Clone + Debug + CanonicalSerialize + CanonicalDeserialize;
-    type Proof: Clone + Debug;
+    type Proof: Clone + Debug + CanonicalSerialize + CanonicalDeserialize;
     type ProverChallenge: Clone + Debug;
     type Challenge: Clone + Debug;
 

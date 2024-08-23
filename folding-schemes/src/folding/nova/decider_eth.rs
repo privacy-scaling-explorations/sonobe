@@ -5,6 +5,7 @@ use ark_ec::{AffineRepr, CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
 use ark_groth16::Groth16;
 use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_snark::SNARK;
 use ark_std::rand::{CryptoRng, RngCore};
 use ark_std::{One, Zero};
@@ -22,7 +23,7 @@ use crate::frontend::FCircuit;
 use crate::Error;
 use crate::{Decider as DeciderTrait, FoldingScheme};
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<C1, CS1, S>
 where
     C1: CurveGroup,
@@ -38,6 +39,19 @@ where
     // the KZG challenges are provided by the prover, but in-circuit they are checked to match
     // the in-circuit computed computed ones.
     kzg_challenges: [C1::ScalarField; 2],
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+pub struct VerifierParam<C1, CS1, S_VerifyingKey>
+where
+    C1: CurveGroup,
+    CS1: CommitmentScheme<C1, ProverChallenge = C1::ScalarField, Challenge = C1::ScalarField>,
+    // S: SNARK<C1::ScalarField>,
+    S_VerifyingKey: Clone + CanonicalSerialize + CanonicalDeserialize,
+{
+    pub pp_hash: C1::ScalarField,
+    pub snark_vp: S_VerifyingKey,
+    pub cs_vp: CS1::VerifierParams,
 }
 
 /// Onchain Decider, for ethereum use cases
@@ -90,8 +104,9 @@ where
     type PreprocessorParam = (FS::ProverParam, FS::VerifierParam);
     type ProverParam = (S::ProvingKey, CS1::ProverParams);
     type Proof = Proof<C1, CS1, S>;
-    /// VerifierParam = (pp_hash, snark::vk, commitment_scheme::vk)
-    type VerifierParam = (C1::ScalarField, S::VerifyingKey, CS1::VerifierParams);
+    // /// VerifierParam = (pp_hash, snark::vk, commitment_scheme::vk)
+    // type VerifierParam = (C1::ScalarField, S::VerifyingKey, CS1::VerifierParams);
+    type VerifierParam = VerifierParam<C1, CS1, S::VerifyingKey>;
     type PublicInput = Vec<C1::ScalarField>;
     type CommittedInstance = CommittedInstance<C1>;
 
@@ -122,7 +137,12 @@ where
         let pp_hash = nova_vp.pp_hash()?;
 
         let pp = (g16_pk, nova_pp.cs_pp);
-        let vp = (pp_hash, g16_vk, nova_vp.cs_vp);
+        // let vp = (pp_hash, g16_vk, nova_vp.cs_vp);
+        let vp = Self::VerifierParam {
+            pp_hash,
+            snark_vp: g16_vk,
+            cs_vp: nova_vp.cs_vp,
+        };
         Ok((pp, vp))
     }
 
@@ -191,8 +211,9 @@ where
             return Err(Error::NotEnoughSteps);
         }
 
-        let (pp_hash, snark_vk, cs_vk): (C1::ScalarField, S::VerifyingKey, CS1::VerifierParams) =
-            vp;
+        // let (pp_hash, snark_vk, cs_vk): (C1::ScalarField, S::VerifyingKey, CS1::VerifierParams) =
+        //     vp;
+        let (pp_hash, snark_vk, cs_vk) = (vp.pp_hash, vp.snark_vp, vp.cs_vp);
 
         // compute U = U_{d+1}= NIFS.V(U_d, u_d, cmT)
         let U = NIFS::<C1, CS1>::verify(proof.r, running_instance, incoming_instance, &proof.cmT);
@@ -385,10 +406,81 @@ pub mod tests {
         // decider proof verification
         let start = Instant::now();
         let verified = D::verify(
-            decider_vp, nova.i, nova.z_0, nova.z_i, &nova.U_i, &nova.u_i, &proof,
+            decider_vp.clone(),
+            nova.i.clone(),
+            nova.z_0.clone(),
+            nova.z_i.clone(),
+            &nova.U_i,
+            &nova.u_i,
+            &proof,
         )
         .unwrap();
         assert!(verified);
         println!("Decider verify, {:?}", start.elapsed());
+
+        // The rest of this test will serialize the data and deserialize it back, and use it to
+        // verify the proof:
+
+        // serialize the verifier_params, proof and public inputs
+        let mut decider_vp_serialized = vec![];
+        decider_vp
+            .serialize_compressed(&mut decider_vp_serialized)
+            .unwrap();
+        let mut proof_serialized = vec![];
+        proof.serialize_compressed(&mut proof_serialized).unwrap();
+        // serialize the public inputs in a single packet
+        let mut public_inputs_serialized = vec![];
+        nova.i
+            .serialize_compressed(&mut public_inputs_serialized)
+            .unwrap();
+        nova.z_0
+            .serialize_compressed(&mut public_inputs_serialized)
+            .unwrap();
+        nova.z_i
+            .serialize_compressed(&mut public_inputs_serialized)
+            .unwrap();
+        nova.U_i
+            .serialize_compressed(&mut public_inputs_serialized)
+            .unwrap();
+        nova.u_i
+            .serialize_compressed(&mut public_inputs_serialized)
+            .unwrap();
+
+        // deserialize back the verifier_params, proof and public inputs
+        let decider_vp_deserialized =
+            VerifierParam::<
+                Projective,
+                KZG<'static, Bn254>,
+                <Groth16<Bn254> as SNARK<Fr>>::VerifyingKey,
+            >::deserialize_compressed(&mut decider_vp_serialized.as_slice())
+            .unwrap();
+        let proof_deserialized =
+            Proof::<Projective, KZG<'static, Bn254>, Groth16<Bn254>>::deserialize_compressed(
+                &mut proof_serialized.as_slice(),
+            )
+            .unwrap();
+
+        // deserialize the public inputs from the single packet 'public_inputs_serialized'
+        let mut reader = public_inputs_serialized.as_slice();
+        let i_deserialized = Fr::deserialize_compressed(&mut reader).unwrap();
+        let z_0_deserialized = Vec::<Fr>::deserialize_compressed(&mut reader).unwrap();
+        let z_i_deserialized = Vec::<Fr>::deserialize_compressed(&mut reader).unwrap();
+        let U_i_deserialized =
+            CommittedInstance::<Projective>::deserialize_compressed(&mut reader).unwrap();
+        let u_i_deserialized =
+            CommittedInstance::<Projective>::deserialize_compressed(&mut reader).unwrap();
+
+        // decider proof verification using the deserialized data
+        let verified = D::verify(
+            decider_vp_deserialized,
+            i_deserialized,
+            z_0_deserialized,
+            z_i_deserialized,
+            &U_i_deserialized,
+            &u_i_deserialized,
+            &proof_deserialized,
+        )
+        .unwrap();
+        assert!(verified);
     }
 }

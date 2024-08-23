@@ -70,7 +70,7 @@ impl<'a, C: CurveGroup> Valid for ProverKey<'a, C> {
     }
 }
 
-#[derive(Debug, Clone, Default, Eq, PartialEq)]
+#[derive(Debug, Clone, Default, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<C: CurveGroup> {
     pub eval: C::ScalarField,
     pub proof: C,

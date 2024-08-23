@@ -16,7 +16,7 @@ ark-relations = { version = "^0.4.0", default-features = false }
 ark-r1cs-std = { version = "0.4.0", default-features = false, features = ["parallel"] }
 ark-snark = { version = "^0.4.0", default-features = false }
 ark-serialize = { version = "^0.4.0", default-features = false }
-ark-circom = { git = "https://github.com/arnaucube/circom-compat", rev = "18ca7f2", default-features = false }
+ark-circom = { git = "https://github.com/arnaucube/circom-compat", default-features = false }
 ark-groth16 = { version = "^0.4.0", default-features = false, features = ["parallel"]}
 ark-bn254 = { version = "^0.4.0", default-features = false }
 thiserror = "1.0"
@@ -25,12 +25,12 @@ num-bigint = "0.4"
 num-integer = "0.1"
 color-eyre = "=0.6.2"
 sha3 = "0.10"
-ark-noname = { git = "https://github.com/dmpierre/ark-noname", branch="feat/sonobe-integration" }
+ark-noname = { git = "https://github.com/dmpierre/ark-noname", branch = "feat/sonobe-integration" }
 noname = { git = "https://github.com/dmpierre/noname" }
 serde_json = "1.0.85"                                                                # to (de)serialize JSON
 serde = "1.0.203"
 acvm = { git = "https://github.com/noir-lang/noir", rev="2b4853e", default-features = false }
-arkworks_backend = { git = "https://github.com/dmpierre/arkworks_backend", rev = "4ec77d7" }
+arkworks_backend = { git = "https://github.com/dmpierre/arkworks_backend", branch = "feat/sonobe-integration" }
 log = "0.4"
 
 # tmp import for espresso's sumcheck

@@ -37,12 +37,14 @@ impl<F: PrimeField> CircomWrapper<F> {
 
     // Creates a new instance of the CircomWrapper with the file paths.
     fn new_from_path(r1cs_file_path: PathBuf, wasm_file_path: PathBuf) -> Result<Self, Error> {
-        let mut r1csfile_bytes = vec![];
         let mut file = File::open(r1cs_file_path)?;
+        let metadata = File::metadata(&file)?;
+        let mut r1csfile_bytes = vec![0; metadata.len() as usize];
         file.read_exact(&mut r1csfile_bytes)?;
 
-        let mut wasmfile_bytes = vec![];
         let mut file = File::open(wasm_file_path)?;
+        let metadata = File::metadata(&file)?;
+        let mut wasmfile_bytes = vec![0; metadata.len() as usize];
         file.read_exact(&mut wasmfile_bytes)?;
 
         Ok(CircomWrapper {

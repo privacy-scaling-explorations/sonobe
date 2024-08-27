@@ -3,29 +3,55 @@ use ark_circom::{
     WitnessCalculator,
 };
 use ark_ff::{BigInteger, PrimeField};
+use ark_serialize::Read;
 use color_eyre::Result;
 use num_bigint::{BigInt, Sign};
-use std::{fs::File, io::BufReader, marker::PhantomData, path::PathBuf};
+use std::{fs::File, io::Cursor, marker::PhantomData, path::PathBuf};
 
-use crate::Error;
+use crate::{utils::PathOrBin, Error};
 
 // A struct that wraps Circom functionalities, allowing for extraction of R1CS and witnesses
 // based on file paths to Circom's .r1cs and .wasm.
 #[derive(Clone, Debug)]
 pub struct CircomWrapper<F: PrimeField> {
-    r1cs_filepath: PathBuf,
-    wasm_filepath: PathBuf,
+    r1csfile_bytes: Vec<u8>,
+    wasmfile_bytes: Vec<u8>,
     _marker: PhantomData<F>,
 }
 
 impl<F: PrimeField> CircomWrapper<F> {
     // Creates a new instance of the CircomWrapper with the file paths.
-    pub fn new(r1cs_filepath: PathBuf, wasm_filepath: PathBuf) -> Self {
-        CircomWrapper {
-            r1cs_filepath,
-            wasm_filepath,
-            _marker: PhantomData,
+    pub fn new(r1cs: PathOrBin, wasm: PathOrBin) -> Result<Self, Error> {
+        match (r1cs, wasm) {
+            (PathOrBin::Path(r1cs_path), PathOrBin::Path(wasm_path)) => {
+                Self::new_from_path(r1cs_path, wasm_path)
+            }
+            (PathOrBin::Bin(r1cs_bin), PathOrBin::Bin(wasm_bin)) => Ok(Self {
+                r1csfile_bytes: r1cs_bin,
+                wasmfile_bytes: wasm_bin,
+                _marker: PhantomData,
+            }),
+            _ => unreachable!("You should pass the same enum branch for both inputs"),
         }
+    }
+
+    // Creates a new instance of the CircomWrapper with the file paths.
+    fn new_from_path(r1cs_file_path: PathBuf, wasm_file_path: PathBuf) -> Result<Self, Error> {
+        let mut file = File::open(r1cs_file_path)?;
+        let metadata = File::metadata(&file)?;
+        let mut r1csfile_bytes = vec![0; metadata.len() as usize];
+        file.read_exact(&mut r1csfile_bytes)?;
+
+        let mut file = File::open(wasm_file_path)?;
+        let metadata = File::metadata(&file)?;
+        let mut wasmfile_bytes = vec![0; metadata.len() as usize];
+        file.read_exact(&mut wasmfile_bytes)?;
+
+        Ok(CircomWrapper {
+            r1csfile_bytes,
+            wasmfile_bytes,
+            _marker: PhantomData,
+        })
     }
 
     // Aggregated function to obtain R1CS and witness from Circom.
@@ -34,9 +60,7 @@ impl<F: PrimeField> CircomWrapper<F> {
         inputs: &[(String, Vec<BigInt>)],
     ) -> Result<(R1CS<F>, Option<Vec<F>>), Error> {
         // Extracts the R1CS
-        let file = File::open(&self.r1cs_filepath)?;
-        let reader = BufReader::new(file);
-        let r1cs_file = r1cs_reader::R1CSFile::<F>::new(reader)?;
+        let r1cs_file = r1cs_reader::R1CSFile::<F>::new(Cursor::new(&self.r1csfile_bytes))?;
         let r1cs = r1cs_reader::R1CS::<F>::from(r1cs_file);
 
         // Extracts the witness vector
@@ -46,9 +70,7 @@ impl<F: PrimeField> CircomWrapper<F> {
     }
 
     pub fn extract_r1cs(&self) -> Result<R1CS<F>, Error> {
-        let file = File::open(&self.r1cs_filepath)?;
-        let reader = BufReader::new(file);
-        let r1cs_file = r1cs_reader::R1CSFile::<F>::new(reader)?;
+        let r1cs_file = r1cs_reader::R1CSFile::<F>::new(Cursor::new(&self.r1csfile_bytes))?;
         let mut r1cs = r1cs_reader::R1CS::<F>::from(r1cs_file);
         r1cs.wire_mapping = None;
         Ok(r1cs)
@@ -75,7 +97,7 @@ impl<F: PrimeField> CircomWrapper<F> {
         &self,
         inputs: &[(String, Vec<BigInt>)],
     ) -> Result<Vec<BigInt>, Error> {
-        let mut calculator = WitnessCalculator::new(&self.wasm_filepath).map_err(|e| {
+        let mut calculator = WitnessCalculator::from_binary(&self.wasmfile_bytes).map_err(|e| {
             Error::WitnessCalculationError(format!("Failed to create WitnessCalculator: {}", e))
         })?;
         calculator
@@ -139,7 +161,7 @@ mod tests {
             PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
         let inputs = vec![("ivc_input".to_string(), vec![BigInt::from(3)])];
-        let wrapper = CircomWrapper::<Fr>::new(r1cs_path, wasm_path);
+        let wrapper = CircomWrapper::<Fr>::new(r1cs_path.into(), wasm_path.into()).unwrap();
 
         let (r1cs, witness) = wrapper.extract_r1cs_and_witness(&inputs).unwrap();
 

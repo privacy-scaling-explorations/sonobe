@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::Error;
+use crate::{utils::PathOrBin, Error};
 
 use super::FCircuit;
 use acvm::{
@@ -16,7 +16,9 @@ use ark_ff::PrimeField;
 use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, R1CSVar};
 use ark_relations::r1cs::ConstraintSynthesizer;
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
-use arkworks_backend::{read_program_from_file, sonobe_bridge::AcirCircuitSonobe};
+use arkworks_backend::{
+    read_program_from_binary, read_program_from_file, sonobe_bridge::AcirCircuitSonobe,
+};
 
 #[derive(Clone, Debug)]
 pub struct NoirFCircuit<F: PrimeField> {
@@ -26,12 +28,15 @@ pub struct NoirFCircuit<F: PrimeField> {
 }
 
 impl<F: PrimeField> FCircuit<F> for NoirFCircuit<F> {
-    type Params = (String, usize, usize);
+    type Params = (PathOrBin, usize, usize);
 
     fn new(params: Self::Params) -> Result<Self, crate::Error> {
-        let (path, state_len, external_inputs_len) = params;
-        let program =
-            read_program_from_file(path).map_err(|ee| Error::Other(format!("{:?}", ee)))?;
+        let (source, state_len, external_inputs_len) = params;
+        let program = match source {
+            PathOrBin::Path(path) => read_program_from_file(path),
+            PathOrBin::Bin(bytes) => read_program_from_binary(&bytes),
+        }
+        .map_err(|ee| Error::Other(format!("{:?}", ee)))?;
         let circuit: Circuit<GenericFieldElement<F>> = program.functions[0].clone();
         let ivc_input_length = circuit.public_parameters.0.len();
         let ivc_return_length = circuit.return_values.0.len();

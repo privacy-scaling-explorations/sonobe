@@ -61,7 +61,7 @@ fn main() {
         "./folding-schemes/src/frontend/circom/test_folder/with_external_inputs_js/with_external_inputs.wasm",
     );
 
-    let f_circuit_params = (r1cs_path, wasm_path, 1, 2);
+    let f_circuit_params = (r1cs_path.into(), wasm_path.into(), 1, 2);
     let f_circuit = CircomFCircuit::<Fr>::new(f_circuit_params).unwrap();
 
     pub type N =

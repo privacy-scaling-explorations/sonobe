@@ -177,7 +177,7 @@ pub mod tests {
     use crate::utils::mle::matrix_to_dense_mle;
     use crate::utils::multilinear_polynomial::tests::fix_last_variables;
 
-    /// Given M(x,y) matrix and a random field element `r`, test that ~M(r,y) is is an s'-variable polynomial which
+    /// Given M(x,y) matrix and a random field element `r`, test that ~M(r,y) is an s'-variable polynomial which
     /// compresses every column j of the M(x,y) matrix by performing a random linear combination between the elements
     /// of the column and the values eq_i(r) where i is the row of that element
     ///

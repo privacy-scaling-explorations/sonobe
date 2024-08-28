@@ -424,7 +424,7 @@ where
         // `rho_bits` computed along the way of computing `computed_U_i1` for the later `rho_powers`
         // check (6.b).
 
-        // Check 7 is temporary disabled due
+        // Check 7 is temporarily disabled due
         // https://github.com/privacy-scaling-explorations/sonobe/issues/80
         log::warn!("[WARNING]: issue #80 (https://github.com/privacy-scaling-explorations/sonobe/issues/80) is not resolved yet.");
         //

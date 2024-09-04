@@ -4,6 +4,7 @@ use crate::Error;
 
 pub mod ccs;
 pub mod r1cs;
+pub mod vanilla_plonk;
 
 pub trait Arith<F: PrimeField> {
     /// Checks that the given Arith structure is satisfied by a z vector. Used only for testing.

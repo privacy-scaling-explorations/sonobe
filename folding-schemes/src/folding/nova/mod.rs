@@ -227,7 +227,7 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ProverParams<C1, C2, CS1, CS2, const H: bool>
 where
     C1: CurveGroup,
@@ -240,7 +240,7 @@ where
     pub cf_cs_pp: CS2::ProverParams,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct VerifierParams<C1, C2, CS1, CS2, const H: bool>
 where
     C1: CurveGroup,

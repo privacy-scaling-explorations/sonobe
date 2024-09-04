@@ -42,16 +42,18 @@ where
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct VerifierParam<C1, CS1, S_VerifyingKey>
+// pub struct VerifierParam<C1, CS1, S_VerifyingKey>
+pub struct VerifierParam<C1, CS_VerifyingKey, S_VerifyingKey>
 where
     C1: CurveGroup,
-    CS1: CommitmentScheme<C1, ProverChallenge = C1::ScalarField, Challenge = C1::ScalarField>,
-    // S: SNARK<C1::ScalarField>,
+    // CS1: CommitmentScheme<C1, ProverChallenge = C1::ScalarField, Challenge = C1::ScalarField>,
+    CS_VerifyingKey: Clone + CanonicalSerialize + CanonicalDeserialize,
     S_VerifyingKey: Clone + CanonicalSerialize + CanonicalDeserialize,
 {
     pub pp_hash: C1::ScalarField,
     pub snark_vp: S_VerifyingKey,
-    pub cs_vp: CS1::VerifierParams,
+    // pub cs_vp: CS1::VerifierParams,
+    pub cs_vp: CS_VerifyingKey,
 }
 
 /// Onchain Decider, for ethereum use cases
@@ -104,9 +106,7 @@ where
     type PreprocessorParam = (FS::ProverParam, FS::VerifierParam);
     type ProverParam = (S::ProvingKey, CS1::ProverParams);
     type Proof = Proof<C1, CS1, S>;
-    // /// VerifierParam = (pp_hash, snark::vk, commitment_scheme::vk)
-    // type VerifierParam = (C1::ScalarField, S::VerifyingKey, CS1::VerifierParams);
-    type VerifierParam = VerifierParam<C1, CS1, S::VerifyingKey>;
+    type VerifierParam = VerifierParam<C1, CS1::VerifierParams, S::VerifyingKey>;
     type PublicInput = Vec<C1::ScalarField>;
     type CommittedInstance = CommittedInstance<C1>;
 
@@ -137,7 +137,6 @@ where
         let pp_hash = nova_vp.pp_hash()?;
 
         let pp = (g16_pk, nova_pp.cs_pp);
-        // let vp = (pp_hash, g16_vk, nova_vp.cs_vp);
         let vp = Self::VerifierParam {
             pp_hash,
             snark_vp: g16_vk,
@@ -211,10 +210,6 @@ where
             return Err(Error::NotEnoughSteps);
         }
 
-        // let (pp_hash, snark_vk, cs_vk): (C1::ScalarField, S::VerifyingKey, CS1::VerifierParams) =
-        //     vp;
-        let (pp_hash, snark_vk, cs_vk) = (vp.pp_hash, vp.snark_vp, vp.cs_vp);
-
         // compute U = U_{d+1}= NIFS.V(U_d, u_d, cmT)
         let U = NIFS::<C1, CS1>::verify(proof.r, running_instance, incoming_instance, &proof.cmT);
 
@@ -223,7 +218,7 @@ where
         let (cmT_x, cmT_y) = NonNativeAffineVar::inputize(proof.cmT)?;
 
         let public_input: Vec<C1::ScalarField> = [
-            vec![pp_hash, i],
+            vec![vp.pp_hash, i],
             z_0,
             z_i,
             vec![U.u],
@@ -243,7 +238,7 @@ where
         ]
         .concat();
 
-        let snark_v = S::verify(&snark_vk, &public_input, &proof.snark_proof)
+        let snark_v = S::verify(&vp.snark_vp, &public_input, &proof.snark_proof)
             .map_err(|e| Error::Other(e.to_string()))?;
         if !snark_v {
             return Err(Error::SNARKVerificationFail);
@@ -251,13 +246,13 @@ where
 
         // we're at the Ethereum EVM case, so the CS1 is KZG commitments
         CS1::verify_with_challenge(
-            &cs_vk,
+            &vp.cs_vp,
             proof.kzg_challenges[0],
             &U.cmW,
             &proof.kzg_proofs[0],
         )?;
         CS1::verify_with_challenge(
-            &cs_vk,
+            &vp.cs_vp,
             proof.kzg_challenges[1],
             &U.cmE,
             &proof.kzg_proofs[1],
@@ -450,7 +445,7 @@ pub mod tests {
         let decider_vp_deserialized =
             VerifierParam::<
                 Projective,
-                KZG<'static, Bn254>,
+                <KZG<'static, Bn254> as CommitmentScheme<Projective>>::VerifierParams,
                 <Groth16<Bn254> as SNARK<Fr>>::VerifyingKey,
             >::deserialize_compressed(&mut decider_vp_serialized.as_slice())
             .unwrap();

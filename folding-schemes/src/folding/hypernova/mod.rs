@@ -10,6 +10,7 @@ use ark_std::{fmt::Debug, marker::PhantomData, rand::RngCore, One, Zero};
 
 pub mod cccs;
 pub mod circuits;
+pub mod decider_eth;
 pub mod decider_eth_circuit;
 pub mod lcccs;
 pub mod nimfs;
@@ -84,8 +85,8 @@ where
     CS2: CommitmentScheme<C2, H>,
 {
     pub poseidon_config: PoseidonConfig<C1::ScalarField>,
-    pub cs_params: CS1::ProverParams,
-    pub cf_cs_params: CS2::ProverParams,
+    pub cs_pp: CS1::ProverParams,
+    pub cf_cs_pp: CS2::ProverParams,
     // if ccs is set, it will be used, if not, it will be computed at runtime
     pub ccs: Option<CCS<C1::ScalarField>>,
 }
@@ -162,9 +163,9 @@ pub struct HyperNova<
     pub cf_r1cs: R1CS<C2::ScalarField>,
     pub poseidon_config: PoseidonConfig<C1::ScalarField>,
     /// CommitmentScheme::ProverParams over C1
-    pub cs_params: CS1::ProverParams,
+    pub cs_pp: CS1::ProverParams,
     /// CycleFold CommitmentScheme::ProverParams, over C2
-    pub cf_cs_params: CS2::ProverParams,
+    pub cf_cs_pp: CS2::ProverParams,
     /// F circuit, the circuit that is being folded
     pub F: FC,
     /// public params hash
@@ -221,7 +222,7 @@ where
         // assign them directly to w_i, u_i.
         let (U_i, W_i) = self
             .ccs
-            .to_lcccs::<_, _, CS1, H>(&mut rng, &self.cs_params, &r1cs_z)?;
+            .to_lcccs::<_, _, CS1, H>(&mut rng, &self.cs_pp, &r1cs_z)?;
 
         #[cfg(test)]
         U_i.check_relation(&self.ccs, &W_i)?;
@@ -243,7 +244,7 @@ where
         // assign them directly to w_i, u_i.
         let (u_i, w_i) = self
             .ccs
-            .to_cccs::<_, _, CS1, H>(&mut rng, &self.cs_params, &r1cs_z)?;
+            .to_cccs::<_, _, CS1, H>(&mut rng, &self.cs_pp, &r1cs_z)?;
 
         #[cfg(test)]
         u_i.check_relation(&self.ccs, &w_i)?;
@@ -426,8 +427,8 @@ where
 
         let pp = ProverParams::<C1, C2, CS1, CS2, H> {
             poseidon_config: prep_param.poseidon_config.clone(),
-            cs_params: cs_pp.clone(),
-            cf_cs_params: cf_cs_pp.clone(),
+            cs_pp,
+            cf_cs_pp,
             ccs: Some(ccs.clone()),
         };
         let vp = VerifierParams::<C1, C2, CS1, CS2, H> {
@@ -496,8 +497,8 @@ where
             ccs,
             cf_r1cs,
             poseidon_config: pp.poseidon_config.clone(),
-            cs_params: pp.cs_params.clone(),
-            cf_cs_params: pp.cf_cs_params.clone(),
+            cs_pp: pp.cs_pp.clone(),
+            cf_cs_pp: pp.cf_cs_pp.clone(),
             F,
             pp_hash,
             i: C1::ScalarField::zero(),
@@ -736,7 +737,7 @@ where
             >(
                 &mut transcript_p,
                 self.cf_r1cs.clone(),
-                self.cf_cs_params.clone(),
+                self.cf_cs_pp.clone(),
                 self.pp_hash,
                 self.cf_W_i.clone(), // CycleFold running instance witness
                 self.cf_U_i.clone(), // CycleFold running instance
@@ -796,7 +797,7 @@ where
         // assign them directly to w_i, u_i.
         let (u_i, w_i) = self
             .ccs
-            .to_cccs::<_, C1, CS1, H>(&mut rng, &self.cs_params, &r1cs_z)?;
+            .to_cccs::<_, C1, CS1, H>(&mut rng, &self.cs_pp, &r1cs_z)?;
         self.u_i = u_i.clone();
         self.w_i = w_i.clone();
 

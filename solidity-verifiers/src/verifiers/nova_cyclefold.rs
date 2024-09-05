@@ -346,7 +346,7 @@ mod tests {
         )
         .unwrap();
         let decider_params =
-            DECIDER::preprocess(&mut rng, &nova_params.clone(), nova.clone()).unwrap();
+            DECIDER::preprocess(&mut rng, nova_params.clone(), nova.clone()).unwrap();
 
         (nova_params, decider_params)
     }

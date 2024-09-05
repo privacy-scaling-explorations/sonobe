@@ -20,6 +20,13 @@ pub struct SparseMatrix<F: PrimeField> {
 }
 
 impl<F: PrimeField> SparseMatrix<F> {
+    pub fn empty() -> Self {
+        Self {
+            n_rows: 0,
+            n_cols: 0,
+            coeffs: vec![],
+        }
+    }
     pub fn rand<R: Rng>(rng: &mut R, n_rows: usize, n_cols: usize) -> Self {
         const ZERO_VAL_PROBABILITY: f64 = 0.8f64;
 

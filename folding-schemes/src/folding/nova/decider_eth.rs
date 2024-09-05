@@ -42,17 +42,14 @@ where
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-// pub struct VerifierParam<C1, CS1, S_VerifyingKey>
 pub struct VerifierParam<C1, CS_VerifyingKey, S_VerifyingKey>
 where
     C1: CurveGroup,
-    // CS1: CommitmentScheme<C1, ProverChallenge = C1::ScalarField, Challenge = C1::ScalarField>,
     CS_VerifyingKey: Clone + CanonicalSerialize + CanonicalDeserialize,
     S_VerifyingKey: Clone + CanonicalSerialize + CanonicalDeserialize,
 {
     pub pp_hash: C1::ScalarField,
     pub snark_vp: S_VerifyingKey,
-    // pub cs_vp: CS1::VerifierParams,
     pub cs_vp: CS_VerifyingKey,
 }
 
@@ -342,7 +339,9 @@ pub mod tests {
 
     use super::*;
     use crate::commitment::pedersen::Pedersen;
-    use crate::folding::nova::PreprocessorParam;
+    use crate::folding::nova::{
+        PreprocessorParam, ProverParams as NovaProverParams, VerifierParams as NovaVerifierParams,
+    };
     use crate::frontend::tests::CubicFCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
 
@@ -371,27 +370,139 @@ pub mod tests {
             N,              // here we define the FoldingScheme to use
         >;
 
-        let mut rng = ark_std::test_rng();
+        let mut rng = rand::rngs::OsRng;
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
         let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
         let z_0 = vec![Fr::from(3_u32)];
 
-        let prep_param = PreprocessorParam::new(poseidon_config, F_circuit);
-        let nova_params = N::preprocess(&mut rng, &prep_param).unwrap();
+        let preprocessor_param = PreprocessorParam::new(poseidon_config, F_circuit);
+        let nova_params = N::preprocess(&mut rng, &preprocessor_param).unwrap();
 
         let start = Instant::now();
         let mut nova = N::init(&nova_params, F_circuit, z_0.clone()).unwrap();
         println!("Nova initialized, {:?}", start.elapsed());
+
+        // prepare the Decider prover & verifier params
+        let (decider_pp, decider_vp) = D::preprocess(&mut rng, &nova_params, nova.clone()).unwrap();
+
         let start = Instant::now();
         nova.prove_step(&mut rng, vec![], None).unwrap();
         println!("prove_step, {:?}", start.elapsed());
         nova.prove_step(&mut rng, vec![], None).unwrap(); // do a 2nd step
 
+        // decider proof generation
+        let start = Instant::now();
+        let proof = D::prove(rng, decider_pp, nova.clone()).unwrap();
+        println!("Decider prove, {:?}", start.elapsed());
+
+        // decider proof verification
+        let start = Instant::now();
+        let verified = D::verify(
+            decider_vp.clone(),
+            nova.i.clone(),
+            nova.z_0.clone(),
+            nova.z_i.clone(),
+            &nova.U_i,
+            &nova.u_i,
+            &proof,
+        )
+        .unwrap();
+        assert!(verified);
+        println!("Decider verify, {:?}", start.elapsed());
+
+        // decider proof verification using the deserialized data
+        let verified = D::verify(
+            decider_vp, nova.i, nova.z_0, nova.z_i, &nova.U_i, &nova.u_i, &proof,
+        )
+        .unwrap();
+        assert!(verified);
+    }
+
+    // Test to check the serialization and deserialization of diverse Decider related parameters.
+    // This test is the same test as `test_decider` but it serializes values and then uses the
+    // deserialized values to continue the checks.
+    #[test]
+    fn test_decider_serialization() {
+        // use Nova as FoldingScheme
+        type N = Nova<
+            Projective,
+            GVar,
+            Projective2,
+            GVar2,
+            CubicFCircuit<Fr>,
+            KZG<'static, Bn254>,
+            Pedersen<Projective2>,
+            false,
+        >;
+        type D = Decider<
+            Projective,
+            GVar,
+            Projective2,
+            GVar2,
+            CubicFCircuit<Fr>,
+            KZG<'static, Bn254>,
+            Pedersen<Projective2>,
+            Groth16<Bn254>, // here we define the Snark to use in the decider
+            N,              // here we define the FoldingScheme to use
+        >;
+
         let mut rng = rand::rngs::OsRng;
+        let poseidon_config = poseidon_canonical_config::<Fr>();
+
+        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
+        let z_0 = vec![Fr::from(3_u32)];
+
+        let preprocessor_param = PreprocessorParam::new(poseidon_config, F_circuit);
+        let nova_params = N::preprocess(&mut rng, &preprocessor_param).unwrap();
+
+        let start = Instant::now();
+        let nova = N::init(&nova_params, F_circuit, z_0.clone()).unwrap();
+        println!("Nova initialized, {:?}", start.elapsed());
 
         // prepare the Decider prover & verifier params
         let (decider_pp, decider_vp) = D::preprocess(&mut rng, &nova_params, nova.clone()).unwrap();
+
+        // serialize the Nova params. These params are the trusted setup of the commitment schemes used
+        // (ie. KZG & Pedersen in this case)
+        let mut nova_pp_serialized = vec![];
+        nova_params
+            .0
+            .serialize_compressed(&mut nova_pp_serialized)
+            .unwrap();
+        let mut nova_vp_serialized = vec![];
+        nova_params
+            .1
+            .serialize_compressed(&mut nova_vp_serialized)
+            .unwrap();
+        // deserialize the Nova params. This would be done by the client reading from a file
+        let nova_pp_deserialized = NovaProverParams::<
+            Projective,
+            Projective2,
+            KZG<'static, Bn254>,
+            Pedersen<Projective2>,
+        >::deserialize_compressed(
+            &mut nova_pp_serialized.as_slice()
+        )
+        .unwrap();
+        let nova_vp_deserialized = NovaVerifierParams::<
+            Projective,
+            Projective2,
+            KZG<'static, Bn254>,
+            Pedersen<Projective2>,
+        >::deserialize_compressed(
+            &mut nova_vp_serialized.as_slice()
+        )
+        .unwrap();
+
+        // initialize nova again, but from the deserialized parameters
+        let nova_params = (nova_pp_deserialized, nova_vp_deserialized);
+        let mut nova = N::init(&nova_params, F_circuit, z_0).unwrap();
+
+        let start = Instant::now();
+        nova.prove_step(&mut rng, vec![], None).unwrap();
+        println!("prove_step, {:?}", start.elapsed());
+        nova.prove_step(&mut rng, vec![], None).unwrap(); // do a 2nd step
 
         // decider proof generation
         let start = Instant::now();

@@ -370,8 +370,6 @@ mod tests {
         let f_circuit = FC::new(()).unwrap();
 
         let nova_cyclefold_vk =
-            // NovaCycleFoldVerifierKey::from((decider_vp.clone(), f_circuit.state_len()));
-            // NovaCycleFoldVerifierKey::from(((decider_vp.pp_hash.clone(), decider_vp.snark_vp.clone(), decider_vp.cs_vp.clone()), f_circuit.state_len()));
             NovaCycleFoldVerifierKey::from((decider_vp.clone(), f_circuit.state_len()));
 
         let mut rng = rand::rngs::OsRng;

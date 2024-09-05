@@ -32,15 +32,20 @@ use crate::{
     utils::{get_cm_coordinates, pp_hash},
 };
 
+use circuits::{AugmentedFCircuit, ChallengeGadget, CommittedInstanceVar};
+use nifs::NIFS;
+
 pub mod circuits;
-pub mod decider_eth;
-pub mod decider_eth_circuit;
 pub mod nifs;
 pub mod serialize;
 pub mod traits;
 pub mod zk;
-use circuits::{AugmentedFCircuit, ChallengeGadget, CommittedInstanceVar};
-use nifs::NIFS;
+
+// offchain decider
+pub mod decider_circuits;
+// onchain decider
+pub mod decider_eth;
+pub mod decider_eth_circuit;
 
 use super::traits::{CommittedInstanceOps, WitnessOps};
 

@@ -696,13 +696,13 @@ where
 
             let cfW_circuit = ProtoGalaxyCycleFoldCircuit::<C1, GC1> {
                 _gc: PhantomData,
-                r_bits: Some(vec![r0_bits.clone()]),
+                r_bits: Some(r0_bits),
                 points: Some(vec![C1::zero(), self.U_i.phi]),
                 x: Some(cfW_u_i_x.clone()),
             };
             let cfE_circuit = ProtoGalaxyCycleFoldCircuit::<C1, GC1> {
                 _gc: PhantomData,
-                r_bits: Some(vec![r1_bits.clone()]),
+                r_bits: Some(r1_bits),
                 points: Some(vec![phi_stars[0], self.u_i.phi]),
                 x: Some(cfE_u_i_x.clone()),
             };

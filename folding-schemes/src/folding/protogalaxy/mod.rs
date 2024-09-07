@@ -662,13 +662,14 @@ where
 
             // CycleFold part:
             // get the vector used as public inputs 'x' in the CycleFold circuit
-            // cyclefold circuit for cmW
             let mut r0_bits = L_evals[0].into_bigint().to_bits_le();
             let mut r1_bits = L_evals[1].into_bigint().to_bits_le();
             r0_bits.resize(C1::ScalarField::MODULUS_BIT_SIZE as usize, false);
             r1_bits.resize(C1::ScalarField::MODULUS_BIT_SIZE as usize, false);
 
-            let cfW_u_i_x = [
+            // cyclefold circuit for enforcing:
+            // 0 + U_i.phi * L_evals[0] == phi_stars[0]
+            let cf1_u_i_x = [
                 r0_bits
                     .chunks(C1::BaseField::MODULUS_BIT_SIZE as usize - 1)
                     .map(BigInteger::from_bits_le)
@@ -680,8 +681,17 @@ where
                 get_cm_coordinates(&phi_stars[0]),
             ]
             .concat();
-            // cyclefold circuit for cmE
-            let cfE_u_i_x = [
+            let cf1_circuit = ProtoGalaxyCycleFoldCircuit::<C1, GC1> {
+                _gc: PhantomData,
+                r_bits: Some(r0_bits),
+                points: Some(vec![C1::zero(), self.U_i.phi]),
+                x: Some(cf1_u_i_x.clone()),
+            };
+
+            // cyclefold circuit for enforcing:
+            // phi_stars[0] + u_i.phi * L_evals[1] == U_i1.phi
+            // i.e., U_i.phi * L_evals[0] + u_i.phi * L_evals[1] == U_i1.phi
+            let cf2_u_i_x = [
                 r1_bits
                     .chunks(C1::BaseField::MODULUS_BIT_SIZE as usize - 1)
                     .map(BigInteger::from_bits_le)
@@ -693,36 +703,29 @@ where
                 get_cm_coordinates(&U_i1.phi),
             ]
             .concat();
-
-            let cfW_circuit = ProtoGalaxyCycleFoldCircuit::<C1, GC1> {
-                _gc: PhantomData,
-                r_bits: Some(r0_bits),
-                points: Some(vec![C1::zero(), self.U_i.phi]),
-                x: Some(cfW_u_i_x.clone()),
-            };
-            let cfE_circuit = ProtoGalaxyCycleFoldCircuit::<C1, GC1> {
+            let cf2_circuit = ProtoGalaxyCycleFoldCircuit::<C1, GC1> {
                 _gc: PhantomData,
                 r_bits: Some(r1_bits),
                 points: Some(vec![phi_stars[0], self.u_i.phi]),
-                x: Some(cfE_u_i_x.clone()),
+                x: Some(cf2_u_i_x.clone()),
             };
 
-            // fold self.cf_U_i + cfW_U -> folded running with cfW
-            let (_cfW_w_i, cfW_u_i, cfW_W_i1, cfW_U_i1, cfW_cmT, _) = self.fold_cyclefold_circuit(
+            // fold self.cf_U_i + cf1_U -> folded running with cf1
+            let (_cf1_w_i, cf1_u_i, cf1_W_i1, cf1_U_i1, cf1_cmT, _) = self.fold_cyclefold_circuit(
                 &mut transcript_prover,
                 self.cf_W_i.clone(), // CycleFold running instance witness
                 self.cf_U_i.clone(), // CycleFold running instance
-                cfW_u_i_x,
-                cfW_circuit,
+                cf1_u_i_x,
+                cf1_circuit,
                 &mut rng,
             )?;
-            // fold [the output from folding self.cf_U_i + cfW_U] + cfE_U = folded_running_with_cfW + cfE
-            let (_cfE_w_i, cfE_u_i, cf_W_i1, cf_U_i1, cf_cmT, _) = self.fold_cyclefold_circuit(
+            // fold [the output from folding self.cf_U_i + cf1_U] + cf2_U = folded_running_with_cf1 + cf2
+            let (_cf2_w_i, cf2_u_i, cf_W_i1, cf_U_i1, cf2_cmT, _) = self.fold_cyclefold_circuit(
                 &mut transcript_prover,
-                cfW_W_i1,
-                cfW_U_i1.clone(),
-                cfE_u_i_x,
-                cfE_circuit,
+                cf1_W_i1,
+                cf1_U_i1.clone(),
+                cf2_u_i_x,
+                cf2_circuit,
                 &mut rng,
             )?;
 
@@ -754,11 +757,11 @@ where
                 F: self.F.clone(),
                 x: Some(u_i1_x),
                 // cyclefold values
-                cf1_u_i_cmW: cfW_u_i.cmW,
-                cf2_u_i_cmW: cfE_u_i.cmW,
+                cf1_u_i_cmW: cf1_u_i.cmW,
+                cf2_u_i_cmW: cf2_u_i.cmW,
                 cf_U_i: self.cf_U_i.clone(),
-                cf1_cmT: cfW_cmT,
-                cf2_cmT: cf_cmT,
+                cf1_cmT,
+                cf2_cmT,
                 cf_x: Some(cf_u_i1_x),
             };
 
@@ -775,8 +778,8 @@ where
                     )?,
                     U_i1
                 );
-                self.cf_r1cs.check_tight_relation(&_cfW_w_i, &cfW_u_i)?;
-                self.cf_r1cs.check_tight_relation(&_cfE_w_i, &cfE_u_i)?;
+                self.cf_r1cs.check_tight_relation(&_cf1_w_i, &cf1_u_i)?;
+                self.cf_r1cs.check_tight_relation(&_cf2_w_i, &cf2_u_i)?;
                 self.cf_r1cs
                     .check_relaxed_relation(&self.cf_W_i, &self.cf_U_i)?;
             }

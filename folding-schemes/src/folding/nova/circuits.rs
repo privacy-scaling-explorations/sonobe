@@ -21,7 +21,6 @@ use ark_std::{fmt::Debug, One, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::{CommittedInstance, NovaCycleFoldConfig};
-use crate::constants::NOVA_N_BITS_RO;
 use crate::folding::circuits::{
     cyclefold::{
         CycleFoldChallengeGadget, CycleFoldCommittedInstance, CycleFoldCommittedInstanceVar,
@@ -32,15 +31,13 @@ use crate::folding::circuits::{
 };
 use crate::frontend::FCircuit;
 use crate::transcript::{AbsorbNonNativeGadget, Transcript, TranscriptVar};
+use crate::{constants::NOVA_N_BITS_RO, folding::traits::CommittedInstanceVarExt};
 
 /// CommittedInstanceVar contains the u, x, cmE and cmW values which are folded on the main Nova
 /// constraints field (E1::Fr, where E1 is the main curve). The peculiarity is that cmE and cmW are
 /// represented non-natively over the constraint field.
 #[derive(Debug, Clone)]
-pub struct CommittedInstanceVar<C: CurveGroup>
-where
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-{
+pub struct CommittedInstanceVar<C: CurveGroup> {
     pub u: FpVar<C::ScalarField>,
     pub x: Vec<FpVar<C::ScalarField>>,
     pub cmE: NonNativeAffineVar<C>,
@@ -50,7 +47,6 @@ where
 impl<C> AllocVar<CommittedInstance<C>, CF1<C>> for CommittedInstanceVar<C>
 where
     C: CurveGroup,
-    <C as ark_ec::CurveGroup>::BaseField: PrimeField,
 {
     fn new_variable<T: Borrow<CommittedInstance<C>>>(
         cs: impl Into<Namespace<CF1<C>>>,
@@ -94,35 +90,27 @@ where
     }
 }
 
-impl<C> CommittedInstanceVar<C>
-where
-    C: CurveGroup,
-    <C as Group>::ScalarField: Absorb,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-{
-    /// hash implements the committed instance hash compatible with the native implementation from
-    /// CommittedInstance.hash.
-    /// Returns `H(i, z_0, z_i, U_i)`, where `i` can be `i` but also `i+1`, and `U` is the
-    /// `CommittedInstance`.
-    /// Additionally it returns the vector of the field elements from the self parameters, so they
-    /// can be reused in other gadgets avoiding recalculating (reconstraining) them.
-    #[allow(clippy::type_complexity)]
-    pub fn hash<S: CryptographicSponge, T: TranscriptVar<CF1<C>, S>>(
-        self,
-        sponge: &T,
-        pp_hash: FpVar<CF1<C>>,
-        i: FpVar<CF1<C>>,
-        z_0: Vec<FpVar<CF1<C>>>,
-        z_i: Vec<FpVar<CF1<C>>>,
-    ) -> Result<(FpVar<CF1<C>>, Vec<FpVar<CF1<C>>>), SynthesisError> {
-        let mut sponge = sponge.clone();
-        let U_vec = self.to_sponge_field_elements()?;
-        sponge.absorb(&pp_hash)?;
-        sponge.absorb(&i)?;
-        sponge.absorb(&z_0)?;
-        sponge.absorb(&z_i)?;
-        sponge.absorb(&U_vec)?;
-        Ok((sponge.squeeze_field_elements(1)?.pop().unwrap(), U_vec))
+impl<C: CurveGroup> CommittedInstanceVarExt<C> for CommittedInstanceVar<C> {
+    type PointVar = NonNativeAffineVar<C>;
+
+    fn get_commitments(&self) -> Vec<Self::PointVar> {
+        vec![self.cmW.clone(), self.cmE.clone()]
+    }
+
+    fn get_public_inputs(&self) -> &[FpVar<CF1<C>>] {
+        &self.x
+    }
+
+    fn enforce_incoming(&self) -> Result<(), SynthesisError> {
+        let zero = NonNativeUintVar::new_constant(ConstraintSystemRef::None, CF2::<C>::zero())?;
+        self.cmE.x.enforce_equal_unaligned(&zero)?;
+        self.cmE.y.enforce_equal_unaligned(&zero)?;
+        self.u.enforce_equal(&FpVar::one())
+    }
+
+    fn enforce_partial_equal(&self, other: &Self) -> Result<(), SynthesisError> {
+        self.u.enforce_equal(&other.u)?;
+        self.x.enforce_equal(&other.x)
     }
 }
 
@@ -370,13 +358,7 @@ where
         // Primary Part
         // P.1. Compute u_i.x
         // u_i.x[0] = H(i, z_0, z_i, U_i)
-        let (u_i_x, U_i_vec) = U_i.clone().hash(
-            &sponge,
-            pp_hash.clone(),
-            i.clone(),
-            z_0.clone(),
-            z_i.clone(),
-        )?;
+        let (u_i_x, U_i_vec) = U_i.clone().hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
         // u_i.x[1] = H(cf_U_i)
         let (cf_u_i_x, cf_U_i_vec) = cf_U_i.clone().hash(&sponge, pp_hash.clone())?;
 
@@ -425,17 +407,17 @@ where
         // Non-base case: u_{i+1}.x[0] == H((i+1, z_0, z_{i+1}, U_{i+1})
         let (u_i1_x, _) = U_i1.clone().hash(
             &sponge,
-            pp_hash.clone(),
-            i + FpVar::<CF1<C1>>::one(),
-            z_0.clone(),
-            z_i1.clone(),
+            &pp_hash,
+            &(i + FpVar::<CF1<C1>>::one()),
+            &z_0,
+            &z_i1,
         )?;
         let (u_i1_x_base, _) = CommittedInstanceVar::new_constant(cs.clone(), u_dummy)?.hash(
             &sponge,
-            pp_hash.clone(),
-            FpVar::<CF1<C1>>::one(),
-            z_0.clone(),
-            z_i1.clone(),
+            &pp_hash,
+            &FpVar::<CF1<C1>>::one(),
+            &z_0,
+            &z_i1,
         )?;
         let x = FpVar::new_input(cs.clone(), || Ok(self.x.unwrap_or(u_i1_x_base.value()?)))?;
         x.enforce_equal(&is_basecase.select(&u_i1_x_base, &u_i1_x)?)?;
@@ -538,6 +520,7 @@ pub mod tests {
     use crate::commitment::pedersen::Pedersen;
     use crate::folding::nova::nifs::tests::prepare_simple_fold_inputs;
     use crate::folding::nova::nifs::NIFS;
+    use crate::folding::traits::CommittedInstanceExt;
     use crate::transcript::poseidon::poseidon_canonical_config;
 
     #[test]
@@ -609,7 +592,7 @@ pub mod tests {
         };
 
         // compute the CommittedInstance hash natively
-        let h = ci.hash(&sponge, pp_hash, i, z_0.clone(), z_i.clone());
+        let h = ci.hash(&sponge, pp_hash, i, &z_0, &z_i);
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
@@ -624,7 +607,7 @@ pub mod tests {
 
         // compute the CommittedInstance hash in-circuit
         let (hVar, _) = ciVar
-            .hash(&sponge, pp_hashVar, iVar, z_0Var, z_iVar)
+            .hash(&sponge, &pp_hashVar, &iVar, &z_0Var, &z_iVar)
             .unwrap();
         assert!(cs.is_satisfied().unwrap());
 

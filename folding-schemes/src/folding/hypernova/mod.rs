@@ -18,6 +18,7 @@ pub mod utils;
 
 use cccs::CCCS;
 use circuits::AugmentedFCircuit;
+use decider_eth_circuit::WitnessVar;
 use lcccs::LCCCS;
 use nimfs::NIMFS;
 
@@ -30,6 +31,7 @@ use crate::folding::circuits::{
     CF2,
 };
 use crate::folding::nova::{get_r1cs_from_cs, PreprocessorParam};
+use crate::folding::traits::{CommittedInstanceExt, WitnessExt};
 use crate::frontend::FCircuit;
 use crate::utils::{get_cm_coordinates, pp_hash};
 use crate::Error;
@@ -76,6 +78,14 @@ impl<F: PrimeField> Witness<F> {
     }
     pub fn dummy(ccs: &CCS<F>) -> Self {
         Witness::<F>::new(vec![F::zero(); ccs.n - ccs.l - 1])
+    }
+}
+
+impl<F: PrimeField> WitnessExt<F> for Witness<F> {
+    type Var = WitnessVar<F>;
+
+    fn get_openings(&self) -> Vec<(&[F], F)> {
+        vec![(&self.w, self.r_w)]
     }
 }
 
@@ -305,8 +315,8 @@ where
                 &sponge,
                 self.pp_hash,
                 C1::ScalarField::zero(), // i
-                self.z_0.clone(),
-                state.clone(),
+                &self.z_0,
+                &state,
             ),
             cf_U_i.hash_cyclefold(&sponge, self.pp_hash),
         ];
@@ -322,8 +332,8 @@ where
             &sponge,
             self.pp_hash,
             C1::ScalarField::one(), // i+1, where i=0
-            self.z_0.clone(),
-            z_i1.clone(),
+            &self.z_0,
+            &z_i1,
         );
 
         let cf_u_i1_x = cf_U_i.hash_cyclefold(&sponge, self.pp_hash);
@@ -492,13 +502,7 @@ where
         let (cf_W_dummy, cf_U_dummy): (CycleFoldWitness<C2>, CycleFoldCommittedInstance<C2>) =
             cf_r1cs.dummy_running_instance();
         u_dummy.x = vec![
-            U_dummy.hash(
-                &sponge,
-                pp_hash,
-                C1::ScalarField::zero(),
-                z_0.clone(),
-                z_0.clone(),
-            ),
+            U_dummy.hash(&sponge, pp_hash, C1::ScalarField::zero(), &z_0, &z_0),
             cf_U_dummy.hash_cyclefold(&sponge, pp_hash),
         ];
 
@@ -641,8 +645,8 @@ where
                 &sponge,
                 self.pp_hash,
                 C1::ScalarField::one(),
-                self.z_0.clone(),
-                z_i1.clone(),
+                &self.z_0,
+                &z_i1,
             );
 
             // hash the initial (dummy) CycleFold instance, which is used as the 2nd public
@@ -697,8 +701,8 @@ where
                 &sponge,
                 self.pp_hash,
                 self.i + C1::ScalarField::one(),
-                self.z_0.clone(),
-                z_i1.clone(),
+                &self.z_0,
+                &z_i1,
             );
 
             let rho_bits = rho.into_bigint().to_bits_le()[..NOVA_N_BITS_RO].to_vec();
@@ -882,7 +886,7 @@ where
 
         // check that u_i's output points to the running instance
         // u_i.X[0] == H(i, z_0, z_i, U_i)
-        let expected_u_i_x = U_i.hash(&sponge, pp_hash, num_steps, z_0, z_i.clone());
+        let expected_u_i_x = U_i.hash(&sponge, pp_hash, num_steps, &z_0, &z_i);
         if expected_u_i_x != u_i.x[0] {
             return Err(Error::IVCVerificationFail);
         }

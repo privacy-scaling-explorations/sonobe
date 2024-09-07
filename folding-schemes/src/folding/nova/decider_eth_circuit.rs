@@ -27,8 +27,6 @@ use super::{
     nifs::NIFS,
     CommittedInstance, Nova, Witness,
 };
-use crate::arith::r1cs::R1CS;
-use crate::commitment::{pedersen::Params as PedersenParams, CommitmentScheme};
 use crate::folding::circuits::{
     cyclefold::{CycleFoldCommittedInstance, CycleFoldWitness},
     nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
@@ -41,6 +39,11 @@ use crate::utils::{
     vec::poly_from_vec,
 };
 use crate::Error;
+use crate::{arith::r1cs::R1CS, folding::traits::WitnessVarExt};
+use crate::{
+    commitment::{pedersen::Params as PedersenParams, CommitmentScheme},
+    folding::traits::CommittedInstanceVarExt,
+};
 
 #[derive(Debug, Clone)]
 pub struct RelaxedR1CSGadget {}
@@ -135,7 +138,6 @@ pub struct WitnessVar<C: CurveGroup> {
 impl<C> AllocVar<Witness<C>, CF1<C>> for WitnessVar<C>
 where
     C: CurveGroup,
-    <C as ark_ec::CurveGroup>::BaseField: PrimeField,
 {
     fn new_variable<T: Borrow<Witness<C>>>(
         cs: impl Into<Namespace<CF1<C>>>,
@@ -157,6 +159,12 @@ where
 
             Ok(Self { E, rE, W, rW })
         })
+    }
+}
+
+impl<C: CurveGroup> WitnessVarExt<C::ScalarField> for WitnessVar<C> {
+    fn get_openings(&self) -> Vec<(&[FpVar<C::ScalarField>], FpVar<C::ScalarField>)> {
+        vec![(&self.E, self.rE.clone()), (&self.W, self.rW.clone())]
     }
 }
 
@@ -398,13 +406,7 @@ where
         (u_i.u.is_one()?).enforce_equal(&Boolean::TRUE)?;
 
         // 3.a u_i.x[0] == H(i, z_0, z_i, U_i)
-        let (u_i_x, U_i_vec) = U_i.clone().hash(
-            &sponge,
-            pp_hash.clone(),
-            i.clone(),
-            z_0.clone(),
-            z_i.clone(),
-        )?;
+        let (u_i_x, U_i_vec) = U_i.clone().hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
         (u_i.x[0]).enforce_equal(&u_i_x)?;
 
         #[cfg(feature = "light-test")]

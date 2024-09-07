@@ -26,8 +26,6 @@ use super::{
     nimfs::{NIMFSProof, NIMFS},
     HyperNova, Witness, CCCS, LCCCS,
 };
-use crate::arith::ccs::CCS;
-use crate::arith::r1cs::R1CS;
 use crate::commitment::{pedersen::Params as PedersenParams, CommitmentScheme};
 use crate::folding::circuits::{
     cyclefold::{CycleFoldCommittedInstance, CycleFoldWitness},
@@ -40,6 +38,8 @@ use crate::utils::{
     vec::poly_from_vec,
 };
 use crate::Error;
+use crate::{arith::ccs::CCS, folding::traits::CommittedInstanceVarExt};
+use crate::{arith::r1cs::R1CS, folding::traits::WitnessVarExt};
 
 /// In-circuit representation of the Witness associated to the CommittedInstance.
 #[derive(Debug, Clone)]
@@ -63,6 +63,12 @@ impl<F: PrimeField> AllocVar<Witness<F>, F> for WitnessVar<F> {
 
             Ok(Self { w, r_w })
         })
+    }
+}
+
+impl<F: PrimeField> WitnessVarExt<F> for WitnessVar<F> {
+    fn get_openings(&self) -> Vec<(&[FpVar<F>], FpVar<F>)> {
+        vec![(&self.w, self.r_w.clone())]
     }
 }
 
@@ -340,13 +346,7 @@ where
         )?;
 
         // 3.a u_i.x[0] == H(i, z_0, z_i, U_i)
-        let (u_i_x, _) = U_i.clone().hash(
-            &sponge,
-            pp_hash.clone(),
-            i.clone(),
-            z_0.clone(),
-            z_i.clone(),
-        )?;
+        let (u_i_x, _) = U_i.clone().hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
         (u_i.x[0]).enforce_equal(&u_i_x)?;
 
         #[cfg(feature = "light-test")]

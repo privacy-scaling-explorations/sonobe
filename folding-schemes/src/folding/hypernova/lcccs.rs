@@ -1,15 +1,17 @@
 use ark_crypto_primitives::sponge::Absorb;
-use ark_ec::{CurveGroup, Group};
+use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_poly::DenseMultilinearExtension;
 use ark_poly::MultilinearExtension;
 use ark_std::rand::Rng;
 use ark_std::Zero;
 
+use super::circuits::LCCCSVar;
 use super::Witness;
 use crate::arith::ccs::CCS;
 use crate::commitment::CommitmentScheme;
-use crate::transcript::{AbsorbNonNative, Transcript};
+use crate::folding::traits::CommittedInstanceExt;
+use crate::transcript::AbsorbNonNative;
 use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::utils::vec::mat_vec_mul;
 use crate::Error;
@@ -138,29 +140,15 @@ where
     }
 }
 
-impl<C: CurveGroup> LCCCS<C>
-where
-    <C as Group>::ScalarField: Absorb,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-{
-    /// [`LCCCS`].hash implements the committed instance hash compatible with the gadget
-    /// implemented in nova/circuits.rs::CommittedInstanceVar.hash.
-    /// Returns `H(i, z_0, z_i, U_i)`, where `i` can be `i` but also `i+1`, and `U_i` is the LCCCS.
-    pub fn hash<T: Transcript<C::ScalarField>>(
-        &self,
-        sponge: &T,
-        pp_hash: C::ScalarField,
-        i: C::ScalarField,
-        z_0: Vec<C::ScalarField>,
-        z_i: Vec<C::ScalarField>,
-    ) -> C::ScalarField {
-        let mut sponge = sponge.clone();
-        sponge.absorb(&pp_hash);
-        sponge.absorb(&i);
-        sponge.absorb(&z_0);
-        sponge.absorb(&z_i);
-        sponge.absorb(&self);
-        sponge.squeeze_field_elements(1)[0]
+impl<C: CurveGroup> CommittedInstanceExt<C> for LCCCS<C> {
+    type Var = LCCCSVar<C>;
+
+    fn get_commitments(&self) -> Vec<C> {
+        vec![self.C]
+    }
+
+    fn is_incoming(&self) -> bool {
+        false
     }
 }
 

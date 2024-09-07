@@ -7,9 +7,11 @@ use std::sync::Arc;
 
 use ark_std::rand::Rng;
 
+use super::circuits::CCCSVar;
 use super::Witness;
 use crate::arith::{ccs::CCS, Arith};
 use crate::commitment::CommitmentScheme;
+use crate::folding::traits::CommittedInstanceExt;
 use crate::transcript::AbsorbNonNative;
 use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::utils::vec::mat_vec_mul;
@@ -137,6 +139,18 @@ where
             .to_native_sponge_field_elements_as_vec()
             .to_sponge_field_elements(dest);
         self.x.to_sponge_field_elements(dest);
+    }
+}
+
+impl<C: CurveGroup> CommittedInstanceExt<C> for CCCS<C> {
+    type Var = CCCSVar<C>;
+
+    fn get_commitments(&self) -> Vec<C> {
+        vec![self.C]
+    }
+
+    fn is_incoming(&self) -> bool {
+        true
     }
 }
 

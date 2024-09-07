@@ -126,7 +126,7 @@ impl FoldingGadget {
     }
 }
 
-pub struct AugmentationGadget {}
+pub struct AugmentationGadget;
 
 impl AugmentationGadget {
     #[allow(clippy::type_complexity)]

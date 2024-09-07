@@ -66,23 +66,23 @@ where
         let d = 2; // for the moment hardcoded to 2 since it only supports R1CS
         let k = vec_instances.len();
         let t = instance.betas.len();
-        let m = r1cs.A.n_cols;
-        let n = r1cs.A.n_rows;
+        let n = r1cs.A.n_cols;
+        let m = r1cs.A.n_rows;
 
         let z = [vec![C::ScalarField::one()], instance.x.clone(), w.w.clone()].concat();
 
-        if z.len() != m {
+        if z.len() != n {
             return Err(Error::NotSameLength(
                 "z.len()".to_string(),
                 z.len(),
                 "number of variables in R1CS".to_string(), // hardcoded to R1CS
-                m,
+                n,
             ));
         }
-        if log2(n) as usize != t {
+        if log2(m) as usize != t {
             return Err(Error::NotSameLength(
                 "log2(number of constraints in R1CS)".to_string(),
-                log2(n) as usize,
+                log2(m) as usize,
                 "instance.betas.len()".to_string(),
                 t,
             ));
@@ -99,10 +99,10 @@ where
         let deltas = exponential_powers(delta, t);
 
         let mut f_z = r1cs.eval_relation(&z)?;
-        if f_z.len() != n {
+        if f_z.len() != m {
             return Err(Error::NotSameLength(
                 "number of constraints in R1CS".to_string(),
-                n,
+                m,
                 "f_z.len()".to_string(),
                 f_z.len(),
             ));
@@ -145,12 +145,12 @@ where
                     .zip(vec_instances)
                     .map(|(wj, uj)| {
                         let zj = [vec![C::ScalarField::one()], uj.x.clone(), wj.w.clone()].concat();
-                        if zj.len() != m {
+                        if zj.len() != n {
                             return Err(Error::NotSameLength(
                                 "zj.len()".to_string(),
                                 zj.len(),
                                 "number of variables in R1CS".to_string(),
-                                m,
+                                n,
                             ));
                         }
                         Ok(zj)

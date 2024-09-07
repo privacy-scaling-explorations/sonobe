@@ -30,7 +30,6 @@
 /// paper).
 /// And the Use-case-2 would require a modified version of the Decider circuits.
 ///
-use crate::folding::nova::traits::NovaR1CS;
 use ark_crypto_primitives::sponge::CryptographicSponge;
 use ark_ff::{BigInteger, PrimeField};
 use ark_std::{One, Zero};
@@ -141,9 +140,8 @@ where
         // d. Store folding proof
         let pi = FoldingProof { cmT };
 
-        // 2. Sample a satisfying relaxed R1CS instance-witness pair (U_r, W_r)
-        let relaxed_instance = nova.r1cs.clone().relax();
-        let (U_r, W_r) = relaxed_instance.sample::<C1, CS1>(&nova.cs_pp, &mut rng)?;
+        // 2. Sample a satisfying relaxed R1CS instance-witness pair (W_r, U_r)
+        let (W_r, U_r) = nova.r1cs.sample::<CS1>(&nova.cs_pp, &mut rng)?;
 
         // 3. Fold the instance-witness pair (U_f, W_f) with (U_r, W_r)
         // a. Compute T
@@ -280,21 +278,10 @@ where
         );
 
         // 5. Check that W^{\prime}_i is a satisfying witness
-        let mut z = vec![U_i_prime.u];
-        z.extend(&U_i_prime.x);
-        z.extend(&proof.W_i_prime.W);
-        let relaxed_r1cs = RelaxedR1CS {
-            l: r1cs.l,
-            A: r1cs.A.clone(),
-            B: r1cs.B.clone(),
-            C: r1cs.C.clone(),
-            u: U_i_prime.u,
-            E: proof.W_i_prime.E.clone(),
-        };
-        relaxed_r1cs.check_relation(&z)?;
+        r1cs.check_relaxed_relation(&proof.W_i_prime, &U_i_prime)?;
 
         // 6. Check that the cyclefold instance-witness pair satisfies the cyclefold relaxed r1cs
-        cf_r1cs.check_relaxed_instance_relation(&proof.cf_W_i, &proof.cf_U_i)?;
+        cf_r1cs.check_relaxed_relation(&proof.cf_W_i, &proof.cf_U_i)?;
 
         Ok(())
     }
@@ -305,7 +292,7 @@ pub mod tests {
     use super::*;
     use crate::commitment::pedersen::Pedersen;
     use crate::folding::nova::tests::test_ivc_opt;
-    use crate::frontend::tests::CubicFCircuit;
+    use crate::frontend::utils::CubicFCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
     use ark_bn254::{Fr, G1Projective as Projective};
     use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
@@ -380,11 +367,9 @@ pub mod tests {
             F_circuit,
             3,
         );
-        let (sampled_committed_instance, _) = nova
+        let (_, sampled_committed_instance) = nova
             .r1cs
-            .clone()
-            .relax()
-            .sample::<Projective, Pedersen<Projective, true>>(&nova.cs_pp, rng)
+            .sample::<Pedersen<Projective, true>>(&nova.cs_pp, rng)
             .unwrap();
 
         // proof verification fails with incorrect running instance
@@ -419,11 +404,9 @@ pub mod tests {
             F_circuit,
             3,
         );
-        let (_, sampled_committed_witness) = nova
+        let (sampled_committed_witness, _) = nova
             .r1cs
-            .clone()
-            .relax()
-            .sample::<Projective, Pedersen<Projective, true>>(&nova.cs_pp, rng)
+            .sample::<Pedersen<Projective, true>>(&nova.cs_pp, rng)
             .unwrap();
 
         // proof generation fails with incorrect running witness

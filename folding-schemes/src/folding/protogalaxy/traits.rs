@@ -3,7 +3,7 @@ use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_r1cs_std::{fields::fp::FpVar, uint8::UInt8, ToConstraintFieldGadget};
 use ark_relations::r1cs::SynthesisError;
-use ark_std::{cfg_iter, log2, One, Zero};
+use ark_std::{cfg_iter, log2, rand::RngCore, One, Zero};
 use rayon::prelude::*;
 
 use super::{folding::pow_i, CommittedInstance, CommittedInstanceVar, Witness};
@@ -49,7 +49,7 @@ impl<C: CurveGroup> AbsorbGadget<C::ScalarField> for CommittedInstanceVar<C> {
     }
 }
 
-impl<C: CurveGroup> RelaxedR1CS<C::ScalarField, Witness<C::ScalarField>, CommittedInstance<C>>
+impl<C: CurveGroup> RelaxedR1CS<C, Witness<C::ScalarField>, CommittedInstance<C>>
     for R1CS<C::ScalarField>
 {
     fn dummy_running_instance(&self) -> (Witness<C::ScalarField>, CommittedInstance<C>) {
@@ -97,5 +97,20 @@ impl<C: CurveGroup> RelaxedR1CS<C::ScalarField, Witness<C::ScalarField>, Committ
         } else {
             Err(Error::NotSatisfied)
         }
+    }
+
+    fn sample<CS>(
+        &self,
+        _params: &CS::ProverParams,
+        _rng: impl RngCore,
+    ) -> Result<(Witness<C::ScalarField>, CommittedInstance<C>), Error>
+    where
+        CS: crate::commitment::CommitmentScheme<C, true>,
+    {
+        // Sampling a random pair of witness and committed instance is required
+        // for the zero-knowledge layer for ProtoGalaxy, which is not supported
+        // yet.
+        // Tracking issue: https://github.com/privacy-scaling-explorations/sonobe/issues/82
+        unimplemented!()
     }
 }

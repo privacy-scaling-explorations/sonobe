@@ -1,8 +1,6 @@
 use crate::commitment::CommitmentScheme;
-use crate::folding::nova::{CommittedInstance, Witness};
 use crate::RngCore;
-use ark_crypto_primitives::sponge::Absorb;
-use ark_ec::{CurveGroup, Group};
+use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_relations::r1cs::ConstraintSystem;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -75,7 +73,7 @@ impl<F: PrimeField> R1CS<F> {
     }
 }
 
-pub trait RelaxedR1CS<F: PrimeField, W, U>: Arith<F> {
+pub trait RelaxedR1CS<C: CurveGroup, W, U>: Arith<C::ScalarField> {
     /// returns a dummy running instance (Witness and CommittedInstance) for the current R1CS structure
     fn dummy_running_instance(&self) -> (W, U);
 
@@ -86,11 +84,11 @@ pub trait RelaxedR1CS<F: PrimeField, W, U>: Arith<F> {
     fn is_relaxed(w: &W, u: &U) -> bool;
 
     /// extracts `z`, the vector of variables, from the given Witness and CommittedInstance
-    fn extract_z(w: &W, u: &U) -> Vec<F>;
+    fn extract_z(w: &W, u: &U) -> Vec<C::ScalarField>;
 
     /// checks if the computed error terms correspond to the actual one in `w`
     /// or `u`
-    fn check_error_terms(w: &W, u: &U, e: Vec<F>) -> Result<(), Error>;
+    fn check_error_terms(w: &W, u: &U, e: Vec<C::ScalarField>) -> Result<(), Error>;
 
     /// checks the tight (unrelaxed) R1CS relation
     fn check_tight_relation(&self, w: &W, u: &U) -> Result<(), Error> {
@@ -111,12 +109,12 @@ pub trait RelaxedR1CS<F: PrimeField, W, U>: Arith<F> {
 
     // Computes the E term, given A, B, C, z, u
     fn compute_E(
-        A: &SparseMatrix<F>,
-        B: &SparseMatrix<F>,
-        C: &SparseMatrix<F>,
-        z: &[F],
-        u: &F,
-    ) -> Result<Vec<F>, Error> {
+        A: &SparseMatrix<C::ScalarField>,
+        B: &SparseMatrix<C::ScalarField>,
+        C: &SparseMatrix<C::ScalarField>,
+        z: &[C::ScalarField],
+        u: &C::ScalarField,
+    ) -> Result<Vec<C::ScalarField>, Error> {
         let Az = mat_vec_mul(A, z)?;
         let Bz = mat_vec_mul(B, z)?;
         let AzBz = hadamard(&Az, &Bz)?;
@@ -126,66 +124,9 @@ pub trait RelaxedR1CS<F: PrimeField, W, U>: Arith<F> {
         vec_sub(&AzBz, &uCz)
     }
 
-    pub fn check_sampled_relaxed_r1cs(&self, u: F, E: &[F], z: &[F]) -> bool {
-        let sampled = RelaxedR1CS {
-            l: self.l,
-            A: self.A.clone(),
-            B: self.B.clone(),
-            C: self.C.clone(),
-            u,
-            E: E.to_vec(),
-        };
-        sampled.check_relation(z).is_ok()
-    }
-
-    // Implements sampling a (committed) RelaxedR1CS
-    // See construction 5 in https://eprint.iacr.org/2023/573.pdf
-    pub fn sample<C, CS>(
-        &self,
-        params: &CS::ProverParams,
-        mut rng: impl RngCore,
-    ) -> Result<(CommittedInstance<C>, Witness<C>), Error>
+    fn sample<CS>(&self, params: &CS::ProverParams, rng: impl RngCore) -> Result<(W, U), Error>
     where
-        C: CurveGroup,
-        C: CurveGroup<ScalarField = F>,
-        <C as Group>::ScalarField: Absorb,
-        CS: CommitmentScheme<C, true>,
-    {
-        let u = C::ScalarField::rand(&mut rng);
-        let rE = C::ScalarField::rand(&mut rng);
-        let rW = C::ScalarField::rand(&mut rng);
-
-        let W = (0..self.A.n_cols - self.l - 1)
-            .map(|_| F::rand(&mut rng))
-            .collect();
-        let x = (0..self.l).map(|_| F::rand(&mut rng)).collect::<Vec<F>>();
-        let mut z = vec![u];
-        z.extend(&x);
-        z.extend(&W);
-
-        let E = RelaxedR1CS::compute_E(&self.A, &self.B, &self.C, &z, &u)?;
-
-        debug_assert!(
-            z.len() == self.A.n_cols,
-            "Length of z is {}, while A has {} columns.",
-            z.len(),
-            self.A.n_cols
-        );
-
-        debug_assert!(
-            self.check_sampled_relaxed_r1cs(u, &E, &z),
-            "Sampled a non satisfiable relaxed R1CS, sampled u: {}, computed E: {:?}",
-            u,
-            E
-        );
-
-        let witness = Witness { E, rE, W, rW };
-        let mut cm_witness = witness.commit::<CS, true>(params, x)?;
-
-        // witness.commit() sets u to 1, we set it to the sampled u value
-        cm_witness.u = u;
-        Ok((cm_witness, witness))
-    }
+        CS: CommitmentScheme<C, true>;
 }
 
 /// extracts arkworks ConstraintSystem matrices into crate::utils::vec::SparseMatrix format as R1CS
@@ -232,6 +173,7 @@ pub fn extract_w_x<F: PrimeField>(cs: &ConstraintSystem<F>) -> (Vec<F>, Vec<F>) 
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use crate::folding::nova::{CommittedInstance, Witness};
     use crate::{
         commitment::pedersen::Pedersen,
         utils::vec::{
@@ -248,9 +190,8 @@ pub mod tests {
         let r1cs = get_test_r1cs::<Fr>();
         let (prover_params, _) = Pedersen::<Projective>::setup(rng, r1cs.A.n_rows).unwrap();
 
-        let relaxed_r1cs = r1cs.relax();
-        let sampled =
-            relaxed_r1cs.sample::<Projective, Pedersen<Projective, true>>(&prover_params, rng);
+        let sampled: Result<(Witness<Projective>, CommittedInstance<Projective>), _> =
+            r1cs.sample::<Pedersen<Projective, true>>(&prover_params, rng);
         assert!(sampled.is_ok());
     }
 

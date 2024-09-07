@@ -201,6 +201,7 @@ impl<F: PrimeField> Witness<F> {
     pub fn new(w: Vec<F>) -> Self {
         // note: at the current version, we don't use the blinding factors and we set them to 0
         // always.
+        // Tracking issue: https://github.com/privacy-scaling-explorations/sonobe/issues/82
         Self { w, r_w: F::zero() }
     }
 
@@ -272,6 +273,7 @@ where
     pub fn pp_hash(&self) -> Result<C1::ScalarField, Error> {
         // TODO (@winderica): support hiding commitments in ProtoGalaxy.
         // For now, `H` is set to false.
+        // Tracking issue: https://github.com/privacy-scaling-explorations/sonobe/issues/82
         pp_hash::<C1, C2, CS1, CS2, false>(
             &self.r1cs,
             &self.cf_r1cs,
@@ -469,6 +471,7 @@ where
         // multi-instances folding is not supported yet.
         // TODO (@winderica): Support multi-instances folding and make `k` a
         // constant generic parameter (as in HyperNova)
+        // Tracking issue: https://github.com/privacy-scaling-explorations/sonobe/issues/82
         let k = 1;
         // `d`, the degree of the constraint system, is set to 2, as we only
         // support R1CS for now, whose highest degree is 2.
@@ -568,6 +571,7 @@ where
         // multi-instances folding is not supported yet.
         // TODO (@winderica): Support multi-instances folding and make `k` a
         // constant generic parameter (as in HyperNova)
+        // Tracking issue: https://github.com/privacy-scaling-explorations/sonobe/issues/82
         let k = 1;
         // `d`, the degree of the constraint system, is set to 2, as we only
         // support R1CS for now, whose highest degree is 2.

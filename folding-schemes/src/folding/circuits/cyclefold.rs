@@ -465,7 +465,10 @@ where
         // In multifolding schemes such as HyperNova, this is:
         // computed_x = [r, p_0, p_1, p_2, ..., p_n, p_folded],
         // where each p_i is in fact p_i.to_constraint_field()
-        let r_fp = Boolean::le_bits_to_fp_var(&r_bits)?;
+        let r_fp = r_bits
+            .chunks(CFG::F::MODULUS_BIT_SIZE as usize - 1)
+            .map(Boolean::le_bits_to_fp_var)
+            .collect::<Result<Vec<_>, _>>()?;
         let points_aux: Vec<FpVar<CFG::F>> = points
             .iter()
             .map(|p_i| Ok(p_i.to_constraint_field()?[..2].to_vec()))
@@ -475,7 +478,7 @@ where
             .collect();
 
         let computed_x: Vec<FpVar<CFG::F>> = [
-            vec![r_fp],
+            r_fp,
             points_aux,
             p_folded.to_constraint_field()?[..2].to_vec(),
         ]

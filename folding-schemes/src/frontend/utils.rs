@@ -1,7 +1,9 @@
 use ark_ff::PrimeField;
-use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, fields::fp::FpVar};
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-use ark_std::{fmt::Debug, marker::PhantomData, Zero};
+use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar};
+use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
+#[cfg(test)]
+use ark_std::marker::PhantomData;
+use ark_std::{fmt::Debug, Zero};
 
 use super::FCircuit;
 use crate::Error;
@@ -52,10 +54,13 @@ impl<F: PrimeField> FCircuit<F> for DummyCircuit {
 /// from https://www.vitalik.ca/general/2016/12/10/qap.html, which checks `x^3 + x + 5 = y`.
 /// `z_i` is used as `x`, and `z_{i+1}` is used as `y`, and at the next step, `z_{i+1}` will be
 /// assigned to `z_i`, and a new `z+{i+1}` will be computted.
+#[cfg(test)]
 #[derive(Clone, Copy, Debug)]
 pub struct CubicFCircuit<F: PrimeField> {
     _f: PhantomData<F>,
 }
+
+#[cfg(test)]
 impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
     type Params = ();
     fn new(_params: Self::Params) -> Result<Self, Error> {
@@ -91,11 +96,14 @@ impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
 
 /// CustomFCircuit is a circuit that has the number of constraints specified in the
 /// `n_constraints` parameter. Note that the generated circuit will have very sparse matrices.
+#[cfg(test)]
 #[derive(Clone, Copy, Debug)]
 pub struct CustomFCircuit<F: PrimeField> {
     _f: PhantomData<F>,
     pub n_constraints: usize,
 }
+
+#[cfg(test)]
 impl<F: PrimeField> FCircuit<F> for CustomFCircuit<F> {
     type Params = usize;
 
@@ -144,12 +152,15 @@ impl<F: PrimeField> FCircuit<F> for CustomFCircuit<F> {
 /// than the one done in the `AugmentedFCircuit`, but without adding all the extra constraints
 /// of the AugmentedF circuit logic, in order to run lighter tests when we're not interested in
 /// the the AugmentedF logic but in the wrapping of the circuits.
+#[cfg(test)]
 pub struct WrapperCircuit<F: PrimeField, FC: FCircuit<F>> {
     pub FC: FC, // F circuit
     pub z_i: Option<Vec<F>>,
     pub z_i1: Option<Vec<F>>,
 }
-impl<F, FC> ConstraintSynthesizer<F> for WrapperCircuit<F, FC>
+
+#[cfg(test)]
+impl<F, FC> ark_relations::r1cs::ConstraintSynthesizer<F> for WrapperCircuit<F, FC>
 where
     F: PrimeField,
     FC: FCircuit<F>,
@@ -163,6 +174,7 @@ where
             self.FC
                 .generate_step_constraints(cs.clone(), 0, z_i.clone(), vec![])?;
 
+        use ark_r1cs_std::eq::EqGadget;
         computed_z_i1.enforce_equal(&z_i1)?;
         Ok(())
     }

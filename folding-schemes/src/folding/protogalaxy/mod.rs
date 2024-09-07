@@ -18,6 +18,7 @@ use ark_relations::r1cs::{
 use ark_std::{
     borrow::Borrow, cmp::max, fmt::Debug, log2, marker::PhantomData, rand::RngCore, One, Zero,
 };
+use num_bigint::BigUint;
 
 use crate::{
     arith::r1cs::{extract_r1cs, extract_w_x, RelaxedR1CS, R1CS},
@@ -601,12 +602,8 @@ where
             ));
         }
 
-        if self.i > C1::ScalarField::from_le_bytes_mod_order(&usize::MAX.to_le_bytes()) {
-            return Err(Error::MaxStep);
-        }
-        let mut i_bytes: [u8; 8] = [0; 8];
-        i_bytes.copy_from_slice(&self.i.into_bigint().to_bytes_le()[..8]);
-        let i_usize: usize = usize::from_le_bytes(i_bytes);
+        let i_bn: BigUint = self.i.into();
+        let i_usize: usize = i_bn.try_into().map_err(|_| Error::MaxStep)?;
 
         let z_i1 = self
             .F

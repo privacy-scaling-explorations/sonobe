@@ -41,6 +41,7 @@ pub mod zk;
 use circuits::{AugmentedFCircuit, ChallengeGadget};
 use nifs::NIFS;
 
+/// Configuration for Nova's CycleFold circuit
 pub struct NovaCycleFoldConfig<C: CurveGroup> {
     _c: PhantomData<C>,
 }
@@ -55,7 +56,9 @@ impl<C: CurveGroup> CycleFoldConfig for NovaCycleFoldConfig<C> {
     type F = C::BaseField;
 }
 
-type NovaCycleFoldCircuit<C, GC> = CycleFoldCircuit<NovaCycleFoldConfig<C>, GC>;
+/// CycleFold circuit for computing random linear combinations of group elements
+/// in Nova instances.
+pub type NovaCycleFoldCircuit<C, GC> = CycleFoldCircuit<NovaCycleFoldConfig<C>, GC>;
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct CommittedInstance<C: CurveGroup> {

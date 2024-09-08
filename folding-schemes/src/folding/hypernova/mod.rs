@@ -42,7 +42,8 @@ use crate::{
     FoldingScheme, MultiFolding,
 };
 
-struct HyperNovaCycleFoldConfig<C: CurveGroup, const MU: usize, const NU: usize> {
+/// Configuration for HyperNova's CycleFold circuit
+pub struct HyperNovaCycleFoldConfig<C: CurveGroup, const MU: usize, const NU: usize> {
     _c: PhantomData<C>,
 }
 
@@ -55,7 +56,9 @@ impl<C: CurveGroup, const MU: usize, const NU: usize> CycleFoldConfig
     type F = C::BaseField;
 }
 
-type HyperNovaCycleFoldCircuit<C, GC, const MU: usize, const NU: usize> =
+/// CycleFold circuit for computing random linear combinations of group elements
+/// in HyperNova instances.
+pub type HyperNovaCycleFoldCircuit<C, GC, const MU: usize, const NU: usize> =
     CycleFoldCircuit<HyperNovaCycleFoldConfig<C, MU, NU>, GC>;
 
 /// Witness for the LCCCS & CCCS, containing the w vector, and the r_w used as randomness in the Pedersen commitment.

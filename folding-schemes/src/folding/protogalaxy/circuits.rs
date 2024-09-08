@@ -24,13 +24,16 @@ use super::{
     CommittedInstance, CommittedInstanceVar, ProtoGalaxyCycleFoldConfig,
 };
 use crate::{
-    folding::circuits::{
-        cyclefold::{
-            CycleFoldChallengeGadget, CycleFoldCommittedInstance, CycleFoldCommittedInstanceVar,
-            CycleFoldConfig, NIFSFullGadget,
+    folding::{
+        circuits::{
+            cyclefold::{
+                CycleFoldChallengeGadget, CycleFoldCommittedInstance,
+                CycleFoldCommittedInstanceVar, CycleFoldConfig, NIFSFullGadget,
+            },
+            nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
+            CF1, CF2,
         },
-        nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
-        CF1, CF2,
+        traits::CommittedInstanceVarExt,
     },
     frontend::FCircuit,
     transcript::{AbsorbNonNativeGadget, TranscriptVar},
@@ -357,13 +360,7 @@ where
         // Primary Part
         // P.1. Compute u_i.x
         // u_i.x[0] = H(i, z_0, z_i, U_i)
-        let (u_i_x, _) = U_i.clone().hash(
-            &sponge,
-            pp_hash.clone(),
-            i.clone(),
-            z_0.clone(),
-            z_i.clone(),
-        )?;
+        let (u_i_x, _) = U_i.clone().hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
         // u_i.x[1] = H(cf_U_i)
         let (cf_u_i_x, _) = cf_U_i.clone().hash(&sponge, pp_hash.clone())?;
 
@@ -384,17 +381,17 @@ where
         // Non-base case: u_{i+1}.x[0] == H((i+1, z_0, z_{i+1}, U_{i+1})
         let (u_i1_x, _) = U_i1.clone().hash(
             &sponge,
-            pp_hash.clone(),
-            i + FpVar::<CF1<C1>>::one(),
-            z_0.clone(),
-            z_i1.clone(),
+            &pp_hash,
+            &(i + FpVar::<CF1<C1>>::one()),
+            &z_0,
+            &z_i1,
         )?;
         let (u_i1_x_base, _) = CommittedInstanceVar::new_constant(cs.clone(), u_dummy)?.hash(
             &sponge,
-            pp_hash.clone(),
-            FpVar::<CF1<C1>>::one(),
-            z_0.clone(),
-            z_i1.clone(),
+            &pp_hash,
+            &FpVar::<CF1<C1>>::one(),
+            &z_0,
+            &z_i1,
         )?;
         let x = FpVar::new_input(cs.clone(), || Ok(self.x.unwrap_or(u_i1_x_base.value()?)))?;
         x.enforce_equal(&is_basecase.select(&u_i1_x_base, &u_i1_x)?)?;

@@ -3,13 +3,15 @@ use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_r1cs_std::{fields::fp::FpVar, uint8::UInt8, ToConstraintFieldGadget};
 use ark_relations::r1cs::SynthesisError;
-use ark_std::{cfg_iter, log2, rand::RngCore, One, Zero};
+use ark_std::{cfg_into_iter, log2, One};
 use rayon::prelude::*;
 
 use super::{utils::pow_i, CommittedInstance, CommittedInstanceVar, Witness};
 use crate::{
-    arith::r1cs::{RelaxedR1CS, R1CS},
+    arith::{r1cs::R1CS, Arith},
+    folding::circuits::CF1,
     transcript::AbsorbNonNative,
+    utils::vec::is_zero_vec,
     Error,
 };
 
@@ -49,69 +51,42 @@ impl<C: CurveGroup> AbsorbGadget<C::ScalarField> for CommittedInstanceVar<C> {
     }
 }
 
-impl<C: CurveGroup> RelaxedR1CS<C, Witness<C::ScalarField>, CommittedInstance<C>>
-    for R1CS<C::ScalarField>
-{
-    fn dummy_running_instance(&self) -> (Witness<C::ScalarField>, CommittedInstance<C>) {
-        let w_len = self.A.n_cols - 1 - self.l;
-        let w_dummy = Witness::new(vec![C::ScalarField::zero(); w_len]);
-        let u_dummy = CommittedInstance::<C>::dummy_running(self.l, log2(self.A.n_rows) as usize);
-        (w_dummy, u_dummy)
+impl<C: CurveGroup> Arith<Witness<CF1<C>>, CommittedInstance<C>> for R1CS<CF1<C>> {
+    type Evaluation = Vec<CF1<C>>;
+
+    fn eval_relation(
+        &self,
+        w: &Witness<CF1<C>>,
+        u: &CommittedInstance<C>,
+    ) -> Result<Self::Evaluation, Error> {
+        self.eval_core(&[&[C::ScalarField::one()][..], &u.x, &w.w].concat())
     }
 
-    fn dummy_incoming_instance(&self) -> (Witness<C::ScalarField>, CommittedInstance<C>) {
-        let w_len = self.A.n_cols - 1 - self.l;
-        let w_dummy = Witness::new(vec![C::ScalarField::zero(); w_len]);
-        let u_dummy = CommittedInstance::<C>::dummy_incoming(self.l);
-        (w_dummy, u_dummy)
-    }
-
-    fn is_relaxed(_w: &Witness<C::ScalarField>, u: &CommittedInstance<C>) -> bool {
-        u.e != C::ScalarField::zero() || !u.betas.is_empty()
-    }
-
-    fn extract_z(w: &Witness<C::ScalarField>, u: &CommittedInstance<C>) -> Vec<C::ScalarField> {
-        [&[C::ScalarField::one()][..], &u.x, &w.w].concat()
-    }
-
-    fn check_error_terms(
+    fn check_evaluation(
         _w: &Witness<C::ScalarField>,
         u: &CommittedInstance<C>,
         e: Vec<C::ScalarField>,
     ) -> Result<(), Error> {
-        if u.betas.len() != log2(e.len()) as usize {
-            return Err(Error::NotSameLength(
-                "instance.betas.len()".to_string(),
-                u.betas.len(),
-                "log2(e.len())".to_string(),
-                log2(e.len()) as usize,
-            ));
-        }
-
-        let r = cfg_iter!(e)
-            .enumerate()
-            .map(|(i, e_i)| pow_i(i, &u.betas) * e_i)
-            .sum();
-        if u.e == r {
-            Ok(())
+        let ok = if u.betas.is_empty() {
+            // incoming instance
+            is_zero_vec(&e)
         } else {
-            Err(Error::NotSatisfied)
-        }
-    }
+            // running instance
+            if u.betas.len() != log2(e.len()) as usize {
+                return Err(Error::NotSameLength(
+                    "instance.betas.len()".to_string(),
+                    u.betas.len(),
+                    "log2(e.len())".to_string(),
+                    log2(e.len()) as usize,
+                ));
+            }
 
-    fn sample<CS>(
-        &self,
-        _params: &CS::ProverParams,
-        _rng: impl RngCore,
-    ) -> Result<(Witness<C::ScalarField>, CommittedInstance<C>), Error>
-    where
-        CS: crate::commitment::CommitmentScheme<C, true>,
-    {
-        // Sampling a random pair of witness and committed instance is required
-        // for the zero-knowledge layer for ProtoGalaxy, which is not supported
-        // yet.
-        // Tracking issue: https://github.com/privacy-scaling-explorations/sonobe/issues/82
-        unimplemented!()
+            u.e == cfg_into_iter!(e)
+                .enumerate()
+                .map(|(i, e_i)| pow_i(i, &u.betas) * e_i)
+                .sum::<CF1<C>>()
+        };
+        ok.then_some(()).ok_or(Error::NotSatisfied)
     }
 }
 

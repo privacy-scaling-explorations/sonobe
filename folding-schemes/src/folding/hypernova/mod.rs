@@ -24,24 +24,27 @@ use decider_eth_circuit::WitnessVar;
 use lcccs::LCCCS;
 use nimfs::NIMFS;
 
+use crate::commitment::CommitmentScheme;
 use crate::constants::NOVA_N_BITS_RO;
-use crate::folding::circuits::{
-    cyclefold::{
-        fold_cyclefold_circuit, CycleFoldCircuit, CycleFoldCommittedInstance, CycleFoldConfig,
-        CycleFoldWitness,
+use crate::folding::{
+    circuits::{
+        cyclefold::{
+            fold_cyclefold_circuit, CycleFoldCircuit, CycleFoldCommittedInstance, CycleFoldConfig,
+            CycleFoldWitness,
+        },
+        CF2,
     },
-    CF2,
+    nova::{get_r1cs_from_cs, PreprocessorParam},
+    traits::{CommittedInstanceOps, Dummy, WitnessOps},
 };
-use crate::folding::nova::{get_r1cs_from_cs, PreprocessorParam};
-use crate::folding::traits::{CommittedInstanceOps, WitnessOps, Dummy};
 use crate::frontend::FCircuit;
 use crate::utils::{get_cm_coordinates, pp_hash};
 use crate::Error;
-use crate::{arith::r1cs::RelaxedR1CS, commitment::CommitmentScheme};
 use crate::{
     arith::{
         ccs::CCS,
         r1cs::{extract_w_x, R1CS},
+        Arith,
     },
     FoldingScheme, MultiFolding,
 };
@@ -254,7 +257,7 @@ where
             .to_lcccs::<_, _, CS1, H>(&mut rng, &self.cs_pp, &r1cs_z)?;
 
         #[cfg(test)]
-        U_i.check_relation(&self.ccs, &W_i)?;
+        self.ccs.check_relation(&W_i, &U_i)?;
 
         Ok((U_i, W_i))
     }
@@ -276,7 +279,7 @@ where
             .to_cccs::<_, _, CS1, H>(&mut rng, &self.cs_pp, &r1cs_z)?;
 
         #[cfg(test)]
-        u_i.check_relation(&self.ccs, &w_i)?;
+        self.ccs.check_relation(&w_i, &u_i)?;
 
         Ok((u_i, w_i))
     }
@@ -311,7 +314,7 @@ where
         let U_i = LCCCS::<C1>::dummy(&self.ccs);
         let mut u_i = CCCS::<C1>::dummy(&self.ccs);
         let (_, cf_U_i): (CycleFoldWitness<C2>, CycleFoldCommittedInstance<C2>) =
-            self.cf_r1cs.dummy_running_instance();
+            self.cf_r1cs.dummy_witness_instance();
 
         let sponge = PoseidonSponge::<C1::ScalarField>::new(&self.poseidon_config);
 
@@ -505,7 +508,7 @@ where
         let w_dummy = W_dummy.clone();
         let mut u_dummy = CCCS::<C1>::dummy(&ccs);
         let (cf_W_dummy, cf_U_dummy): (CycleFoldWitness<C2>, CycleFoldCommittedInstance<C2>) =
-            cf_r1cs.dummy_running_instance();
+            cf_r1cs.dummy_witness_instance();
         u_dummy.x = vec![
             U_dummy.hash(&sponge, pp_hash, C1::ScalarField::zero(), &z_0, &z_0),
             cf_U_dummy.hash_cyclefold(&sponge, pp_hash),
@@ -700,7 +703,7 @@ where
 
             // sanity check: check the folded instance relation
             #[cfg(test)]
-            U_i1.check_relation(&self.ccs, &W_i1)?;
+            self.ccs.check_relation(&W_i1, &U_i1)?;
 
             let u_i1_x = U_i1.hash(
                 &sponge,
@@ -834,9 +837,9 @@ where
         #[cfg(test)]
         {
             // check the new LCCCS instance relation
-            self.U_i.check_relation(&self.ccs, &self.W_i)?;
+            self.ccs.check_relation(&self.W_i, &self.U_i)?;
             // check the new CCCS instance relation
-            self.u_i.check_relation(&self.ccs, &self.w_i)?;
+            self.ccs.check_relation(&self.w_i, &self.u_i)?;
         }
 
         Ok(())
@@ -902,12 +905,12 @@ where
         }
 
         // check LCCCS satisfiability
-        U_i.check_relation(&vp.ccs, &W_i)?;
+        vp.ccs.check_relation(&W_i, &U_i)?;
         // check CCCS satisfiability
-        u_i.check_relation(&vp.ccs, &w_i)?;
+        vp.ccs.check_relation(&w_i, &u_i)?;
 
         // check CycleFold's RelaxedR1CS satisfiability
-        vp.cf_r1cs.check_relaxed_relation(&cf_W_i, &cf_U_i)?;
+        vp.cf_r1cs.check_relation(&cf_W_i, &cf_U_i)?;
 
         Ok(())
     }

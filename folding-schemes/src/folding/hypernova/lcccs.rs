@@ -11,6 +11,7 @@ use ark_std::Zero;
 use super::circuits::LCCCSVar;
 use super::Witness;
 use crate::arith::ccs::CCS;
+use crate::arith::Arith;
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::CF1;
 use crate::folding::traits::{CommittedInstanceOps, Dummy};
@@ -93,29 +94,29 @@ impl<C: CurveGroup> Dummy<&CCS<CF1<C>>> for LCCCS<C> {
     }
 }
 
-impl<C: CurveGroup> LCCCS<C> {
+impl<C: CurveGroup> Arith<Witness<CF1<C>>, LCCCS<C>> for CCS<CF1<C>> {
+    type Evaluation = Vec<CF1<C>>;
+
     /// Perform the check of the LCCCS instance described at section 4.2,
     /// notice that this method does not check the commitment correctness
-    pub fn check_relation(
-        &self,
-        ccs: &CCS<C::ScalarField>,
-        w: &Witness<C::ScalarField>,
-    ) -> Result<(), Error> {
-        // check CCS relation
-        let z: Vec<C::ScalarField> = [vec![self.u], self.x.clone(), w.w.to_vec()].concat();
+    fn eval_relation(&self, w: &Witness<CF1<C>>, u: &LCCCS<C>) -> Result<Self::Evaluation, Error> {
+        let z = [&[u.u][..], &u.x, &w.w].concat();
 
-        let computed_v: Vec<C::ScalarField> = ccs
-            .M
+        self.M
             .iter()
             .map(|M_j| {
-                let Mz_mle = dense_vec_to_dense_mle(ccs.s, &mat_vec_mul(M_j, &z)?);
-                Mz_mle.evaluate(&self.r_x).ok_or(Error::EvaluationFail)
+                let Mz_mle = dense_vec_to_dense_mle(self.s, &mat_vec_mul(M_j, &z)?);
+                Mz_mle.evaluate(&u.r_x).ok_or(Error::EvaluationFail)
             })
-            .collect::<Result<_, Error>>()?;
-        if computed_v != self.v {
-            return Err(Error::NotSatisfied);
-        }
-        Ok(())
+            .collect()
+    }
+
+    fn check_evaluation(
+        _w: &Witness<CF1<C>>,
+        u: &LCCCS<C>,
+        e: Self::Evaluation,
+    ) -> Result<(), Error> {
+        (u.v == e).then_some(()).ok_or(Error::NotSatisfied)
     }
 }
 
@@ -203,7 +204,7 @@ pub mod tests {
         let n_rows = 2_u32.pow(5) as usize;
         let n_cols = 2_u32.pow(5) as usize;
         let r1cs = R1CS::<Fr>::rand(&mut rng, n_rows, n_cols);
-        let ccs = CCS::from_r1cs(r1cs);
+        let ccs = CCS::from(r1cs);
         let z: Vec<Fr> = (0..n_cols).map(|_| Fr::rand(&mut rng)).collect();
 
         let (pedersen_params, _) =
@@ -237,12 +238,14 @@ pub mod tests {
 
         let ccs = get_test_ccs();
         let z = get_test_z(3);
-        ccs.check_relation(&z.clone()).unwrap();
+        let (w, x) = ccs.split_z(&z);
+        ccs.check_relation(&w, &x).unwrap();
 
         // Mutate z so that the relation does not hold
         let mut bad_z = z.clone();
         bad_z[3] = Fr::zero();
-        assert!(ccs.check_relation(&bad_z.clone()).is_err());
+        let (bad_w, bad_x) = ccs.split_z(&bad_z);
+        assert!(ccs.check_relation(&bad_w, &bad_x).is_err());
 
         let (pedersen_params, _) =
             Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();

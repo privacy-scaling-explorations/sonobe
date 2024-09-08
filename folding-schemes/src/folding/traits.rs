@@ -123,3 +123,9 @@ pub trait WitnessVarOps<F: PrimeField> {
 pub trait Dummy<Cfg> {
     fn dummy(cfg: Cfg) -> Self;
 }
+
+impl<T: Default + Clone> Dummy<usize> for Vec<T> {
+    fn dummy(cfg: usize) -> Self {
+        vec![Default::default(); cfg]
+    }
+}

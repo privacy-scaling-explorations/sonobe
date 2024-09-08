@@ -21,7 +21,10 @@ use ark_std::{
 use num_bigint::BigUint;
 
 use crate::{
-    arith::r1cs::{extract_r1cs, extract_w_x, RelaxedR1CS, R1CS},
+    arith::{
+        r1cs::{extract_r1cs, extract_w_x, R1CS},
+        Arith,
+    },
     commitment::CommitmentScheme,
     folding::circuits::{
         cyclefold::{
@@ -560,9 +563,7 @@ where
         let pp_hash = vp.pp_hash()?;
 
         // setup the dummy instances
-        let (W_dummy, U_dummy) = vp.r1cs.dummy_running_instance();
-        let (w_dummy, u_dummy) = vp.r1cs.dummy_incoming_instance();
-        let (cf_W_dummy, cf_U_dummy) = vp.cf_r1cs.dummy_running_instance();
+        let (cf_W_dummy, cf_U_dummy) = vp.cf_r1cs.dummy_witness_instance();
 
         // W_dummy=W_0 is a 'dummy witness', all zeroes, but with the size corresponding to the
         // R1CS that we're working with.
@@ -580,10 +581,10 @@ where
             i: C1::ScalarField::zero(),
             z_0: z_0.clone(),
             z_i: z_0,
-            w_i: w_dummy,
-            u_i: u_dummy,
-            W_i: W_dummy,
-            U_i: U_dummy,
+            w_i: Witness::new(vec![C1::ScalarField::zero(); vp.r1cs.num_witnesses()]),
+            u_i: CommittedInstance::<C1>::dummy_incoming(vp.r1cs.l),
+            W_i: Witness::new(vec![C1::ScalarField::zero(); vp.r1cs.num_witnesses()]),
+            U_i: CommittedInstance::<C1>::dummy_running(vp.r1cs.l, log2(vp.r1cs.A.n_rows) as usize),
             // cyclefold running instance
             cf_W_i: cf_W_dummy,
             cf_U_i: cf_U_dummy,
@@ -808,10 +809,11 @@ where
                     )?,
                     U_i1
                 );
-                self.cf_r1cs.check_tight_relation(&_cf1_w_i, &cf1_u_i)?;
-                self.cf_r1cs.check_tight_relation(&_cf2_w_i, &cf2_u_i)?;
-                self.cf_r1cs
-                    .check_relaxed_relation(&self.cf_W_i, &self.cf_U_i)?;
+                cf1_u_i.check_incoming()?;
+                cf2_u_i.check_incoming()?;
+                self.cf_r1cs.check_relation(&_cf1_w_i, &cf1_u_i)?;
+                self.cf_r1cs.check_relation(&_cf2_w_i, &cf2_u_i)?;
+                self.cf_r1cs.check_relation(&self.cf_W_i, &self.cf_U_i)?;
             }
 
             self.W_i = W_i1;
@@ -846,8 +848,9 @@ where
 
         #[cfg(test)]
         {
-            self.r1cs.check_tight_relation(&self.w_i, &self.u_i)?;
-            self.r1cs.check_relaxed_relation(&self.W_i, &self.U_i)?;
+            self.u_i.check_incoming()?;
+            self.r1cs.check_relation(&self.w_i, &self.u_i)?;
+            self.r1cs.check_relation(&self.W_i, &self.U_i)?;
         }
 
         Ok(())
@@ -904,13 +907,15 @@ where
             return Err(Error::IVCVerificationFail);
         }
 
-        // check R1CS satisfiability
-        vp.r1cs.check_tight_relation(&w_i, &u_i)?;
+        // check R1CS satisfiability, which is equivalent to checking if `u_i`
+        // is an incoming instance and if `w_i` and `u_i` satisfy RelaxedR1CS
+        u_i.check_incoming()?;
+        vp.r1cs.check_relation(&w_i, &u_i)?;
         // check RelaxedR1CS satisfiability
-        vp.r1cs.check_relaxed_relation(&W_i, &U_i)?;
+        vp.r1cs.check_relation(&W_i, &U_i)?;
 
         // check CycleFold RelaxedR1CS satisfiability
-        vp.cf_r1cs.check_relaxed_relation(&cf_W_i, &cf_U_i)?;
+        vp.cf_r1cs.check_relation(&cf_W_i, &cf_U_i)?;
 
         Ok(())
     }

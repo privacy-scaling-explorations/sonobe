@@ -14,9 +14,7 @@ use super::utils::{all_powers, betas_star, exponential_powers, pow_i};
 use super::ProtoGalaxyError;
 use super::{CommittedInstance, Witness};
 
-#[cfg(test)]
-use crate::arith::r1cs::RelaxedR1CS;
-use crate::arith::{r1cs::R1CS, Arith};
+use crate::arith::r1cs::R1CS;
 use crate::transcript::Transcript;
 use crate::utils::vec::*;
 use crate::Error;
@@ -97,7 +95,7 @@ where
         let delta = transcript.get_challenge();
         let deltas = exponential_powers(delta, t);
 
-        let mut f_z = r1cs.eval_relation(&z)?;
+        let mut f_z = r1cs.eval_core(&z)?;
         if f_z.len() != m {
             return Err(Error::NotSameLength(
                 "number of constraints in R1CS".to_string(),
@@ -127,15 +125,18 @@ where
         // sanity check: check that the new randomized instance (the original instance but with
         // 'refreshed' randomness) satisfies the relation.
         #[cfg(test)]
-        r1cs.check_relaxed_relation(
-            w,
-            &CommittedInstance {
-                phi: instance.phi,
-                betas: betas_star.clone(),
-                e: F_alpha,
-                x: instance.x.clone(),
-            },
-        )?;
+        {
+            use crate::arith::Arith;
+            r1cs.check_relation(
+                w,
+                &CommittedInstance {
+                    phi: instance.phi,
+                    betas: betas_star.clone(),
+                    e: F_alpha,
+                    x: instance.x.clone(),
+                },
+            )?;
+        }
 
         let zs: Vec<Vec<C::ScalarField>> = std::iter::once(z.clone())
             .chain(
@@ -178,7 +179,7 @@ where
                     inner[j] += Lh * zj;
                 }
             }
-            let f_ev = r1cs.eval_relation(&inner)?;
+            let f_ev = r1cs.eval_core(&inner)?;
 
             G_evals[hi] = cfg_into_iter!(f_ev)
                 .enumerate()
@@ -395,6 +396,7 @@ pub mod tests {
     use ark_std::{rand::Rng, UniformRand};
 
     use crate::arith::r1cs::tests::{get_test_r1cs, get_test_z_split};
+    use crate::arith::Arith;
     use crate::commitment::{pedersen::Pedersen, CommitmentScheme};
     use crate::transcript::poseidon::poseidon_canonical_config;
 
@@ -509,7 +511,7 @@ pub mod tests {
         assert!(!folded_instance.e.is_zero());
 
         // check that the folded instance satisfies the relation
-        r1cs.check_relaxed_relation(&folded_witness, &folded_instance)
+        r1cs.check_relation(&folded_witness, &folded_instance)
             .unwrap();
     }
 
@@ -558,7 +560,7 @@ pub mod tests {
             assert!(!folded_instance.e.is_zero());
 
             // check that the folded instance satisfies the relation
-            r1cs.check_relaxed_relation(&folded_witness, &folded_instance)
+            r1cs.check_relation(&folded_witness, &folded_instance)
                 .unwrap();
 
             running_witness = folded_witness;

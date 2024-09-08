@@ -529,7 +529,7 @@ pub mod tests {
         let n_rows = 2_u32.pow(5) as usize;
         let n_cols = 2_u32.pow(5) as usize;
         let r1cs = R1CS::<Fr>::rand(&mut rng, n_rows, n_cols);
-        let ccs = CCS::from_r1cs(r1cs);
+        let ccs = CCS::from(r1cs);
         let z: Vec<Fr> = (0..n_cols).map(|_| Fr::rand(&mut rng)).collect();
 
         let (pedersen_params, _) =

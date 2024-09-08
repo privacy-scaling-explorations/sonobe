@@ -605,7 +605,6 @@ pub mod tests {
         r1cs::{
             extract_r1cs, extract_w_x,
             tests::{get_test_r1cs, get_test_z},
-            RelaxedR1CS,
         },
         Arith,
     };
@@ -615,20 +614,18 @@ pub mod tests {
     use crate::transcript::poseidon::poseidon_canonical_config;
     use crate::FoldingScheme;
 
-    fn prepare_instances<C: CurveGroup, CS: CommitmentScheme<C>, R: Rng>(
+    // Convert `z` to a witness-instance pair for the relaxed R1CS
+    fn prepare_relaxed_witness_instance<C: CurveGroup, CS: CommitmentScheme<C>, R: Rng>(
         mut rng: R,
         r1cs: &R1CS<C::ScalarField>,
         z: &[C::ScalarField],
-    ) -> (Witness<C>, CommittedInstance<C>)
-    where
-        C::ScalarField: Absorb,
-    {
+    ) -> (Witness<C>, CommittedInstance<C>) {
         let (w, x) = r1cs.split_z(z);
 
         let (cs_pp, _) = CS::setup(&mut rng, max(w.len(), r1cs.A.n_rows)).unwrap();
 
         let mut w = Witness::new::<false>(w, r1cs.A.n_rows, &mut rng);
-        w.E = r1cs.eval_relation(z).unwrap();
+        w.E = r1cs.eval_core(z).unwrap();
         let mut u = w.commit::<CS, false>(&cs_pp, x).unwrap();
         u.u = z[0];
 
@@ -640,9 +637,10 @@ pub mod tests {
         let rng = &mut thread_rng();
 
         let r1cs: R1CS<Fr> = get_test_r1cs();
+
         let mut z = get_test_z(3);
-        z[0] = Fr::rand(rng);
-        let (w, u) = prepare_instances::<_, Pedersen<Projective>, _>(rng, &r1cs, &z);
+        z[0] = Fr::rand(rng); // Randomize `z[0]` (i.e. `u.u`) to test the relaxed R1CS
+        let (w, u) = prepare_relaxed_witness_instance::<_, Pedersen<Projective>, _>(rng, &r1cs, &z);
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
@@ -670,12 +668,11 @@ pub mod tests {
 
         let r1cs = extract_r1cs::<Fr>(&cs);
         let (w, x) = extract_w_x::<Fr>(&cs);
-        let mut z = [vec![Fr::one()], x, w].concat();
-        r1cs.check_relation(&z).unwrap();
+        r1cs.check_relation(&w, &x).unwrap();
 
-        z[0] = Fr::rand(rng);
-        let (w, u) = prepare_instances::<_, Pedersen<Projective>, _>(rng, &r1cs, &z);
-        r1cs.check_relaxed_relation(&w, &u).unwrap();
+        let z = [vec![Fr::rand(rng)], x, w].concat();
+        let (w, u) = prepare_relaxed_witness_instance::<_, Pedersen<Projective>, _>(rng, &r1cs, &z);
+        r1cs.check_relation(&w, &u).unwrap();
 
         // set new CS for the circuit that checks the RelaxedR1CS of our original circuit
         let cs = ConstraintSystem::<Fr>::new_ref();
@@ -764,9 +761,10 @@ pub mod tests {
         let cs = cs.into_inner().unwrap();
         let r1cs = extract_r1cs::<Fq>(&cs);
         let (w, x) = extract_w_x::<Fq>(&cs);
-        let z = [vec![Fq::rand(rng)], x, w].concat();
 
-        let (w, u) = prepare_instances::<_, Pedersen<Projective2>, _>(rng, &r1cs, &z);
+        let z = [vec![Fq::rand(rng)], x, w].concat();
+        let (w, u) =
+            prepare_relaxed_witness_instance::<_, Pedersen<Projective2>, _>(rng, &r1cs, &z);
 
         // natively
         let cs = ConstraintSystem::<Fq>::new_ref();

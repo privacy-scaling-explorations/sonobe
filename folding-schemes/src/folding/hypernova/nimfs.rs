@@ -412,8 +412,10 @@ pub mod tests {
         let ccs = get_test_ccs();
         let z1 = get_test_z::<Fr>(3);
         let z2 = get_test_z::<Fr>(4);
-        ccs.check_relation(&z1).unwrap();
-        ccs.check_relation(&z2).unwrap();
+        let (w1, x1) = ccs.split_z(&z1);
+        let (w2, x2) = ccs.split_z(&z2);
+        ccs.check_relation(&w1, &x1).unwrap();
+        ccs.check_relation(&w2, &x2).unwrap();
 
         let mut rng = test_rng();
         let r_x_prime: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
@@ -431,8 +433,8 @@ pub mod tests {
             .to_cccs::<_, Projective, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &z2)
             .unwrap();
 
-        lcccs.check_relation(&ccs, &w1).unwrap();
-        cccs.check_relation(&ccs, &w2).unwrap();
+        ccs.check_relation(&w1, &lcccs).unwrap();
+        ccs.check_relation(&w2, &cccs).unwrap();
 
         let mut rng = test_rng();
         let rho = Fr::rand(&mut rng);
@@ -448,7 +450,7 @@ pub mod tests {
         let w_folded = NIMFS::<Projective, PoseidonSponge<Fr>>::fold_witness(&[w1], &[w2], rho);
 
         // check lcccs relation
-        folded.check_relation(&ccs, &w_folded).unwrap();
+        ccs.check_relation(&w_folded, &folded).unwrap();
     }
 
     /// Perform multifolding of an LCCCS instance with a CCCS instance (as described in the paper)
@@ -508,7 +510,7 @@ pub mod tests {
         assert_eq!(folded_lcccs, folded_lcccs_v);
 
         // Check that the folded LCCCS instance is a valid instance with respect to the folded witness
-        folded_lcccs.check_relation(&ccs, &folded_witness).unwrap();
+        ccs.check_relation(&folded_witness, &folded_lcccs).unwrap();
     }
 
     /// Perform multiple steps of multifolding of an LCCCS instance with a CCCS instance
@@ -568,7 +570,7 @@ pub mod tests {
             assert_eq!(folded_lcccs, folded_lcccs_v);
 
             // check that the folded instance with the folded witness holds the LCCCS relation
-            folded_lcccs.check_relation(&ccs, &folded_witness).unwrap();
+            ccs.check_relation(&folded_witness, &folded_lcccs).unwrap();
 
             running_instance = folded_lcccs;
             w1 = folded_witness;
@@ -654,7 +656,7 @@ pub mod tests {
         assert_eq!(folded_lcccs, folded_lcccs_v);
 
         // Check that the folded LCCCS instance is a valid instance with respect to the folded witness
-        folded_lcccs.check_relation(&ccs, &folded_witness).unwrap();
+        ccs.check_relation(&folded_witness, &folded_lcccs).unwrap();
     }
 
     /// Test that generates mu>1 and nu>1 instances, and folds them in a single multifolding step
@@ -742,7 +744,7 @@ pub mod tests {
             assert_eq!(folded_lcccs, folded_lcccs_v);
 
             // Check that the folded LCCCS instance is a valid instance with respect to the folded witness
-            folded_lcccs.check_relation(&ccs, &folded_witness).unwrap();
+            ccs.check_relation(&folded_witness, &folded_lcccs).unwrap();
         }
     }
 }

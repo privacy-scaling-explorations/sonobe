@@ -32,7 +32,8 @@ use crate::folding::circuits::{
 use crate::frontend::FCircuit;
 use crate::transcript::{AbsorbNonNativeGadget, Transcript, TranscriptVar};
 use crate::{
-    constants::NOVA_N_BITS_RO, folding::traits::{CommittedInstanceVarOps, Dummy},
+    constants::NOVA_N_BITS_RO,
+    folding::traits::{CommittedInstanceVarOps, Dummy},
 };
 
 /// CommittedInstanceVar contains the u, x, cmE and cmW values which are folded on the main Nova

@@ -238,6 +238,7 @@ pub enum ProtoGalaxyError {
     WrongLenBetas(usize, usize),
 }
 
+/// Proving parameters for ProtoGalaxy-based IVC
 #[derive(Debug, Clone)]
 pub struct ProverParams<C1, C2, CS1, CS2>
 where
@@ -246,11 +247,15 @@ where
     CS1: CommitmentScheme<C1>,
     CS2: CommitmentScheme<C2>,
 {
+    /// Poseidon sponge configuration
     pub poseidon_config: PoseidonConfig<C1::ScalarField>,
+    /// Proving parameters of the underlying commitment scheme over C1
     pub cs_params: CS1::ProverParams,
+    /// Proving parameters of the underlying commitment scheme over C2
     pub cf_cs_params: CS2::ProverParams,
 }
 
+/// Verification parameters for ProtoGalaxy-based IVC
 #[derive(Debug, Clone)]
 pub struct VerifierParams<C1, C2, CS1, CS2>
 where
@@ -259,10 +264,15 @@ where
     CS1: CommitmentScheme<C1>,
     CS2: CommitmentScheme<C2>,
 {
+    /// Poseidon sponge configuration
     pub poseidon_config: PoseidonConfig<C1::ScalarField>,
+    /// R1CS of the Augmented step circuit
     pub r1cs: R1CS<C1::ScalarField>,
+    /// R1CS of the CycleFold circuit
     pub cf_r1cs: R1CS<C2::ScalarField>,
+    /// Verification parameters of the underlying commitment scheme over C1
     pub cs_vp: CS1::VerifierParams,
+    /// Verification parameters of the underlying commitment scheme over C2
     pub cf_cs_vp: CS2::VerifierParams,
 }
 

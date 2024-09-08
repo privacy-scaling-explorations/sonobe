@@ -13,6 +13,8 @@ use super::{
 };
 use crate::arith::ccs::CCS;
 use crate::constants::NOVA_N_BITS_RO;
+use crate::folding::circuits::CF1;
+use crate::folding::traits::Dummy;
 use crate::transcript::Transcript;
 use crate::utils::sum_check::structs::{IOPProof as SumCheckProof, IOPProverMessage};
 use crate::utils::sum_check::{IOPSumCheck, SumCheck};
@@ -29,8 +31,8 @@ pub struct NIMFSProof<C: CurveGroup> {
     pub sigmas_thetas: SigmasThetas<C::ScalarField>,
 }
 
-impl<C: CurveGroup> NIMFSProof<C> {
-    pub fn dummy(ccs: &CCS<C::ScalarField>, mu: usize, nu: usize) -> Self {
+impl<C: CurveGroup> Dummy<(&CCS<CF1<C>>, usize, usize)> for NIMFSProof<C> {
+    fn dummy((ccs, mu, nu): (&CCS<CF1<C>>, usize, usize)) -> Self {
         // use 'C::ScalarField::one()' instead of 'zero()' to enforce the NIMFSProof to have the
         // same in-circuit representation to match the number of constraints of an actual proof.
         NIMFSProof::<C> {

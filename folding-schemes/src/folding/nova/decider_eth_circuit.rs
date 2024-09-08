@@ -29,6 +29,7 @@ use super::{
     nifs::NIFS,
     CommittedInstance, Nova, Witness,
 };
+use crate::commitment::{pedersen::Params as PedersenParams, CommitmentScheme};
 use crate::folding::circuits::{
     cyclefold::{CycleFoldCommittedInstance, CycleFoldWitness},
     nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
@@ -41,10 +42,9 @@ use crate::utils::{
     vec::poly_from_vec,
 };
 use crate::Error;
-use crate::{arith::r1cs::R1CS, folding::traits::WitnessVarOps};
 use crate::{
-    commitment::{pedersen::Params as PedersenParams, CommitmentScheme},
-    folding::traits::CommittedInstanceVarOps,
+    arith::r1cs::R1CS,
+    folding::traits::{CommittedInstanceVarOps, Dummy, WitnessVarOps},
 };
 
 #[derive(Debug, Clone)]
@@ -356,11 +356,8 @@ where
             Ok(self.z_i.unwrap_or(vec![CF1::<C1>::zero()]))
         })?;
 
-        let u_dummy_native = CommittedInstance::<C1>::dummy(2);
-        let w_dummy_native = Witness::<C1>::dummy(
-            self.r1cs.A.n_cols - 3, /* (3=2+1, since u_i.x.len=2) */
-            self.E_len,
-        );
+        let u_dummy_native = CommittedInstance::<C1>::dummy(&self.r1cs);
+        let w_dummy_native = Witness::<C1>::dummy(&self.r1cs);
 
         let u_i = CommittedInstanceVar::<C1>::new_witness(cs.clone(), || {
             Ok(self.u_i.unwrap_or(u_dummy_native.clone()))

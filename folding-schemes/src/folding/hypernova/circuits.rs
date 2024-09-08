@@ -42,7 +42,7 @@ use crate::folding::{
         CF1, CF2,
     },
     nova::get_r1cs_from_cs,
-    traits::CommittedInstanceVarOps,
+    traits::{CommittedInstanceVarOps, Dummy},
 };
 use crate::frontend::FCircuit;
 use crate::utils::virtual_polynomial::VPAuxInfo;
@@ -606,9 +606,9 @@ where
 
         let z_0 = vec![C1::ScalarField::zero(); self.F.state_len()];
         let mut W_i = Witness::<C1::ScalarField>::dummy(&ccs);
-        let mut U_i = LCCCS::<C1>::dummy(ccs.l, ccs.t, ccs.s);
+        let mut U_i = LCCCS::<C1>::dummy(&ccs);
         let mut w_i = W_i.clone();
-        let mut u_i = CCCS::<C1>::dummy(ccs.l);
+        let mut u_i = CCCS::<C1>::dummy(&ccs);
 
         let n_iters = 2;
         for _ in 0..n_iters {
@@ -674,7 +674,7 @@ where
                 r_w: C1::ScalarField::one(),
             };
             W_i = Witness::<C1::ScalarField>::dummy(&ccs);
-            U_i = LCCCS::<C1>::dummy(ccs.l, ccs.t, ccs.s);
+            U_i = LCCCS::<C1>::dummy(&ccs);
         }
         Ok(ccs)
 
@@ -734,8 +734,8 @@ where
                 .unwrap_or(vec![CF1::<C1>::zero(); self.F.external_inputs_len()]))
         })?;
 
-        let U_dummy = LCCCS::<C1>::dummy(self.ccs.l, self.ccs.t, self.ccs.s);
-        let u_dummy = CCCS::<C1>::dummy(self.ccs.l);
+        let U_dummy = LCCCS::<C1>::dummy(&self.ccs);
+        let u_dummy = CCCS::<C1>::dummy(&self.ccs);
 
         let U_i =
             LCCCSVar::<C1>::new_witness(cs.clone(), || Ok(self.U_i.unwrap_or(U_dummy.clone())))?;
@@ -748,7 +748,7 @@ where
         let U_i1_C = NonNativeAffineVar::new_witness(cs.clone(), || {
             Ok(self.U_i1_C.unwrap_or_else(C1::zero))
         })?;
-        let nimfs_proof_dummy = NIMFSProof::<C1>::dummy(&self.ccs, MU, NU);
+        let nimfs_proof_dummy = NIMFSProof::<C1>::dummy((&self.ccs, MU, NU));
         let nimfs_proof = ProofVar::<C1>::new_witness(cs.clone(), || {
             Ok(self.nimfs_proof.unwrap_or(nimfs_proof_dummy))
         })?;
@@ -1248,9 +1248,9 @@ mod tests {
 
         // prepare the dummy instances
         let W_dummy = Witness::<Fr>::dummy(&ccs);
-        let U_dummy = LCCCS::<Projective>::dummy(ccs.l, ccs.t, ccs.s);
+        let U_dummy = LCCCS::<Projective>::dummy(&ccs);
         let w_dummy = W_dummy.clone();
-        let u_dummy = CCCS::<Projective>::dummy(ccs.l);
+        let u_dummy = CCCS::<Projective>::dummy(&ccs);
         let (cf_W_dummy, cf_U_dummy): (
             CycleFoldWitness<Projective2>,
             CycleFoldCommittedInstance<Projective2>,
@@ -1289,7 +1289,7 @@ mod tests {
 
             if i == 0 {
                 W_i1 = Witness::<Fr>::dummy(&ccs);
-                U_i1 = LCCCS::dummy(ccs.l, ccs.t, ccs.s);
+                U_i1 = LCCCS::dummy(&ccs);
 
                 let u_i1_x = U_i1.hash(&sponge, pp_hash, Fr::one(), &z_0, &z_i1);
 

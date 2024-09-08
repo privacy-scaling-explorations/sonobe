@@ -38,8 +38,10 @@ use crate::utils::{
     vec::poly_from_vec,
 };
 use crate::Error;
-use crate::{arith::ccs::CCS, folding::traits::CommittedInstanceVarOps};
-use crate::{arith::r1cs::R1CS, folding::traits::WitnessVarOps};
+use crate::{
+    arith::{ccs::CCS, r1cs::R1CS},
+    folding::traits::{CommittedInstanceVarOps, Dummy, WitnessVarOps},
+};
 
 /// In-circuit representation of the Witness associated to the CommittedInstance.
 #[derive(Debug, Clone)]
@@ -292,8 +294,8 @@ where
             Ok(self.z_i.unwrap_or(vec![CF1::<C1>::zero()]))
         })?;
 
-        let U_dummy_native = LCCCS::<C1>::dummy(self.ccs.l, self.ccs.t, self.ccs.s);
-        let u_dummy_native = CCCS::<C1>::dummy(self.ccs.l);
+        let U_dummy_native = LCCCS::<C1>::dummy(&self.ccs);
+        let u_dummy_native = CCCS::<C1>::dummy(&self.ccs);
         let w_dummy_native = Witness::<C1::ScalarField>::new(
             vec![C1::ScalarField::zero(); self.ccs.n - 3 /* (3=2+1, since u_i.x.len=2) */],
         );
@@ -311,7 +313,7 @@ where
         let W_i1 = WitnessVar::<C1::ScalarField>::new_witness(cs.clone(), || {
             Ok(self.W_i1.unwrap_or(w_dummy_native.clone()))
         })?;
-        let nimfs_proof_dummy = NIMFSProof::<C1>::dummy(&self.ccs, 1, 1); // mu=1 & nu=1 because the last fold is 2-to-1
+        let nimfs_proof_dummy = NIMFSProof::<C1>::dummy((&self.ccs, 1, 1)); // mu=1 & nu=1 because the last fold is 2-to-1
         let nimfs_proof = NIMFSProofVar::<C1>::new_witness(cs.clone(), || {
             Ok(self.nimfs_proof.unwrap_or(nimfs_proof_dummy))
         })?;

@@ -33,7 +33,7 @@ use crate::{
             nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
             CF1, CF2,
         },
-        traits::CommittedInstanceVarOps,
+        traits::{CommittedInstanceVarOps, Dummy},
     },
     frontend::FCircuit,
     transcript::{AbsorbNonNativeGadget, TranscriptVar},

@@ -19,7 +19,7 @@ use crate::folding::circuits::cyclefold::{
     fold_cyclefold_circuit, CycleFoldCircuit, CycleFoldCommittedInstance, CycleFoldConfig,
     CycleFoldWitness,
 };
-use crate::folding::circuits::CF2;
+use crate::folding::{circuits::{CF1, CF2}, traits::Dummy};
 use crate::frontend::FCircuit;
 use crate::transcript::{poseidon::poseidon_canonical_config, AbsorbNonNative, Transcript};
 use crate::utils::vec::is_zero_vec;
@@ -76,14 +76,20 @@ pub struct CommittedInstance<C: CurveGroup> {
     pub x: Vec<C::ScalarField>,
 }
 
-impl<C: CurveGroup> CommittedInstance<C> {
-    pub fn dummy(io_len: usize) -> Self {
+impl<C: CurveGroup> Dummy<usize> for CommittedInstance<C> {
+    fn dummy(io_len: usize) -> Self {
         Self {
             cmE: C::zero(),
-            u: C::ScalarField::zero(),
+            u: CF1::<C>::zero(),
             cmW: C::zero(),
-            x: vec![C::ScalarField::zero(); io_len],
+            x: vec![CF1::<C>::zero(); io_len],
         }
+    }
+}
+
+impl<C: CurveGroup> Dummy<&R1CS<CF1<C>>> for CommittedInstance<C> {
+    fn dummy(r1cs: &R1CS<CF1<C>>) -> Self {
+        Self::dummy(r1cs.l)
     }
 }
 
@@ -149,18 +155,6 @@ impl<C: CurveGroup> Witness<C> {
         }
     }
 
-    pub fn dummy(w_len: usize, e_len: usize) -> Self {
-        let (rW, rE) = (C::ScalarField::zero(), C::ScalarField::zero());
-        let w = vec![C::ScalarField::zero(); w_len];
-
-        Self {
-            E: vec![C::ScalarField::zero(); e_len],
-            rE,
-            W: w,
-            rW,
-        }
-    }
-
     pub fn commit<CS: CommitmentScheme<C, HC>, const HC: bool>(
         &self,
         params: &CS::ProverParams,
@@ -177,6 +171,17 @@ impl<C: CurveGroup> Witness<C> {
             cmW,
             x,
         })
+    }
+}
+
+impl<C: CurveGroup> Dummy<&R1CS<CF1<C>>> for Witness<C> {
+    fn dummy(r1cs: &R1CS<CF1<C>>) -> Self {
+        Self {
+            E: vec![C::ScalarField::zero(); r1cs.A.n_rows],
+            rE: C::ScalarField::zero(),
+            W: vec![C::ScalarField::zero(); r1cs.A.n_cols - 1 - r1cs.l],
+            rW: C::ScalarField::zero(),
+        }
     }
 }
 

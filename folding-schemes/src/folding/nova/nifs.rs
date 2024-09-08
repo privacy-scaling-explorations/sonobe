@@ -210,13 +210,16 @@ pub mod tests {
     use ark_pallas::{Fr, Projective};
     use ark_std::{ops::Mul, test_rng, UniformRand};
 
-    use crate::arith::r1cs::{
-        tests::{get_test_r1cs, get_test_z},
-        RelaxedR1CS,
-    };
     use crate::commitment::pedersen::{Params as PedersenParams, Pedersen};
     use crate::folding::nova::circuits::ChallengeGadget;
     use crate::transcript::poseidon::poseidon_canonical_config;
+    use crate::{
+        arith::r1cs::{
+            tests::{get_test_r1cs, get_test_z},
+            RelaxedR1CS,
+        },
+        folding::traits::Dummy,
+    };
 
     #[allow(clippy::type_complexity)]
     pub(crate) fn prepare_simple_fold_inputs<C>() -> (
@@ -302,13 +305,13 @@ pub mod tests {
     fn test_nifs_fold_dummy() {
         let r1cs = get_test_r1cs::<Fr>();
         let z1 = get_test_z(3);
-        let (w1, x1) = r1cs.split_z(&z1);
+        let (_, x1) = r1cs.split_z(&z1);
 
         let mut rng = ark_std::test_rng();
         let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, r1cs.A.n_cols).unwrap();
 
         // dummy instance, witness and public inputs zeroes
-        let w_dummy = Witness::<Projective>::dummy(w1.len(), r1cs.A.n_rows);
+        let w_dummy = Witness::<Projective>::dummy(&r1cs);
         let mut u_dummy = w_dummy
             .commit::<Pedersen<Projective>, false>(&pedersen_params, vec![Fr::zero(); x1.len()])
             .unwrap();

@@ -33,7 +33,7 @@ use crate::folding::circuits::{
     CF2,
 };
 use crate::folding::nova::{get_r1cs_from_cs, PreprocessorParam};
-use crate::folding::traits::{CommittedInstanceOps, WitnessOps};
+use crate::folding::traits::{CommittedInstanceOps, WitnessOps, Dummy};
 use crate::frontend::FCircuit;
 use crate::utils::{get_cm_coordinates, pp_hash};
 use crate::Error;
@@ -78,8 +78,11 @@ impl<F: PrimeField> Witness<F> {
         // always.
         Self { w, r_w: F::zero() }
     }
-    pub fn dummy(ccs: &CCS<F>) -> Self {
-        Witness::<F>::new(vec![F::zero(); ccs.n - ccs.l - 1])
+}
+
+impl<F: PrimeField> Dummy<&CCS<F>> for Witness<F> {
+    fn dummy(ccs: &CCS<F>) -> Self {
+        Self::new(vec![F::zero(); ccs.n - ccs.l - 1])
     }
 }
 
@@ -305,8 +308,8 @@ where
         external_inputs: Vec<C1::ScalarField>,
     ) -> Result<Vec<C1::ScalarField>, Error> {
         // prepare the initial dummy instances
-        let U_i = LCCCS::<C1>::dummy(self.ccs.l, self.ccs.t, self.ccs.s);
-        let mut u_i = CCCS::<C1>::dummy(self.ccs.l);
+        let U_i = LCCCS::<C1>::dummy(&self.ccs);
+        let mut u_i = CCCS::<C1>::dummy(&self.ccs);
         let (_, cf_U_i): (CycleFoldWitness<C2>, CycleFoldCommittedInstance<C2>) =
             self.cf_r1cs.dummy_running_instance();
 
@@ -329,7 +332,7 @@ where
             .step_native(0, state.clone(), external_inputs.clone())?;
 
         // compute u_{i+1}.x
-        let U_i1 = LCCCS::dummy(self.ccs.l, self.ccs.t, self.ccs.s);
+        let U_i1 = LCCCS::dummy(&self.ccs);
         let u_i1_x = U_i1.hash(
             &sponge,
             self.pp_hash,
@@ -498,9 +501,9 @@ where
 
         // setup the dummy instances
         let W_dummy = Witness::<C1::ScalarField>::dummy(&ccs);
-        let U_dummy = LCCCS::<C1>::dummy(ccs.l, ccs.t, ccs.s);
+        let U_dummy = LCCCS::<C1>::dummy(&ccs);
         let w_dummy = W_dummy.clone();
-        let mut u_dummy = CCCS::<C1>::dummy(ccs.l);
+        let mut u_dummy = CCCS::<C1>::dummy(&ccs);
         let (cf_W_dummy, cf_U_dummy): (CycleFoldWitness<C2>, CycleFoldCommittedInstance<C2>) =
             cf_r1cs.dummy_running_instance();
         u_dummy.x = vec![
@@ -641,7 +644,7 @@ where
         if self.i == C1::ScalarField::zero() {
             W_i1 = Witness::<C1::ScalarField>::dummy(&self.ccs);
             W_i1.r_w = self.W_i.r_w;
-            U_i1 = LCCCS::dummy(self.ccs.l, self.ccs.t, self.ccs.s);
+            U_i1 = LCCCS::dummy(&self.ccs);
 
             let u_i1_x = U_i1.hash(
                 &sponge,

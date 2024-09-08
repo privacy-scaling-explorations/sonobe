@@ -12,7 +12,8 @@ use super::circuits::LCCCSVar;
 use super::Witness;
 use crate::arith::ccs::CCS;
 use crate::commitment::CommitmentScheme;
-use crate::folding::traits::CommittedInstanceOps;
+use crate::folding::circuits::CF1;
+use crate::folding::traits::{CommittedInstanceOps, Dummy};
 use crate::transcript::AbsorbNonNative;
 use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::utils::vec::mat_vec_mul;
@@ -80,20 +81,19 @@ impl<F: PrimeField> CCS<F> {
     }
 }
 
-impl<C: CurveGroup> LCCCS<C> {
-    pub fn dummy(l: usize, t: usize, s: usize) -> LCCCS<C>
-    where
-        C::ScalarField: PrimeField,
-    {
-        LCCCS::<C> {
+impl<C: CurveGroup> Dummy<&CCS<CF1<C>>> for LCCCS<C> {
+    fn dummy(ccs: &CCS<CF1<C>>) -> Self {
+        Self {
             C: C::zero(),
-            u: C::ScalarField::zero(),
-            x: vec![C::ScalarField::zero(); l],
-            r_x: vec![C::ScalarField::zero(); s],
-            v: vec![C::ScalarField::zero(); t],
+            u: CF1::<C>::zero(),
+            x: vec![CF1::<C>::zero(); ccs.l],
+            r_x: vec![CF1::<C>::zero(); ccs.s],
+            v: vec![CF1::<C>::zero(); ccs.t],
         }
     }
+}
 
+impl<C: CurveGroup> LCCCS<C> {
     /// Perform the check of the LCCCS instance described at section 4.2,
     /// notice that this method does not check the commitment correctness
     pub fn check_relation(

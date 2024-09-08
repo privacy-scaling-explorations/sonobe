@@ -31,7 +31,9 @@ use crate::folding::circuits::{
 };
 use crate::frontend::FCircuit;
 use crate::transcript::{AbsorbNonNativeGadget, Transcript, TranscriptVar};
-use crate::{constants::NOVA_N_BITS_RO, folding::traits::CommittedInstanceVarOps};
+use crate::{
+    constants::NOVA_N_BITS_RO, folding::traits::{CommittedInstanceVarOps, Dummy},
+};
 
 /// CommittedInstanceVar contains the u, x, cmE and cmW values which are folded on the main Nova
 /// constraints field (E1::Fr, where E1 is the main curve). The peculiarity is that cmE and cmW are

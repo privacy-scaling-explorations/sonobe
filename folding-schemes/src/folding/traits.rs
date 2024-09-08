@@ -119,3 +119,7 @@ pub trait WitnessVarOps<F: PrimeField> {
     /// randomness) contained in the witness.
     fn get_openings(&self) -> Vec<(&[FpVar<F>], FpVar<F>)>;
 }
+
+pub trait Dummy<Cfg> {
+    fn dummy(cfg: Cfg) -> Self;
+}

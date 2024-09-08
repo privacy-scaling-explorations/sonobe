@@ -3,13 +3,13 @@ use ark_std::{rand::RngCore, One, UniformRand};
 
 use super::{CommittedInstance, Witness};
 use crate::arith::r1cs::{RelaxedR1CS, R1CS};
+use crate::folding::traits::Dummy;
 use crate::Error;
 
 impl<C: CurveGroup> RelaxedR1CS<C, Witness<C>, CommittedInstance<C>> for R1CS<C::ScalarField> {
     fn dummy_running_instance(&self) -> (Witness<C>, CommittedInstance<C>) {
-        let w_len = self.A.n_cols - 1 - self.l;
-        let w_dummy = Witness::<C>::dummy(w_len, self.A.n_rows);
-        let u_dummy = CommittedInstance::<C>::dummy(self.l);
+        let w_dummy = Witness::<C>::dummy(self);
+        let u_dummy = CommittedInstance::<C>::dummy(self);
         (w_dummy, u_dummy)
     }
 

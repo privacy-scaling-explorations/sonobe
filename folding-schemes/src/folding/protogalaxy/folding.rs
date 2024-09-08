@@ -36,14 +36,14 @@ where
         transcript: &mut impl Transcript<C::ScalarField>,
         r1cs: &R1CS<C::ScalarField>,
         // running instance
-        instance: &CommittedInstance<C>,
+        instance: &CommittedInstance<C, true>,
         w: &Witness<C::ScalarField>,
         // incoming instances
-        vec_instances: &[CommittedInstance<C>],
+        vec_instances: &[CommittedInstance<C, false>],
         vec_w: &[Witness<C::ScalarField>],
     ) -> Result<
         (
-            CommittedInstance<C>,
+            CommittedInstance<C, true>,
             Witness<C::ScalarField>,
             Vec<C::ScalarField>, // F_X coeffs
             Vec<C::ScalarField>, // K_X coeffs
@@ -129,7 +129,7 @@ where
             use crate::arith::Arith;
             r1cs.check_relation(
                 w,
-                &CommittedInstance {
+                &CommittedInstance::<_, true> {
                     phi: instance.phi,
                     betas: betas_star.clone(),
                     e: F_alpha,
@@ -254,13 +254,13 @@ where
     pub fn verify(
         transcript: &mut impl Transcript<C::ScalarField>,
         // running instance
-        instance: &CommittedInstance<C>,
+        instance: &CommittedInstance<C, true>,
         // incoming instances
-        vec_instances: &[CommittedInstance<C>],
+        vec_instances: &[CommittedInstance<C, false>],
         // polys from P
         F_coeffs: Vec<C::ScalarField>,
         K_coeffs: Vec<C::ScalarField>,
-    ) -> Result<CommittedInstance<C>, Error> {
+    ) -> Result<CommittedInstance<C, true>, Error> {
         let t = instance.betas.len();
 
         // absorb the committed instances
@@ -421,9 +421,9 @@ pub mod tests {
         k: usize,
     ) -> (
         Witness<C::ScalarField>,
-        CommittedInstance<C>,
+        CommittedInstance<C, true>,
         Vec<Witness<C::ScalarField>>,
-        Vec<CommittedInstance<C>>,
+        Vec<CommittedInstance<C, false>>,
     ) {
         let mut rng = ark_std::test_rng();
 
@@ -441,7 +441,7 @@ pub mod tests {
             r_w: C::ScalarField::zero(),
         };
         let phi = Pedersen::<C>::commit(&pedersen_params, &witness.w, &witness.r_w).unwrap();
-        let instance = CommittedInstance::<C> {
+        let instance = CommittedInstance::<C, true> {
             phi,
             betas: betas.clone(),
             e: C::ScalarField::zero(),
@@ -449,7 +449,7 @@ pub mod tests {
         };
         // same for the other instances
         let mut witnesses: Vec<Witness<C::ScalarField>> = Vec::new();
-        let mut instances: Vec<CommittedInstance<C>> = Vec::new();
+        let mut instances: Vec<CommittedInstance<C, false>> = Vec::new();
         #[allow(clippy::needless_range_loop)]
         for _ in 0..k {
             let (_, x_i, w_i) = get_test_z_split::<C::ScalarField>(rng.gen::<u16>() as usize);
@@ -459,7 +459,7 @@ pub mod tests {
             };
             let phi_i =
                 Pedersen::<C>::commit(&pedersen_params, &witness_i.w, &witness_i.r_w).unwrap();
-            let instance_i = CommittedInstance::<C> {
+            let instance_i = CommittedInstance::<C, false> {
                 phi: phi_i,
                 betas: vec![],
                 e: C::ScalarField::zero(),

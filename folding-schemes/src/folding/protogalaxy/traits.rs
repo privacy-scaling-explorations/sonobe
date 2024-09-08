@@ -16,7 +16,7 @@ use crate::{
 };
 
 // Implements the trait for absorbing ProtoGalaxy's CommittedInstance.
-impl<C: CurveGroup> Absorb for CommittedInstance<C>
+impl<C: CurveGroup, const RUNNING: bool> Absorb for CommittedInstance<C, RUNNING>
 where
     C::ScalarField: Absorb,
 {
@@ -35,7 +35,9 @@ where
 }
 
 // Implements the trait for absorbing ProtoGalaxy's CommittedInstanceVar in-circuit.
-impl<C: CurveGroup> AbsorbGadget<C::ScalarField> for CommittedInstanceVar<C> {
+impl<C: CurveGroup, const RUNNING: bool> AbsorbGadget<C::ScalarField>
+    for CommittedInstanceVar<C, RUNNING>
+{
     fn to_sponge_bytes(&self) -> Result<Vec<UInt8<C::ScalarField>>, SynthesisError> {
         FpVar::batch_to_sponge_bytes(&self.to_sponge_field_elements()?)
     }
@@ -51,27 +53,25 @@ impl<C: CurveGroup> AbsorbGadget<C::ScalarField> for CommittedInstanceVar<C> {
     }
 }
 
-impl<C: CurveGroup> Arith<Witness<CF1<C>>, CommittedInstance<C>> for R1CS<CF1<C>> {
+impl<C: CurveGroup, const RUNNING: bool> Arith<Witness<CF1<C>>, CommittedInstance<C, RUNNING>>
+    for R1CS<CF1<C>>
+{
     type Evaluation = Vec<CF1<C>>;
 
     fn eval_relation(
         &self,
         w: &Witness<CF1<C>>,
-        u: &CommittedInstance<C>,
+        u: &CommittedInstance<C, RUNNING>,
     ) -> Result<Self::Evaluation, Error> {
         self.eval_core(&[&[C::ScalarField::one()][..], &u.x, &w.w].concat())
     }
 
     fn check_evaluation(
         _w: &Witness<C::ScalarField>,
-        u: &CommittedInstance<C>,
+        u: &CommittedInstance<C, RUNNING>,
         e: Vec<C::ScalarField>,
     ) -> Result<(), Error> {
-        let ok = if u.betas.is_empty() {
-            // incoming instance
-            is_zero_vec(&e)
-        } else {
-            // running instance
+        let ok = if RUNNING {
             if u.betas.len() != log2(e.len()) as usize {
                 return Err(Error::NotSameLength(
                     "instance.betas.len()".to_string(),
@@ -85,6 +85,8 @@ impl<C: CurveGroup> Arith<Witness<CF1<C>>, CommittedInstance<C>> for R1CS<CF1<C>
                 .enumerate()
                 .map(|(i, e_i)| pow_i(i, &u.betas) * e_i)
                 .sum::<CF1<C>>()
+        } else {
+            is_zero_vec(&e)
         };
         ok.then_some(()).ok_or(Error::NotSatisfied)
     }
@@ -108,7 +110,7 @@ pub mod tests {
         let t = rng.gen::<u8>() as usize;
         let io_len = rng.gen::<u8>() as usize;
 
-        let ci = CommittedInstance::<Projective> {
+        let ci = CommittedInstance::<Projective, false> {
             phi: Projective::rand(&mut rng),
             betas: (0..t).map(|_| Fr::rand(&mut rng)).collect(),
             e: Fr::rand(&mut rng),
@@ -121,7 +123,7 @@ pub mod tests {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         let ciVar =
-            CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || Ok(ci.clone())).unwrap();
+            CommittedInstanceVar::<Projective, false>::new_witness(cs.clone(), || Ok(ci.clone())).unwrap();
         let bytes_var = ciVar.to_sponge_bytes().unwrap();
         let field_elements_var = ciVar.to_sponge_field_elements().unwrap();
 

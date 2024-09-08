@@ -47,7 +47,9 @@ pub(crate) mod utils;
 use circuits::AugmentedFCircuit;
 use folding::Folding;
 
-use super::traits::{CommittedInstanceOps, CommittedInstanceVarOps, WitnessOps, WitnessVarOps};
+use super::traits::{
+    CommittedInstanceOps, CommittedInstanceVarOps, Dummy, WitnessOps, WitnessVarOps,
+};
 
 /// Configuration for ProtoGalaxy's CycleFold circuit
 pub struct ProtoGalaxyCycleFoldConfig<C: CurveGroup> {
@@ -65,51 +67,68 @@ impl<C: CurveGroup> CycleFoldConfig for ProtoGalaxyCycleFoldConfig<C> {
 /// in ProtoGalaxy instances.
 pub type ProtoGalaxyCycleFoldCircuit<C, GC> = CycleFoldCircuit<ProtoGalaxyCycleFoldConfig<C>, GC>;
 
+/// The committed instance of ProtoGalaxy.
+///
+/// We use `RUNNING` to distinguish between incoming and running instances, as
+/// they have slightly different structures (e.g., length of `betas`) and
+/// behaviors (e.g., in satisfiability checks).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CommittedInstance<C: CurveGroup> {
+pub struct CommittedInstance<C: CurveGroup, const RUNNING: bool> {
     phi: C,
     betas: Vec<C::ScalarField>,
     e: C::ScalarField,
     x: Vec<C::ScalarField>,
 }
 
-impl<C: CurveGroup> CommittedInstance<C> {
-    pub fn dummy_running(io_len: usize, t: usize) -> Self {
+impl<C: CurveGroup, const RUNNING: bool> Dummy<(usize, usize)> for CommittedInstance<C, RUNNING> {
+    fn dummy((io_len, t): (usize, usize)) -> Self {
+        if !RUNNING {
+            assert_eq!(t, 0);
+        }
         Self {
             phi: C::zero(),
-            betas: vec![C::ScalarField::zero(); t],
-            e: C::ScalarField::zero(),
-            x: vec![C::ScalarField::zero(); io_len],
+            betas: vec![Zero::zero(); t],
+            e: Zero::zero(),
+            x: vec![Zero::zero(); io_len],
         }
-    }
-
-    pub fn dummy_incoming(io_len: usize) -> Self {
-        Self::dummy_running(io_len, 0)
     }
 }
 
-impl<C: CurveGroup> CommittedInstanceOps<C> for CommittedInstance<C> {
-    type Var = CommittedInstanceVar<C>;
+impl<C: CurveGroup, const RUNNING: bool> Dummy<&R1CS<CF1<C>>> for CommittedInstance<C, RUNNING> {
+    fn dummy(r1cs: &R1CS<CF1<C>>) -> Self {
+        let t = if RUNNING {
+            log2(r1cs.num_constraints()) as usize
+        } else {
+            0
+        };
+        Self::dummy((r1cs.num_public_inputs(), t))
+    }
+}
+
+impl<C: CurveGroup, const RUNNING: bool> CommittedInstanceOps<C> for CommittedInstance<C, RUNNING> {
+    type Var = CommittedInstanceVar<C, RUNNING>;
 
     fn get_commitments(&self) -> Vec<C> {
         vec![self.phi]
     }
 
     fn is_incoming(&self) -> bool {
-        self.e == Zero::zero() && self.betas.is_empty()
+        !RUNNING
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct CommittedInstanceVar<C: CurveGroup> {
+pub struct CommittedInstanceVar<C: CurveGroup, const RUNNING: bool> {
     phi: NonNativeAffineVar<C>,
     betas: Vec<FpVar<C::ScalarField>>,
     e: FpVar<C::ScalarField>,
     x: Vec<FpVar<C::ScalarField>>,
 }
 
-impl<C: CurveGroup> AllocVar<CommittedInstance<C>, C::ScalarField> for CommittedInstanceVar<C> {
-    fn new_variable<T: Borrow<CommittedInstance<C>>>(
+impl<C: CurveGroup, const RUNNING: bool> AllocVar<CommittedInstance<C, RUNNING>, C::ScalarField>
+    for CommittedInstanceVar<C, RUNNING>
+{
+    fn new_variable<T: Borrow<CommittedInstance<C, RUNNING>>>(
         cs: impl Into<Namespace<C::ScalarField>>,
         f: impl FnOnce() -> Result<T, SynthesisError>,
         mode: AllocationMode,
@@ -122,15 +141,21 @@ impl<C: CurveGroup> AllocVar<CommittedInstance<C>, C::ScalarField> for Committed
             Ok(Self {
                 phi: NonNativeAffineVar::new_variable(cs.clone(), || Ok(u.phi), mode)?,
                 betas: Vec::new_variable(cs.clone(), || Ok(u.betas.clone()), mode)?,
-                e: FpVar::new_variable(cs.clone(), || Ok(u.e), mode)?,
+                e: if RUNNING {
+                    FpVar::new_variable(cs.clone(), || Ok(u.e), mode)?
+                } else {
+                    FpVar::zero()
+                },
                 x: Vec::new_variable(cs.clone(), || Ok(u.x.clone()), mode)?,
             })
         })
     }
 }
 
-impl<C: CurveGroup> R1CSVar<C::ScalarField> for CommittedInstanceVar<C> {
-    type Value = CommittedInstance<C>;
+impl<C: CurveGroup, const RUNNING: bool> R1CSVar<C::ScalarField>
+    for CommittedInstanceVar<C, RUNNING>
+{
+    type Value = CommittedInstance<C, RUNNING>;
 
     fn cs(&self) -> ConstraintSystemRef<C::ScalarField> {
         self.phi
@@ -154,7 +179,9 @@ impl<C: CurveGroup> R1CSVar<C::ScalarField> for CommittedInstanceVar<C> {
     }
 }
 
-impl<C: CurveGroup> CommittedInstanceVarOps<C> for CommittedInstanceVar<C> {
+impl<C: CurveGroup, const RUNNING: bool> CommittedInstanceVarOps<C>
+    for CommittedInstanceVar<C, RUNNING>
+{
     type PointVar = NonNativeAffineVar<C>;
 
     fn get_commitments(&self) -> Vec<Self::PointVar> {
@@ -166,11 +193,13 @@ impl<C: CurveGroup> CommittedInstanceVarOps<C> for CommittedInstanceVar<C> {
     }
 
     fn enforce_incoming(&self) -> Result<(), SynthesisError> {
-        if self.betas.is_empty() {
-            self.e.enforce_equal(&FpVar::zero())
-        } else {
-            Err(SynthesisError::Unsatisfiable)
-        }
+        // We don't need to check if `self` is an incoming instance in-circuit,
+        // because incoming instances and running instances already have
+        // different types of `e` (constant vs witness) when we allocate them
+        // in-circuit.
+        (!RUNNING)
+            .then_some(())
+            .ok_or(SynthesisError::Unsatisfiable)
     }
 
     fn enforce_partial_equal(&self, other: &Self) -> Result<(), SynthesisError> {
@@ -198,14 +227,23 @@ impl<F: PrimeField> Witness<F> {
         &self,
         params: &CS::ProverParams,
         x: Vec<F>,
-    ) -> Result<CommittedInstance<C>, crate::Error> {
+    ) -> Result<CommittedInstance<C, false>, crate::Error> {
         let phi = CS::commit(params, &self.w, &self.r_w)?;
-        Ok(CommittedInstance {
+        Ok(CommittedInstance::<C, false> {
             phi,
             x,
             e: F::zero(),
             betas: vec![],
         })
+    }
+}
+
+impl<F: PrimeField> Dummy<&R1CS<F>> for Witness<F> {
+    fn dummy(r1cs: &R1CS<F>) -> Self {
+        Self {
+            w: vec![F::zero(); r1cs.num_witnesses()],
+            r_w: F::zero(),
+        }
     }
 }
 
@@ -360,9 +398,9 @@ where
     pub z_i: Vec<C1::ScalarField>,
     /// ProtoGalaxy instances
     pub w_i: Witness<C1::ScalarField>,
-    pub u_i: CommittedInstance<C1>,
+    pub u_i: CommittedInstance<C1, false>,
     pub W_i: Witness<C1::ScalarField>,
-    pub U_i: CommittedInstance<C1>,
+    pub U_i: CommittedInstance<C1, true>,
 
     /// CycleFold running instance
     pub cf_W_i: CycleFoldWitness<C2>,
@@ -495,9 +533,9 @@ where
     type PreprocessorParam = (PoseidonConfig<CF1<C1>>, FC);
     type ProverParam = ProverParams<C1, C2, CS1, CS2>;
     type VerifierParam = VerifierParams<C1, C2, CS1, CS2>;
-    type RunningInstance = (CommittedInstance<C1>, Witness<C1::ScalarField>);
-    type IncomingInstance = (CommittedInstance<C1>, Witness<C1::ScalarField>);
-    type MultiCommittedInstanceWithWitness = (CommittedInstance<C1>, Witness<C1::ScalarField>);
+    type RunningInstance = (CommittedInstance<C1, true>, Witness<C1::ScalarField>);
+    type IncomingInstance = (CommittedInstance<C1, false>, Witness<C1::ScalarField>);
+    type MultiCommittedInstanceWithWitness = (CommittedInstance<C1, false>, Witness<C1::ScalarField>);
     type CFInstance = (CycleFoldCommittedInstance<C2>, CycleFoldWitness<C2>);
 
     fn preprocess(
@@ -563,6 +601,8 @@ where
         let pp_hash = vp.pp_hash()?;
 
         // setup the dummy instances
+        let (w_dummy, u_dummy) = vp.r1cs.dummy_witness_instance();
+        let (W_dummy, U_dummy) = vp.r1cs.dummy_witness_instance();
         let (cf_W_dummy, cf_U_dummy) = vp.cf_r1cs.dummy_witness_instance();
 
         // W_dummy=W_0 is a 'dummy witness', all zeroes, but with the size corresponding to the
@@ -581,10 +621,10 @@ where
             i: C1::ScalarField::zero(),
             z_0: z_0.clone(),
             z_i: z_0,
-            w_i: Witness::new(vec![C1::ScalarField::zero(); vp.r1cs.num_witnesses()]),
-            u_i: CommittedInstance::<C1>::dummy_incoming(vp.r1cs.l),
-            W_i: Witness::new(vec![C1::ScalarField::zero(); vp.r1cs.num_witnesses()]),
-            U_i: CommittedInstance::<C1>::dummy_running(vp.r1cs.l, log2(vp.r1cs.A.n_rows) as usize),
+            w_i: w_dummy,
+            u_i: u_dummy,
+            W_i: W_dummy,
+            U_i: U_dummy,
             // cyclefold running instance
             cf_W_i: cf_W_dummy,
             cf_U_i: cf_U_dummy,

@@ -109,13 +109,13 @@ pub trait WitnessExt<F: PrimeField> {
     /// The in-circuit representation of the witness.
     type Var: AllocVar<Self, F> + WitnessVarExt<F>;
 
-    /// Returns the openings (i.e., values being committed to) contained in the
-    /// witness.
+    /// Returns the openings (i.e., the values being committed to and the
+    /// randomness) contained in the witness.
     fn get_openings(&self) -> Vec<(&[F], F)>;
 }
 
 pub trait WitnessVarExt<F: PrimeField> {
-    /// Returns the openings (i.e., values being committed to) contained in the
-    /// witness.
+    /// Returns the openings (i.e., the values being committed to and the
+    /// randomness) contained in the witness.
     fn get_openings(&self) -> Vec<(&[FpVar<F>], FpVar<F>)>;
 }

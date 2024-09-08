@@ -44,7 +44,8 @@ pub(crate) mod utils;
 use circuits::AugmentedFCircuit;
 use folding::Folding;
 
-struct ProtoGalaxyCycleFoldConfig<C: CurveGroup> {
+/// Configuration for ProtoGalaxy's CycleFold circuit
+pub struct ProtoGalaxyCycleFoldConfig<C: CurveGroup> {
     _c: PhantomData<C>,
 }
 
@@ -55,7 +56,9 @@ impl<C: CurveGroup> CycleFoldConfig for ProtoGalaxyCycleFoldConfig<C> {
     type F = C::BaseField;
 }
 
-type ProtoGalaxyCycleFoldCircuit<C, GC> = CycleFoldCircuit<ProtoGalaxyCycleFoldConfig<C>, GC>;
+/// CycleFold circuit for computing random linear combinations of group elements
+/// in ProtoGalaxy instances.
+pub type ProtoGalaxyCycleFoldCircuit<C, GC> = CycleFoldCircuit<ProtoGalaxyCycleFoldConfig<C>, GC>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CommittedInstance<C: CurveGroup> {

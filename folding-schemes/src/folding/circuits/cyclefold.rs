@@ -360,6 +360,8 @@ where
     }
 }
 
+/// `CycleFoldConfig` allows us to customize the behavior of CycleFold circuit
+/// according to the folding scheme we are working with.
 pub trait CycleFoldConfig {
     /// `N_INPUT_POINTS` specifies the number of input points that are folded in
     /// [`CycleFoldCircuit`] via random linear combinations.

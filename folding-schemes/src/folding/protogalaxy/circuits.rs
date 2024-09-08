@@ -237,30 +237,30 @@ pub struct AugmentedFCircuit<
     GC2: CurveVar<C2, CF2<C2>>,
     FC: FCircuit<CF1<C1>>,
 > {
-    pub _gc2: PhantomData<GC2>,
-    pub poseidon_config: PoseidonConfig<CF1<C1>>,
-    pub pp_hash: CF1<C1>,
-    pub i: CF1<C1>,
-    pub i_usize: usize,
-    pub z_0: Vec<CF1<C1>>,
-    pub z_i: Vec<CF1<C1>>,
-    pub external_inputs: Vec<CF1<C1>>,
-    pub F: FC, // F circuit
-    pub u_i_phi: C1,
-    pub U_i: CommittedInstance<C1>,
-    pub U_i1_phi: C1,
-    pub F_coeffs: Vec<CF1<C1>>,
-    pub K_coeffs: Vec<CF1<C1>>,
-    pub x: Option<CF1<C1>>, // public input (u_{i+1}.x[0])
+    pub(super) _gc2: PhantomData<GC2>,
+    pub(super) poseidon_config: PoseidonConfig<CF1<C1>>,
+    pub(super) pp_hash: CF1<C1>,
+    pub(super) i: CF1<C1>,
+    pub(super) i_usize: usize,
+    pub(super) z_0: Vec<CF1<C1>>,
+    pub(super) z_i: Vec<CF1<C1>>,
+    pub(super) external_inputs: Vec<CF1<C1>>,
+    pub(super) F: FC, // F circuit
+    pub(super) u_i_phi: C1,
+    pub(super) U_i: CommittedInstance<C1>,
+    pub(super) U_i1_phi: C1,
+    pub(super) F_coeffs: Vec<CF1<C1>>,
+    pub(super) K_coeffs: Vec<CF1<C1>>,
+    pub(super) x: Option<CF1<C1>>, // public input (u_{i+1}.x[0])
 
-    pub phi_stars: Vec<C1>,
+    pub(super) phi_stars: Vec<C1>,
 
-    pub cf1_u_i_cmW: C2,                        // input
-    pub cf2_u_i_cmW: C2,                        // input
-    pub cf_U_i: CycleFoldCommittedInstance<C2>, // input
-    pub cf1_cmT: C2,
-    pub cf2_cmT: C2,
-    pub cf_x: Option<CF1<C1>>, // public input (u_{i+1}.x[1])
+    pub(super) cf1_u_i_cmW: C2,                        // input
+    pub(super) cf2_u_i_cmW: C2,                        // input
+    pub(super) cf_U_i: CycleFoldCommittedInstance<C2>, // input
+    pub(super) cf1_cmT: C2,
+    pub(super) cf2_cmT: C2,
+    pub(super) cf_x: Option<CF1<C1>>, // public input (u_{i+1}.x[1])
 }
 
 impl<C1: CurveGroup, C2: CurveGroup, GC2: CurveVar<C2, CF2<C2>>, FC: FCircuit<CF1<C1>>>

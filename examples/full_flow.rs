@@ -106,7 +106,7 @@ fn main() {
     let mut nova = N::init(&nova_params, f_circuit, z_0).unwrap();
 
     // prepare the Decider prover & verifier params
-    let (decider_pp, decider_vp) = D::preprocess(&mut rng, &nova_params, nova.clone()).unwrap();
+    let (decider_pp, decider_vp) = D::preprocess(&mut rng, nova_params, nova.clone()).unwrap();
 
     // run n steps of the folding iteration
     for i in 0..n_steps {

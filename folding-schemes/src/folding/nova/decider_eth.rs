@@ -1,4 +1,4 @@
-/// This file implements the onchain (Ethereum's EVM) decider.
+/// This file implements the Nova's onchain (Ethereum's EVM) decider.
 use ark_bn254::Bn254;
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{AffineRepr, CurveGroup, Group};
@@ -11,7 +11,7 @@ use ark_std::rand::{CryptoRng, RngCore};
 use ark_std::{One, Zero};
 use core::marker::PhantomData;
 
-pub use super::decider_eth_circuit::{DeciderEthCircuit, KZGChallengesGadget};
+pub use super::decider_eth_circuit::DeciderEthCircuit;
 use super::{nifs::NIFS, CommittedInstance, Nova};
 use crate::commitment::{
     kzg::{Proof as KZGProof, KZG},
@@ -109,7 +109,7 @@ where
 
     fn preprocess(
         mut rng: impl RngCore + CryptoRng,
-        prep_param: &Self::PreprocessorParam,
+        prep_param: Self::PreprocessorParam,
         fs: FS,
     ) -> Result<(Self::ProverParam, Self::VerifierParam), Error> {
         let circuit =
@@ -384,7 +384,7 @@ pub mod tests {
         println!("Nova initialized, {:?}", start.elapsed());
 
         // prepare the Decider prover & verifier params
-        let (decider_pp, decider_vp) = D::preprocess(&mut rng, &nova_params, nova.clone()).unwrap();
+        let (decider_pp, decider_vp) = D::preprocess(&mut rng, nova_params, nova.clone()).unwrap();
 
         let start = Instant::now();
         nova.prove_step(&mut rng, vec![], None).unwrap();
@@ -461,7 +461,8 @@ pub mod tests {
         println!("Nova initialized, {:?}", start.elapsed());
 
         // prepare the Decider prover & verifier params
-        let (decider_pp, decider_vp) = D::preprocess(&mut rng, &nova_params, nova.clone()).unwrap();
+        let (decider_pp, decider_vp) =
+            D::preprocess(&mut rng, nova_params.clone(), nova.clone()).unwrap();
 
         // serialize the Nova params. These params are the trusted setup of the commitment schemes used
         // (ie. KZG & Pedersen in this case)

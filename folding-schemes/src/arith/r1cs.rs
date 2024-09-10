@@ -44,6 +44,14 @@ impl<F: PrimeField> Arith<F> for R1CS<F> {
 }
 
 impl<F: PrimeField> R1CS<F> {
+    pub fn empty() -> Self {
+        R1CS {
+            l: 0,
+            A: SparseMatrix::empty(),
+            B: SparseMatrix::empty(),
+            C: SparseMatrix::empty(),
+        }
+    }
     pub fn rand<R: Rng>(rng: &mut R, n_rows: usize, n_cols: usize) -> Self {
         Self {
             l: 1,

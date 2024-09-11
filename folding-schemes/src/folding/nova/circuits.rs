@@ -3,17 +3,14 @@ use ark_crypto_primitives::sponge::{
     constraints::CryptographicSpongeVar,
     poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig, PoseidonSponge},
 };
-use ark_ff::PrimeField;
 use ark_r1cs_std::{
     alloc::AllocVar,
-    boolean::Boolean,
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
-    prelude::CurveVar,
     R1CSVar,
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-use ark_std::{fmt::Debug, One, Zero};
+use ark_std::{fmt::Debug, Zero};
 
 use super::{
     nifs::{
@@ -27,7 +24,7 @@ use crate::folding::circuits::{
         CycleFoldChallengeGadget, CycleFoldCommittedInstance, CycleFoldCommittedInstanceVar,
         CycleFoldConfig, NIFSFullGadget,
     },
-    nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
+    nonnative::affine::NonNativeAffineVar,
     CF1,
 };
 use crate::folding::traits::{CommittedInstanceVarOps, Dummy};
@@ -200,13 +197,6 @@ where
         U_i1.cmE = U_i1_cmE;
         U_i1.cmW = U_i1_cmW;
 
-        // convert r_bits to a `NonNativeFieldVar`
-        let r_nonnat = {
-            let mut bits = r_bits;
-            bits.resize(C1::BaseField::MODULUS_BIT_SIZE as usize, Boolean::FALSE);
-            NonNativeUintVar::from(&bits)
-        };
-
         // P.4.a compute and check the first output of F'
 
         // get z_{i+1} from the F circuit
@@ -245,42 +235,25 @@ where
 
         // CycleFold part
         // C.1. Compute cf1_u_i.x and cf2_u_i.x
-        let cfW_x = vec![
-            r_nonnat.clone(),
-            U_i.cmW.x,
-            U_i.cmW.y,
-            u_i.cmW.x,
-            u_i.cmW.y,
-            U_i1.cmW.x,
-            U_i1.cmW.y,
-        ];
-        let cfE_x = vec![
-            r_nonnat, U_i.cmE.x, U_i.cmE.y, cmT.x, cmT.y, U_i1.cmE.x, U_i1.cmE.y,
-        ];
-
-        // ensure that cf1_u & cf2_u have as public inputs the cmW & cmE from main instances U_i,
-        // u_i, U_i+1 coordinates of the commitments
         // C.2. Construct `cf1_u_i` and `cf2_u_i`
-        let cf1_u_i = CycleFoldCommittedInstanceVar {
-            // cf1_u_i.cmE = 0
-            cmE: C2::Var::zero(),
-            // cf1_u_i.u = 1
-            u: NonNativeUintVar::new_constant(cs.clone(), C1::BaseField::one())?,
-            // cf1_u_i.cmW is provided by the prover as witness
-            cmW: C2::Var::new_witness(cs.clone(), || Ok(self.cf1_u_i_cmW.unwrap_or(C2::zero())))?,
-            // cf1_u_i.x is computed in step 1
-            x: cfW_x,
-        };
-        let cf2_u_i = CycleFoldCommittedInstanceVar {
-            // cf2_u_i.cmE = 0
-            cmE: C2::Var::zero(),
-            // cf2_u_i.u = 1
-            u: NonNativeUintVar::new_constant(cs.clone(), C1::BaseField::one())?,
-            // cf2_u_i.cmW is provided by the prover as witness
-            cmW: C2::Var::new_witness(cs.clone(), || Ok(self.cf2_u_i_cmW.unwrap_or(C2::zero())))?,
-            // cf2_u_i.x is computed in step 1
-            x: cfE_x,
-        };
+        let cf1_u_i = CycleFoldCommittedInstanceVar::new_incoming_from_components(
+            // `cf1_u_i.cmW` is provided by the prover as witness.
+            C2::Var::new_witness(cs.clone(), || Ok(self.cf1_u_i_cmW.unwrap_or(C2::zero())))?,
+            // To construct `cf1_u_i.x`, we need to provide the randomness
+            // `r_bits` and the `cmW` component in committed instances `U_i`,
+            // `u_i`, and `U_{i+1}`.
+            &r_bits,
+            vec![U_i.cmW, u_i.cmW, U_i1.cmW],
+        )?;
+        let cf2_u_i = CycleFoldCommittedInstanceVar::new_incoming_from_components(
+            // `cf2_u_i.cmW` is provided by the prover as witness.
+            C2::Var::new_witness(cs.clone(), || Ok(self.cf2_u_i_cmW.unwrap_or(C2::zero())))?,
+            // To construct `cf2_u_i.x`, we need to provide the randomness
+            // `r_bits`, the `cmE` component in running instances `U_i` and
+            // `U_{i+1}`, and the cross term commitment `cmT`.
+            &r_bits,
+            vec![U_i.cmE, cmT, U_i1.cmE],
+        )?;
 
         // C.3. nifs.verify, obtains cf1_U_{i+1} by folding cf1_u_i & cf_U_i, and then cf_U_{i+1}
         // by folding cf2_u_i & cf1_U_{i+1}.
@@ -353,8 +326,9 @@ pub mod tests {
     use ark_crypto_primitives::sponge::{
         constraints::AbsorbGadget, poseidon::PoseidonSponge, CryptographicSponge,
     };
-    use ark_ff::BigInteger;
+    use ark_ff::{BigInteger, PrimeField};
 
+    use ark_r1cs_std::prelude::Boolean;
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::UniformRand;
 

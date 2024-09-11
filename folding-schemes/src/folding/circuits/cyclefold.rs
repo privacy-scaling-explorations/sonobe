@@ -15,12 +15,12 @@ use ark_r1cs_std::{
 use ark_relations::r1cs::{
     ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, Namespace, SynthesisError,
 };
-use ark_std::fmt::Debug;
-use ark_std::rand::RngCore;
-use ark_std::Zero;
-use core::{borrow::Borrow, marker::PhantomData};
+use ark_std::{borrow::Borrow, fmt::Debug, marker::PhantomData, rand::RngCore, One, Zero};
 
-use super::{nonnative::uint::NonNativeUintVar, CF1, CF2};
+use super::{
+    nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
+    CF1, CF2,
+};
 use crate::arith::{
     r1cs::{circuits::R1CSMatricesVar, extract_w_x, R1CS},
     Arith, ArithRelationGadget,
@@ -64,6 +64,7 @@ pub struct CycleFoldCommittedInstanceVar<C: Curve> {
     pub cmW: C::Var,
     pub x: Vec<NonNativeUintVar<CF2<C>>>,
 }
+
 impl<C: Curve> AllocVar<CycleFoldCommittedInstance<C>, CF2<C>>
     for CycleFoldCommittedInstanceVar<C>
 {
@@ -125,6 +126,39 @@ impl<C: Curve> AbsorbNonNativeGadget<C::BaseField> for CycleFoldCommittedInstanc
             cmW_elems,
         ]
         .concat())
+    }
+}
+
+impl<C2: Curve> CycleFoldCommittedInstanceVar<C2> {
+    /// Creates a new `CycleFoldCommittedInstanceVar` from the given components.
+    pub fn new_incoming_from_components<C1: Curve<ScalarField = C2::BaseField>>(
+        cmW: C2::Var,
+        r_bits: &[Boolean<CF2<C2>>],
+        points: Vec<NonNativeAffineVar<C1>>,
+    ) -> Result<Self, SynthesisError> {
+        // Construct the public inputs `x` from `r_bits` and `points`.
+        // Note that the underlying field can only safely store
+        // `CF1::<C2>::MODULUS_BIT_SIZE - 1` bits, but `r_bits` may be longer
+        // than that.
+        // Thus, we need to chunk `r_bits` into pieces and convert each piece
+        // to a `NonNativeUintVar`.
+        let x = r_bits
+            .chunks(CF1::<C2>::MODULUS_BIT_SIZE as usize - 1)
+            .map(|bits| {
+                let mut bits = bits.to_vec();
+                bits.resize(CF1::<C2>::MODULUS_BIT_SIZE as usize, Boolean::FALSE);
+                NonNativeUintVar::from(&bits)
+            })
+            .chain(points.into_iter().flat_map(|p| [p.x, p.y]))
+            .collect::<Vec<_>>();
+        Ok(Self {
+            // `cmE` is always zero for incoming instances
+            cmE: C2::Var::zero(),
+            // `u` is always one for incoming instances
+            u: NonNativeUintVar::new_constant(ConstraintSystemRef::None, CF1::<C2>::one())?,
+            cmW,
+            x,
+        })
     }
 }
 

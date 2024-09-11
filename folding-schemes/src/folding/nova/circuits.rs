@@ -17,7 +17,7 @@ use ark_r1cs_std::{
     R1CSVar, ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
-use ark_std::{fmt::Debug, One, Zero};
+use ark_std::{fmt::Debug, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::{CommittedInstance, NovaCycleFoldConfig};
@@ -27,7 +27,7 @@ use crate::folding::circuits::{
         CycleFoldChallengeGadget, CycleFoldCommittedInstance, CycleFoldCommittedInstanceVar,
         CycleFoldConfig, NIFSFullGadget,
     },
-    nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
+    nonnative::affine::NonNativeAffineVar,
     CF1, CF2,
 };
 use crate::frontend::FCircuit;
@@ -405,12 +405,6 @@ where
             cmT.clone(),
         )?;
         let r = Boolean::le_bits_to_fp_var(&r_bits)?;
-        // Also convert r_bits to a `NonNativeFieldVar`
-        let r_nonnat = {
-            let mut bits = r_bits;
-            bits.resize(C1::BaseField::MODULUS_BIT_SIZE as usize, Boolean::FALSE);
-            NonNativeUintVar::from(&bits)
-        };
 
         // Notice that NIFSGadget::fold_committed_instance does not fold cmE & cmW.
         // We set `U_i1.cmE` and `U_i1.cmW` to unconstrained witnesses `U_i1_cmE` and `U_i1_cmW`
@@ -442,42 +436,24 @@ where
 
         // CycleFold part
         // C.1. Compute cf1_u_i.x and cf2_u_i.x
-        let cfW_x = vec![
-            r_nonnat.clone(),
-            U_i.cmW.x,
-            U_i.cmW.y,
-            u_i.cmW.x,
-            u_i.cmW.y,
-            U_i1.cmW.x,
-            U_i1.cmW.y,
-        ];
-        let cfE_x = vec![
-            r_nonnat, U_i.cmE.x, U_i.cmE.y, cmT.x, cmT.y, U_i1.cmE.x, U_i1.cmE.y,
-        ];
-
-        // ensure that cf1_u & cf2_u have as public inputs the cmW & cmE from main instances U_i,
-        // u_i, U_i+1 coordinates of the commitments
         // C.2. Construct `cf1_u_i` and `cf2_u_i`
-        let cf1_u_i = CycleFoldCommittedInstanceVar {
-            // cf1_u_i.cmE = 0
-            cmE: GC2::zero(),
-            // cf1_u_i.u = 1
-            u: NonNativeUintVar::new_constant(cs.clone(), C1::BaseField::one())?,
-            // cf1_u_i.cmW is provided by the prover as witness
-            cmW: GC2::new_witness(cs.clone(), || Ok(self.cf1_u_i_cmW.unwrap_or(C2::zero())))?,
-            // cf1_u_i.x is computed in step 1
-            x: cfW_x,
-        };
-        let cf2_u_i = CycleFoldCommittedInstanceVar {
-            // cf2_u_i.cmE = 0
-            cmE: GC2::zero(),
-            // cf2_u_i.u = 1
-            u: NonNativeUintVar::new_constant(cs.clone(), C1::BaseField::one())?,
-            // cf2_u_i.cmW is provided by the prover as witness
-            cmW: GC2::new_witness(cs.clone(), || Ok(self.cf2_u_i_cmW.unwrap_or(C2::zero())))?,
-            // cf2_u_i.x is computed in step 1
-            x: cfE_x,
-        };
+        let cf1_u_i = CycleFoldCommittedInstanceVar::new_incoming_from_components(
+            // `cf1_u_i.cmW` is provided by the prover as witness.
+            GC2::new_witness(cs.clone(), || Ok(self.cf1_u_i_cmW.unwrap_or(C2::zero())))?,
+            // The computation of `cf1_u_i.x` requires the randomness `r_bits`
+            // and the commitments `cmW` in CommittedInstances.
+            &r_bits,
+            vec![U_i.cmW, u_i.cmW, U_i1.cmW],
+        )?;
+        let cf2_u_i = CycleFoldCommittedInstanceVar::new_incoming_from_components(
+            // `cf2_u_i.cmW` is provided by the prover as witness.
+            GC2::new_witness(cs.clone(), || Ok(self.cf2_u_i_cmW.unwrap_or(C2::zero())))?,
+            // The computation of `cf2_u_i.x` requires the randomness `r_bits`,
+            // the commitments `cmE` in CommittedInstances, and the cross term
+            // commitment `cmT`.
+            &r_bits,
+            vec![U_i.cmE, cmT, U_i1.cmE],
+        )?;
 
         // C.3. nifs.verify, obtains cf1_U_{i+1} by folding cf1_u_i & cf_U_i, and then cf_U_{i+1}
         // by folding cf2_u_i & cf1_U_{i+1}.

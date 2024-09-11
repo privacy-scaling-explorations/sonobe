@@ -35,7 +35,7 @@ use crate::folding::{
             CycleFoldChallengeGadget, CycleFoldCommittedInstance, CycleFoldCommittedInstanceVar,
             CycleFoldConfig, NIFSFullGadget,
         },
-        nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
+        nonnative::affine::NonNativeAffineVar,
         sum_check::{IOPProofVar, SumCheckVerifierGadget, VPAuxInfoVar},
         utils::EqEvalGadget,
         CF1, CF2,
@@ -812,41 +812,22 @@ where
         let x = FpVar::new_input(cs.clone(), || Ok(self.x.unwrap_or(u_i1_x_base.value()?)))?;
         x.enforce_equal(&is_basecase.select(&u_i1_x_base, &u_i1_x)?)?;
 
-        // convert rho_bits of the rho_vec to a `NonNativeFieldVar`
-        let mut rho_bits_resized = rho_bits.clone();
-        rho_bits_resized.resize(C1::BaseField::MODULUS_BIT_SIZE as usize, Boolean::FALSE);
-        let rho_nonnat = NonNativeUintVar::from(&rho_bits_resized);
-
         // CycleFold part
-        // C.1. Compute cf1_u_i.x and cf2_u_i.x
-        let cf_x: Vec<NonNativeUintVar<CF2<C2>>> = [
-            vec![rho_nonnat],
-            all_Us
-                .iter()
-                .flat_map(|U| vec![U.C.x.clone(), U.C.y.clone()])
-                .collect(),
-            all_us
-                .iter()
-                .flat_map(|u| vec![u.C.x.clone(), u.C.y.clone()])
-                .collect(),
-            vec![U_i1.C.x, U_i1.C.y],
-        ]
-        .concat();
-
-        // ensure that cf_u has as public inputs the C from main instances U_i, u_i, U_i+1
-        // coordinates of the commitments.
+        // C.1. Compute `cf_u_i.x`
         // C.2. Construct `cf_u_i`
-        let cf_u_i = CycleFoldCommittedInstanceVar::<C2, GC2> {
-            // cf1_u_i.cmE = 0. Notice that we enforce cmE to be equal to 0 since it is allocated
-            // as 0.
-            cmE: GC2::zero(),
-            // cf1_u_i.u = 1
-            u: NonNativeUintVar::new_constant(cs.clone(), C1::BaseField::one())?,
-            // cf_u_i.cmW is provided by the prover as witness
-            cmW: GC2::new_witness(cs.clone(), || Ok(self.cf_u_i_cmW.unwrap_or(C2::zero())))?,
-            // cf_u_i.x is computed in step 1
-            x: cf_x,
-        };
+        let cf_u_i = CycleFoldCommittedInstanceVar::new_incoming_from_components(
+            // `cf_u_i.cmW` is provided by the prover as witness.
+            GC2::new_witness(cs.clone(), || Ok(self.cf_u_i_cmW.unwrap_or(C2::zero())))?,
+            // The computation of `cf_u_i.x` requires the randomness `rho_bits`
+            // and the commitments `C` in LCCCS and CCCS instances.
+            &rho_bits,
+            all_Us
+                .into_iter()
+                .map(|U| U.C)
+                .chain(all_us.into_iter().map(|u| u.C))
+                .chain(vec![U_i1.C])
+                .collect(),
+        )?;
 
         // C.3. nifs.verify (fold_committed_instance), obtains cf_U_{i+1} by folding cf_u_i & cf_U_i.
         // compute cf_r = H(cf_u_i, cf_U_i, cf_cmT)

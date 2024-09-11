@@ -6,7 +6,7 @@ use ark_relations::r1cs::SynthesisError;
 use ark_std::{cfg_iter, log2, rand::RngCore, One, Zero};
 use rayon::prelude::*;
 
-use super::{folding::pow_i, CommittedInstance, CommittedInstanceVar, Witness};
+use super::{utils::pow_i, CommittedInstance, CommittedInstanceVar, Witness};
 use crate::{
     arith::r1cs::{RelaxedR1CS, R1CS},
     transcript::AbsorbNonNative,

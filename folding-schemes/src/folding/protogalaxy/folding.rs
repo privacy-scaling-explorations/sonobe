@@ -10,7 +10,7 @@ use ark_std::{cfg_into_iter, log2, One, Zero};
 use rayon::prelude::*;
 use std::marker::PhantomData;
 
-use super::utils::{all_powers, betas_star, exponential_powers};
+use super::utils::{all_powers, betas_star, exponential_powers, pow_i};
 use super::ProtoGalaxyError;
 use super::{CommittedInstance, Witness};
 
@@ -19,7 +19,6 @@ use crate::arith::r1cs::RelaxedR1CS;
 use crate::arith::{r1cs::R1CS, Arith};
 use crate::transcript::Transcript;
 use crate::utils::vec::*;
-use crate::utils::virtual_polynomial::bit_decompose;
 use crate::Error;
 
 #[derive(Clone, Debug)]
@@ -321,22 +320,6 @@ where
             x: x_star,
         })
     }
-}
-
-// naive impl of pow_i for betas, assuming that betas=(b, b^2, b^4, ..., b^{2^{t-1}})
-pub fn pow_i<F: PrimeField>(i: usize, betas: &[F]) -> F {
-    // WIP check if makes more sense to do it with ifs instead of arithmetic
-
-    let n = 2_u64.pow(betas.len() as u32);
-    let b = bit_decompose(i as u64, n as usize);
-
-    let mut r: F = F::one();
-    for (j, beta_j) in betas.iter().enumerate() {
-        if b[j] {
-            r *= beta_j;
-        }
-    }
-    r
 }
 
 /// calculates F[x] using the optimized binary-tree technique

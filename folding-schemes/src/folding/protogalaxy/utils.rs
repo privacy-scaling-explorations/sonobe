@@ -94,7 +94,7 @@ pub fn pow_i<F: PrimeField>(mut i: usize, betas: &[F]) -> F {
 #[allow(dead_code)] // Will remove this once we have the decider circuit for Protogalaxy
 pub fn pow_i_var<F: PrimeField>(mut i: usize, betas: &[FpVar<F>]) -> FpVar<F> {
     let mut j = 0;
-    let mut r = FpVar::one();
+    let mut r = FieldVar::one();
     while i > 0 {
         if i.is_odd() {
             r *= &betas[j];

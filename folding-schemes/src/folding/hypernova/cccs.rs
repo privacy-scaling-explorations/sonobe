@@ -1,6 +1,8 @@
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
+use ark_serialize::CanonicalDeserialize;
+use ark_serialize::CanonicalSerialize;
 use ark_std::One;
 use ark_std::Zero;
 use std::sync::Arc;
@@ -17,7 +19,7 @@ use crate::utils::virtual_polynomial::{build_eq_x_r_vec, VirtualPolynomial};
 use crate::Error;
 
 /// Committed CCS instance
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct CCCS<C: CurveGroup> {
     // Commitment to witness
     pub C: C,

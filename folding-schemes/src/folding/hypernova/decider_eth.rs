@@ -3,6 +3,7 @@ use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{CurveGroup, Group};
 use ark_ff::PrimeField;
 use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_snark::SNARK;
 use ark_std::rand::{CryptoRng, RngCore};
 use ark_std::{One, Zero};
@@ -18,7 +19,7 @@ use crate::frontend::FCircuit;
 use crate::Error;
 use crate::{Decider as DeciderTrait, FoldingScheme};
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<C1, CS1, S>
 where
     C1: CurveGroup,
@@ -223,16 +224,96 @@ pub mod tests {
     use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as Projective};
     use ark_groth16::Groth16;
     use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
+    use ark_serialize::{Compress, Validate};
     use std::time::Instant;
 
     use super::*;
     use crate::commitment::{kzg::KZG, pedersen::Pedersen};
-    use crate::folding::hypernova::PreprocessorParam;
+    use crate::folding::hypernova::cccs::CCCS;
+    use crate::folding::hypernova::{PreprocessorParam, ProverParams, VerifierParams};
+    use crate::folding::nova::decider_eth::VerifierParam;
     use crate::frontend::utils::CubicFCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
 
     #[test]
     fn test_decider() {
+        const MU: usize = 1;
+        const NU: usize = 1;
+        // use HyperNova as FoldingScheme
+        type HN = HyperNova<
+            Projective,
+            GVar,
+            Projective2,
+            GVar2,
+            CubicFCircuit<Fr>,
+            KZG<'static, Bn254>,
+            Pedersen<Projective2>,
+            MU,
+            NU,
+            false,
+        >;
+        type D = Decider<
+            Projective,
+            GVar,
+            Projective2,
+            GVar2,
+            CubicFCircuit<Fr>,
+            KZG<'static, Bn254>,
+            Pedersen<Projective2>,
+            Groth16<Bn254>, // here we define the Snark to use in the decider
+            HN,             // here we define the FoldingScheme to use
+            MU,
+            NU,
+        >;
+
+        let mut rng = rand::rngs::OsRng;
+        let poseidon_config = poseidon_canonical_config::<Fr>();
+
+        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
+        let z_0 = vec![Fr::from(3_u32)];
+
+        let prep_param = PreprocessorParam::new(poseidon_config, F_circuit);
+        let hypernova_params = HN::preprocess(&mut rng, &prep_param).unwrap();
+
+        let start = Instant::now();
+        let mut hypernova = HN::init(&hypernova_params, F_circuit, z_0.clone()).unwrap();
+        println!("HyperNova initialized, {:?}", start.elapsed());
+        let start = Instant::now();
+        hypernova
+            .prove_step(&mut rng, vec![], Some((vec![], vec![])))
+            .unwrap();
+        println!("prove_step, {:?}", start.elapsed());
+        hypernova
+            .prove_step(&mut rng, vec![], Some((vec![], vec![])))
+            .unwrap(); // do a 2nd step
+
+        // prepare the Decider prover & verifier params
+        let (decider_pp, decider_vp) =
+            D::preprocess(&mut rng, hypernova_params, hypernova.clone()).unwrap();
+
+        // decider proof generation
+        let start = Instant::now();
+        let proof = D::prove(rng, decider_pp, hypernova.clone()).unwrap();
+        println!("Decider prove, {:?}", start.elapsed());
+
+        // decider proof verification
+        let start = Instant::now();
+        let verified = D::verify(
+            decider_vp,
+            hypernova.i,
+            hypernova.z_0,
+            hypernova.z_i,
+            &(),
+            &(),
+            &proof,
+        )
+        .unwrap();
+        assert!(verified);
+        println!("Decider verify, {:?}", start.elapsed());
+    }
+
+    #[test]
+    fn test_decider_serialization() {
         const MU: usize = 1;
         const NU: usize = 1;
         // use HyperNova as FoldingScheme
@@ -268,12 +349,65 @@ pub mod tests {
         let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
         let z_0 = vec![Fr::from(3_u32)];
 
-        let prep_param = PreprocessorParam::new(poseidon_config, F_circuit);
+        let prep_param = PreprocessorParam::new(poseidon_config.clone(), F_circuit);
         let hypernova_params = HN::preprocess(&mut rng, &prep_param).unwrap();
 
         let start = Instant::now();
+        let hypernova = HN::init(&hypernova_params, F_circuit, z_0.clone()).unwrap();
+        println!("HyperNova initialized, {:?}", start.elapsed());
+
+        let mut rng = rand::rngs::OsRng;
+
+        // prepare the Decider prover & verifier params
+        let (decider_pp, decider_vp) =
+            D::preprocess(&mut rng, hypernova_params.clone(), hypernova.clone()).unwrap();
+
+        let mut hypernova_pp_serialized = vec![];
+        hypernova_params
+            .0
+            .clone()
+            .serialize_compressed(&mut hypernova_pp_serialized)
+            .unwrap();
+        let mut hypernova_vp_serialized = vec![];
+        hypernova_params
+            .1
+            .clone()
+            .serialize_compressed(&mut hypernova_vp_serialized)
+            .unwrap();
+
+        let hypernova_pp_deserialized = ProverParams::<
+            Projective,
+            Projective2,
+            KZG<'static, Bn254>,
+            Pedersen<Projective2>,
+            false,
+        >::deserialize_prover_params(
+            hypernova_pp_serialized.as_slice(),
+            Compress::Yes,
+            Validate::No,
+            &hypernova_params.0.ccs,
+            &poseidon_config,
+        )
+        .unwrap();
+
+        let hypernova_vp_deserialized = VerifierParams::<
+            Projective,
+            Projective2,
+            KZG<'static, Bn254>,
+            Pedersen<Projective2>,
+            false,
+        >::deserialize_verifier_params(
+            hypernova_vp_serialized.as_slice(),
+            Compress::Yes,
+            Validate::No,
+            &hypernova_params.0.ccs.unwrap(),
+            &poseidon_config,
+        )
+        .unwrap();
+
+        let hypernova_params = (hypernova_pp_deserialized, hypernova_vp_deserialized);
         let mut hypernova = HN::init(&hypernova_params, F_circuit, z_0.clone()).unwrap();
-        println!("Nova initialized, {:?}", start.elapsed());
+
         let start = Instant::now();
         hypernova
             .prove_step(&mut rng, vec![], Some((vec![], vec![])))
@@ -281,32 +415,97 @@ pub mod tests {
         println!("prove_step, {:?}", start.elapsed());
         hypernova
             .prove_step(&mut rng, vec![], Some((vec![], vec![])))
-            .unwrap(); // do a 2nd step
-
-        let mut rng = rand::rngs::OsRng;
-
-        // prepare the Decider prover & verifier params
-        let (decider_pp, decider_vp) =
-            D::preprocess(&mut rng, hypernova_params, hypernova.clone()).unwrap();
+            .unwrap();
 
         // decider proof generation
         let start = Instant::now();
         let proof = D::prove(rng, decider_pp, hypernova.clone()).unwrap();
         println!("Decider prove, {:?}", start.elapsed());
 
-        // decider proof verification
         let start = Instant::now();
         let verified = D::verify(
-            decider_vp,
-            hypernova.i,
-            hypernova.z_0,
-            hypernova.z_i,
+            decider_vp.clone(),
+            hypernova.i.clone(),
+            hypernova.z_0.clone(),
+            hypernova.z_i.clone(),
             &(),
             &(),
             &proof,
         )
         .unwrap();
         assert!(verified);
+
         println!("Decider verify, {:?}", start.elapsed());
+
+        // The rest of this test will serialize the data and deserialize it back, and use it to
+        // verify the proof:
+
+        // serialize the verifier_params, proof and public inputs
+        let mut decider_vp_serialized = vec![];
+        decider_vp
+            .serialize_compressed(&mut decider_vp_serialized)
+            .unwrap();
+        let mut proof_serialized = vec![];
+        proof.serialize_compressed(&mut proof_serialized).unwrap();
+        // serialize the public inputs in a single packet
+        let mut public_inputs_serialized = vec![];
+        hypernova
+            .i
+            .serialize_compressed(&mut public_inputs_serialized)
+            .unwrap();
+        hypernova
+            .z_0
+            .serialize_compressed(&mut public_inputs_serialized)
+            .unwrap();
+        hypernova
+            .z_i
+            .serialize_compressed(&mut public_inputs_serialized)
+            .unwrap();
+        hypernova
+            .U_i
+            .serialize_compressed(&mut public_inputs_serialized)
+            .unwrap();
+        hypernova
+            .u_i
+            .serialize_compressed(&mut public_inputs_serialized)
+            .unwrap();
+
+        // deserialize back the verifier_params, proof and public inputs
+        let decider_vp_deserialized =
+            VerifierParam::<
+                Projective,
+                <KZG<'static, Bn254> as CommitmentScheme<Projective>>::VerifierParams,
+                <Groth16<Bn254> as SNARK<Fr>>::VerifyingKey,
+            >::deserialize_compressed(&mut decider_vp_serialized.as_slice())
+            .unwrap();
+
+        let proof_deserialized =
+            Proof::<Projective, KZG<'static, Bn254>, Groth16<Bn254>>::deserialize_compressed(
+                &mut proof_serialized.as_slice(),
+            )
+            .unwrap();
+
+        let mut reader = public_inputs_serialized.as_slice();
+        let i_deserialized = Fr::deserialize_compressed(&mut reader).unwrap();
+        let z_0_deserialized = Vec::<Fr>::deserialize_compressed(&mut reader).unwrap();
+        let z_i_deserialized = Vec::<Fr>::deserialize_compressed(&mut reader).unwrap();
+        let _U_i = LCCCS::<Projective>::deserialize_compressed(&mut reader).unwrap();
+        let _u_i = CCCS::<Projective>::deserialize_compressed(&mut reader).unwrap();
+
+        let verified = D::verify(
+            (
+                decider_vp_deserialized.pp_hash,
+                decider_vp_deserialized.snark_vp,
+                decider_vp_deserialized.cs_vp,
+            ),
+            i_deserialized.clone(),
+            z_0_deserialized.clone(),
+            z_i_deserialized.clone(),
+            &(),
+            &(),
+            &proof_deserialized,
+        )
+        .unwrap();
+        assert!(verified);
     }
 }

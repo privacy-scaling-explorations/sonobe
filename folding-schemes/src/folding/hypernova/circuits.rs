@@ -475,30 +475,30 @@ pub struct AugmentedFCircuit<
 > where
     for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
-    pub _c2: PhantomData<C2>,
-    pub _gc2: PhantomData<GC2>,
-    pub poseidon_config: PoseidonConfig<CF1<C1>>,
-    pub ccs: CCS<C1::ScalarField>, // CCS of the AugmentedFCircuit
-    pub pp_hash: Option<CF1<C1>>,
-    pub i: Option<CF1<C1>>,
-    pub i_usize: Option<usize>,
-    pub z_0: Option<Vec<C1::ScalarField>>,
-    pub z_i: Option<Vec<C1::ScalarField>>,
-    pub external_inputs: Option<Vec<C1::ScalarField>>,
-    pub U_i: Option<LCCCS<C1>>,
-    pub Us: Option<Vec<LCCCS<C1>>>, // other U_i's to be folded that are not the main running instance
-    pub u_i_C: Option<C1>,          // u_i.C
-    pub us: Option<Vec<CCCS<C1>>>, // other u_i's to be folded that are not the main incoming instance
-    pub U_i1_C: Option<C1>,        // U_{i+1}.C
-    pub F: FC,                     // F circuit
-    pub x: Option<CF1<C1>>,        // public input (u_{i+1}.x[0])
-    pub nimfs_proof: Option<NIMFSProof<C1>>,
+    pub(super) _c2: PhantomData<C2>,
+    pub(super) _gc2: PhantomData<GC2>,
+    pub(super) poseidon_config: PoseidonConfig<CF1<C1>>,
+    pub(super) ccs: CCS<C1::ScalarField>, // CCS of the AugmentedFCircuit
+    pub(super) pp_hash: Option<CF1<C1>>,
+    pub(super) i: Option<CF1<C1>>,
+    pub(super) i_usize: Option<usize>,
+    pub(super) z_0: Option<Vec<C1::ScalarField>>,
+    pub(super) z_i: Option<Vec<C1::ScalarField>>,
+    pub(super) external_inputs: Option<Vec<C1::ScalarField>>,
+    pub(super) U_i: Option<LCCCS<C1>>,
+    pub(super) Us: Option<Vec<LCCCS<C1>>>, // other U_i's to be folded that are not the main running instance
+    pub(super) u_i_C: Option<C1>,          // u_i.C
+    pub(super) us: Option<Vec<CCCS<C1>>>, // other u_i's to be folded that are not the main incoming instance
+    pub(super) U_i1_C: Option<C1>,        // U_{i+1}.C
+    pub(super) F: FC,                     // F circuit
+    pub(super) x: Option<CF1<C1>>,        // public input (u_{i+1}.x[0])
+    pub(super) nimfs_proof: Option<NIMFSProof<C1>>,
 
     // cyclefold verifier on C1
-    pub cf_u_i_cmW: Option<C2>, // input, cf_u_i.cmW
-    pub cf_U_i: Option<CycleFoldCommittedInstance<C2>>, // input, RelaxedR1CS CycleFold instance
-    pub cf_x: Option<CF1<C1>>,  // public input (cf_u_{i+1}.x[1])
-    pub cf_cmT: Option<C2>,
+    pub(super) cf_u_i_cmW: Option<C2>, // input, cf_u_i.cmW
+    pub(super) cf_U_i: Option<CycleFoldCommittedInstance<C2>>, // input, RelaxedR1CS CycleFold instance
+    pub(super) cf_x: Option<CF1<C1>>,                          // public input (cf_u_{i+1}.x[1])
+    pub(super) cf_cmT: Option<C2>,
 }
 
 impl<C1, C2, GC2, FC, const MU: usize, const NU: usize> AugmentedFCircuit<C1, C2, GC2, FC, MU, NU>
@@ -891,7 +891,7 @@ mod tests {
     use crate::{
         arith::{
             ccs::tests::{get_test_ccs, get_test_z},
-            r1cs::extract_w_x,
+            r1cs::{extract_w_x, RelaxedR1CS},
         },
         commitment::{pedersen::Pedersen, CommitmentScheme},
         folding::{
@@ -900,9 +900,8 @@ mod tests {
                 utils::{compute_c, compute_sigmas_thetas},
                 HyperNovaCycleFoldCircuit,
             },
-            nova::traits::NovaR1CS,
         },
-        frontend::tests::CubicFCircuit,
+        frontend::utils::CubicFCircuit,
         transcript::poseidon::poseidon_canonical_config,
         utils::get_cm_coordinates,
     };
@@ -1216,7 +1215,7 @@ mod tests {
         let (cf_W_dummy, cf_U_dummy): (
             CycleFoldWitness<Projective2>,
             CycleFoldCommittedInstance<Projective2>,
-        ) = cf_r1cs.dummy_instance();
+        ) = cf_r1cs.dummy_running_instance();
 
         // set the initial dummy instances
         let mut W_i = W_dummy.clone();
@@ -1455,9 +1454,7 @@ mod tests {
             u_i.check_relation(&ccs, &w_i).unwrap();
 
             // check the CycleFold instance relation
-            cf_r1cs
-                .check_relaxed_instance_relation(&cf_W_i, &cf_U_i)
-                .unwrap();
+            cf_r1cs.check_relaxed_relation(&cf_W_i, &cf_U_i).unwrap();
 
             println!("augmented_f_circuit step {}: {:?}", i, start.elapsed());
         }

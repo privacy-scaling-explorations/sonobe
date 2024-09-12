@@ -1,5 +1,6 @@
 use ark_ff::PrimeField;
 use ark_r1cs_std::fields::{fp::FpVar, FieldVar};
+use num_integer::Integer;
 
 /// Returns (b, b^2, b^4, ..., b^{2^{t-1}})
 pub fn exponential_powers<F: PrimeField>(b: F, t: usize) -> Vec<F> {
@@ -70,6 +71,40 @@ pub fn betas_star_var<F: PrimeField>(
         .collect::<Vec<FpVar<F>>>()
 }
 
+/// Returns the product of selected elements in `betas`.
+/// For every index `j`, whether `betas[j]` is selected is determined by the
+/// `j`-th bit in the binary (little endian) representation of `i`.
+///
+/// If `betas = (β, β^2, β^4, ..., β^{2^{t-1}})`, then the result is equal to
+/// `β^i`.
+pub fn pow_i<F: PrimeField>(mut i: usize, betas: &[F]) -> F {
+    let mut j = 0;
+    let mut r = F::one();
+    while i > 0 {
+        if i.is_odd() {
+            r *= betas[j];
+        }
+        i >>= 1;
+        j += 1;
+    }
+    r
+}
+
+/// The in-circuit version of `pow_i`
+#[allow(dead_code)] // Will remove this once we have the decider circuit for Protogalaxy
+pub fn pow_i_var<F: PrimeField>(mut i: usize, betas: &[FpVar<F>]) -> FpVar<F> {
+    let mut j = 0;
+    let mut r = FieldVar::one();
+    while i > 0 {
+        if i.is_odd() {
+            r *= &betas[j];
+        }
+        i >>= 1;
+        j += 1;
+    }
+    r
+}
+
 #[cfg(test)]
 mod tests {
     use std::error::Error;
@@ -78,6 +113,7 @@ mod tests {
     use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::{test_rng, UniformRand};
+    use rand::Rng;
 
     use super::*;
 
@@ -138,6 +174,27 @@ mod tests {
 
             let r = betas_star(&betas, &deltas, alpha);
             let r_var = betas_star_var(&betas_var, &deltas_var, &alpha_var);
+            assert_eq!(r, r_var.value()?);
+            assert!(cs.is_satisfied()?);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_pow_i() -> Result<(), Box<dyn Error>> {
+        let rng = &mut test_rng();
+
+        for t in 1..10 {
+            let cs = ConstraintSystem::<Fr>::new_ref();
+
+            let betas = (0..t).map(|_| Fr::rand(rng)).collect::<Vec<_>>();
+            let i = rng.gen_range(0..(1 << t));
+
+            let betas_var = Vec::new_witness(cs.clone(), || Ok(betas.clone()))?;
+
+            let r = pow_i(i, &betas);
+            let r_var = pow_i_var(i, &betas_var);
             assert_eq!(r, r_var.value()?);
             assert!(cs.is_satisfied()?);
         }

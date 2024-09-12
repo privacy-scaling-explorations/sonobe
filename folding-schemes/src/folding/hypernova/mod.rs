@@ -21,7 +21,6 @@ use circuits::AugmentedFCircuit;
 use lcccs::LCCCS;
 use nimfs::NIMFS;
 
-use crate::commitment::CommitmentScheme;
 use crate::constants::NOVA_N_BITS_RO;
 use crate::folding::circuits::{
     cyclefold::{
@@ -30,10 +29,11 @@ use crate::folding::circuits::{
     },
     CF2,
 };
-use crate::folding::nova::{get_r1cs_from_cs, traits::NovaR1CS, PreprocessorParam};
+use crate::folding::nova::{get_r1cs_from_cs, PreprocessorParam};
 use crate::frontend::FCircuit;
 use crate::utils::{get_cm_coordinates, pp_hash};
 use crate::Error;
+use crate::{arith::r1cs::RelaxedR1CS, commitment::CommitmentScheme};
 use crate::{
     arith::{
         ccs::CCS,
@@ -42,7 +42,8 @@ use crate::{
     FoldingScheme, MultiFolding,
 };
 
-struct HyperNovaCycleFoldConfig<C: CurveGroup, const MU: usize, const NU: usize> {
+/// Configuration for HyperNova's CycleFold circuit
+pub struct HyperNovaCycleFoldConfig<C: CurveGroup, const MU: usize, const NU: usize> {
     _c: PhantomData<C>,
 }
 
@@ -55,7 +56,9 @@ impl<C: CurveGroup, const MU: usize, const NU: usize> CycleFoldConfig
     type F = C::BaseField;
 }
 
-type HyperNovaCycleFoldCircuit<C, GC, const MU: usize, const NU: usize> =
+/// CycleFold circuit for computing random linear combinations of group elements
+/// in HyperNova instances.
+pub type HyperNovaCycleFoldCircuit<C, GC, const MU: usize, const NU: usize> =
     CycleFoldCircuit<HyperNovaCycleFoldConfig<C, MU, NU>, GC>;
 
 /// Witness for the LCCCS & CCCS, containing the w vector, and the r_w used as randomness in the Pedersen commitment.
@@ -76,6 +79,7 @@ impl<F: PrimeField> Witness<F> {
     }
 }
 
+/// Proving parameters for HyperNova-based IVC
 #[derive(Debug, Clone)]
 pub struct ProverParams<C1, C2, CS1, CS2, const H: bool>
 where
@@ -84,13 +88,18 @@ where
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
 {
+    /// Poseidon sponge configuration
     pub poseidon_config: PoseidonConfig<C1::ScalarField>,
+    /// Proving parameters of the underlying commitment scheme over C1
     pub cs_pp: CS1::ProverParams,
+    /// Proving parameters of the underlying commitment scheme over C2
     pub cf_cs_pp: CS2::ProverParams,
-    // if ccs is set, it will be used, if not, it will be computed at runtime
+    /// CCS of the Augmented Function circuit
+    /// If ccs is set, it will be used, if not, it will be computed at runtime
     pub ccs: Option<CCS<C1::ScalarField>>,
 }
 
+/// Verification parameters for HyperNova-based IVC
 #[derive(Debug, Clone)]
 pub struct VerifierParams<
     C1: CurveGroup,
@@ -99,10 +108,15 @@ pub struct VerifierParams<
     CS2: CommitmentScheme<C2, H>,
     const H: bool,
 > {
+    /// Poseidon sponge configuration
     pub poseidon_config: PoseidonConfig<C1::ScalarField>,
+    /// CCS of the Augmented step circuit
     pub ccs: CCS<C1::ScalarField>,
+    /// R1CS of the CycleFold circuit
     pub cf_r1cs: R1CS<C2::ScalarField>,
+    /// Verification parameters of the underlying commitment scheme over C1
     pub cs_vp: CS1::VerifierParams,
+    /// Verification parameters of the underlying commitment scheme over C2
     pub cf_cs_vp: CS2::VerifierParams,
 }
 
@@ -282,7 +296,7 @@ where
         let U_i = LCCCS::<C1>::dummy(self.ccs.l, self.ccs.t, self.ccs.s);
         let mut u_i = CCCS::<C1>::dummy(self.ccs.l);
         let (_, cf_U_i): (CycleFoldWitness<C2>, CycleFoldCommittedInstance<C2>) =
-            self.cf_r1cs.dummy_instance();
+            self.cf_r1cs.dummy_running_instance();
 
         let sponge = PoseidonSponge::<C1::ScalarField>::new(&self.poseidon_config);
 
@@ -476,7 +490,7 @@ where
         let w_dummy = W_dummy.clone();
         let mut u_dummy = CCCS::<C1>::dummy(ccs.l);
         let (cf_W_dummy, cf_U_dummy): (CycleFoldWitness<C2>, CycleFoldCommittedInstance<C2>) =
-            cf_r1cs.dummy_instance();
+            cf_r1cs.dummy_running_instance();
         u_dummy.x = vec![
             U_dummy.hash(
                 &sponge,
@@ -884,8 +898,7 @@ where
         u_i.check_relation(&vp.ccs, &w_i)?;
 
         // check CycleFold's RelaxedR1CS satisfiability
-        vp.cf_r1cs
-            .check_relaxed_instance_relation(&cf_W_i, &cf_U_i)?;
+        vp.cf_r1cs.check_relaxed_relation(&cf_W_i, &cf_U_i)?;
 
         Ok(())
     }
@@ -900,7 +913,7 @@ mod tests {
 
     use super::*;
     use crate::commitment::pedersen::Pedersen;
-    use crate::frontend::tests::CubicFCircuit;
+    use crate::frontend::utils::CubicFCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
 
     #[test]

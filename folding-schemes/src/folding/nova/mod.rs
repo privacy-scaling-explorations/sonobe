@@ -14,7 +14,6 @@ use ark_std::rand::RngCore;
 use ark_std::{One, UniformRand, Zero};
 use core::marker::PhantomData;
 
-use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::cyclefold::{
     fold_cyclefold_circuit, CycleFoldCircuit, CycleFoldCommittedInstance, CycleFoldConfig,
     CycleFoldWitness,
@@ -25,6 +24,7 @@ use crate::transcript::{poseidon::poseidon_canonical_config, AbsorbNonNative, Tr
 use crate::utils::vec::is_zero_vec;
 use crate::Error;
 use crate::FoldingScheme;
+use crate::{arith::r1cs::RelaxedR1CS, commitment::CommitmentScheme};
 use crate::{
     arith::r1cs::{extract_r1cs, extract_w_x, R1CS},
     constants::NOVA_N_BITS_RO,
@@ -40,8 +40,8 @@ pub mod traits;
 pub mod zk;
 use circuits::{AugmentedFCircuit, ChallengeGadget};
 use nifs::NIFS;
-use traits::NovaR1CS;
 
+/// Configuration for Nova's CycleFold circuit
 pub struct NovaCycleFoldConfig<C: CurveGroup> {
     _c: PhantomData<C>,
 }
@@ -56,7 +56,9 @@ impl<C: CurveGroup> CycleFoldConfig for NovaCycleFoldConfig<C> {
     type F = C::BaseField;
 }
 
-type NovaCycleFoldCircuit<C, GC> = CycleFoldCircuit<NovaCycleFoldConfig<C>, GC>;
+/// CycleFold circuit for computing random linear combinations of group elements
+/// in Nova instances.
+pub type NovaCycleFoldCircuit<C, GC> = CycleFoldCircuit<NovaCycleFoldConfig<C>, GC>;
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct CommittedInstance<C: CurveGroup> {
@@ -136,10 +138,7 @@ pub struct Witness<C: CurveGroup> {
     pub rW: C::ScalarField,
 }
 
-impl<C: CurveGroup> Witness<C>
-where
-    <C as Group>::ScalarField: Absorb,
-{
+impl<C: CurveGroup> Witness<C> {
     pub fn new<const H: bool>(w: Vec<C::ScalarField>, e_len: usize, mut rng: impl RngCore) -> Self {
         let (rW, rE) = if H {
             (
@@ -227,6 +226,7 @@ where
     }
 }
 
+/// Proving parameters for Nova-based IVC
 #[derive(Debug, Clone)]
 pub struct ProverParams<C1, C2, CS1, CS2, const H: bool = false>
 where
@@ -235,8 +235,11 @@ where
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
 {
+    /// Poseidon sponge configuration
     pub poseidon_config: PoseidonConfig<C1::ScalarField>,
+    /// Proving parameters of the underlying commitment scheme over C1
     pub cs_pp: CS1::ProverParams,
+    /// Proving parameters of the underlying commitment scheme over C2
     pub cf_cs_pp: CS2::ProverParams,
 }
 
@@ -302,6 +305,7 @@ where
     }
 }
 
+/// Verification parameters for Nova-based IVC
 #[derive(Debug, Clone)]
 pub struct VerifierParams<C1, C2, CS1, CS2, const H: bool = false>
 where
@@ -310,10 +314,15 @@ where
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
 {
+    /// Poseidon sponge configuration
     pub poseidon_config: PoseidonConfig<C1::ScalarField>,
+    /// R1CS of the Augmented step circuit
     pub r1cs: R1CS<C1::ScalarField>,
+    /// R1CS of the CycleFold circuit
     pub cf_r1cs: R1CS<C2::ScalarField>,
+    /// Verification parameters of the underlying commitment scheme over C1
     pub cs_vp: CS1::VerifierParams,
+    /// Verification parameters of the underlying commitment scheme over C2
     pub cf_cs_vp: CS2::VerifierParams,
 }
 
@@ -553,8 +562,9 @@ where
         let pp_hash = vp.pp_hash()?;
 
         // setup the dummy instances
-        let (w_dummy, u_dummy) = r1cs.dummy_instance();
-        let (cf_w_dummy, cf_u_dummy) = cf_r1cs.dummy_instance();
+        let (W_dummy, U_dummy) = r1cs.dummy_running_instance();
+        let (w_dummy, u_dummy) = r1cs.dummy_incoming_instance();
+        let (cf_W_dummy, cf_U_dummy) = cf_r1cs.dummy_running_instance();
 
         // W_dummy=W_0 is a 'dummy witness', all zeroes, but with the size corresponding to the
         // R1CS that we're working with.
@@ -572,13 +582,13 @@ where
             i: C1::ScalarField::zero(),
             z_0: z_0.clone(),
             z_i: z_0,
-            w_i: w_dummy.clone(),
-            u_i: u_dummy.clone(),
-            W_i: w_dummy,
-            U_i: u_dummy,
+            w_i: w_dummy,
+            u_i: u_dummy,
+            W_i: W_dummy,
+            U_i: U_dummy,
             // cyclefold running instance
-            cf_W_i: cf_w_dummy.clone(),
-            cf_U_i: cf_u_dummy.clone(),
+            cf_W_i: cf_W_dummy,
+            cf_U_i: cf_U_dummy,
         })
     }
 
@@ -805,10 +815,10 @@ where
 
             #[cfg(test)]
             {
-                self.cf_r1cs.check_instance_relation(&_cfW_w_i, &cfW_u_i)?;
-                self.cf_r1cs.check_instance_relation(&_cfE_w_i, &cfE_u_i)?;
+                self.cf_r1cs.check_tight_relation(&_cfW_w_i, &cfW_u_i)?;
+                self.cf_r1cs.check_tight_relation(&_cfE_w_i, &cfE_u_i)?;
                 self.cf_r1cs
-                    .check_relaxed_instance_relation(&self.cf_W_i, &self.cf_U_i)?;
+                    .check_relaxed_relation(&self.cf_W_i, &self.cf_U_i)?;
             }
         }
 
@@ -840,9 +850,8 @@ where
 
         #[cfg(test)]
         {
-            self.r1cs.check_instance_relation(&self.w_i, &self.u_i)?;
-            self.r1cs
-                .check_relaxed_instance_relation(&self.W_i, &self.U_i)?;
+            self.r1cs.check_tight_relation(&self.w_i, &self.u_i)?;
+            self.r1cs.check_relaxed_relation(&self.W_i, &self.U_i)?;
         }
 
         Ok(())
@@ -908,19 +917,13 @@ where
             return Err(Error::IVCVerificationFail);
         }
 
-        // check u_i.cmE==0, u_i.u==1 (=u_i is a un-relaxed instance)
-        if !u_i.cmE.is_zero() || !u_i.u.is_one() {
-            return Err(Error::IVCVerificationFail);
-        }
-
-        // check R1CS satisfiability
-        vp.r1cs.check_instance_relation(&w_i, &u_i)?;
+        // check R1CS satisfiability, which also enforces u_i.cmE==0, u_i.u==1
+        vp.r1cs.check_tight_relation(&w_i, &u_i)?;
         // check RelaxedR1CS satisfiability
-        vp.r1cs.check_relaxed_instance_relation(&W_i, &U_i)?;
+        vp.r1cs.check_relaxed_relation(&W_i, &U_i)?;
 
         // check CycleFold RelaxedR1CS satisfiability
-        vp.cf_r1cs
-            .check_relaxed_instance_relation(&cf_W_i, &cf_U_i)?;
+        vp.cf_r1cs.check_relaxed_relation(&cf_W_i, &cf_U_i)?;
 
         Ok(())
     }
@@ -1077,7 +1080,7 @@ pub mod tests {
 
     use super::*;
     use crate::commitment::pedersen::Pedersen;
-    use crate::frontend::tests::CubicFCircuit;
+    use crate::frontend::utils::CubicFCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
 
     /// This test tests the Nova+CycleFold IVC, and by consequence it is also testing the

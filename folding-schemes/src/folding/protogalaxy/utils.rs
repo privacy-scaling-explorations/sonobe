@@ -91,7 +91,7 @@ pub fn pow_i<F: PrimeField>(mut i: usize, betas: &[F]) -> F {
 }
 
 /// The in-circuit version of `pow_i`
-#[allow(dead_code, reason = "This will be used in the decider circuit")]
+#[allow(dead_code)] // Will remove this once we have the decider circuit for Protogalaxy
 pub fn pow_i_var<F: PrimeField>(mut i: usize, betas: &[FpVar<F>]) -> FpVar<F> {
     let mut j = 0;
     let mut r = FpVar::one();

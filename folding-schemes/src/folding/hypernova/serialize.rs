@@ -65,7 +65,6 @@ where
         mut writer: W,
         compress: ark_serialize::Compress,
     ) -> Result<(), ark_serialize::SerializationError> {
-        //self.ccs.serialize_with_mode(&mut writer, compress)?;
         self.pp_hash.serialize_with_mode(&mut writer, compress)?;
         self.i.serialize_with_mode(&mut writer, compress)?;
         self.z_0.serialize_with_mode(&mut writer, compress)?;
@@ -157,7 +156,6 @@ where
             _c2: PhantomData,
             _gc2: PhantomData,
             ccs,
-            // unwrap the ccs here.
             cf_r1cs: verifier_params.cf_r1cs,
             poseidon_config,
             cs_pp,

@@ -347,12 +347,6 @@ where
         // `transcript` is for challenge generation.
         let mut transcript = sponge.clone();
 
-        // get z_{i+1} from the F circuit
-        let i_usize = self.i_usize.unwrap_or(0);
-        let z_i1 =
-            self.F
-                .generate_step_constraints(cs.clone(), i_usize, z_i.clone(), external_inputs)?;
-
         let is_basecase = i.is_zero()?;
 
         // Primary Part
@@ -403,6 +397,13 @@ where
         U_i1.cmW = U_i1_cmW;
 
         // P.4.a compute and check the first output of F'
+
+        // get z_{i+1} from the F circuit
+        let i_usize = self.i_usize.unwrap_or(0);
+        let z_i1 = self
+            .F
+            .generate_step_constraints(cs.clone(), i_usize, z_i, external_inputs)?;
+
         // Base case: u_{i+1}.x[0] == H((i+1, z_0, z_{i+1}, U_{\bot})
         // Non-base case: u_{i+1}.x[0] == H((i+1, z_0, z_{i+1}, U_{i+1})
         let (u_i1_x, _) = U_i1.clone().hash(

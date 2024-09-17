@@ -762,12 +762,6 @@ where
 
         let sponge = PoseidonSpongeVar::<C1::ScalarField>::new(cs.clone(), &self.poseidon_config);
 
-        // get z_{i+1} from the F circuit
-        let i_usize = self.i_usize.unwrap_or(0);
-        let z_i1 =
-            self.F
-                .generate_step_constraints(cs.clone(), i_usize, z_i.clone(), external_inputs)?;
-
         let is_basecase = i.is_zero()?;
         let is_not_basecase = is_basecase.not();
 
@@ -809,6 +803,13 @@ where
         U_i1.C = U_i1_C;
 
         // P.4.a compute and check the first output of F'
+
+        // get z_{i+1} from the F circuit
+        let i_usize = self.i_usize.unwrap_or(0);
+        let z_i1 = self
+            .F
+            .generate_step_constraints(cs.clone(), i_usize, z_i, external_inputs)?;
+
         let (u_i1_x, _) = U_i1.clone().hash(
             &sponge,
             &pp_hash,

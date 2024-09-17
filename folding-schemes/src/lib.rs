@@ -43,7 +43,7 @@ pub enum Error {
     IVCVerificationFail,
     #[error("zkIVC verification failed")]
     zkIVCVerificationFail,
-    #[error("Committed instance is expected to an incoming (fresh) instance")]
+    #[error("Committed instance is expected to be an incoming (fresh) instance")]
     NotIncomingCommittedInstance,
     #[error("R1CS instance is expected to not be relaxed")]
     R1CSUnrelaxedFail,

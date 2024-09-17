@@ -225,7 +225,6 @@ pub mod tests {
     use ark_groth16::Groth16;
     use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
     use ark_serialize::{Compress, Validate};
-    use std::time::Instant;
 
     use super::*;
     use crate::commitment::{kzg::KZG, pedersen::Pedersen};
@@ -275,14 +274,10 @@ pub mod tests {
         let prep_param = PreprocessorParam::new(poseidon_config, F_circuit);
         let hypernova_params = HN::preprocess(&mut rng, &prep_param).unwrap();
 
-        let start = Instant::now();
         let mut hypernova = HN::init(&hypernova_params, F_circuit, z_0.clone()).unwrap();
-        println!("HyperNova initialized, {:?}", start.elapsed());
-        let start = Instant::now();
         hypernova
             .prove_step(&mut rng, vec![], Some((vec![], vec![])))
             .unwrap();
-        println!("prove_step, {:?}", start.elapsed());
         hypernova
             .prove_step(&mut rng, vec![], Some((vec![], vec![])))
             .unwrap(); // do a 2nd step
@@ -292,12 +287,9 @@ pub mod tests {
             D::preprocess(&mut rng, hypernova_params, hypernova.clone()).unwrap();
 
         // decider proof generation
-        let start = Instant::now();
         let proof = D::prove(rng, decider_pp, hypernova.clone()).unwrap();
-        println!("Decider prove, {:?}", start.elapsed());
 
         // decider proof verification
-        let start = Instant::now();
         let verified = D::verify(
             decider_vp,
             hypernova.i,
@@ -309,7 +301,6 @@ pub mod tests {
         )
         .unwrap();
         assert!(verified);
-        println!("Decider verify, {:?}", start.elapsed());
     }
 
     #[test]
@@ -352,9 +343,7 @@ pub mod tests {
         let prep_param = PreprocessorParam::new(poseidon_config.clone(), F_circuit);
         let hypernova_params = HN::preprocess(&mut rng, &prep_param).unwrap();
 
-        let start = Instant::now();
         let hypernova = HN::init(&hypernova_params, F_circuit, z_0.clone()).unwrap();
-        println!("HyperNova initialized, {:?}", start.elapsed());
 
         let mut rng = rand::rngs::OsRng;
 
@@ -408,21 +397,16 @@ pub mod tests {
         let hypernova_params = (hypernova_pp_deserialized, hypernova_vp_deserialized);
         let mut hypernova = HN::init(&hypernova_params, F_circuit, z_0.clone()).unwrap();
 
-        let start = Instant::now();
         hypernova
             .prove_step(&mut rng, vec![], Some((vec![], vec![])))
             .unwrap();
-        println!("prove_step, {:?}", start.elapsed());
         hypernova
             .prove_step(&mut rng, vec![], Some((vec![], vec![])))
             .unwrap();
 
         // decider proof generation
-        let start = Instant::now();
         let proof = D::prove(rng, decider_pp, hypernova.clone()).unwrap();
-        println!("Decider prove, {:?}", start.elapsed());
 
-        let start = Instant::now();
         let verified = D::verify(
             decider_vp.clone(),
             hypernova.i.clone(),
@@ -434,8 +418,6 @@ pub mod tests {
         )
         .unwrap();
         assert!(verified);
-
-        println!("Decider verify, {:?}", start.elapsed());
 
         // The rest of this test will serialize the data and deserialize it back, and use it to
         // verify the proof:

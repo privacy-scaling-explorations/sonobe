@@ -44,7 +44,7 @@ pub(crate) mod utils;
 use circuits::AugmentedFCircuit;
 use folding::Folding;
 
-use super::traits::{CommittedInstanceExt, CommittedInstanceVarExt, WitnessExt, WitnessVarExt};
+use super::traits::{CommittedInstanceOps, CommittedInstanceVarOps, WitnessOps, WitnessVarOps};
 
 /// Configuration for ProtoGalaxy's CycleFold circuit
 pub struct ProtoGalaxyCycleFoldConfig<C: CurveGroup> {
@@ -85,7 +85,7 @@ impl<C: CurveGroup> CommittedInstance<C> {
     }
 }
 
-impl<C: CurveGroup> CommittedInstanceExt<C> for CommittedInstance<C> {
+impl<C: CurveGroup> CommittedInstanceOps<C> for CommittedInstance<C> {
     type Var = CommittedInstanceVar<C>;
 
     fn get_commitments(&self) -> Vec<C> {
@@ -151,7 +151,7 @@ impl<C: CurveGroup> R1CSVar<C::ScalarField> for CommittedInstanceVar<C> {
     }
 }
 
-impl<C: CurveGroup> CommittedInstanceVarExt<C> for CommittedInstanceVar<C> {
+impl<C: CurveGroup> CommittedInstanceVarOps<C> for CommittedInstanceVar<C> {
     type PointVar = NonNativeAffineVar<C>;
 
     fn get_commitments(&self) -> Vec<Self::PointVar> {
@@ -206,7 +206,7 @@ impl<F: PrimeField> Witness<F> {
     }
 }
 
-impl<F: PrimeField> WitnessExt<F> for Witness<F> {
+impl<F: PrimeField> WitnessOps<F> for Witness<F> {
     type Var = WitnessVar<F>;
 
     fn get_openings(&self) -> Vec<(&[F], F)> {
@@ -238,7 +238,7 @@ impl<F: PrimeField> AllocVar<Witness<F>, F> for WitnessVar<F> {
     }
 }
 
-impl<F: PrimeField> WitnessVarExt<F> for WitnessVar<F> {
+impl<F: PrimeField> WitnessVarOps<F> for WitnessVar<F> {
     fn get_openings(&self) -> Vec<(&[FpVar<F>], FpVar<F>)> {
         vec![(&self.W, self.rW.clone())]
     }

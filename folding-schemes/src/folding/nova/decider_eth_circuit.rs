@@ -39,10 +39,10 @@ use crate::utils::{
     vec::poly_from_vec,
 };
 use crate::Error;
-use crate::{arith::r1cs::R1CS, folding::traits::WitnessVarExt};
+use crate::{arith::r1cs::R1CS, folding::traits::WitnessVarOps};
 use crate::{
     commitment::{pedersen::Params as PedersenParams, CommitmentScheme},
-    folding::traits::CommittedInstanceVarExt,
+    folding::traits::CommittedInstanceVarOps,
 };
 
 #[derive(Debug, Clone)]
@@ -162,7 +162,7 @@ where
     }
 }
 
-impl<C: CurveGroup> WitnessVarExt<C::ScalarField> for WitnessVar<C> {
+impl<C: CurveGroup> WitnessVarOps<C::ScalarField> for WitnessVar<C> {
     fn get_openings(&self) -> Vec<(&[FpVar<C::ScalarField>], FpVar<C::ScalarField>)> {
         vec![(&self.E, self.rE.clone()), (&self.W, self.rW.clone())]
     }

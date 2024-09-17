@@ -12,9 +12,9 @@ use crate::{transcript::Transcript, Error};
 
 use super::circuits::CF1;
 
-pub trait CommittedInstanceExt<C: CurveGroup> {
+pub trait CommittedInstanceOps<C: CurveGroup> {
     /// The in-circuit representation of the committed instance.
-    type Var: AllocVar<Self, CF1<C>> + CommittedInstanceVarExt<C>;
+    type Var: AllocVar<Self, CF1<C>> + CommittedInstanceVarOps<C>;
     /// `hash` implements the committed instance hash compatible with the
     /// in-circuit implementation from `CommittedInstanceVarOps::hash`.
     ///
@@ -56,10 +56,10 @@ pub trait CommittedInstanceExt<C: CurveGroup> {
     }
 }
 
-pub trait CommittedInstanceVarExt<C: CurveGroup> {
+pub trait CommittedInstanceVarOps<C: CurveGroup> {
     type PointVar: ToConstraintFieldGadget<CF1<C>>;
     /// `hash` implements the in-circuit committed instance hash compatible with
-    /// the native implementation from `CommittedInstanceExt::hash`.
+    /// the native implementation from `CommittedInstanceOps::hash`.
     /// Returns `H(i, z_0, z_i, U_i)`, where `i` can be `i` but also `i+1`, and
     /// `U_i` is the committed instance `self`.
     ///
@@ -105,16 +105,16 @@ pub trait CommittedInstanceVarExt<C: CurveGroup> {
     fn enforce_partial_equal(&self, other: &Self) -> Result<(), SynthesisError>;
 }
 
-pub trait WitnessExt<F: PrimeField> {
+pub trait WitnessOps<F: PrimeField> {
     /// The in-circuit representation of the witness.
-    type Var: AllocVar<Self, F> + WitnessVarExt<F>;
+    type Var: AllocVar<Self, F> + WitnessVarOps<F>;
 
     /// Returns the openings (i.e., the values being committed to and the
     /// randomness) contained in the witness.
     fn get_openings(&self) -> Vec<(&[F], F)>;
 }
 
-pub trait WitnessVarExt<F: PrimeField> {
+pub trait WitnessVarOps<F: PrimeField> {
     /// Returns the openings (i.e., the values being committed to and the
     /// randomness) contained in the witness.
     fn get_openings(&self) -> Vec<(&[FpVar<F>], FpVar<F>)>;

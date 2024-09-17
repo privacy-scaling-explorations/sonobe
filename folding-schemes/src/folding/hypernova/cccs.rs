@@ -11,7 +11,7 @@ use super::circuits::CCCSVar;
 use super::Witness;
 use crate::arith::{ccs::CCS, Arith};
 use crate::commitment::CommitmentScheme;
-use crate::folding::traits::CommittedInstanceExt;
+use crate::folding::traits::CommittedInstanceOps;
 use crate::transcript::AbsorbNonNative;
 use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::utils::vec::mat_vec_mul;
@@ -142,7 +142,7 @@ where
     }
 }
 
-impl<C: CurveGroup> CommittedInstanceExt<C> for CCCS<C> {
+impl<C: CurveGroup> CommittedInstanceOps<C> for CCCS<C> {
     type Var = CCCSVar<C>;
 
     fn get_commitments(&self) -> Vec<C> {

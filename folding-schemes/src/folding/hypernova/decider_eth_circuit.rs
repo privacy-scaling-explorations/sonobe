@@ -38,8 +38,8 @@ use crate::utils::{
     vec::poly_from_vec,
 };
 use crate::Error;
-use crate::{arith::ccs::CCS, folding::traits::CommittedInstanceVarExt};
-use crate::{arith::r1cs::R1CS, folding::traits::WitnessVarExt};
+use crate::{arith::ccs::CCS, folding::traits::CommittedInstanceVarOps};
+use crate::{arith::r1cs::R1CS, folding::traits::WitnessVarOps};
 
 /// In-circuit representation of the Witness associated to the CommittedInstance.
 #[derive(Debug, Clone)]
@@ -66,7 +66,7 @@ impl<F: PrimeField> AllocVar<Witness<F>, F> for WitnessVar<F> {
     }
 }
 
-impl<F: PrimeField> WitnessVarExt<F> for WitnessVar<F> {
+impl<F: PrimeField> WitnessVarOps<F> for WitnessVar<F> {
     fn get_openings(&self) -> Vec<(&[FpVar<F>], FpVar<F>)> {
         vec![(&self.w, self.r_w.clone())]
     }

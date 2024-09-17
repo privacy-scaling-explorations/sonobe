@@ -31,7 +31,7 @@ use crate::folding::circuits::{
     CF2,
 };
 use crate::folding::nova::{get_r1cs_from_cs, PreprocessorParam};
-use crate::folding::traits::{CommittedInstanceExt, WitnessExt};
+use crate::folding::traits::{CommittedInstanceOps, WitnessOps};
 use crate::frontend::FCircuit;
 use crate::utils::{get_cm_coordinates, pp_hash};
 use crate::Error;
@@ -81,7 +81,7 @@ impl<F: PrimeField> Witness<F> {
     }
 }
 
-impl<F: PrimeField> WitnessExt<F> for Witness<F> {
+impl<F: PrimeField> WitnessOps<F> for Witness<F> {
     type Var = WitnessVar<F>;
 
     fn get_openings(&self) -> Vec<(&[F], F)> {

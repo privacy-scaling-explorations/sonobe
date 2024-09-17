@@ -31,7 +31,7 @@ use crate::folding::circuits::{
 };
 use crate::frontend::FCircuit;
 use crate::transcript::{AbsorbNonNativeGadget, Transcript, TranscriptVar};
-use crate::{constants::NOVA_N_BITS_RO, folding::traits::CommittedInstanceVarExt};
+use crate::{constants::NOVA_N_BITS_RO, folding::traits::CommittedInstanceVarOps};
 
 /// CommittedInstanceVar contains the u, x, cmE and cmW values which are folded on the main Nova
 /// constraints field (E1::Fr, where E1 is the main curve). The peculiarity is that cmE and cmW are
@@ -90,7 +90,7 @@ where
     }
 }
 
-impl<C: CurveGroup> CommittedInstanceVarExt<C> for CommittedInstanceVar<C> {
+impl<C: CurveGroup> CommittedInstanceVarOps<C> for CommittedInstanceVar<C> {
     type PointVar = NonNativeAffineVar<C>;
 
     fn get_commitments(&self) -> Vec<Self::PointVar> {
@@ -521,7 +521,7 @@ pub mod tests {
     use crate::commitment::pedersen::Pedersen;
     use crate::folding::nova::nifs::tests::prepare_simple_fold_inputs;
     use crate::folding::nova::nifs::NIFS;
-    use crate::folding::traits::CommittedInstanceExt;
+    use crate::folding::traits::CommittedInstanceOps;
     use crate::transcript::poseidon::poseidon_canonical_config;
 
     #[test]

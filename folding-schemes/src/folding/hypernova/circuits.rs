@@ -42,7 +42,7 @@ use crate::folding::{
         CF1, CF2,
     },
     nova::get_r1cs_from_cs,
-    traits::CommittedInstanceVarExt,
+    traits::CommittedInstanceVarOps,
 };
 use crate::frontend::FCircuit;
 use crate::utils::virtual_polynomial::VPAuxInfo;
@@ -82,7 +82,7 @@ where
     }
 }
 
-impl<C: CurveGroup> CommittedInstanceVarExt<C> for CCCSVar<C> {
+impl<C: CurveGroup> CommittedInstanceVarOps<C> for CCCSVar<C> {
     type PointVar = NonNativeAffineVar<C>;
 
     fn get_commitments(&self) -> Vec<Self::PointVar> {
@@ -161,7 +161,7 @@ impl<C: CurveGroup> AbsorbGadget<C::ScalarField> for LCCCSVar<C> {
     }
 }
 
-impl<C: CurveGroup> CommittedInstanceVarExt<C> for LCCCSVar<C> {
+impl<C: CurveGroup> CommittedInstanceVarOps<C> for LCCCSVar<C> {
     type PointVar = NonNativeAffineVar<C>;
 
     fn get_commitments(&self) -> Vec<Self::PointVar> {
@@ -915,7 +915,7 @@ mod tests {
                 utils::{compute_c, compute_sigmas_thetas},
                 HyperNovaCycleFoldCircuit,
             },
-            traits::CommittedInstanceExt,
+            traits::CommittedInstanceOps,
         },
         frontend::utils::CubicFCircuit,
         transcript::poseidon::poseidon_canonical_config,

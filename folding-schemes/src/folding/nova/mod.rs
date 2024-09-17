@@ -42,7 +42,7 @@ pub mod zk;
 use circuits::{AugmentedFCircuit, ChallengeGadget, CommittedInstanceVar};
 use nifs::NIFS;
 
-use super::traits::{CommittedInstanceExt, WitnessExt};
+use super::traits::{CommittedInstanceOps, WitnessOps};
 
 /// Configuration for Nova's CycleFold circuit
 pub struct NovaCycleFoldConfig<C: CurveGroup> {
@@ -106,7 +106,7 @@ where
     }
 }
 
-impl<C: CurveGroup> CommittedInstanceExt<C> for CommittedInstance<C> {
+impl<C: CurveGroup> CommittedInstanceOps<C> for CommittedInstance<C> {
     type Var = CommittedInstanceVar<C>;
 
     fn get_commitments(&self) -> Vec<C> {
@@ -176,7 +176,7 @@ impl<C: CurveGroup> Witness<C> {
     }
 }
 
-impl<C: CurveGroup> WitnessExt<C::ScalarField> for Witness<C> {
+impl<C: CurveGroup> WitnessOps<C::ScalarField> for Witness<C> {
     type Var = WitnessVar<C>;
 
     fn get_openings(&self) -> Vec<(&[C::ScalarField], C::ScalarField)> {

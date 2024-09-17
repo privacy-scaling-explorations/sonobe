@@ -36,7 +36,7 @@ use ark_std::{One, Zero};
 
 use crate::{
     arith::r1cs::{RelaxedR1CS, R1CS},
-    folding::traits::CommittedInstanceExt,
+    folding::traits::CommittedInstanceOps,
     RngCore,
 };
 use ark_crypto_primitives::sponge::{

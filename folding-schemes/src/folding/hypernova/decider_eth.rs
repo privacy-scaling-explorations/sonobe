@@ -15,6 +15,7 @@ use crate::commitment::{
     kzg::Proof as KZGProof, pedersen::Params as PedersenParams, CommitmentScheme,
 };
 use crate::folding::circuits::{nonnative::affine::NonNativeAffineVar, CF2};
+use crate::folding::nova::decider_eth::VerifierParam;
 use crate::frontend::FCircuit;
 use crate::Error;
 use crate::{Decider as DeciderTrait, FoldingScheme};
@@ -86,8 +87,7 @@ where
     type PreprocessorParam = (FS::ProverParam, FS::VerifierParam);
     type ProverParam = (S::ProvingKey, CS1::ProverParams);
     type Proof = Proof<C1, CS1, S>;
-    /// VerifierParam = (pp_hash, snark::vk, commitment_scheme::vk)
-    type VerifierParam = (C1::ScalarField, S::VerifyingKey, CS1::VerifierParams);
+    type VerifierParam = VerifierParam<C1, CS1::VerifierParams, S::VerifyingKey>;
     type PublicInput = Vec<C1::ScalarField>;
     type CommittedInstance = ();
 
@@ -121,7 +121,12 @@ where
         let pp_hash = hypernova_vp.pp_hash()?;
 
         let pp = (g16_pk, hypernova_pp.cs_pp);
-        let vp = (pp_hash, g16_vk, hypernova_vp.cs_vp);
+
+        let vp = VerifierParam {
+            pp_hash,
+            snark_vp: g16_vk,
+            cs_vp: hypernova_vp.cs_vp,
+        };
         Ok((pp, vp))
     }
 
@@ -184,7 +189,7 @@ where
         }
 
         let (pp_hash, snark_vk, cs_vk): (C1::ScalarField, S::VerifyingKey, CS1::VerifierParams) =
-            vp;
+            (vp.pp_hash, vp.snark_vp, vp.cs_vp);
 
         // Note: the NIMFS proof is checked inside the DeciderEthCircuit, which ensures that the
         // 'proof.U_i1' is correctly computed
@@ -229,7 +234,9 @@ pub mod tests {
     use super::*;
     use crate::commitment::{kzg::KZG, pedersen::Pedersen};
     use crate::folding::hypernova::cccs::CCCS;
-    use crate::folding::hypernova::{PreprocessorParam, ProverParams, VerifierParams};
+    use crate::folding::hypernova::{
+        PreprocessorParam, ProverParams, VerifierParams as HyperNovaVerifierParams,
+    };
     use crate::folding::nova::decider_eth::VerifierParam;
     use crate::frontend::utils::CubicFCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
@@ -379,7 +386,7 @@ pub mod tests {
         )
         .unwrap();
 
-        let hypernova_vp_deserialized = VerifierParams::<
+        let hypernova_vp_deserialized = HyperNovaVerifierParams::<
             Projective,
             Projective2,
             KZG<'static, Bn254>,
@@ -475,11 +482,7 @@ pub mod tests {
         let _u_i = CCCS::<Projective>::deserialize_compressed(&mut reader).unwrap();
 
         let verified = D::verify(
-            (
-                decider_vp_deserialized.pp_hash,
-                decider_vp_deserialized.snark_vp,
-                decider_vp_deserialized.cs_vp,
-            ),
+            decider_vp_deserialized,
             i_deserialized.clone(),
             z_0_deserialized.clone(),
             z_i_deserialized.clone(),

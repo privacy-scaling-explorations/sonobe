@@ -9,7 +9,8 @@ use ark_ff::PrimeField;
 use ark_poly::MultilinearExtension;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{log2, One, UniformRand, Zero};
-use rand::RngCore;
+use ark_std::rand::RngCore;
+
 
 /// Implements the scheme described in [Mova](https://eprint.iacr.org/2024/1220.pdf)
 mod nifs;
@@ -58,7 +59,7 @@ where
     }
 
     pub fn dummy(w_len: usize, e_len: usize) -> Self {
-        let rW  = C::ScalarField::zero();
+        let rW = C::ScalarField::zero();
         let w = vec![C::ScalarField::zero(); w_len];
 
         Self {

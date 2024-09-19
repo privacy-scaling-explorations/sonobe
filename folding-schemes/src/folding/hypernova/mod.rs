@@ -6,6 +6,7 @@ use ark_crypto_primitives::sponge::{
 use ark_ec::{CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{fmt::Debug, marker::PhantomData, rand::RngCore, One, Zero};
 
 pub mod cccs;
@@ -14,6 +15,7 @@ pub mod decider_eth;
 pub mod decider_eth_circuit;
 pub mod lcccs;
 pub mod nimfs;
+pub mod serialize;
 pub mod utils;
 
 use cccs::CCCS;
@@ -62,7 +64,7 @@ pub type HyperNovaCycleFoldCircuit<C, GC, const MU: usize, const NU: usize> =
     CycleFoldCircuit<HyperNovaCycleFoldConfig<C, MU, NU>, GC>;
 
 /// Witness for the LCCCS & CCCS, containing the w vector, and the r_w used as randomness in the Pedersen commitment.
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Witness<F: PrimeField> {
     pub w: Vec<F>,
     pub r_w: F,
@@ -939,13 +941,25 @@ mod tests {
     }
 
     // test_ivc allowing to choose the CommitmentSchemes
-    fn test_ivc_opt<
+    pub fn test_ivc_opt<
         CS1: CommitmentScheme<Projective, H>,
         CS2: CommitmentScheme<Projective2, H>,
         const H: bool,
     >(
         poseidon_config: PoseidonConfig<Fr>,
         F_circuit: CubicFCircuit<Fr>,
+    ) -> (
+        HyperNova<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>, CS1, CS2, 2, 3, H>,
+        (
+            ProverParams<Projective, Projective2, CS1, CS2, H>,
+            VerifierParams<Projective, Projective2, CS1, CS2, H>,
+        ),
+        (LCCCS<Projective>, Witness<Fr>),
+        (CCCS<Projective>, Witness<Fr>),
+        (
+            CycleFoldCommittedInstance<Projective2>,
+            CycleFoldWitness<Projective2>,
+        ),
     ) {
         let mut rng = ark_std::test_rng();
 
@@ -1001,14 +1015,22 @@ mod tests {
 
         let (running_instance, incoming_instance, cyclefold_instance) = hypernova.instances();
         HN::verify(
-            hypernova_params.1, // verifier_params
+            hypernova_params.1.clone(), // verifier_params
             z_0,
-            hypernova.z_i,
-            hypernova.i,
+            hypernova.z_i.clone(),
+            hypernova.i.clone(),
+            running_instance.clone(),
+            incoming_instance.clone(),
+            cyclefold_instance.clone(),
+        )
+        .unwrap();
+
+        (
+            hypernova,
+            hypernova_params,
             running_instance,
             incoming_instance,
             cyclefold_instance,
         )
-        .unwrap();
     }
 }

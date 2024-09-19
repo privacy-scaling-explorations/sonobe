@@ -187,7 +187,7 @@ pub mod tests {
     use crate::{
         commitment::{kzg::KZG, pedersen::Pedersen},
         folding::nova::{Nova, PreprocessorParam},
-        frontend::{tests::CubicFCircuit, FCircuit},
+        frontend::{utils::CubicFCircuit, FCircuit},
         transcript::poseidon::poseidon_canonical_config,
         FoldingScheme,
     };

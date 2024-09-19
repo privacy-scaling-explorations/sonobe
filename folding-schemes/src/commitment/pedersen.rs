@@ -12,7 +12,7 @@ use crate::transcript::Transcript;
 use crate::utils::vec::{vec_add, vec_scalar_mul};
 use crate::Error;
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<C: CurveGroup> {
     pub R: C,
     pub u: Vec<C::ScalarField>,

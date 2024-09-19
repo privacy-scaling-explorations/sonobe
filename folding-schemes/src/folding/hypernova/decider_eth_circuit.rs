@@ -231,7 +231,7 @@ where
             cf_E_len: hn.cf_W_i.E.len(),
             ccs: hn.ccs,
             cf_r1cs: hn.cf_r1cs,
-            cf_pedersen_params: hn.cf_cs_params,
+            cf_pedersen_params: hn.cf_cs_pp,
             poseidon_config: hn.poseidon_config,
             pp_hash: Some(hn.pp_hash),
             i: Some(hn.i),
@@ -517,7 +517,7 @@ pub mod tests {
     use super::*;
     use crate::commitment::pedersen::Pedersen;
     use crate::folding::nova::PreprocessorParam;
-    use crate::frontend::tests::CubicFCircuit;
+    use crate::frontend::utils::CubicFCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
     use crate::FoldingScheme;
 

@@ -18,6 +18,7 @@ use ark_r1cs_std::{
     ToBitsGadget,
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_iter, rand::RngCore, UniformRand, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
@@ -30,7 +31,7 @@ use crate::utils::{
 };
 use crate::Error;
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<C: CurveGroup> {
     a: C::ScalarField,
     l: Vec<C::ScalarField>,

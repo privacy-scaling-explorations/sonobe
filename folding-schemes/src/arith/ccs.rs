@@ -36,8 +36,7 @@ pub struct CCS<F: PrimeField> {
 }
 
 impl<F: PrimeField> Arith<F> for CCS<F> {
-    /// check that a CCS structure is satisfied by a z vector. Only for testing.
-    fn check_relation(&self, z: &[F]) -> Result<(), Error> {
+    fn eval_relation(&self, z: &[F]) -> Result<Vec<F>, Error> {
         let mut result = vec![F::zero(); self.m];
 
         for i in 0..self.q {
@@ -57,14 +56,7 @@ impl<F: PrimeField> Arith<F> for CCS<F> {
             result = vec_add(&result, &c_M_j_z)?;
         }
 
-        // make sure the final vector is all zeroes
-        for e in result {
-            if !e.is_zero() {
-                return Err(Error::NotSatisfied);
-            }
-        }
-
-        Ok(())
+        Ok(result)
     }
 
     fn params_to_le_bytes(&self) -> Vec<u8> {
@@ -113,7 +105,10 @@ impl<F: PrimeField> CCS<F> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::arith::r1cs::tests::{get_test_r1cs, get_test_z as r1cs_get_test_z};
+    use crate::{
+        arith::r1cs::tests::{get_test_r1cs, get_test_z as r1cs_get_test_z},
+        utils::vec::is_zero_vec,
+    };
     use ark_pallas::Fr;
 
     pub fn get_test_ccs<F: PrimeField>() -> CCS<F> {
@@ -124,9 +119,22 @@ pub mod tests {
         r1cs_get_test_z(input)
     }
 
+    #[test]
+    fn test_eval_ccs_relation() {
+        let ccs = get_test_ccs::<Fr>();
+        let mut z = get_test_z(3);
+
+        let f_w = ccs.eval_relation(&z).unwrap();
+        assert!(is_zero_vec(&f_w));
+
+        z[1] = Fr::from(111);
+        let f_w = ccs.eval_relation(&z).unwrap();
+        assert!(!is_zero_vec(&f_w));
+    }
+
     /// Test that a basic CCS relation can be satisfied
     #[test]
-    fn test_ccs_relation() {
+    fn test_check_ccs_relation() {
         let ccs = get_test_ccs::<Fr>();
         let z = get_test_z(3);
 

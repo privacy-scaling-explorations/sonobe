@@ -8,23 +8,23 @@ use ark_ec::{CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Valid};
 use ark_std::fmt::Debug;
 use ark_std::rand::RngCore;
 use ark_std::{One, UniformRand, Zero};
 use core::marker::PhantomData;
 
-use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::cyclefold::{
     fold_cyclefold_circuit, CycleFoldCircuit, CycleFoldCommittedInstance, CycleFoldConfig,
     CycleFoldWitness,
 };
 use crate::folding::circuits::CF2;
 use crate::frontend::FCircuit;
-use crate::transcript::{AbsorbNonNative, Transcript};
+use crate::transcript::{poseidon::poseidon_canonical_config, AbsorbNonNative, Transcript};
 use crate::utils::vec::is_zero_vec;
 use crate::Error;
 use crate::FoldingScheme;
+use crate::{arith::r1cs::RelaxedR1CS, commitment::CommitmentScheme};
 use crate::{
     arith::r1cs::{extract_r1cs, extract_w_x, R1CS},
     constants::NOVA_N_BITS_RO,
@@ -40,8 +40,8 @@ pub mod traits;
 pub mod zk;
 use circuits::{AugmentedFCircuit, ChallengeGadget};
 use nifs::NIFS;
-use traits::NovaR1CS;
 
+/// Configuration for Nova's CycleFold circuit
 pub struct NovaCycleFoldConfig<C: CurveGroup> {
     _c: PhantomData<C>,
 }
@@ -56,7 +56,9 @@ impl<C: CurveGroup> CycleFoldConfig for NovaCycleFoldConfig<C> {
     type F = C::BaseField;
 }
 
-type NovaCycleFoldCircuit<C, GC> = CycleFoldCircuit<NovaCycleFoldConfig<C>, GC>;
+/// CycleFold circuit for computing random linear combinations of group elements
+/// in Nova instances.
+pub type NovaCycleFoldCircuit<C, GC> = CycleFoldCircuit<NovaCycleFoldConfig<C>, GC>;
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct CommittedInstance<C: CurveGroup> {
@@ -136,10 +138,7 @@ pub struct Witness<C: CurveGroup> {
     pub rW: C::ScalarField,
 }
 
-impl<C: CurveGroup> Witness<C>
-where
-    <C as Group>::ScalarField: Absorb,
-{
+impl<C: CurveGroup> Witness<C> {
     pub fn new<const H: bool>(w: Vec<C::ScalarField>, e_len: usize, mut rng: impl RngCore) -> Self {
         let (rW, rE) = if H {
             (
@@ -190,7 +189,7 @@ where
 }
 
 #[derive(Debug, Clone)]
-pub struct PreprocessorParam<C1, C2, FC, CS1, CS2, const H: bool>
+pub struct PreprocessorParam<C1, C2, FC, CS1, CS2, const H: bool = false>
 where
     C1: CurveGroup,
     C2: CurveGroup,
@@ -227,32 +226,177 @@ where
     }
 }
 
+/// Proving parameters for Nova-based IVC
 #[derive(Debug, Clone)]
-pub struct ProverParams<C1, C2, CS1, CS2, const H: bool>
+pub struct ProverParams<C1, C2, CS1, CS2, const H: bool = false>
 where
     C1: CurveGroup,
     C2: CurveGroup,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
 {
+    /// Poseidon sponge configuration
     pub poseidon_config: PoseidonConfig<C1::ScalarField>,
+    /// Proving parameters of the underlying commitment scheme over C1
     pub cs_pp: CS1::ProverParams,
+    /// Proving parameters of the underlying commitment scheme over C2
     pub cf_cs_pp: CS2::ProverParams,
 }
 
-#[derive(Debug, Clone)]
-pub struct VerifierParams<C1, C2, CS1, CS2, const H: bool>
+impl<C1, C2, CS1, CS2, const H: bool> Valid for ProverParams<C1, C2, CS1, CS2, H>
 where
     C1: CurveGroup,
     C2: CurveGroup,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
 {
+    fn check(&self) -> Result<(), ark_serialize::SerializationError> {
+        self.poseidon_config.full_rounds.check()?;
+        self.poseidon_config.partial_rounds.check()?;
+        self.poseidon_config.alpha.check()?;
+        self.poseidon_config.ark.check()?;
+        self.poseidon_config.mds.check()?;
+        self.poseidon_config.rate.check()?;
+        self.poseidon_config.capacity.check()?;
+        self.cs_pp.check()?;
+        self.cf_cs_pp.check()?;
+        Ok(())
+    }
+}
+impl<C1, C2, CS1, CS2, const H: bool> CanonicalSerialize for ProverParams<C1, C2, CS1, CS2, H>
+where
+    C1: CurveGroup,
+    C2: CurveGroup,
+    CS1: CommitmentScheme<C1, H>,
+    CS2: CommitmentScheme<C2, H>,
+{
+    fn serialize_with_mode<W: std::io::prelude::Write>(
+        &self,
+        mut writer: W,
+        compress: ark_serialize::Compress,
+    ) -> Result<(), ark_serialize::SerializationError> {
+        self.cs_pp.serialize_with_mode(&mut writer, compress)?;
+        self.cf_cs_pp.serialize_with_mode(&mut writer, compress)
+    }
+
+    fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
+        self.cs_pp.serialized_size(compress) + self.cf_cs_pp.serialized_size(compress)
+    }
+}
+impl<C1, C2, CS1, CS2, const H: bool> CanonicalDeserialize for ProverParams<C1, C2, CS1, CS2, H>
+where
+    C1: CurveGroup,
+    C2: CurveGroup,
+    CS1: CommitmentScheme<C1, H>,
+    CS2: CommitmentScheme<C2, H>,
+{
+    fn deserialize_with_mode<R: std::io::prelude::Read>(
+        mut reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        let cs_pp = CS1::ProverParams::deserialize_with_mode(&mut reader, compress, validate)?;
+        let cf_cs_pp = CS2::ProverParams::deserialize_with_mode(&mut reader, compress, validate)?;
+        Ok(ProverParams {
+            poseidon_config: poseidon_canonical_config::<C1::ScalarField>(),
+            cs_pp,
+            cf_cs_pp,
+        })
+    }
+}
+
+/// Verification parameters for Nova-based IVC
+#[derive(Debug, Clone)]
+pub struct VerifierParams<C1, C2, CS1, CS2, const H: bool = false>
+where
+    C1: CurveGroup,
+    C2: CurveGroup,
+    CS1: CommitmentScheme<C1, H>,
+    CS2: CommitmentScheme<C2, H>,
+{
+    /// Poseidon sponge configuration
     pub poseidon_config: PoseidonConfig<C1::ScalarField>,
+    /// R1CS of the Augmented step circuit
     pub r1cs: R1CS<C1::ScalarField>,
+    /// R1CS of the CycleFold circuit
     pub cf_r1cs: R1CS<C2::ScalarField>,
+    /// Verification parameters of the underlying commitment scheme over C1
     pub cs_vp: CS1::VerifierParams,
+    /// Verification parameters of the underlying commitment scheme over C2
     pub cf_cs_vp: CS2::VerifierParams,
+}
+
+impl<C1, C2, CS1, CS2, const H: bool> Valid for VerifierParams<C1, C2, CS1, CS2, H>
+where
+    C1: CurveGroup,
+    C2: CurveGroup,
+    CS1: CommitmentScheme<C1, H>,
+    CS2: CommitmentScheme<C2, H>,
+{
+    fn check(&self) -> Result<(), ark_serialize::SerializationError> {
+        self.poseidon_config.full_rounds.check()?;
+        self.poseidon_config.partial_rounds.check()?;
+        self.poseidon_config.alpha.check()?;
+        self.poseidon_config.ark.check()?;
+        self.poseidon_config.mds.check()?;
+        self.poseidon_config.rate.check()?;
+        self.poseidon_config.capacity.check()?;
+        self.r1cs.check()?;
+        self.cf_r1cs.check()?;
+        self.cs_vp.check()?;
+        self.cf_cs_vp.check()?;
+        Ok(())
+    }
+}
+impl<C1, C2, CS1, CS2, const H: bool> CanonicalSerialize for VerifierParams<C1, C2, CS1, CS2, H>
+where
+    C1: CurveGroup,
+    C2: CurveGroup,
+    CS1: CommitmentScheme<C1, H>,
+    CS2: CommitmentScheme<C2, H>,
+{
+    fn serialize_with_mode<W: std::io::prelude::Write>(
+        &self,
+        mut writer: W,
+        compress: ark_serialize::Compress,
+    ) -> Result<(), ark_serialize::SerializationError> {
+        self.r1cs.serialize_with_mode(&mut writer, compress)?;
+        self.cf_r1cs.serialize_with_mode(&mut writer, compress)?;
+        self.cs_vp.serialize_with_mode(&mut writer, compress)?;
+        self.cf_cs_vp.serialize_with_mode(&mut writer, compress)
+    }
+
+    fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
+        self.r1cs.serialized_size(compress)
+            + self.cf_r1cs.serialized_size(compress)
+            + self.cs_vp.serialized_size(compress)
+            + self.cf_cs_vp.serialized_size(compress)
+    }
+}
+impl<C1, C2, CS1, CS2, const H: bool> CanonicalDeserialize for VerifierParams<C1, C2, CS1, CS2, H>
+where
+    C1: CurveGroup,
+    C2: CurveGroup,
+    CS1: CommitmentScheme<C1, H>,
+    CS2: CommitmentScheme<C2, H>,
+{
+    fn deserialize_with_mode<R: std::io::prelude::Read>(
+        mut reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        let r1cs = R1CS::deserialize_with_mode(&mut reader, compress, validate)?;
+        let cf_r1cs = R1CS::deserialize_with_mode(&mut reader, compress, validate)?;
+        let cs_vp = CS1::VerifierParams::deserialize_with_mode(&mut reader, compress, validate)?;
+        let cf_cs_vp = CS2::VerifierParams::deserialize_with_mode(&mut reader, compress, validate)?;
+        Ok(VerifierParams {
+            poseidon_config: poseidon_canonical_config::<C1::ScalarField>(),
+            r1cs,
+            cf_r1cs,
+            cs_vp,
+            cf_cs_vp,
+        })
+    }
 }
 
 impl<C1, C2, CS1, CS2, const H: bool> VerifierParams<C1, C2, CS1, CS2, H>
@@ -418,8 +562,9 @@ where
         let pp_hash = vp.pp_hash()?;
 
         // setup the dummy instances
-        let (w_dummy, u_dummy) = r1cs.dummy_instance();
-        let (cf_w_dummy, cf_u_dummy) = cf_r1cs.dummy_instance();
+        let (W_dummy, U_dummy) = r1cs.dummy_running_instance();
+        let (w_dummy, u_dummy) = r1cs.dummy_incoming_instance();
+        let (cf_W_dummy, cf_U_dummy) = cf_r1cs.dummy_running_instance();
 
         // W_dummy=W_0 is a 'dummy witness', all zeroes, but with the size corresponding to the
         // R1CS that we're working with.
@@ -437,13 +582,13 @@ where
             i: C1::ScalarField::zero(),
             z_0: z_0.clone(),
             z_i: z_0,
-            w_i: w_dummy.clone(),
-            u_i: u_dummy.clone(),
-            W_i: w_dummy,
-            U_i: u_dummy,
+            w_i: w_dummy,
+            u_i: u_dummy,
+            W_i: W_dummy,
+            U_i: U_dummy,
             // cyclefold running instance
-            cf_W_i: cf_w_dummy.clone(),
-            cf_U_i: cf_u_dummy.clone(),
+            cf_W_i: cf_W_dummy,
+            cf_U_i: cf_U_dummy,
         })
     }
 
@@ -670,10 +815,10 @@ where
 
             #[cfg(test)]
             {
-                self.cf_r1cs.check_instance_relation(&_cfW_w_i, &cfW_u_i)?;
-                self.cf_r1cs.check_instance_relation(&_cfE_w_i, &cfE_u_i)?;
+                self.cf_r1cs.check_tight_relation(&_cfW_w_i, &cfW_u_i)?;
+                self.cf_r1cs.check_tight_relation(&_cfE_w_i, &cfE_u_i)?;
                 self.cf_r1cs
-                    .check_relaxed_instance_relation(&self.cf_W_i, &self.cf_U_i)?;
+                    .check_relaxed_relation(&self.cf_W_i, &self.cf_U_i)?;
             }
         }
 
@@ -705,9 +850,8 @@ where
 
         #[cfg(test)]
         {
-            self.r1cs.check_instance_relation(&self.w_i, &self.u_i)?;
-            self.r1cs
-                .check_relaxed_instance_relation(&self.W_i, &self.U_i)?;
+            self.r1cs.check_tight_relation(&self.w_i, &self.u_i)?;
+            self.r1cs.check_relaxed_relation(&self.W_i, &self.U_i)?;
         }
 
         Ok(())
@@ -773,19 +917,13 @@ where
             return Err(Error::IVCVerificationFail);
         }
 
-        // check u_i.cmE==0, u_i.u==1 (=u_i is a un-relaxed instance)
-        if !u_i.cmE.is_zero() || !u_i.u.is_one() {
-            return Err(Error::IVCVerificationFail);
-        }
-
-        // check R1CS satisfiability
-        vp.r1cs.check_instance_relation(&w_i, &u_i)?;
+        // check R1CS satisfiability, which also enforces u_i.cmE==0, u_i.u==1
+        vp.r1cs.check_tight_relation(&w_i, &u_i)?;
         // check RelaxedR1CS satisfiability
-        vp.r1cs.check_relaxed_instance_relation(&W_i, &U_i)?;
+        vp.r1cs.check_relaxed_relation(&W_i, &U_i)?;
 
         // check CycleFold RelaxedR1CS satisfiability
-        vp.cf_r1cs
-            .check_relaxed_instance_relation(&cf_W_i, &cf_U_i)?;
+        vp.cf_r1cs.check_relaxed_relation(&cf_W_i, &cf_U_i)?;
 
         Ok(())
     }
@@ -942,7 +1080,7 @@ pub mod tests {
 
     use super::*;
     use crate::commitment::pedersen::Pedersen;
-    use crate::frontend::tests::CubicFCircuit;
+    use crate::frontend::utils::CubicFCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
 
     /// This test tests the Nova+CycleFold IVC, and by consequence it is also testing the

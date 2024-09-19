@@ -3,6 +3,8 @@ use ark_ec::{CurveGroup, Group};
 use ark_ff::PrimeField;
 use ark_poly::DenseMultilinearExtension;
 use ark_poly::MultilinearExtension;
+use ark_serialize::CanonicalDeserialize;
+use ark_serialize::CanonicalSerialize;
 use ark_std::rand::Rng;
 use ark_std::Zero;
 
@@ -15,7 +17,7 @@ use crate::utils::vec::mat_vec_mul;
 use crate::Error;
 
 /// Linearized Committed CCS instance
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct LCCCS<C: CurveGroup> {
     // Commitment to witness
     pub C: C,

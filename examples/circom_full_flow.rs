@@ -61,7 +61,7 @@ fn main() {
         "./folding-schemes/src/frontend/circom/test_folder/with_external_inputs_js/with_external_inputs.wasm",
     );
 
-    let f_circuit_params = (r1cs_path, wasm_path, 1, 2);
+    let f_circuit_params = (r1cs_path.into(), wasm_path.into(), 1, 2);
     let f_circuit = CircomFCircuit::<Fr>::new(f_circuit_params).unwrap();
 
     pub type N =
@@ -89,7 +89,7 @@ fn main() {
     let mut nova = N::init(&nova_params, f_circuit.clone(), z_0).unwrap();
 
     // prepare the Decider prover & verifier params
-    let (decider_pp, decider_vp) = D::preprocess(&mut rng, &nova_params, nova.clone()).unwrap();
+    let (decider_pp, decider_vp) = D::preprocess(&mut rng, nova_params, nova.clone()).unwrap();
 
     // run n steps of the folding iteration
     for (i, external_inputs_at_step) in external_inputs.iter().enumerate() {

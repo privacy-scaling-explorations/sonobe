@@ -23,7 +23,7 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 
 /// NIMFSProof defines a multifolding proof
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NIMFSProof<C: CurveGroup> {
     pub sc_proof: SumCheckProof<C::ScalarField>,
     pub sigmas_thetas: SigmasThetas<C::ScalarField>,
@@ -51,7 +51,7 @@ impl<C: CurveGroup> NIMFSProof<C> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SigmasThetas<F: PrimeField>(pub Vec<Vec<F>>, pub Vec<Vec<F>>);
 
 #[derive(Debug)]

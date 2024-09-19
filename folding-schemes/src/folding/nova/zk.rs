@@ -36,6 +36,7 @@ use ark_std::{One, Zero};
 
 use crate::{
     arith::r1cs::{RelaxedR1CS, R1CS},
+    folding::traits::CommittedInstanceOps,
     RngCore,
 };
 use ark_crypto_primitives::sponge::{
@@ -226,7 +227,7 @@ where
 
         // b. Check computed hashes are correct
         let mut sponge = PoseidonSponge::<C1::ScalarField>::new(poseidon_config);
-        let expected_u_i_x = proof.U_i.hash(&sponge, pp_hash, i, z_0, z_i);
+        let expected_u_i_x = proof.U_i.hash(&sponge, pp_hash, i, &z_0, &z_i);
         if expected_u_i_x != proof.u_i.x[0] {
             return Err(Error::zkIVCVerificationFail);
         }

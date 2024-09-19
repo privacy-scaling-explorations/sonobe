@@ -1,14 +1,14 @@
 /// Implements the scheme described in [ProtoGalaxy](https://eprint.iacr.org/2023/1106.pdf)
 use ark_crypto_primitives::sponge::{
-    constraints::{AbsorbGadget, CryptographicSpongeVar},
-    poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig, PoseidonSponge},
+    poseidon::{PoseidonConfig, PoseidonSponge},
     Absorb, CryptographicSponge,
 };
 use ark_ec::{CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
-    fields::fp::FpVar,
+    eq::EqGadget,
+    fields::{fp::FpVar, FieldVar},
     groups::{CurveVar, GroupOpsBounds},
     R1CSVar, ToConstraintFieldGadget,
 };
@@ -43,6 +43,8 @@ pub(crate) mod utils;
 
 use circuits::AugmentedFCircuit;
 use folding::Folding;
+
+use super::traits::{CommittedInstanceOps, CommittedInstanceVarOps, WitnessOps, WitnessVarOps};
 
 /// Configuration for ProtoGalaxy's CycleFold circuit
 pub struct ProtoGalaxyCycleFoldConfig<C: CurveGroup> {
@@ -83,30 +85,15 @@ impl<C: CurveGroup> CommittedInstance<C> {
     }
 }
 
-impl<C: CurveGroup> CommittedInstance<C>
-where
-    C::ScalarField: Absorb,
-    C::BaseField: PrimeField,
-{
-    /// hash implements the committed instance hash compatible with the gadget implemented in
-    /// CommittedInstanceVar.hash.
-    /// Returns `H(i, z_0, z_i, U_i)`, where `i` can be `i` but also `i+1`, and `U_i` is the
-    /// `CommittedInstance`.
-    pub fn hash(
-        &self,
-        sponge: &PoseidonSponge<C::ScalarField>,
-        pp_hash: C::ScalarField,
-        i: C::ScalarField,
-        z_0: Vec<C::ScalarField>,
-        z_i: Vec<C::ScalarField>,
-    ) -> C::ScalarField {
-        let mut sponge = sponge.clone();
-        sponge.absorb(&pp_hash);
-        sponge.absorb(&i);
-        sponge.absorb(&z_0);
-        sponge.absorb(&z_i);
-        sponge.absorb(&self);
-        sponge.squeeze_field_elements(1)[0]
+impl<C: CurveGroup> CommittedInstanceOps<C> for CommittedInstance<C> {
+    type Var = CommittedInstanceVar<C>;
+
+    fn get_commitments(&self) -> Vec<C> {
+        vec![self.phi]
+    }
+
+    fn is_incoming(&self) -> bool {
+        self.e == Zero::zero() && self.betas.is_empty()
     }
 }
 
@@ -164,34 +151,29 @@ impl<C: CurveGroup> R1CSVar<C::ScalarField> for CommittedInstanceVar<C> {
     }
 }
 
-impl<C: CurveGroup> CommittedInstanceVar<C>
-where
-    C::ScalarField: Absorb,
-    C::BaseField: PrimeField,
-{
-    /// hash implements the committed instance hash compatible with the native implementation from
-    /// CommittedInstance.hash.
-    /// Returns `H(i, z_0, z_i, U_i)`, where `i` can be `i` but also `i+1`, and `U` is the
-    /// `CommittedInstance`.
-    /// Additionally it returns the vector of the field elements from the self parameters, so they
-    /// can be reused in other gadgets avoiding recalculating (reconstraining) them.
-    #[allow(clippy::type_complexity)]
-    pub fn hash(
-        self,
-        sponge: &PoseidonSpongeVar<CF1<C>>,
-        pp_hash: FpVar<CF1<C>>,
-        i: FpVar<CF1<C>>,
-        z_0: Vec<FpVar<CF1<C>>>,
-        z_i: Vec<FpVar<CF1<C>>>,
-    ) -> Result<(FpVar<CF1<C>>, Vec<FpVar<CF1<C>>>), SynthesisError> {
-        let mut sponge = sponge.clone();
-        let U_vec = self.to_sponge_field_elements()?;
-        sponge.absorb(&pp_hash)?;
-        sponge.absorb(&i)?;
-        sponge.absorb(&z_0)?;
-        sponge.absorb(&z_i)?;
-        sponge.absorb(&U_vec)?;
-        Ok((sponge.squeeze_field_elements(1)?.pop().unwrap(), U_vec))
+impl<C: CurveGroup> CommittedInstanceVarOps<C> for CommittedInstanceVar<C> {
+    type PointVar = NonNativeAffineVar<C>;
+
+    fn get_commitments(&self) -> Vec<Self::PointVar> {
+        vec![self.phi.clone()]
+    }
+
+    fn get_public_inputs(&self) -> &[FpVar<CF1<C>>] {
+        &self.x
+    }
+
+    fn enforce_incoming(&self) -> Result<(), SynthesisError> {
+        if self.betas.is_empty() {
+            self.e.enforce_equal(&FpVar::zero())
+        } else {
+            Err(SynthesisError::Unsatisfiable)
+        }
+    }
+
+    fn enforce_partial_equal(&self, other: &Self) -> Result<(), SynthesisError> {
+        self.betas.enforce_equal(&other.betas)?;
+        self.e.enforce_equal(&other.e)?;
+        self.x.enforce_equal(&other.x)
     }
 }
 
@@ -221,6 +203,44 @@ impl<F: PrimeField> Witness<F> {
             e: F::zero(),
             betas: vec![],
         })
+    }
+}
+
+impl<F: PrimeField> WitnessOps<F> for Witness<F> {
+    type Var = WitnessVar<F>;
+
+    fn get_openings(&self) -> Vec<(&[F], F)> {
+        vec![(&self.w, self.r_w)]
+    }
+}
+
+/// In-circuit representation of the Witness associated to the CommittedInstance.
+#[derive(Debug, Clone)]
+pub struct WitnessVar<F: PrimeField> {
+    pub W: Vec<FpVar<F>>,
+    pub rW: FpVar<F>,
+}
+
+impl<F: PrimeField> AllocVar<Witness<F>, F> for WitnessVar<F> {
+    fn new_variable<T: Borrow<Witness<F>>>(
+        cs: impl Into<Namespace<F>>,
+        f: impl FnOnce() -> Result<T, SynthesisError>,
+        mode: AllocationMode,
+    ) -> Result<Self, SynthesisError> {
+        f().and_then(|val| {
+            let cs = cs.into();
+
+            let W = Vec::new_variable(cs.clone(), || Ok(val.borrow().w.to_vec()), mode)?;
+            let rW = FpVar::new_variable(cs.clone(), || Ok(val.borrow().r_w), mode)?;
+
+            Ok(Self { W, rW })
+        })
+    }
+}
+
+impl<F: PrimeField> WitnessVarOps<F> for WitnessVar<F> {
+    fn get_openings(&self) -> Vec<(&[FpVar<F>], FpVar<F>)> {
+        vec![(&self.W, self.rW.clone())]
     }
 }
 
@@ -636,8 +656,8 @@ where
                 &sponge,
                 self.pp_hash,
                 self.i + C1::ScalarField::one(),
-                self.z_0.clone(),
-                z_i1.clone(),
+                &self.z_0,
+                &z_i1,
             );
             // `cf_U_{i+1}` (i.e., `cf_U_1`) is fixed to `cf_U_dummy`, so we
             // just use `self.cf_U_i = cf_U_0 = cf_U_dummy`.
@@ -744,8 +764,8 @@ where
                 &sponge,
                 self.pp_hash,
                 self.i + C1::ScalarField::one(),
-                self.z_0.clone(),
-                z_i1.clone(),
+                &self.z_0,
+                &z_i1,
             );
             cf_u_i1_x = cf_U_i1.hash_cyclefold(&sponge, self.pp_hash);
 
@@ -874,7 +894,7 @@ where
 
         // check that u_i's output points to the running instance
         // u_i.X[0] == H(i, z_0, z_i, U_i)
-        let expected_u_i_x = U_i.hash(&sponge, pp_hash, num_steps, z_0, z_i.clone());
+        let expected_u_i_x = U_i.hash(&sponge, pp_hash, num_steps, &z_0, &z_i);
         if expected_u_i_x != u_i.x[0] {
             return Err(Error::IVCVerificationFail);
         }

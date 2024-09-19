@@ -9,9 +9,11 @@ use std::sync::Arc;
 
 use ark_std::rand::Rng;
 
+use super::circuits::CCCSVar;
 use super::Witness;
 use crate::arith::{ccs::CCS, Arith};
 use crate::commitment::CommitmentScheme;
+use crate::folding::traits::CommittedInstanceOps;
 use crate::transcript::AbsorbNonNative;
 use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::utils::vec::mat_vec_mul;
@@ -126,9 +128,8 @@ impl<C: CurveGroup> Absorb for CCCS<C>
 where
     C::ScalarField: Absorb,
 {
-    fn to_sponge_bytes(&self, _dest: &mut Vec<u8>) {
-        // This is never called
-        unimplemented!()
+    fn to_sponge_bytes(&self, dest: &mut Vec<u8>) {
+        C::ScalarField::batch_to_sponge_bytes(&self.to_sponge_field_elements_as_vec(), dest);
     }
 
     fn to_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
@@ -139,6 +140,18 @@ where
             .to_native_sponge_field_elements_as_vec()
             .to_sponge_field_elements(dest);
         self.x.to_sponge_field_elements(dest);
+    }
+}
+
+impl<C: CurveGroup> CommittedInstanceOps<C> for CCCS<C> {
+    type Var = CCCSVar<C>;
+
+    fn get_commitments(&self) -> Vec<C> {
+        vec![self.C]
+    }
+
+    fn is_incoming(&self) -> bool {
+        true
     }
 }
 

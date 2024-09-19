@@ -13,6 +13,7 @@ use ark_std::fmt::Debug;
 use ark_std::rand::RngCore;
 use ark_std::{One, UniformRand, Zero};
 use core::marker::PhantomData;
+use decider_eth_circuit::WitnessVar;
 
 use crate::folding::circuits::cyclefold::{
     fold_cyclefold_circuit, CycleFoldCircuit, CycleFoldCommittedInstance, CycleFoldConfig,
@@ -38,8 +39,10 @@ pub mod nifs;
 pub mod serialize;
 pub mod traits;
 pub mod zk;
-use circuits::{AugmentedFCircuit, ChallengeGadget};
+use circuits::{AugmentedFCircuit, ChallengeGadget, CommittedInstanceVar};
 use nifs::NIFS;
+
+use super::traits::{CommittedInstanceOps, WitnessOps};
 
 /// Configuration for Nova's CycleFold circuit
 pub struct NovaCycleFoldConfig<C: CurveGroup> {
@@ -83,9 +86,8 @@ impl<C: CurveGroup> Absorb for CommittedInstance<C>
 where
     C::ScalarField: Absorb,
 {
-    fn to_sponge_bytes(&self, _dest: &mut Vec<u8>) {
-        // This is never called
-        unimplemented!()
+    fn to_sponge_bytes(&self, dest: &mut Vec<u8>) {
+        C::ScalarField::batch_to_sponge_bytes(&self.to_sponge_field_elements_as_vec(), dest);
     }
 
     fn to_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
@@ -103,30 +105,15 @@ where
     }
 }
 
-impl<C: CurveGroup> CommittedInstance<C>
-where
-    <C as Group>::ScalarField: Absorb,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-{
-    /// hash implements the committed instance hash compatible with the gadget implemented in
-    /// nova/circuits.rs::CommittedInstanceVar.hash.
-    /// Returns `H(i, z_0, z_i, U_i)`, where `i` can be `i` but also `i+1`, and `U_i` is the
-    /// `CommittedInstance`.
-    pub fn hash<T: Transcript<C::ScalarField>>(
-        &self,
-        sponge: &T,
-        pp_hash: C::ScalarField, // public params hash
-        i: C::ScalarField,
-        z_0: Vec<C::ScalarField>,
-        z_i: Vec<C::ScalarField>,
-    ) -> C::ScalarField {
-        let mut sponge = sponge.clone();
-        sponge.absorb(&pp_hash);
-        sponge.absorb(&i);
-        sponge.absorb(&z_0);
-        sponge.absorb(&z_i);
-        sponge.absorb(&self);
-        sponge.squeeze_field_elements(1)[0]
+impl<C: CurveGroup> CommittedInstanceOps<C> for CommittedInstance<C> {
+    type Var = CommittedInstanceVar<C>;
+
+    fn get_commitments(&self) -> Vec<C> {
+        vec![self.cmW, self.cmE]
+    }
+
+    fn is_incoming(&self) -> bool {
+        self.cmE == C::zero() && self.u == One::one()
     }
 }
 
@@ -185,6 +172,14 @@ impl<C: CurveGroup> Witness<C> {
             cmW,
             x,
         })
+    }
+}
+
+impl<C: CurveGroup> WitnessOps<C::ScalarField> for Witness<C> {
+    type Var = WitnessVar<C>;
+
+    fn get_openings(&self) -> Vec<(&[C::ScalarField], C::ScalarField)> {
+        vec![(&self.W, self.rW), (&self.E, self.rE)]
     }
 }
 
@@ -696,8 +691,8 @@ where
             &sponge,
             self.pp_hash,
             self.i + C1::ScalarField::one(),
-            self.z_0.clone(),
-            z_i1.clone(),
+            &self.z_0,
+            &z_i1,
         );
         // u_{i+1}.x[1] = H(cf_U_{i+1})
         let cf_u_i1_x: C1::ScalarField;
@@ -907,7 +902,7 @@ where
 
         // check that u_i's output points to the running instance
         // u_i.X[0] == H(i, z_0, z_i, U_i)
-        let expected_u_i_x = U_i.hash(&sponge, pp_hash, num_steps, z_0, z_i.clone());
+        let expected_u_i_x = U_i.hash(&sponge, pp_hash, num_steps, &z_0, &z_i);
         if expected_u_i_x != u_i.x[0] {
             return Err(Error::IVCVerificationFail);
         }

@@ -18,8 +18,8 @@ impl<C: CurveGroup> Absorb for CommittedInstance<C>
 where
     C::ScalarField: Absorb,
 {
-    fn to_sponge_bytes(&self, _dest: &mut Vec<u8>) {
-        unimplemented!()
+    fn to_sponge_bytes(&self, dest: &mut Vec<u8>) {
+        C::ScalarField::batch_to_sponge_bytes(&self.to_sponge_field_elements_as_vec(), dest);
     }
 
     fn to_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
@@ -35,7 +35,7 @@ where
 // Implements the trait for absorbing ProtoGalaxy's CommittedInstanceVar in-circuit.
 impl<C: CurveGroup> AbsorbGadget<C::ScalarField> for CommittedInstanceVar<C> {
     fn to_sponge_bytes(&self) -> Result<Vec<UInt8<C::ScalarField>>, SynthesisError> {
-        unimplemented!()
+        FpVar::batch_to_sponge_bytes(&self.to_sponge_field_elements()?)
     }
 
     fn to_sponge_field_elements(&self) -> Result<Vec<FpVar<C::ScalarField>>, SynthesisError> {
@@ -112,5 +112,48 @@ impl<C: CurveGroup> RelaxedR1CS<C, Witness<C::ScalarField>, CommittedInstance<C>
         // yet.
         // Tracking issue: https://github.com/privacy-scaling-explorations/sonobe/issues/82
         unimplemented!()
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use ark_bn254::{Fr, G1Projective as Projective};
+    use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
+    use ark_relations::r1cs::ConstraintSystem;
+    use ark_std::UniformRand;
+    use rand::Rng;
+
+    /// test that checks the native CommittedInstance.to_sponge_{bytes,field_elements}
+    /// vs the R1CS constraints version
+    #[test]
+    pub fn test_committed_instance_to_sponge_preimage() {
+        let mut rng = ark_std::test_rng();
+
+        let t = rng.gen::<u8>() as usize;
+        let io_len = rng.gen::<u8>() as usize;
+
+        let ci = CommittedInstance::<Projective> {
+            phi: Projective::rand(&mut rng),
+            betas: (0..t).map(|_| Fr::rand(&mut rng)).collect(),
+            e: Fr::rand(&mut rng),
+            x: (0..io_len).map(|_| Fr::rand(&mut rng)).collect(),
+        };
+
+        let bytes = ci.to_sponge_bytes_as_vec();
+        let field_elements = ci.to_sponge_field_elements_as_vec();
+
+        let cs = ConstraintSystem::<Fr>::new_ref();
+
+        let ciVar =
+            CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || Ok(ci.clone())).unwrap();
+        let bytes_var = ciVar.to_sponge_bytes().unwrap();
+        let field_elements_var = ciVar.to_sponge_field_elements().unwrap();
+
+        assert!(cs.is_satisfied().unwrap());
+
+        // check that the natively computed and in-circuit computed hashes match
+        assert_eq!(bytes_var.value().unwrap(), bytes);
+        assert_eq!(field_elements_var.value().unwrap(), field_elements);
     }
 }

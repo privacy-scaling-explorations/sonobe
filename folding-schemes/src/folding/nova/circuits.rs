@@ -76,7 +76,7 @@ where
     <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
 {
     fn to_sponge_bytes(&self) -> Result<Vec<UInt8<C::ScalarField>>, SynthesisError> {
-        unimplemented!()
+        FpVar::batch_to_sponge_bytes(&self.to_sponge_field_elements()?)
     }
 
     fn to_sponge_field_elements(&self) -> Result<Vec<FpVar<C::ScalarField>>, SynthesisError> {
@@ -573,6 +573,36 @@ pub mod tests {
         )
         .unwrap();
         assert!(cs.is_satisfied().unwrap());
+    }
+
+    /// test that checks the native CommittedInstance.to_sponge_{bytes,field_elements}
+    /// vs the R1CS constraints version
+    #[test]
+    pub fn test_committed_instance_to_sponge_preimage() {
+        let mut rng = ark_std::test_rng();
+
+        let ci = CommittedInstance::<Projective> {
+            cmE: Projective::rand(&mut rng),
+            u: Fr::rand(&mut rng),
+            cmW: Projective::rand(&mut rng),
+            x: vec![Fr::rand(&mut rng); 1],
+        };
+
+        let bytes = ci.to_sponge_bytes_as_vec();
+        let field_elements = ci.to_sponge_field_elements_as_vec();
+
+        let cs = ConstraintSystem::<Fr>::new_ref();
+
+        let ciVar =
+            CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || Ok(ci.clone())).unwrap();
+        let bytes_var = ciVar.to_sponge_bytes().unwrap();
+        let field_elements_var = ciVar.to_sponge_field_elements().unwrap();
+
+        assert!(cs.is_satisfied().unwrap());
+
+        // check that the natively computed and in-circuit computed hashes match
+        assert_eq!(bytes_var.value().unwrap(), bytes);
+        assert_eq!(field_elements_var.value().unwrap(), field_elements);
     }
 
     #[test]

@@ -146,7 +146,7 @@ where
 
 impl<C: CurveGroup> AbsorbGadget<C::ScalarField> for LCCCSVar<C> {
     fn to_sponge_bytes(&self) -> Result<Vec<UInt8<C::ScalarField>>, SynthesisError> {
-        unimplemented!()
+        FpVar::batch_to_sponge_bytes(&self.to_sponge_field_elements()?)
     }
 
     fn to_sponge_field_elements(&self) -> Result<Vec<FpVar<C::ScalarField>>, SynthesisError> {
@@ -1127,6 +1127,37 @@ mod tests {
         .unwrap();
         assert!(cs.is_satisfied().unwrap());
         assert_eq!(folded_lcccsVar.u.value().unwrap(), folded_lcccs.u);
+    }
+
+    /// test that checks the native LCCCS.to_sponge_{bytes,field_elements} vs
+    /// the R1CS constraints version
+    #[test]
+    pub fn test_lcccs_to_sponge_preimage() {
+        let mut rng = test_rng();
+
+        let ccs = get_test_ccs();
+        let z1 = get_test_z::<Fr>(3);
+
+        let (pedersen_params, _) =
+            Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
+
+        let (lcccs, _) = ccs
+            .to_lcccs::<_, _, Pedersen<Projective, true>, true>(&mut rng, &pedersen_params, &z1)
+            .unwrap();
+        let bytes = lcccs.to_sponge_bytes_as_vec();
+        let field_elements = lcccs.to_sponge_field_elements_as_vec();
+
+        let cs = ConstraintSystem::<Fr>::new_ref();
+
+        let lcccsVar = LCCCSVar::<Projective>::new_witness(cs.clone(), || Ok(lcccs)).unwrap();
+        let bytes_var = lcccsVar.to_sponge_bytes().unwrap();
+        let field_elements_var = lcccsVar.to_sponge_field_elements().unwrap();
+
+        assert!(cs.is_satisfied().unwrap());
+
+        // check that the natively computed and in-circuit computed hashes match
+        assert_eq!(bytes_var.value().unwrap(), bytes);
+        assert_eq!(field_elements_var.value().unwrap(), field_elements);
     }
 
     /// test that checks the native LCCCS.hash vs the R1CS constraints version

@@ -4,13 +4,13 @@ use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::utils::vec::is_zero_vec;
 use crate::Error;
 use ark_crypto_primitives::sponge::Absorb;
-use ark_ec::{CurveGroup, Group};
+use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_poly::MultilinearExtension;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{log2, One, UniformRand, Zero};
 use ark_std::rand::RngCore;
 
+use ark_std::{log2, One, UniformRand, Zero};
 
 /// Implements the scheme described in [Mova](https://eprint.iacr.org/2024/1220.pdf)
 mod nifs;
@@ -40,10 +40,7 @@ pub struct InstanceWitness<C: CurveGroup> {
     pub w: Witness<C>,
 }
 
-impl<C: CurveGroup> Witness<C>
-where
-    <C as Group>::ScalarField: Absorb,
-{
+impl<C: CurveGroup> Witness<C> {
     pub fn new<const H: bool>(w: Vec<C::ScalarField>, e_len: usize, mut rng: impl RngCore) -> Self {
         let rW = if H {
             C::ScalarField::rand(&mut rng)
@@ -91,6 +88,18 @@ where
             cmW,
             x,
         })
+    }
+}
+
+impl<C: CurveGroup> CommittedInstance<C> {
+    pub fn dummy(io_len: usize) -> Self {
+        Self {
+            rE: vec![C::ScalarField::zero(); io_len],
+            mleE: C::ScalarField::zero(),
+            u: C::ScalarField::zero(),
+            cmW: C::zero(),
+            x: vec![C::ScalarField::zero(); io_len],
+        }
     }
 }
 

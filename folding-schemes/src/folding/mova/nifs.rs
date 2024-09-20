@@ -220,6 +220,12 @@ where
 
 #[cfg(test)]
 pub mod tests {
+    use crate::arith::r1cs::{
+        tests::{get_test_r1cs, get_test_z},
+        RelaxedR1CS,
+    };
+    use crate::commitment::pedersen::{Params as PedersenParams, Pedersen};
+    use crate::transcript::poseidon::poseidon_canonical_config;
     use ark_crypto_primitives::sponge::{
         poseidon::{PoseidonConfig, PoseidonSponge},
         CryptographicSponge,
@@ -227,11 +233,6 @@ pub mod tests {
     use ark_ff::PrimeField;
     use ark_pallas::{Fr, Projective};
     use ark_std::{test_rng, UniformRand, Zero};
-
-    use crate::arith::r1cs::tests::{get_test_r1cs, get_test_z};
-    use crate::commitment::pedersen::{Params as PedersenParams, Pedersen};
-    use crate::folding::mova::traits::MovaR1CS;
-    use crate::transcript::poseidon::poseidon_canonical_config;
 
     use super::*;
 
@@ -332,8 +333,8 @@ pub mod tests {
         let W_i = w_dummy.clone();
         let U_i = u_dummy.clone();
 
-        r1cs.check_relaxed_instance_relation(&w_i, &u_i).unwrap();
-        r1cs.check_relaxed_instance_relation(&W_i, &U_i).unwrap();
+        r1cs.check_relaxed_relation(&w_i, &u_i).unwrap();
+        r1cs.check_relaxed_relation(&W_i, &U_i).unwrap();
 
         let poseidon_config = poseidon_canonical_config::<ark_pallas::Fr>();
         let mut transcript_p: PoseidonSponge<Fr> = PoseidonSponge::<Fr>::new(&poseidon_config);
@@ -349,7 +350,7 @@ pub mod tests {
         .unwrap();
 
         let (_proof, instance_witness) = result;
-        r1cs.check_relaxed_instance_relation(&instance_witness.w, &instance_witness.ci)
+        r1cs.check_relaxed_relation(&instance_witness.w, &instance_witness.ci)
             .unwrap();
     }
 
@@ -371,9 +372,9 @@ pub mod tests {
         assert_eq!(ci3, instance.ci);
 
         // check that relations hold for the 2 inputted instances and the folded one
-        r1cs.check_relaxed_instance_relation(&w1, &ci1).unwrap();
-        r1cs.check_relaxed_instance_relation(&w2, &ci2).unwrap();
-        r1cs.check_relaxed_instance_relation(&instance.w, &instance.ci)
+        r1cs.check_relaxed_relation(&w1, &ci1).unwrap();
+        r1cs.check_relaxed_relation(&w2, &ci2).unwrap();
+        r1cs.check_relaxed_relation(&instance.w, &instance.ci)
             .unwrap();
 
         // check that folded commitments from folded instance (ci) are equal to folding the
@@ -402,7 +403,7 @@ pub mod tests {
             .commit::<Pedersen<Projective>>(&pedersen_params, x, rE)
             .unwrap();
 
-        r1cs.check_relaxed_instance_relation(&running_instance_w, &running_committed_instance)
+        r1cs.check_relaxed_relation(&running_instance_w, &running_committed_instance)
             .unwrap();
 
         let num_iters = 10;
@@ -416,11 +417,8 @@ pub mod tests {
             let incoming_committed_instance = incoming_instance_w
                 .commit::<Pedersen<Projective>>(&pedersen_params, x, rE)
                 .unwrap();
-            r1cs.check_relaxed_instance_relation(
-                &incoming_instance_w,
-                &incoming_committed_instance,
-            )
-            .unwrap();
+            r1cs.check_relaxed_relation(&incoming_instance_w, &incoming_committed_instance)
+                .unwrap();
 
             // NIFS.P
             let poseidon_config = poseidon_canonical_config::<Fr>();
@@ -448,7 +446,7 @@ pub mod tests {
             )
             .unwrap();
 
-            r1cs.check_relaxed_instance_relation(&instance_witness.w, &instance_witness.ci)
+            r1cs.check_relaxed_relation(&instance_witness.w, &instance_witness.ci)
                 .unwrap();
 
             // set running_instance for next loop iteration

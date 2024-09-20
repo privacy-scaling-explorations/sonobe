@@ -43,7 +43,7 @@ jobs:
         feature_set: [basic]
         include:
           - feature_set: basic
-            features: --features default,light-test
+            features: --features default,light-test,circom,noname,noir
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
@@ -159,7 +159,7 @@ jobs:
         feature_set: [basic, wasm]
         include:
           - feature_set: basic
-            features: --features default,light-test
+            features: --features default,light-test,circom,noname,noir
             # We only want to test `folding-schemes` package with `wasm` feature.
           - feature_set: wasm
             features: -p folding-schemes --features wasm,parallel --target wasm32-unknown-unknown

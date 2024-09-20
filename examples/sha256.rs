@@ -3,6 +3,9 @@
 #![allow(non_camel_case_types)]
 #![allow(clippy::upper_case_acronyms)]
 
+///
+/// To run:
+/// > cargo run --release --example sha256 -- --nocapture
 use ark_crypto_primitives::crh::{
     sha256::{
         constraints::{Sha256Gadget, UnitVar},

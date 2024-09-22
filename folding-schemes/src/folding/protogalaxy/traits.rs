@@ -110,7 +110,7 @@ pub mod tests {
         let t = rng.gen::<u8>() as usize;
         let io_len = rng.gen::<u8>() as usize;
 
-        let ci = CommittedInstance::<Projective, false> {
+        let ci = CommittedInstance::<Projective, true> {
             phi: Projective::rand(&mut rng),
             betas: (0..t).map(|_| Fr::rand(&mut rng)).collect(),
             e: Fr::rand(&mut rng),
@@ -123,7 +123,7 @@ pub mod tests {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         let ciVar =
-            CommittedInstanceVar::<Projective, false>::new_witness(cs.clone(), || Ok(ci.clone()))
+            CommittedInstanceVar::<Projective, true>::new_witness(cs.clone(), || Ok(ci.clone()))
                 .unwrap();
         let bytes_var = ciVar.to_sponge_bytes().unwrap();
         let field_elements_var = ciVar.to_sponge_field_elements().unwrap();

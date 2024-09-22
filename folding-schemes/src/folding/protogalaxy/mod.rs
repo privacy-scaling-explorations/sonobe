@@ -535,7 +535,8 @@ where
     type VerifierParam = VerifierParams<C1, C2, CS1, CS2>;
     type RunningInstance = (CommittedInstance<C1, true>, Witness<C1::ScalarField>);
     type IncomingInstance = (CommittedInstance<C1, false>, Witness<C1::ScalarField>);
-    type MultiCommittedInstanceWithWitness = (CommittedInstance<C1, false>, Witness<C1::ScalarField>);
+    type MultiCommittedInstanceWithWitness =
+        (CommittedInstance<C1, false>, Witness<C1::ScalarField>);
     type CFInstance = (CycleFoldCommittedInstance<C2>, CycleFoldWitness<C2>);
 
     fn preprocess(

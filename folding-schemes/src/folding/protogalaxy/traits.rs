@@ -123,7 +123,8 @@ pub mod tests {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         let ciVar =
-            CommittedInstanceVar::<Projective, false>::new_witness(cs.clone(), || Ok(ci.clone())).unwrap();
+            CommittedInstanceVar::<Projective, false>::new_witness(cs.clone(), || Ok(ci.clone()))
+                .unwrap();
         let bytes_var = ciVar.to_sponge_bytes().unwrap();
         let field_elements_var = ciVar.to_sponge_field_elements().unwrap();
 

@@ -39,7 +39,8 @@ pub struct CCS<F: PrimeField> {
 }
 
 impl<F: PrimeField> CCS<F> {
-    pub fn eval_core(&self, z: &[F]) -> Result<Vec<F>, Error> {
+    /// Evaluates the CCS relation at a given vector of assignments `z`
+    pub fn eval_at_z(&self, z: &[F]) -> Result<Vec<F>, Error> {
         let mut result = vec![F::zero(); self.m];
 
         for i in 0..self.q {
@@ -72,7 +73,7 @@ impl<F: PrimeField, W: AsRef<[F]>, U: AsRef<[F]>> Arith<W, U> for CCS<F> {
     type Evaluation = Vec<F>;
 
     fn eval_relation(&self, w: &W, u: &U) -> Result<Self::Evaluation, Error> {
-        self.eval_core(&[&[F::one()], u.as_ref(), w.as_ref()].concat())
+        self.eval_at_z(&[&[F::one()], u.as_ref(), w.as_ref()].concat())
     }
 
     fn check_evaluation(_w: &W, _u: &U, e: Self::Evaluation) -> Result<(), Error> {

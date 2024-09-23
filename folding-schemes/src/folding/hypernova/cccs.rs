@@ -104,7 +104,7 @@ impl<C: CurveGroup> Arith<Witness<CF1<C>>, CCCS<C>> for CCS<CF1<C>> {
 
     fn eval_relation(&self, w: &Witness<CF1<C>>, u: &CCCS<C>) -> Result<Self::Evaluation, Error> {
         // evaluate CCCS relation
-        self.eval_core(&[&[CF1::<C>::one()][..], &u.x, &w.w].concat())
+        self.eval_at_z(&[&[CF1::<C>::one()][..], &u.x, &w.w].concat())
     }
 
     /// Perform the check of the CCCS instance described at section 4.1,

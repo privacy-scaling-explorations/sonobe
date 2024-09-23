@@ -16,7 +16,7 @@ impl<C: CurveGroup> Arith<Witness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
         w: &Witness<C>,
         u: &CommittedInstance<C>,
     ) -> Result<Self::Evaluation, Error> {
-        self.eval_core(&[&[u.u][..], &u.x, &w.W].concat())
+        self.eval_at_z(&[&[u.u][..], &u.x, &w.W].concat())
     }
 
     fn check_evaluation(
@@ -50,7 +50,7 @@ impl<C: CurveGroup> ArithSampler<C, Witness<C>, CommittedInstance<C>> for R1CS<C
         z.extend(&x);
         z.extend(&W);
 
-        let E = self.eval_core(&z)?;
+        let E = self.eval_at_z(&z)?;
 
         let witness = Witness { E, rE, W, rW };
         let mut cm_witness = witness.commit::<CS, true>(params, x)?;

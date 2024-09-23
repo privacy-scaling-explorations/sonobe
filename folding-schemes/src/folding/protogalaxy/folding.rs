@@ -95,7 +95,7 @@ where
         let delta = transcript.get_challenge();
         let deltas = exponential_powers(delta, t);
 
-        let mut f_z = r1cs.eval_core(&z)?;
+        let mut f_z = r1cs.eval_at_z(&z)?;
         if f_z.len() != m {
             return Err(Error::NotSameLength(
                 "number of constraints in R1CS".to_string(),
@@ -179,7 +179,7 @@ where
                     inner[j] += Lh * zj;
                 }
             }
-            let f_ev = r1cs.eval_core(&inner)?;
+            let f_ev = r1cs.eval_at_z(&inner)?;
 
             G_evals[hi] = cfg_into_iter!(f_ev)
                 .enumerate()

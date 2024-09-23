@@ -63,7 +63,7 @@ impl<C: CurveGroup, const TYPE: bool> Arith<Witness<CF1<C>>, CommittedInstance<C
         w: &Witness<CF1<C>>,
         u: &CommittedInstance<C, TYPE>,
     ) -> Result<Self::Evaluation, Error> {
-        self.eval_core(&[&[C::ScalarField::one()][..], &u.x, &w.w].concat())
+        self.eval_at_z(&[&[C::ScalarField::one()][..], &u.x, &w.w].concat())
     }
 
     fn check_evaluation(

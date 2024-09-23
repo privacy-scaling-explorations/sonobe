@@ -19,7 +19,8 @@ pub struct R1CS<F: PrimeField> {
 }
 
 impl<F: PrimeField> R1CS<F> {
-    pub fn eval_core(&self, z: &[F]) -> Result<Vec<F>, Error> {
+    /// Evaluates the CCS relation at a given vector of variables `z`
+    pub fn eval_at_z(&self, z: &[F]) -> Result<Vec<F>, Error> {
         if z.len() != self.A.n_cols {
             return Err(Error::NotSameLength(
                 "z.len()".to_string(),
@@ -44,7 +45,7 @@ impl<F: PrimeField, W: AsRef<[F]>, U: AsRef<[F]>> Arith<W, U> for R1CS<F> {
     type Evaluation = Vec<F>;
 
     fn eval_relation(&self, w: &W, u: &U) -> Result<Self::Evaluation, Error> {
-        self.eval_core(&[&[F::one()], u.as_ref(), w.as_ref()].concat())
+        self.eval_at_z(&[&[F::one()], u.as_ref(), w.as_ref()].concat())
     }
 
     fn check_evaluation(_w: &W, _u: &U, e: Self::Evaluation) -> Result<(), Error> {

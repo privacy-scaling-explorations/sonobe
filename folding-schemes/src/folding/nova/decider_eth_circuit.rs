@@ -622,7 +622,7 @@ pub mod tests {
         let (cs_pp, _) = CS::setup(&mut rng, max(w.len(), r1cs.A.n_rows)).unwrap();
 
         let mut w = Witness::new::<false>(w, r1cs.A.n_rows, &mut rng);
-        w.E = r1cs.eval_core(z).unwrap();
+        w.E = r1cs.eval_at_z(z).unwrap();
         let mut u = w.commit::<CS, false>(&cs_pp, x).unwrap();
         u.u = z[0];
 

@@ -6,7 +6,7 @@ use ark_relations::r1cs::SynthesisError;
 use ark_std::{cfg_into_iter, log2, One};
 use rayon::prelude::*;
 
-use super::{utils::pow_i, CommittedInstance, CommittedInstanceVar, Witness};
+use super::{constants::RUNNING, utils::pow_i, CommittedInstance, CommittedInstanceVar, Witness};
 use crate::{
     arith::{r1cs::R1CS, Arith},
     folding::circuits::CF1,
@@ -16,7 +16,7 @@ use crate::{
 };
 
 // Implements the trait for absorbing ProtoGalaxy's CommittedInstance.
-impl<C: CurveGroup, const RUNNING: bool> Absorb for CommittedInstance<C, RUNNING>
+impl<C: CurveGroup, const TYPE: bool> Absorb for CommittedInstance<C, TYPE>
 where
     C::ScalarField: Absorb,
 {
@@ -35,8 +35,8 @@ where
 }
 
 // Implements the trait for absorbing ProtoGalaxy's CommittedInstanceVar in-circuit.
-impl<C: CurveGroup, const RUNNING: bool> AbsorbGadget<C::ScalarField>
-    for CommittedInstanceVar<C, RUNNING>
+impl<C: CurveGroup, const TYPE: bool> AbsorbGadget<C::ScalarField>
+    for CommittedInstanceVar<C, TYPE>
 {
     fn to_sponge_bytes(&self) -> Result<Vec<UInt8<C::ScalarField>>, SynthesisError> {
         FpVar::batch_to_sponge_bytes(&self.to_sponge_field_elements()?)
@@ -53,7 +53,7 @@ impl<C: CurveGroup, const RUNNING: bool> AbsorbGadget<C::ScalarField>
     }
 }
 
-impl<C: CurveGroup, const RUNNING: bool> Arith<Witness<CF1<C>>, CommittedInstance<C, RUNNING>>
+impl<C: CurveGroup, const TYPE: bool> Arith<Witness<CF1<C>>, CommittedInstance<C, TYPE>>
     for R1CS<CF1<C>>
 {
     type Evaluation = Vec<CF1<C>>;
@@ -61,17 +61,17 @@ impl<C: CurveGroup, const RUNNING: bool> Arith<Witness<CF1<C>>, CommittedInstanc
     fn eval_relation(
         &self,
         w: &Witness<CF1<C>>,
-        u: &CommittedInstance<C, RUNNING>,
+        u: &CommittedInstance<C, TYPE>,
     ) -> Result<Self::Evaluation, Error> {
         self.eval_core(&[&[C::ScalarField::one()][..], &u.x, &w.w].concat())
     }
 
     fn check_evaluation(
         _w: &Witness<C::ScalarField>,
-        u: &CommittedInstance<C, RUNNING>,
+        u: &CommittedInstance<C, TYPE>,
         e: Vec<C::ScalarField>,
     ) -> Result<(), Error> {
-        let ok = if RUNNING {
+        let ok = if TYPE == RUNNING {
             if u.betas.len() != log2(e.len()) as usize {
                 return Err(Error::NotSameLength(
                     "instance.betas.len()".to_string(),

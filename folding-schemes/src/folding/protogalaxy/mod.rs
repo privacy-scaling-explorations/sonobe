@@ -18,6 +18,7 @@ use ark_relations::r1cs::{
 use ark_std::{
     borrow::Borrow, cmp::max, fmt::Debug, log2, marker::PhantomData, rand::RngCore, One, Zero,
 };
+use constants::{INCOMING, RUNNING};
 use num_bigint::BigUint;
 
 use crate::{
@@ -40,6 +41,7 @@ use crate::{
 };
 
 pub mod circuits;
+pub mod constants;
 pub mod folding;
 pub mod traits;
 pub(crate) mod utils;
@@ -69,20 +71,20 @@ pub type ProtoGalaxyCycleFoldCircuit<C, GC> = CycleFoldCircuit<ProtoGalaxyCycleF
 
 /// The committed instance of ProtoGalaxy.
 ///
-/// We use `RUNNING` to distinguish between incoming and running instances, as
+/// We use `TYPE` to distinguish between incoming and running instances, as
 /// they have slightly different structures (e.g., length of `betas`) and
 /// behaviors (e.g., in satisfiability checks).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CommittedInstance<C: CurveGroup, const RUNNING: bool> {
+pub struct CommittedInstance<C: CurveGroup, const TYPE: bool> {
     phi: C,
     betas: Vec<C::ScalarField>,
     e: C::ScalarField,
     x: Vec<C::ScalarField>,
 }
 
-impl<C: CurveGroup, const RUNNING: bool> Dummy<(usize, usize)> for CommittedInstance<C, RUNNING> {
+impl<C: CurveGroup, const TYPE: bool> Dummy<(usize, usize)> for CommittedInstance<C, TYPE> {
     fn dummy((io_len, t): (usize, usize)) -> Self {
-        if !RUNNING {
+        if TYPE == INCOMING {
             assert_eq!(t, 0);
         }
         Self {
@@ -94,9 +96,9 @@ impl<C: CurveGroup, const RUNNING: bool> Dummy<(usize, usize)> for CommittedInst
     }
 }
 
-impl<C: CurveGroup, const RUNNING: bool> Dummy<&R1CS<CF1<C>>> for CommittedInstance<C, RUNNING> {
+impl<C: CurveGroup, const TYPE: bool> Dummy<&R1CS<CF1<C>>> for CommittedInstance<C, TYPE> {
     fn dummy(r1cs: &R1CS<CF1<C>>) -> Self {
-        let t = if RUNNING {
+        let t = if TYPE == RUNNING {
             log2(r1cs.num_constraints()) as usize
         } else {
             0
@@ -105,30 +107,30 @@ impl<C: CurveGroup, const RUNNING: bool> Dummy<&R1CS<CF1<C>>> for CommittedInsta
     }
 }
 
-impl<C: CurveGroup, const RUNNING: bool> CommittedInstanceOps<C> for CommittedInstance<C, RUNNING> {
-    type Var = CommittedInstanceVar<C, RUNNING>;
+impl<C: CurveGroup, const TYPE: bool> CommittedInstanceOps<C> for CommittedInstance<C, TYPE> {
+    type Var = CommittedInstanceVar<C, TYPE>;
 
     fn get_commitments(&self) -> Vec<C> {
         vec![self.phi]
     }
 
     fn is_incoming(&self) -> bool {
-        !RUNNING
+        TYPE == INCOMING
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct CommittedInstanceVar<C: CurveGroup, const RUNNING: bool> {
+pub struct CommittedInstanceVar<C: CurveGroup, const TYPE: bool> {
     phi: NonNativeAffineVar<C>,
     betas: Vec<FpVar<C::ScalarField>>,
     e: FpVar<C::ScalarField>,
     x: Vec<FpVar<C::ScalarField>>,
 }
 
-impl<C: CurveGroup, const RUNNING: bool> AllocVar<CommittedInstance<C, RUNNING>, C::ScalarField>
-    for CommittedInstanceVar<C, RUNNING>
+impl<C: CurveGroup, const TYPE: bool> AllocVar<CommittedInstance<C, TYPE>, C::ScalarField>
+    for CommittedInstanceVar<C, TYPE>
 {
-    fn new_variable<T: Borrow<CommittedInstance<C, RUNNING>>>(
+    fn new_variable<T: Borrow<CommittedInstance<C, TYPE>>>(
         cs: impl Into<Namespace<C::ScalarField>>,
         f: impl FnOnce() -> Result<T, SynthesisError>,
         mode: AllocationMode,
@@ -141,7 +143,7 @@ impl<C: CurveGroup, const RUNNING: bool> AllocVar<CommittedInstance<C, RUNNING>,
             Ok(Self {
                 phi: NonNativeAffineVar::new_variable(cs.clone(), || Ok(u.phi), mode)?,
                 betas: Vec::new_variable(cs.clone(), || Ok(u.betas.clone()), mode)?,
-                e: if RUNNING {
+                e: if TYPE == RUNNING {
                     FpVar::new_variable(cs.clone(), || Ok(u.e), mode)?
                 } else {
                     FpVar::zero()
@@ -152,10 +154,10 @@ impl<C: CurveGroup, const RUNNING: bool> AllocVar<CommittedInstance<C, RUNNING>,
     }
 }
 
-impl<C: CurveGroup, const RUNNING: bool> R1CSVar<C::ScalarField>
-    for CommittedInstanceVar<C, RUNNING>
+impl<C: CurveGroup, const TYPE: bool> R1CSVar<C::ScalarField>
+    for CommittedInstanceVar<C, TYPE>
 {
-    type Value = CommittedInstance<C, RUNNING>;
+    type Value = CommittedInstance<C, TYPE>;
 
     fn cs(&self) -> ConstraintSystemRef<C::ScalarField> {
         self.phi
@@ -179,8 +181,8 @@ impl<C: CurveGroup, const RUNNING: bool> R1CSVar<C::ScalarField>
     }
 }
 
-impl<C: CurveGroup, const RUNNING: bool> CommittedInstanceVarOps<C>
-    for CommittedInstanceVar<C, RUNNING>
+impl<C: CurveGroup, const TYPE: bool> CommittedInstanceVarOps<C>
+    for CommittedInstanceVar<C, TYPE>
 {
     type PointVar = NonNativeAffineVar<C>;
 
@@ -197,7 +199,7 @@ impl<C: CurveGroup, const RUNNING: bool> CommittedInstanceVarOps<C>
         // because incoming instances and running instances already have
         // different types of `e` (constant vs witness) when we allocate them
         // in-circuit.
-        (!RUNNING)
+        (TYPE == INCOMING)
             .then_some(())
             .ok_or(SynthesisError::Unsatisfiable)
     }

@@ -1,5 +1,7 @@
 /// This file implements the onchain (Ethereum's EVM) decider circuit. For non-ethereum use cases,
 /// other more efficient approaches can be used.
+/// More details can be found at the documentation page:
+/// https://privacy-scaling-explorations.github.io/sonobe-docs/design/nova-decider-onchain.html
 use ark_crypto_primitives::sponge::{
     constraints::CryptographicSpongeVar,
     poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig, PoseidonSponge},
@@ -374,13 +376,14 @@ where
             Ok(self.W_i1.unwrap_or(w_dummy_native.clone()))
         })?;
 
-        // allocate the inputs for the check 6
+        // allocate the inputs for the check 5.1
         let kzg_c_W = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
             Ok(self.kzg_c_W.unwrap_or_else(CF1::<C1>::zero))
         })?;
         let kzg_c_E = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
             Ok(self.kzg_c_E.unwrap_or_else(CF1::<C1>::zero))
         })?;
+        // allocate the inputs for the check 5.2
         let _eval_W = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
             Ok(self.eval_W.unwrap_or_else(CF1::<C1>::zero))
         })?;
@@ -393,10 +396,8 @@ where
         // `transcript` is for challenge generation.
         let mut transcript = sponge.clone();
 
-        // 1. check RelaxedR1CS of U_{i+1}
-        let z_U1: Vec<FpVar<CF1<C1>>> =
-            [vec![U_i1.u.clone()], U_i1.x.to_vec(), W_i1.W.to_vec()].concat();
-        RelaxedR1CSGadget::check_native(r1cs, W_i1.E.clone(), U_i1.u.clone(), z_U1)?;
+        // The following enumeration of the steps matches the one used at the documentation page
+        // https://privacy-scaling-explorations.github.io/sonobe-docs/design/nova-decider-onchain.html
 
         // 2. u_i.cmE==cm(0), u_i.u==1
         // Here zero is the x & y coordinates of the zero point affine representation.
@@ -408,6 +409,11 @@ where
         // 3.a u_i.x[0] == H(i, z_0, z_i, U_i)
         let (u_i_x, U_i_vec) = U_i.clone().hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
         (u_i.x[0]).enforce_equal(&u_i_x)?;
+
+        // 4. check RelaxedR1CS of U_{i+1}
+        let z_U1: Vec<FpVar<CF1<C1>>> =
+            [vec![U_i1.u.clone()], U_i1.x.to_vec(), W_i1.W.to_vec()].concat();
+        RelaxedR1CSGadget::check_native(r1cs, W_i1.E.clone(), U_i1.u.clone(), z_U1)?;
 
         #[cfg(feature = "light-test")]
         log::warn!("[WARNING]: Running with the 'light-test' feature, skipping the big part of the DeciderEthCircuit.\n           Only for testing purposes.");
@@ -446,7 +452,7 @@ where
             let (cf_u_i_x, _) = cf_U_i.clone().hash(&sponge, pp_hash.clone())?;
             (u_i.x[1]).enforce_equal(&cf_u_i_x)?;
 
-            // 4. check Pedersen commitments of cf_U_i.{cmE, cmW}
+            // 7. check Pedersen commitments of cf_U_i.{cmE, cmW}
             let H = GC2::new_constant(cs.clone(), self.cf_pedersen_params.h)?;
             let G = Vec::<GC2>::new_constant(cs.clone(), self.cf_pedersen_params.generators)?;
             let cf_W_i_E_bits: Result<Vec<Vec<Boolean<CF1<C1>>>>, SynthesisError> =
@@ -471,17 +477,18 @@ where
                     || Ok(self.cf_r1cs.clone()),
                 )?;
 
-            // 5. check RelaxedR1CS of cf_U_i
+            // 6. check RelaxedR1CS of cf_U_i (CycleFold instance)
             let cf_z_U = [vec![cf_U_i.u.clone()], cf_U_i.x.to_vec(), cf_W_i.W.to_vec()].concat();
             RelaxedR1CSGadget::check_nonnative(cf_r1cs, cf_W_i.E, cf_U_i.u.clone(), cf_z_U)?;
         }
 
-        // 8.a, 6.a compute NIFS.V and KZG challenges.
+        // 1.1.a, 5.1. compute NIFS.V and KZG challenges.
         // We need to ensure the order of challenge generation is the same as
         // the native counterpart, so we first compute the challenges here and
         // do the actual checks later.
         let cmT =
             NonNativeAffineVar::new_input(cs.clone(), || Ok(self.cmT.unwrap_or_else(C1::zero)))?;
+        // 1.1.a
         let r_bits = ChallengeGadget::<C1>::get_challenge_gadget(
             &mut transcript,
             pp_hash,
@@ -489,25 +496,24 @@ where
             u_i.clone(),
             cmT.clone(),
         )?;
+        // 5.1.
         let (incircuit_c_W, incircuit_c_E) =
             KZGChallengesGadget::<C1>::get_challenges_gadget(&mut transcript, U_i1.clone())?;
-
-        // 6.b check KZG challenges
         incircuit_c_W.enforce_equal(&kzg_c_W)?;
         incircuit_c_E.enforce_equal(&kzg_c_E)?;
 
-        // Check 7 is temporary disabled due
+        // Check 5.2 is temporary disabled due
         // https://github.com/privacy-scaling-explorations/sonobe/issues/80
         log::warn!("[WARNING]: issue #80 (https://github.com/privacy-scaling-explorations/sonobe/issues/80) is not resolved yet.");
         //
-        // 7. check eval_W==p_W(c_W) and eval_E==p_E(c_E)
+        // 5.2. check eval_W==p_W(c_W) and eval_E==p_E(c_E)
         // let incircuit_eval_W = evaluate_gadget::<CF1<C1>>(W_i1.W, incircuit_c_W)?;
         // let incircuit_eval_E = evaluate_gadget::<CF1<C1>>(W_i1.E, incircuit_c_E)?;
         // incircuit_eval_W.enforce_equal(&eval_W)?;
         // incircuit_eval_E.enforce_equal(&eval_E)?;
 
-        // 8.b check the NIFS.V challenge matches the one from the public input (so we
-        // avoid the verifier computing it)
+        // 1.1.b check that the NIFS.V challenge matches the one from the public input (so we avoid
+        //   the verifier computing it)
         let r_Fr = Boolean::le_bits_to_fp_var(&r_bits)?;
         // check that the in-circuit computed r is equal to the inputted r
         let r =
@@ -785,7 +791,7 @@ pub mod tests {
     }
 
     #[test]
-    fn test_decider_circuit() {
+    fn test_decider_eth_circuit() {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
@@ -829,8 +835,8 @@ pub mod tests {
         )
         .unwrap();
 
-        // load the DeciderEthCircuit from the generated Nova instance
-        let decider_circuit = DeciderEthCircuit::<
+        // load the DeciderEthCircuit from the Nova instance
+        let decider_eth_circuit = DeciderEthCircuit::<
             Projective,
             GVar,
             Projective2,
@@ -843,7 +849,9 @@ pub mod tests {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         // generate the constraints and check that are satisfied by the inputs
-        decider_circuit.generate_constraints(cs.clone()).unwrap();
+        decider_eth_circuit
+            .generate_constraints(cs.clone())
+            .unwrap();
         assert!(cs.is_satisfied().unwrap());
     }
 

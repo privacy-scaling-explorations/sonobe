@@ -61,10 +61,10 @@ where
         f().and_then(|val| {
             let cs = cs.into();
 
-            let cmE = GC::new_variable(cs.clone(), || Ok(val.borrow().cmE), mode)?;
-            let cmW = GC::new_variable(cs.clone(), || Ok(val.borrow().cmW), mode)?;
             let u = NonNativeUintVar::new_variable(cs.clone(), || Ok(val.borrow().u), mode)?;
             let x = Vec::new_variable(cs.clone(), || Ok(val.borrow().x.clone()), mode)?;
+            let cmE = GC::new_variable(cs.clone(), || Ok(val.borrow().cmE), mode)?;
+            let cmW = GC::new_variable(cs.clone(), || Ok(val.borrow().cmW), mode)?;
 
             Ok(Self { cmE, u, cmW, x })
         })

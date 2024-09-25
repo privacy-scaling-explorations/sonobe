@@ -40,7 +40,7 @@ use crate::folding::circuits::{
     CF1, CF2,
 };
 use crate::folding::nova::NovaCycleFoldConfig;
-use crate::folding::traits::CommittedInstanceVarOps;
+use crate::folding::traits::{CommittedInstanceVarOps, Dummy};
 use crate::frontend::FCircuit;
 use crate::utils::vec::poly_from_vec;
 use crate::Error;
@@ -214,11 +214,8 @@ where
             Ok(self.z_i.unwrap_or(vec![CF1::<C1>::zero()]))
         })?;
 
-        let u_dummy_native = CommittedInstance::<C1>::dummy(2);
-        let w_dummy_native = Witness::<C1>::dummy(
-            self.r1cs.A.n_cols - 3, /* (3=2+1, since u_i.x.len=2) */
-            self.E_len,
-        );
+        let u_dummy_native = CommittedInstance::<C1>::dummy(&self.r1cs);
+        let w_dummy_native = Witness::<C1>::dummy(&self.r1cs);
 
         let u_i = CommittedInstanceVar::<C1>::new_witness(cs.clone(), || {
             Ok(self.u_i.unwrap_or(u_dummy_native.clone()))
@@ -436,9 +433,8 @@ where
             Ok(self.pp_hash.unwrap_or_else(CF1::<C2>::zero))
         })?;
 
-        let cf_u_dummy_native = CommittedInstance::<C2>::dummy(NovaCycleFoldConfig::<C1>::IO_LEN);
-        let w_dummy_native =
-            Witness::<C2>::dummy(self.cf_r1cs.A.n_cols - 1 - self.cf_r1cs.l, self.cf_E_len);
+        let cf_u_dummy_native = CommittedInstance::<C2>::dummy(&self.cf_r1cs);
+        let w_dummy_native = Witness::<C2>::dummy(&self.cf_r1cs);
         let cf_U_i = CommittedInstanceVar::<C2>::new_input(cs.clone(), || {
             Ok(self.cf_U_i.unwrap_or_else(|| cf_u_dummy_native.clone()))
         })?;

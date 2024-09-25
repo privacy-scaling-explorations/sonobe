@@ -53,6 +53,13 @@ impl<C: CurveGroup, const TYPE: bool> AbsorbGadget<C::ScalarField>
     }
 }
 
+/// Implements `Arith` for R1CS, where the witness is of type [`Witness`], and
+/// the committed instance is of type [`CommittedInstance`].
+///
+/// Due to the error term `CommittedInstance.e`, R1CS here is considered as a
+/// relaxed R1CS.
+///
+/// See `nova/traits.rs` for the rationale behind the design.
 impl<C: CurveGroup, const TYPE: bool> Arith<Witness<CF1<C>>, CommittedInstance<C, TYPE>>
     for R1CS<CF1<C>>
 {

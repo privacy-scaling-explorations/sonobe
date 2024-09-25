@@ -154,9 +154,7 @@ impl<C: CurveGroup, const TYPE: bool> AllocVar<CommittedInstance<C, TYPE>, C::Sc
     }
 }
 
-impl<C: CurveGroup, const TYPE: bool> R1CSVar<C::ScalarField>
-    for CommittedInstanceVar<C, TYPE>
-{
+impl<C: CurveGroup, const TYPE: bool> R1CSVar<C::ScalarField> for CommittedInstanceVar<C, TYPE> {
     type Value = CommittedInstance<C, TYPE>;
 
     fn cs(&self) -> ConstraintSystemRef<C::ScalarField> {
@@ -181,9 +179,7 @@ impl<C: CurveGroup, const TYPE: bool> R1CSVar<C::ScalarField>
     }
 }
 
-impl<C: CurveGroup, const TYPE: bool> CommittedInstanceVarOps<C>
-    for CommittedInstanceVar<C, TYPE>
-{
+impl<C: CurveGroup, const TYPE: bool> CommittedInstanceVarOps<C> for CommittedInstanceVar<C, TYPE> {
     type PointVar = NonNativeAffineVar<C>;
 
     fn get_commitments(&self) -> Vec<Self::PointVar> {

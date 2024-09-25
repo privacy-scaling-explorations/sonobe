@@ -8,6 +8,33 @@ use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::CF1;
 use crate::Error;
 
+/// Implements `Arith` for R1CS, where the witness is of type [`Witness`], and
+/// the committed instance is of type [`CommittedInstance`].
+///
+/// Due to the error terms `Witness.E` and `CommittedInstance.u`, R1CS here is
+/// considered as a relaxed R1CS.
+///
+/// One may wonder why we do not provide distinct structs for R1CS and relaxed
+/// R1CS.
+/// This is because both plain R1CS and relaxed R1CS have the same structure:
+/// they are both represented by three matrices.
+/// What makes them different is the error terms, which are not part of the R1CS
+/// struct, but are part of the witness and committed instance.
+///
+/// As a follow-up, one may further ask why not providing a trait for relaxed
+/// R1CS and implement it for the `R1CS` struct, where the relaxed R1CS trait
+/// has methods for relaxed satisfiability check, while the `Arith` trait that
+/// `R1CS` implements has methods for plain satisfiability check.
+/// However, it would be more ideal if we have a single method that can smartly
+/// choose the type of satisfiability check, which would make the code more
+/// generic and easier to maintain.
+///
+/// This is achieved thanks to the new design of the [`Arith`] trait, where we
+/// can implement the trait for the same constraint system with different types
+/// of witnesses and committed instances.
+/// For R1CS, whether it is relaxed or not is now determined by the types of `W`
+/// and `U`: the satisfiability check is relaxed if `W` and `U` are defined by
+/// folding schemes, and plain if they are vectors of field elements.
 impl<C: CurveGroup> Arith<Witness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
     type Evaluation = Vec<CF1<C>>;
 

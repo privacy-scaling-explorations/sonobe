@@ -55,7 +55,37 @@ pub trait Arith<W, U>: Clone {
 
     /// Evaluates the constraint system `self` at witness `w` and instance `u`.
     /// Returns the evaluation result.
+    ///
+    /// The evaluation result is usually a vector of field elements.
+    /// For instance:
+    /// - Evaluating the plain R1CS at `W = w` and `U = x` returns
+    ///   `Az ∘ Bz - Cz`, where `z = [1, x, w]`.
+    ///
+    /// - Evaluating the relaxed R1CS in Nova at `W = (w, e, ...)` and
+    ///   `U = (u, x, ...)` returns `Az ∘ Bz - uCz`, where `z = [u, x, w]`.
+    ///
+    /// - Evaluating the relaxed R1CS in ProtoGalaxy at `W = (w, ...)` and
+    ///   `U = (x, e, β, ...)` returns `Az ∘ Bz - Cz`, where `z = [1, x, w]`.
+    ///
+    /// However, we use `Self::Evaluation` to represent the evaluation result
+    /// for future extensibility.
     fn eval_relation(&self, w: &W, u: &U) -> Result<Self::Evaluation, Error>;
+
+    /// Checks if the evaluation result is valid. The witness `w` and instance
+    /// `u` are also parameters, because the validity check may need information
+    /// contained in `w` and/or `u`.
+    ///
+    /// For instance:
+    /// - The evaluation `v` of plain R1CS at satisfying `W` and `U` should be
+    ///   an all-zero vector.
+    ///
+    /// - The evaluation `v` of relaxed R1CS in Nova at satisfying `W` and `U`
+    ///   should be equal to the error term `e` in the witness.
+    ///
+    /// - The evaluation `v` of relaxed R1CS in ProtoGalaxy at satisfying `W`
+    ///   and `U` should satisfy `e = Σ pow_i(β) v_i`, where `e` is the error
+    ///   term in the committed instance.
+    fn check_evaluation(w: &W, u: &U, v: Self::Evaluation) -> Result<(), Error>;
 
     /// Checks if witness `w` and instance `u` satisfy the constraint system
     /// `self` by first computing the evaluation result and then checking the
@@ -66,11 +96,6 @@ pub trait Arith<W, U>: Clone {
         let e = self.eval_relation(w, u)?;
         Self::check_evaluation(w, u, e)
     }
-
-    /// Checks if the evaluation result is valid. The witness `w` and instance
-    /// `u` are also parameters, because the validity check may need information
-    /// contained in `w` and/or `u`.
-    fn check_evaluation(w: &W, u: &U, e: Self::Evaluation) -> Result<(), Error>;
 }
 
 /// `ArithSerializer` is for serializing constraint systems.

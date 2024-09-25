@@ -18,10 +18,14 @@ use ark_relations::r1cs::{
 use ark_std::{
     borrow::Borrow, cmp::max, fmt::Debug, log2, marker::PhantomData, rand::RngCore, One, Zero,
 };
+use constants::{INCOMING, RUNNING};
 use num_bigint::BigUint;
 
 use crate::{
-    arith::r1cs::{extract_r1cs, extract_w_x, RelaxedR1CS, R1CS},
+    arith::{
+        r1cs::{extract_r1cs, extract_w_x, R1CS},
+        Arith,
+    },
     commitment::CommitmentScheme,
     folding::circuits::{
         cyclefold::{
@@ -37,6 +41,7 @@ use crate::{
 };
 
 pub mod circuits;
+pub mod constants;
 pub mod folding;
 pub mod traits;
 pub(crate) mod utils;
@@ -44,7 +49,9 @@ pub(crate) mod utils;
 use circuits::AugmentedFCircuit;
 use folding::Folding;
 
-use super::traits::{CommittedInstanceOps, CommittedInstanceVarOps, WitnessOps, WitnessVarOps};
+use super::traits::{
+    CommittedInstanceOps, CommittedInstanceVarOps, Dummy, WitnessOps, WitnessVarOps,
+};
 
 /// Configuration for ProtoGalaxy's CycleFold circuit
 pub struct ProtoGalaxyCycleFoldConfig<C: CurveGroup> {
@@ -62,51 +69,68 @@ impl<C: CurveGroup> CycleFoldConfig for ProtoGalaxyCycleFoldConfig<C> {
 /// in ProtoGalaxy instances.
 pub type ProtoGalaxyCycleFoldCircuit<C, GC> = CycleFoldCircuit<ProtoGalaxyCycleFoldConfig<C>, GC>;
 
+/// The committed instance of ProtoGalaxy.
+///
+/// We use `TYPE` to distinguish between incoming and running instances, as
+/// they have slightly different structures (e.g., length of `betas`) and
+/// behaviors (e.g., in satisfiability checks).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CommittedInstance<C: CurveGroup> {
+pub struct CommittedInstance<C: CurveGroup, const TYPE: bool> {
     phi: C,
     betas: Vec<C::ScalarField>,
     e: C::ScalarField,
     x: Vec<C::ScalarField>,
 }
 
-impl<C: CurveGroup> CommittedInstance<C> {
-    pub fn dummy_running(io_len: usize, t: usize) -> Self {
+impl<C: CurveGroup, const TYPE: bool> Dummy<(usize, usize)> for CommittedInstance<C, TYPE> {
+    fn dummy((io_len, t): (usize, usize)) -> Self {
+        if TYPE == INCOMING {
+            assert_eq!(t, 0);
+        }
         Self {
             phi: C::zero(),
-            betas: vec![C::ScalarField::zero(); t],
-            e: C::ScalarField::zero(),
-            x: vec![C::ScalarField::zero(); io_len],
+            betas: vec![Zero::zero(); t],
+            e: Zero::zero(),
+            x: vec![Zero::zero(); io_len],
         }
-    }
-
-    pub fn dummy_incoming(io_len: usize) -> Self {
-        Self::dummy_running(io_len, 0)
     }
 }
 
-impl<C: CurveGroup> CommittedInstanceOps<C> for CommittedInstance<C> {
-    type Var = CommittedInstanceVar<C>;
+impl<C: CurveGroup, const TYPE: bool> Dummy<&R1CS<CF1<C>>> for CommittedInstance<C, TYPE> {
+    fn dummy(r1cs: &R1CS<CF1<C>>) -> Self {
+        let t = if TYPE == RUNNING {
+            log2(r1cs.num_constraints()) as usize
+        } else {
+            0
+        };
+        Self::dummy((r1cs.num_public_inputs(), t))
+    }
+}
+
+impl<C: CurveGroup, const TYPE: bool> CommittedInstanceOps<C> for CommittedInstance<C, TYPE> {
+    type Var = CommittedInstanceVar<C, TYPE>;
 
     fn get_commitments(&self) -> Vec<C> {
         vec![self.phi]
     }
 
     fn is_incoming(&self) -> bool {
-        self.e == Zero::zero() && self.betas.is_empty()
+        TYPE == INCOMING
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct CommittedInstanceVar<C: CurveGroup> {
+pub struct CommittedInstanceVar<C: CurveGroup, const TYPE: bool> {
     phi: NonNativeAffineVar<C>,
     betas: Vec<FpVar<C::ScalarField>>,
     e: FpVar<C::ScalarField>,
     x: Vec<FpVar<C::ScalarField>>,
 }
 
-impl<C: CurveGroup> AllocVar<CommittedInstance<C>, C::ScalarField> for CommittedInstanceVar<C> {
-    fn new_variable<T: Borrow<CommittedInstance<C>>>(
+impl<C: CurveGroup, const TYPE: bool> AllocVar<CommittedInstance<C, TYPE>, C::ScalarField>
+    for CommittedInstanceVar<C, TYPE>
+{
+    fn new_variable<T: Borrow<CommittedInstance<C, TYPE>>>(
         cs: impl Into<Namespace<C::ScalarField>>,
         f: impl FnOnce() -> Result<T, SynthesisError>,
         mode: AllocationMode,
@@ -119,15 +143,19 @@ impl<C: CurveGroup> AllocVar<CommittedInstance<C>, C::ScalarField> for Committed
             Ok(Self {
                 phi: NonNativeAffineVar::new_variable(cs.clone(), || Ok(u.phi), mode)?,
                 betas: Vec::new_variable(cs.clone(), || Ok(u.betas.clone()), mode)?,
-                e: FpVar::new_variable(cs.clone(), || Ok(u.e), mode)?,
+                e: if TYPE == RUNNING {
+                    FpVar::new_variable(cs.clone(), || Ok(u.e), mode)?
+                } else {
+                    FpVar::zero()
+                },
                 x: Vec::new_variable(cs.clone(), || Ok(u.x.clone()), mode)?,
             })
         })
     }
 }
 
-impl<C: CurveGroup> R1CSVar<C::ScalarField> for CommittedInstanceVar<C> {
-    type Value = CommittedInstance<C>;
+impl<C: CurveGroup, const TYPE: bool> R1CSVar<C::ScalarField> for CommittedInstanceVar<C, TYPE> {
+    type Value = CommittedInstance<C, TYPE>;
 
     fn cs(&self) -> ConstraintSystemRef<C::ScalarField> {
         self.phi
@@ -151,7 +179,7 @@ impl<C: CurveGroup> R1CSVar<C::ScalarField> for CommittedInstanceVar<C> {
     }
 }
 
-impl<C: CurveGroup> CommittedInstanceVarOps<C> for CommittedInstanceVar<C> {
+impl<C: CurveGroup, const TYPE: bool> CommittedInstanceVarOps<C> for CommittedInstanceVar<C, TYPE> {
     type PointVar = NonNativeAffineVar<C>;
 
     fn get_commitments(&self) -> Vec<Self::PointVar> {
@@ -163,11 +191,13 @@ impl<C: CurveGroup> CommittedInstanceVarOps<C> for CommittedInstanceVar<C> {
     }
 
     fn enforce_incoming(&self) -> Result<(), SynthesisError> {
-        if self.betas.is_empty() {
-            self.e.enforce_equal(&FpVar::zero())
-        } else {
-            Err(SynthesisError::Unsatisfiable)
-        }
+        // We don't need to check if `self` is an incoming instance in-circuit,
+        // because incoming instances and running instances already have
+        // different types of `e` (constant vs witness) when we allocate them
+        // in-circuit.
+        (TYPE == INCOMING)
+            .then_some(())
+            .ok_or(SynthesisError::Unsatisfiable)
     }
 
     fn enforce_partial_equal(&self, other: &Self) -> Result<(), SynthesisError> {
@@ -195,14 +225,23 @@ impl<F: PrimeField> Witness<F> {
         &self,
         params: &CS::ProverParams,
         x: Vec<F>,
-    ) -> Result<CommittedInstance<C>, crate::Error> {
+    ) -> Result<CommittedInstance<C, false>, crate::Error> {
         let phi = CS::commit(params, &self.w, &self.r_w)?;
-        Ok(CommittedInstance {
+        Ok(CommittedInstance::<C, false> {
             phi,
             x,
             e: F::zero(),
             betas: vec![],
         })
+    }
+}
+
+impl<F: PrimeField> Dummy<&R1CS<F>> for Witness<F> {
+    fn dummy(r1cs: &R1CS<F>) -> Self {
+        Self {
+            w: vec![F::zero(); r1cs.num_witnesses()],
+            r_w: F::zero(),
+        }
     }
 }
 
@@ -357,9 +396,9 @@ where
     pub z_i: Vec<C1::ScalarField>,
     /// ProtoGalaxy instances
     pub w_i: Witness<C1::ScalarField>,
-    pub u_i: CommittedInstance<C1>,
+    pub u_i: CommittedInstance<C1, false>,
     pub W_i: Witness<C1::ScalarField>,
-    pub U_i: CommittedInstance<C1>,
+    pub U_i: CommittedInstance<C1, true>,
 
     /// CycleFold running instance
     pub cf_W_i: CycleFoldWitness<C2>,
@@ -492,9 +531,10 @@ where
     type PreprocessorParam = (PoseidonConfig<CF1<C1>>, FC);
     type ProverParam = ProverParams<C1, C2, CS1, CS2>;
     type VerifierParam = VerifierParams<C1, C2, CS1, CS2>;
-    type RunningInstance = (CommittedInstance<C1>, Witness<C1::ScalarField>);
-    type IncomingInstance = (CommittedInstance<C1>, Witness<C1::ScalarField>);
-    type MultiCommittedInstanceWithWitness = (CommittedInstance<C1>, Witness<C1::ScalarField>);
+    type RunningInstance = (CommittedInstance<C1, true>, Witness<C1::ScalarField>);
+    type IncomingInstance = (CommittedInstance<C1, false>, Witness<C1::ScalarField>);
+    type MultiCommittedInstanceWithWitness =
+        (CommittedInstance<C1, false>, Witness<C1::ScalarField>);
     type CFInstance = (CycleFoldCommittedInstance<C2>, CycleFoldWitness<C2>);
 
     fn preprocess(
@@ -560,9 +600,9 @@ where
         let pp_hash = vp.pp_hash()?;
 
         // setup the dummy instances
-        let (W_dummy, U_dummy) = vp.r1cs.dummy_running_instance();
-        let (w_dummy, u_dummy) = vp.r1cs.dummy_incoming_instance();
-        let (cf_W_dummy, cf_U_dummy) = vp.cf_r1cs.dummy_running_instance();
+        let (w_dummy, u_dummy) = vp.r1cs.dummy_witness_instance();
+        let (W_dummy, U_dummy) = vp.r1cs.dummy_witness_instance();
+        let (cf_W_dummy, cf_U_dummy) = vp.cf_r1cs.dummy_witness_instance();
 
         // W_dummy=W_0 is a 'dummy witness', all zeroes, but with the size corresponding to the
         // R1CS that we're working with.
@@ -808,10 +848,11 @@ where
                     )?,
                     U_i1
                 );
-                self.cf_r1cs.check_tight_relation(&_cf1_w_i, &cf1_u_i)?;
-                self.cf_r1cs.check_tight_relation(&_cf2_w_i, &cf2_u_i)?;
-                self.cf_r1cs
-                    .check_relaxed_relation(&self.cf_W_i, &self.cf_U_i)?;
+                cf1_u_i.check_incoming()?;
+                cf2_u_i.check_incoming()?;
+                self.cf_r1cs.check_relation(&_cf1_w_i, &cf1_u_i)?;
+                self.cf_r1cs.check_relation(&_cf2_w_i, &cf2_u_i)?;
+                self.cf_r1cs.check_relation(&self.cf_W_i, &self.cf_U_i)?;
             }
 
             self.W_i = W_i1;
@@ -846,8 +887,9 @@ where
 
         #[cfg(test)]
         {
-            self.r1cs.check_tight_relation(&self.w_i, &self.u_i)?;
-            self.r1cs.check_relaxed_relation(&self.W_i, &self.U_i)?;
+            self.u_i.check_incoming()?;
+            self.r1cs.check_relation(&self.w_i, &self.u_i)?;
+            self.r1cs.check_relation(&self.W_i, &self.U_i)?;
         }
 
         Ok(())
@@ -904,13 +946,15 @@ where
             return Err(Error::IVCVerificationFail);
         }
 
-        // check R1CS satisfiability
-        vp.r1cs.check_tight_relation(&w_i, &u_i)?;
+        // check R1CS satisfiability, which is equivalent to checking if `u_i`
+        // is an incoming instance and if `w_i` and `u_i` satisfy RelaxedR1CS
+        u_i.check_incoming()?;
+        vp.r1cs.check_relation(&w_i, &u_i)?;
         // check RelaxedR1CS satisfiability
-        vp.r1cs.check_relaxed_relation(&W_i, &U_i)?;
+        vp.r1cs.check_relation(&W_i, &U_i)?;
 
         // check CycleFold RelaxedR1CS satisfiability
-        vp.cf_r1cs.check_relaxed_relation(&cf_W_i, &cf_U_i)?;
+        vp.cf_r1cs.check_relation(&cf_W_i, &cf_U_i)?;
 
         Ok(())
     }

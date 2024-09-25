@@ -42,7 +42,7 @@ use crate::folding::{
         CF1, CF2,
     },
     nova::get_r1cs_from_cs,
-    traits::CommittedInstanceVarOps,
+    traits::{CommittedInstanceVarOps, Dummy},
 };
 use crate::frontend::FCircuit;
 use crate::utils::virtual_polynomial::VPAuxInfo;
@@ -602,13 +602,13 @@ where
     /// feed in as parameter for the AugmentedFCircuit::empty method to avoid computing them there.
     pub fn upper_bound_ccs(&self) -> Result<CCS<C1::ScalarField>, Error> {
         let r1cs = get_r1cs_from_cs::<CF1<C1>>(self.clone()).unwrap();
-        let mut ccs = CCS::from_r1cs(r1cs.clone());
+        let mut ccs = CCS::from(r1cs);
 
         let z_0 = vec![C1::ScalarField::zero(); self.F.state_len()];
         let mut W_i = Witness::<C1::ScalarField>::dummy(&ccs);
-        let mut U_i = LCCCS::<C1>::dummy(ccs.l, ccs.t, ccs.s);
+        let mut U_i = LCCCS::<C1>::dummy(&ccs);
         let mut w_i = W_i.clone();
-        let mut u_i = CCCS::<C1>::dummy(ccs.l);
+        let mut u_i = CCCS::<C1>::dummy(&ccs);
 
         let n_iters = 2;
         for _ in 0..n_iters {
@@ -674,7 +674,7 @@ where
                 r_w: C1::ScalarField::one(),
             };
             W_i = Witness::<C1::ScalarField>::dummy(&ccs);
-            U_i = LCCCS::<C1>::dummy(ccs.l, ccs.t, ccs.s);
+            U_i = LCCCS::<C1>::dummy(&ccs);
         }
         Ok(ccs)
 
@@ -691,7 +691,7 @@ where
         cs.finalize();
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
         let r1cs = extract_r1cs::<C1::ScalarField>(&cs);
-        let ccs = CCS::from_r1cs(r1cs.clone());
+        let ccs = CCS::from(r1cs);
 
         Ok((cs, ccs))
     }
@@ -734,8 +734,8 @@ where
                 .unwrap_or(vec![CF1::<C1>::zero(); self.F.external_inputs_len()]))
         })?;
 
-        let U_dummy = LCCCS::<C1>::dummy(self.ccs.l, self.ccs.t, self.ccs.s);
-        let u_dummy = CCCS::<C1>::dummy(self.ccs.l);
+        let U_dummy = LCCCS::<C1>::dummy(&self.ccs);
+        let u_dummy = CCCS::<C1>::dummy(&self.ccs);
 
         let U_i =
             LCCCSVar::<C1>::new_witness(cs.clone(), || Ok(self.U_i.unwrap_or(U_dummy.clone())))?;
@@ -748,7 +748,7 @@ where
         let U_i1_C = NonNativeAffineVar::new_witness(cs.clone(), || {
             Ok(self.U_i1_C.unwrap_or_else(C1::zero))
         })?;
-        let nimfs_proof_dummy = NIMFSProof::<C1>::dummy(&self.ccs, MU, NU);
+        let nimfs_proof_dummy = NIMFSProof::<C1>::dummy((&self.ccs, MU, NU));
         let nimfs_proof = ProofVar::<C1>::new_witness(cs.clone(), || {
             Ok(self.nimfs_proof.unwrap_or(nimfs_proof_dummy))
         })?;
@@ -906,7 +906,8 @@ mod tests {
     use crate::{
         arith::{
             ccs::tests::{get_test_ccs, get_test_z},
-            r1cs::{extract_w_x, RelaxedR1CS},
+            r1cs::extract_w_x,
+            Arith,
         },
         commitment::{pedersen::Pedersen, CommitmentScheme},
         folding::{
@@ -1100,7 +1101,7 @@ mod tests {
         assert_eq!(folded_lcccs, folded_lcccs_v);
 
         // Check that the folded LCCCS instance is a valid instance with respect to the folded witness
-        folded_lcccs.check_relation(&ccs, &folded_witness).unwrap();
+        ccs.check_relation(&folded_witness, &folded_lcccs).unwrap();
 
         // allocate circuit inputs
         let cs = ConstraintSystem::<Fr>::new_ref();
@@ -1248,13 +1249,13 @@ mod tests {
 
         // prepare the dummy instances
         let W_dummy = Witness::<Fr>::dummy(&ccs);
-        let U_dummy = LCCCS::<Projective>::dummy(ccs.l, ccs.t, ccs.s);
+        let U_dummy = LCCCS::<Projective>::dummy(&ccs);
         let w_dummy = W_dummy.clone();
-        let u_dummy = CCCS::<Projective>::dummy(ccs.l);
+        let u_dummy = CCCS::<Projective>::dummy(&ccs);
         let (cf_W_dummy, cf_U_dummy): (
             CycleFoldWitness<Projective2>,
             CycleFoldCommittedInstance<Projective2>,
-        ) = cf_r1cs.dummy_running_instance();
+        ) = cf_r1cs.dummy_witness_instance();
 
         // set the initial dummy instances
         let mut W_i = W_dummy.clone();
@@ -1289,7 +1290,7 @@ mod tests {
 
             if i == 0 {
                 W_i1 = Witness::<Fr>::dummy(&ccs);
-                U_i1 = LCCCS::dummy(ccs.l, ccs.t, ccs.s);
+                U_i1 = LCCCS::dummy(&ccs);
 
                 let u_i1_x = U_i1.hash(&sponge, pp_hash, Fr::one(), &z_0, &z_i1);
 
@@ -1346,7 +1347,7 @@ mod tests {
                 .unwrap();
 
                 // sanity check: check the folded instance relation
-                U_i1.check_relation(&ccs, &W_i1).unwrap();
+                ccs.check_relation(&W_i1, &U_i1).unwrap();
 
                 let u_i1_x = U_i1.hash(&sponge, pp_hash, iFr + Fr::one(), &z_0, &z_i1);
 
@@ -1465,7 +1466,7 @@ mod tests {
             (u_i, w_i) = ccs
                 .to_cccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &r1cs_z)
                 .unwrap();
-            u_i.check_relation(&ccs, &w_i).unwrap();
+            ccs.check_relation(&w_i, &u_i).unwrap();
 
             // sanity checks
             assert_eq!(w_i.w, r1cs_w_i1);
@@ -1486,12 +1487,12 @@ mod tests {
             W_i = W_i1.clone();
 
             // check the new LCCCS instance relation
-            U_i.check_relation(&ccs, &W_i).unwrap();
+            ccs.check_relation(&W_i, &U_i).unwrap();
             // check the new CCCS instance relation
-            u_i.check_relation(&ccs, &w_i).unwrap();
+            ccs.check_relation(&w_i, &u_i).unwrap();
 
             // check the CycleFold instance relation
-            cf_r1cs.check_relaxed_relation(&cf_W_i, &cf_U_i).unwrap();
+            cf_r1cs.check_relation(&cf_W_i, &cf_U_i).unwrap();
 
             println!("augmented_f_circuit step {}: {:?}", i, start.elapsed());
         }

@@ -14,9 +14,7 @@ use super::utils::{all_powers, betas_star, exponential_powers, pow_i};
 use super::ProtoGalaxyError;
 use super::{CommittedInstance, Witness};
 
-#[cfg(test)]
-use crate::arith::r1cs::RelaxedR1CS;
-use crate::arith::{r1cs::R1CS, Arith};
+use crate::arith::r1cs::R1CS;
 use crate::transcript::Transcript;
 use crate::utils::vec::*;
 use crate::Error;
@@ -38,14 +36,14 @@ where
         transcript: &mut impl Transcript<C::ScalarField>,
         r1cs: &R1CS<C::ScalarField>,
         // running instance
-        instance: &CommittedInstance<C>,
+        instance: &CommittedInstance<C, true>,
         w: &Witness<C::ScalarField>,
         // incoming instances
-        vec_instances: &[CommittedInstance<C>],
+        vec_instances: &[CommittedInstance<C, false>],
         vec_w: &[Witness<C::ScalarField>],
     ) -> Result<
         (
-            CommittedInstance<C>,
+            CommittedInstance<C, true>,
             Witness<C::ScalarField>,
             Vec<C::ScalarField>, // F_X coeffs
             Vec<C::ScalarField>, // K_X coeffs
@@ -97,7 +95,7 @@ where
         let delta = transcript.get_challenge();
         let deltas = exponential_powers(delta, t);
 
-        let mut f_z = r1cs.eval_relation(&z)?;
+        let mut f_z = r1cs.eval_at_z(&z)?;
         if f_z.len() != m {
             return Err(Error::NotSameLength(
                 "number of constraints in R1CS".to_string(),
@@ -127,15 +125,18 @@ where
         // sanity check: check that the new randomized instance (the original instance but with
         // 'refreshed' randomness) satisfies the relation.
         #[cfg(test)]
-        r1cs.check_relaxed_relation(
-            w,
-            &CommittedInstance {
-                phi: instance.phi,
-                betas: betas_star.clone(),
-                e: F_alpha,
-                x: instance.x.clone(),
-            },
-        )?;
+        {
+            use crate::arith::Arith;
+            r1cs.check_relation(
+                w,
+                &CommittedInstance::<_, true> {
+                    phi: instance.phi,
+                    betas: betas_star.clone(),
+                    e: F_alpha,
+                    x: instance.x.clone(),
+                },
+            )?;
+        }
 
         let zs: Vec<Vec<C::ScalarField>> = std::iter::once(z.clone())
             .chain(
@@ -178,7 +179,7 @@ where
                     inner[j] += Lh * zj;
                 }
             }
-            let f_ev = r1cs.eval_relation(&inner)?;
+            let f_ev = r1cs.eval_at_z(&inner)?;
 
             G_evals[hi] = cfg_into_iter!(f_ev)
                 .enumerate()
@@ -253,13 +254,13 @@ where
     pub fn verify(
         transcript: &mut impl Transcript<C::ScalarField>,
         // running instance
-        instance: &CommittedInstance<C>,
+        instance: &CommittedInstance<C, true>,
         // incoming instances
-        vec_instances: &[CommittedInstance<C>],
+        vec_instances: &[CommittedInstance<C, false>],
         // polys from P
         F_coeffs: Vec<C::ScalarField>,
         K_coeffs: Vec<C::ScalarField>,
-    ) -> Result<CommittedInstance<C>, Error> {
+    ) -> Result<CommittedInstance<C, true>, Error> {
         let t = instance.betas.len();
 
         // absorb the committed instances
@@ -395,6 +396,7 @@ pub mod tests {
     use ark_std::{rand::Rng, UniformRand};
 
     use crate::arith::r1cs::tests::{get_test_r1cs, get_test_z_split};
+    use crate::arith::Arith;
     use crate::commitment::{pedersen::Pedersen, CommitmentScheme};
     use crate::transcript::poseidon::poseidon_canonical_config;
 
@@ -419,9 +421,9 @@ pub mod tests {
         k: usize,
     ) -> (
         Witness<C::ScalarField>,
-        CommittedInstance<C>,
+        CommittedInstance<C, true>,
         Vec<Witness<C::ScalarField>>,
-        Vec<CommittedInstance<C>>,
+        Vec<CommittedInstance<C, false>>,
     ) {
         let mut rng = ark_std::test_rng();
 
@@ -439,7 +441,7 @@ pub mod tests {
             r_w: C::ScalarField::zero(),
         };
         let phi = Pedersen::<C>::commit(&pedersen_params, &witness.w, &witness.r_w).unwrap();
-        let instance = CommittedInstance::<C> {
+        let instance = CommittedInstance::<C, true> {
             phi,
             betas: betas.clone(),
             e: C::ScalarField::zero(),
@@ -447,7 +449,7 @@ pub mod tests {
         };
         // same for the other instances
         let mut witnesses: Vec<Witness<C::ScalarField>> = Vec::new();
-        let mut instances: Vec<CommittedInstance<C>> = Vec::new();
+        let mut instances: Vec<CommittedInstance<C, false>> = Vec::new();
         #[allow(clippy::needless_range_loop)]
         for _ in 0..k {
             let (_, x_i, w_i) = get_test_z_split::<C::ScalarField>(rng.gen::<u16>() as usize);
@@ -457,7 +459,7 @@ pub mod tests {
             };
             let phi_i =
                 Pedersen::<C>::commit(&pedersen_params, &witness_i.w, &witness_i.r_w).unwrap();
-            let instance_i = CommittedInstance::<C> {
+            let instance_i = CommittedInstance::<C, false> {
                 phi: phi_i,
                 betas: vec![],
                 e: C::ScalarField::zero(),
@@ -509,7 +511,7 @@ pub mod tests {
         assert!(!folded_instance.e.is_zero());
 
         // check that the folded instance satisfies the relation
-        r1cs.check_relaxed_relation(&folded_witness, &folded_instance)
+        r1cs.check_relation(&folded_witness, &folded_instance)
             .unwrap();
     }
 
@@ -558,7 +560,7 @@ pub mod tests {
             assert!(!folded_instance.e.is_zero());
 
             // check that the folded instance satisfies the relation
-            r1cs.check_relaxed_relation(&folded_witness, &folded_instance)
+            r1cs.check_relation(&folded_witness, &folded_instance)
                 .unwrap();
 
             running_witness = folded_witness;

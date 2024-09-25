@@ -35,7 +35,7 @@ use ark_ff::{BigInteger, PrimeField};
 use ark_std::{One, Zero};
 
 use crate::{
-    arith::r1cs::{RelaxedR1CS, R1CS},
+    arith::{r1cs::R1CS, Arith, ArithSampler},
     folding::traits::CommittedInstanceOps,
     RngCore,
 };
@@ -142,7 +142,9 @@ where
         let pi = FoldingProof { cmT };
 
         // 2. Sample a satisfying relaxed R1CS instance-witness pair (W_r, U_r)
-        let (W_r, U_r) = nova.r1cs.sample::<CS1>(&nova.cs_pp, &mut rng)?;
+        let (W_r, U_r) = nova
+            .r1cs
+            .sample_witness_instance::<CS1>(&nova.cs_pp, &mut rng)?;
 
         // 3. Fold the instance-witness pair (U_f, W_f) with (U_r, W_r)
         // a. Compute T
@@ -279,10 +281,10 @@ where
         );
 
         // 5. Check that W^{\prime}_i is a satisfying witness
-        r1cs.check_relaxed_relation(&proof.W_i_prime, &U_i_prime)?;
+        r1cs.check_relation(&proof.W_i_prime, &U_i_prime)?;
 
         // 6. Check that the cyclefold instance-witness pair satisfies the cyclefold relaxed r1cs
-        cf_r1cs.check_relaxed_relation(&proof.cf_W_i, &proof.cf_U_i)?;
+        cf_r1cs.check_relation(&proof.cf_W_i, &proof.cf_U_i)?;
 
         Ok(())
     }
@@ -370,7 +372,7 @@ pub mod tests {
         );
         let (_, sampled_committed_instance) = nova
             .r1cs
-            .sample::<Pedersen<Projective, true>>(&nova.cs_pp, rng)
+            .sample_witness_instance::<Pedersen<Projective, true>>(&nova.cs_pp, rng)
             .unwrap();
 
         // proof verification fails with incorrect running instance
@@ -407,7 +409,7 @@ pub mod tests {
         );
         let (sampled_committed_witness, _) = nova
             .r1cs
-            .sample::<Pedersen<Projective, true>>(&nova.cs_pp, rng)
+            .sample_witness_instance::<Pedersen<Projective, true>>(&nova.cs_pp, rng)
             .unwrap();
 
         // proof generation fails with incorrect running witness

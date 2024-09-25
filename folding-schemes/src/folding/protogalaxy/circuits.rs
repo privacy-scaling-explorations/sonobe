@@ -33,7 +33,7 @@ use crate::{
             nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
             CF1, CF2,
         },
-        traits::CommittedInstanceVarOps,
+        traits::{CommittedInstanceVarOps, Dummy},
     },
     frontend::FCircuit,
     transcript::{AbsorbNonNativeGadget, TranscriptVar},
@@ -47,13 +47,13 @@ impl FoldingGadget {
     pub fn fold_committed_instance<C: CurveGroup, S: CryptographicSponge>(
         transcript: &mut impl TranscriptVar<C::ScalarField, S>,
         // running instance
-        instance: &CommittedInstanceVar<C>,
+        instance: &CommittedInstanceVar<C, true>,
         // incoming instances
-        vec_instances: &[CommittedInstanceVar<C>],
+        vec_instances: &[CommittedInstanceVar<C, false>],
         // polys from P
         F_coeffs: Vec<FpVar<C::ScalarField>>,
         K_coeffs: Vec<FpVar<C::ScalarField>>,
-    ) -> Result<(CommittedInstanceVar<C>, Vec<FpVar<C::ScalarField>>), SynthesisError> {
+    ) -> Result<(CommittedInstanceVar<C, true>, Vec<FpVar<C::ScalarField>>), SynthesisError> {
         let t = instance.betas.len();
 
         // absorb the committed instances
@@ -135,13 +135,13 @@ impl AugmentationGadget {
     #[allow(clippy::type_complexity)]
     pub fn prepare_and_fold_primary<C: CurveGroup, S: CryptographicSponge>(
         transcript: &mut impl TranscriptVar<CF1<C>, S>,
-        U: CommittedInstanceVar<C>,
+        U: CommittedInstanceVar<C, true>,
         u_phis: Vec<NonNativeAffineVar<C>>,
         u_xs: Vec<Vec<FpVar<CF1<C>>>>,
         new_U_phi: NonNativeAffineVar<C>,
         F_coeffs: Vec<FpVar<CF1<C>>>,
         K_coeffs: Vec<FpVar<CF1<C>>>,
-    ) -> Result<(CommittedInstanceVar<C>, Vec<FpVar<CF1<C>>>), SynthesisError> {
+    ) -> Result<(CommittedInstanceVar<C, true>, Vec<FpVar<CF1<C>>>), SynthesisError> {
         assert_eq!(u_phis.len(), u_xs.len());
 
         // Prepare the incoming instances.
@@ -250,7 +250,7 @@ pub struct AugmentedFCircuit<
     pub(super) external_inputs: Vec<CF1<C1>>,
     pub(super) F: FC, // F circuit
     pub(super) u_i_phi: C1,
-    pub(super) U_i: CommittedInstance<C1>,
+    pub(super) U_i: CommittedInstance<C1, true>,
     pub(super) U_i1_phi: C1,
     pub(super) F_coeffs: Vec<CF1<C1>>,
     pub(super) K_coeffs: Vec<CF1<C1>>,
@@ -278,7 +278,7 @@ where
         d: usize,
         k: usize,
     ) -> Self {
-        let u_dummy = CommittedInstance::dummy_running(2, t);
+        let u_dummy = CommittedInstance::dummy((2, t));
         let cf_u_dummy =
             CycleFoldCommittedInstance::dummy(ProtoGalaxyCycleFoldConfig::<C1>::IO_LEN);
 
@@ -327,8 +327,8 @@ where
         let external_inputs =
             Vec::<FpVar<CF1<C1>>>::new_witness(cs.clone(), || Ok(self.external_inputs))?;
 
-        let u_dummy = CommittedInstance::<C1>::dummy_running(2, self.U_i.betas.len());
-        let U_i = CommittedInstanceVar::<C1>::new_witness(cs.clone(), || Ok(self.U_i))?;
+        let u_dummy = CommittedInstance::<C1, true>::dummy((2, self.U_i.betas.len()));
+        let U_i = CommittedInstanceVar::<C1, true>::new_witness(cs.clone(), || Ok(self.U_i))?;
         let u_i_phi = NonNativeAffineVar::new_witness(cs.clone(), || Ok(self.u_i_phi))?;
         let U_i1_phi = NonNativeAffineVar::new_witness(cs.clone(), || Ok(self.U_i1_phi))?;
         let phi_stars =

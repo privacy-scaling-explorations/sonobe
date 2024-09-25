@@ -1,50 +1,66 @@
 use ark_ec::CurveGroup;
-use ark_std::{rand::RngCore, One, UniformRand};
+use ark_std::{rand::RngCore, UniformRand};
 
 use super::{CommittedInstance, Witness};
-use crate::arith::r1cs::{RelaxedR1CS, R1CS};
+use crate::arith::ArithSampler;
+use crate::arith::{r1cs::R1CS, Arith};
+use crate::commitment::CommitmentScheme;
+use crate::folding::circuits::CF1;
 use crate::Error;
 
-impl<C: CurveGroup> RelaxedR1CS<C, Witness<C>, CommittedInstance<C>> for R1CS<C::ScalarField> {
-    fn dummy_running_instance(&self) -> (Witness<C>, CommittedInstance<C>) {
-        let w_len = self.A.n_cols - 1 - self.l;
-        let w_dummy = Witness::<C>::dummy(w_len, self.A.n_rows);
-        let u_dummy = CommittedInstance::<C>::dummy(self.l);
-        (w_dummy, u_dummy)
+/// Implements `Arith` for R1CS, where the witness is of type [`Witness`], and
+/// the committed instance is of type [`CommittedInstance`].
+///
+/// Due to the error terms `Witness.E` and `CommittedInstance.u`, R1CS here is
+/// considered as a relaxed R1CS.
+///
+/// One may wonder why we do not provide distinct structs for R1CS and relaxed
+/// R1CS.
+/// This is because both plain R1CS and relaxed R1CS have the same structure:
+/// they are both represented by three matrices.
+/// What makes them different is the error terms, which are not part of the R1CS
+/// struct, but are part of the witness and committed instance.
+///
+/// As a follow-up, one may further ask why not providing a trait for relaxed
+/// R1CS and implement it for the `R1CS` struct, where the relaxed R1CS trait
+/// has methods for relaxed satisfiability check, while the `Arith` trait that
+/// `R1CS` implements has methods for plain satisfiability check.
+/// However, it would be more ideal if we have a single method that can smartly
+/// choose the type of satisfiability check, which would make the code more
+/// generic and easier to maintain.
+///
+/// This is achieved thanks to the new design of the [`Arith`] trait, where we
+/// can implement the trait for the same constraint system with different types
+/// of witnesses and committed instances.
+/// For R1CS, whether it is relaxed or not is now determined by the types of `W`
+/// and `U`: the satisfiability check is relaxed if `W` and `U` are defined by
+/// folding schemes, and plain if they are vectors of field elements.
+impl<C: CurveGroup> Arith<Witness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
+    type Evaluation = Vec<CF1<C>>;
+
+    fn eval_relation(
+        &self,
+        w: &Witness<C>,
+        u: &CommittedInstance<C>,
+    ) -> Result<Self::Evaluation, Error> {
+        self.eval_at_z(&[&[u.u][..], &u.x, &w.W].concat())
     }
 
-    fn dummy_incoming_instance(&self) -> (Witness<C>, CommittedInstance<C>) {
-        self.dummy_running_instance()
-    }
-
-    fn is_relaxed(_w: &Witness<C>, u: &CommittedInstance<C>) -> bool {
-        u.cmE != C::zero() || u.u != C::ScalarField::one()
-    }
-
-    fn extract_z(w: &Witness<C>, u: &CommittedInstance<C>) -> Vec<C::ScalarField> {
-        [&[u.u][..], &u.x, &w.W].concat()
-    }
-
-    fn check_error_terms(
+    fn check_evaluation(
         w: &Witness<C>,
         _u: &CommittedInstance<C>,
-        e: Vec<C::ScalarField>,
+        e: Self::Evaluation,
     ) -> Result<(), Error> {
-        if w.E == e {
-            Ok(())
-        } else {
-            Err(Error::NotSatisfied)
-        }
+        (w.E == e).then_some(()).ok_or(Error::NotSatisfied)
     }
+}
 
-    fn sample<CS>(
+impl<C: CurveGroup> ArithSampler<C, Witness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
+    fn sample_witness_instance<CS: CommitmentScheme<C, true>>(
         &self,
         params: &CS::ProverParams,
         mut rng: impl RngCore,
-    ) -> Result<(Witness<C>, CommittedInstance<C>), Error>
-    where
-        CS: crate::commitment::CommitmentScheme<C, true>,
-    {
+    ) -> Result<(Witness<C>, CommittedInstance<C>), Error> {
         // Implements sampling a (committed) RelaxedR1CS
         // See construction 5 in https://eprint.iacr.org/2023/573.pdf
         let u = C::ScalarField::rand(&mut rng);
@@ -61,16 +77,7 @@ impl<C: CurveGroup> RelaxedR1CS<C, Witness<C>, CommittedInstance<C>> for R1CS<C:
         z.extend(&x);
         z.extend(&W);
 
-        let E = <Self as RelaxedR1CS<C, Witness<C>, CommittedInstance<C>>>::compute_E(
-            &self.A, &self.B, &self.C, &z, &u,
-        )?;
-
-        debug_assert!(
-            z.len() == self.A.n_cols,
-            "Length of z is {}, while A has {} columns.",
-            z.len(),
-            self.A.n_cols
-        );
+        let E = self.eval_at_z(&z)?;
 
         let witness = Witness { E, rE, W, rW };
         let mut cm_witness = witness.commit::<CS, true>(params, x)?;
@@ -79,7 +86,7 @@ impl<C: CurveGroup> RelaxedR1CS<C, Witness<C>, CommittedInstance<C>> for R1CS<C:
         cm_witness.u = u;
 
         debug_assert!(
-            self.check_relaxed_relation(&witness, &cm_witness).is_ok(),
+            self.check_relation(&witness, &cm_witness).is_ok(),
             "Sampled a non satisfiable relaxed R1CS, sampled u: {}, computed E: {:?}",
             u,
             witness.E

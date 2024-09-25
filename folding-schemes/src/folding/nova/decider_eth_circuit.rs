@@ -29,6 +29,7 @@ use super::{
     nifs::NIFS,
     CommittedInstance, Nova, Witness,
 };
+use crate::commitment::{pedersen::Params as PedersenParams, CommitmentScheme};
 use crate::folding::circuits::{
     cyclefold::{CycleFoldCommittedInstance, CycleFoldWitness},
     nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
@@ -41,10 +42,9 @@ use crate::utils::{
     vec::poly_from_vec,
 };
 use crate::Error;
-use crate::{arith::r1cs::R1CS, folding::traits::WitnessVarOps};
 use crate::{
-    commitment::{pedersen::Params as PedersenParams, CommitmentScheme},
-    folding::traits::CommittedInstanceVarOps,
+    arith::r1cs::R1CS,
+    folding::traits::{CommittedInstanceVarOps, Dummy, WitnessVarOps},
 };
 
 #[derive(Debug, Clone)]
@@ -356,11 +356,8 @@ where
             Ok(self.z_i.unwrap_or(vec![CF1::<C1>::zero()]))
         })?;
 
-        let u_dummy_native = CommittedInstance::<C1>::dummy(2);
-        let w_dummy_native = Witness::<C1>::dummy(
-            self.r1cs.A.n_cols - 3, /* (3=2+1, since u_i.x.len=2) */
-            self.E_len,
-        );
+        let u_dummy_native = CommittedInstance::<C1>::dummy(&self.r1cs);
+        let w_dummy_native = Witness::<C1>::dummy(&self.r1cs);
 
         let u_i = CommittedInstanceVar::<C1>::new_witness(cs.clone(), || {
             Ok(self.u_i.unwrap_or(u_dummy_native.clone()))
@@ -437,10 +434,7 @@ where
 
             let cf_u_dummy_native =
                 CycleFoldCommittedInstance::<C2>::dummy(NovaCycleFoldConfig::<C1>::IO_LEN);
-            let w_dummy_native = CycleFoldWitness::<C2>::dummy(
-                self.cf_r1cs.A.n_cols - 1 - self.cf_r1cs.l,
-                self.cf_E_len,
-            );
+            let w_dummy_native = CycleFoldWitness::<C2>::dummy(&self.cf_r1cs);
             let cf_U_i = CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || {
                 Ok(self.cf_U_i.unwrap_or_else(|| cf_u_dummy_native.clone()))
             })?;
@@ -608,7 +602,6 @@ pub mod tests {
         r1cs::{
             extract_r1cs, extract_w_x,
             tests::{get_test_r1cs, get_test_z},
-            RelaxedR1CS,
         },
         Arith,
     };
@@ -618,20 +611,18 @@ pub mod tests {
     use crate::transcript::poseidon::poseidon_canonical_config;
     use crate::FoldingScheme;
 
-    fn prepare_instances<C: CurveGroup, CS: CommitmentScheme<C>, R: Rng>(
+    // Convert `z` to a witness-instance pair for the relaxed R1CS
+    fn prepare_relaxed_witness_instance<C: CurveGroup, CS: CommitmentScheme<C>, R: Rng>(
         mut rng: R,
         r1cs: &R1CS<C::ScalarField>,
         z: &[C::ScalarField],
-    ) -> (Witness<C>, CommittedInstance<C>)
-    where
-        C::ScalarField: Absorb,
-    {
+    ) -> (Witness<C>, CommittedInstance<C>) {
         let (w, x) = r1cs.split_z(z);
 
         let (cs_pp, _) = CS::setup(&mut rng, max(w.len(), r1cs.A.n_rows)).unwrap();
 
         let mut w = Witness::new::<false>(w, r1cs.A.n_rows, &mut rng);
-        w.E = r1cs.eval_relation(z).unwrap();
+        w.E = r1cs.eval_at_z(z).unwrap();
         let mut u = w.commit::<CS, false>(&cs_pp, x).unwrap();
         u.u = z[0];
 
@@ -643,9 +634,10 @@ pub mod tests {
         let rng = &mut thread_rng();
 
         let r1cs: R1CS<Fr> = get_test_r1cs();
+
         let mut z = get_test_z(3);
-        z[0] = Fr::rand(rng);
-        let (w, u) = prepare_instances::<_, Pedersen<Projective>, _>(rng, &r1cs, &z);
+        z[0] = Fr::rand(rng); // Randomize `z[0]` (i.e. `u.u`) to test the relaxed R1CS
+        let (w, u) = prepare_relaxed_witness_instance::<_, Pedersen<Projective>, _>(rng, &r1cs, &z);
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
@@ -673,12 +665,11 @@ pub mod tests {
 
         let r1cs = extract_r1cs::<Fr>(&cs);
         let (w, x) = extract_w_x::<Fr>(&cs);
-        let mut z = [vec![Fr::one()], x, w].concat();
-        r1cs.check_relation(&z).unwrap();
+        r1cs.check_relation(&w, &x).unwrap();
 
-        z[0] = Fr::rand(rng);
-        let (w, u) = prepare_instances::<_, Pedersen<Projective>, _>(rng, &r1cs, &z);
-        r1cs.check_relaxed_relation(&w, &u).unwrap();
+        let z = [vec![Fr::rand(rng)], x, w].concat();
+        let (w, u) = prepare_relaxed_witness_instance::<_, Pedersen<Projective>, _>(rng, &r1cs, &z);
+        r1cs.check_relation(&w, &u).unwrap();
 
         // set new CS for the circuit that checks the RelaxedR1CS of our original circuit
         let cs = ConstraintSystem::<Fr>::new_ref();
@@ -767,9 +758,10 @@ pub mod tests {
         let cs = cs.into_inner().unwrap();
         let r1cs = extract_r1cs::<Fq>(&cs);
         let (w, x) = extract_w_x::<Fq>(&cs);
-        let z = [vec![Fq::rand(rng)], x, w].concat();
 
-        let (w, u) = prepare_instances::<_, Pedersen<Projective2>, _>(rng, &r1cs, &z);
+        let z = [vec![Fq::rand(rng)], x, w].concat();
+        let (w, u) =
+            prepare_relaxed_witness_instance::<_, Pedersen<Projective2>, _>(rng, &r1cs, &z);
 
         // natively
         let cs = ConstraintSystem::<Fq>::new_ref();

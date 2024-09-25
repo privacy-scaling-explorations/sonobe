@@ -19,18 +19,21 @@ use crate::folding::circuits::cyclefold::{
     fold_cyclefold_circuit, CycleFoldCircuit, CycleFoldCommittedInstance, CycleFoldConfig,
     CycleFoldWitness,
 };
-use crate::folding::circuits::CF2;
+use crate::folding::{
+    circuits::{CF1, CF2},
+    traits::Dummy,
+};
 use crate::frontend::FCircuit;
 use crate::transcript::{poseidon::poseidon_canonical_config, AbsorbNonNative, Transcript};
 use crate::utils::vec::is_zero_vec;
 use crate::Error;
 use crate::FoldingScheme;
-use crate::{arith::r1cs::RelaxedR1CS, commitment::CommitmentScheme};
 use crate::{
     arith::r1cs::{extract_r1cs, extract_w_x, R1CS},
     constants::NOVA_N_BITS_RO,
     utils::{get_cm_coordinates, pp_hash},
 };
+use crate::{arith::Arith, commitment::CommitmentScheme};
 
 use circuits::{AugmentedFCircuit, ChallengeGadget, CommittedInstanceVar};
 use nifs::NIFS;
@@ -76,14 +79,20 @@ pub struct CommittedInstance<C: CurveGroup> {
     pub x: Vec<C::ScalarField>,
 }
 
-impl<C: CurveGroup> CommittedInstance<C> {
-    pub fn dummy(io_len: usize) -> Self {
+impl<C: CurveGroup> Dummy<usize> for CommittedInstance<C> {
+    fn dummy(io_len: usize) -> Self {
         Self {
             cmE: C::zero(),
-            u: C::ScalarField::zero(),
+            u: CF1::<C>::zero(),
             cmW: C::zero(),
-            x: vec![C::ScalarField::zero(); io_len],
+            x: vec![CF1::<C>::zero(); io_len],
         }
+    }
+}
+
+impl<C: CurveGroup> Dummy<&R1CS<CF1<C>>> for CommittedInstance<C> {
+    fn dummy(r1cs: &R1CS<CF1<C>>) -> Self {
+        Self::dummy(r1cs.l)
     }
 }
 
@@ -149,18 +158,6 @@ impl<C: CurveGroup> Witness<C> {
         }
     }
 
-    pub fn dummy(w_len: usize, e_len: usize) -> Self {
-        let (rW, rE) = (C::ScalarField::zero(), C::ScalarField::zero());
-        let w = vec![C::ScalarField::zero(); w_len];
-
-        Self {
-            E: vec![C::ScalarField::zero(); e_len],
-            rE,
-            W: w,
-            rW,
-        }
-    }
-
     pub fn commit<CS: CommitmentScheme<C, HC>, const HC: bool>(
         &self,
         params: &CS::ProverParams,
@@ -177,6 +174,17 @@ impl<C: CurveGroup> Witness<C> {
             cmW,
             x,
         })
+    }
+}
+
+impl<C: CurveGroup> Dummy<&R1CS<CF1<C>>> for Witness<C> {
+    fn dummy(r1cs: &R1CS<CF1<C>>) -> Self {
+        Self {
+            E: vec![C::ScalarField::zero(); r1cs.A.n_rows],
+            rE: C::ScalarField::zero(),
+            W: vec![C::ScalarField::zero(); r1cs.A.n_cols - 1 - r1cs.l],
+            rW: C::ScalarField::zero(),
+        }
     }
 }
 
@@ -562,9 +570,9 @@ where
         let pp_hash = vp.pp_hash()?;
 
         // setup the dummy instances
-        let (W_dummy, U_dummy) = r1cs.dummy_running_instance();
-        let (w_dummy, u_dummy) = r1cs.dummy_incoming_instance();
-        let (cf_W_dummy, cf_U_dummy) = cf_r1cs.dummy_running_instance();
+        let (W_dummy, U_dummy) = r1cs.dummy_witness_instance();
+        let (w_dummy, u_dummy) = r1cs.dummy_witness_instance();
+        let (cf_W_dummy, cf_U_dummy) = cf_r1cs.dummy_witness_instance();
 
         // W_dummy=W_0 is a 'dummy witness', all zeroes, but with the size corresponding to the
         // R1CS that we're working with.
@@ -815,10 +823,11 @@ where
 
             #[cfg(test)]
             {
-                self.cf_r1cs.check_tight_relation(&_cfW_w_i, &cfW_u_i)?;
-                self.cf_r1cs.check_tight_relation(&_cfE_w_i, &cfE_u_i)?;
-                self.cf_r1cs
-                    .check_relaxed_relation(&self.cf_W_i, &self.cf_U_i)?;
+                cfW_u_i.check_incoming()?;
+                cfE_u_i.check_incoming()?;
+                self.cf_r1cs.check_relation(&_cfW_w_i, &cfW_u_i)?;
+                self.cf_r1cs.check_relation(&_cfE_w_i, &cfE_u_i)?;
+                self.cf_r1cs.check_relation(&self.cf_W_i, &self.cf_U_i)?;
             }
         }
 
@@ -850,8 +859,9 @@ where
 
         #[cfg(test)]
         {
-            self.r1cs.check_tight_relation(&self.w_i, &self.u_i)?;
-            self.r1cs.check_relaxed_relation(&self.W_i, &self.U_i)?;
+            self.u_i.check_incoming()?;
+            self.r1cs.check_relation(&self.w_i, &self.u_i)?;
+            self.r1cs.check_relation(&self.W_i, &self.U_i)?;
         }
 
         Ok(())
@@ -917,13 +927,15 @@ where
             return Err(Error::IVCVerificationFail);
         }
 
-        // check R1CS satisfiability, which also enforces u_i.cmE==0, u_i.u==1
-        vp.r1cs.check_tight_relation(&w_i, &u_i)?;
+        // check R1CS satisfiability, which is equivalent to checking if `u_i`
+        // is an incoming instance and if `w_i` and `u_i` satisfy RelaxedR1CS
+        u_i.check_incoming()?;
+        vp.r1cs.check_relation(&w_i, &u_i)?;
         // check RelaxedR1CS satisfiability
-        vp.r1cs.check_relaxed_relation(&W_i, &U_i)?;
+        vp.r1cs.check_relation(&W_i, &U_i)?;
 
         // check CycleFold RelaxedR1CS satisfiability
-        vp.cf_r1cs.check_relaxed_relation(&cf_W_i, &cf_U_i)?;
+        vp.cf_r1cs.check_relation(&cf_W_i, &cf_U_i)?;
 
         Ok(())
     }

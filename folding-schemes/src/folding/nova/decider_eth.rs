@@ -1,4 +1,5 @@
-/// This file implements the Nova's onchain (Ethereum's EVM) decider.
+/// This file implements the Nova's onchain (Ethereum's EVM) decider. For non-ethereum use cases,
+/// the Decider from decider.rs file will be more efficient.
 /// More details can be found at the documentation page:
 /// https://privacy-scaling-explorations.github.io/sonobe-docs/design/nova-decider-onchain.html
 use ark_bn254::Bn254;

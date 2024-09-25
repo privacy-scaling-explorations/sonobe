@@ -45,6 +45,7 @@ pub mod traits;
 pub mod zk;
 
 // offchain decider
+pub mod decider;
 pub mod decider_circuits;
 // onchain decider
 pub mod decider_eth;

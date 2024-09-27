@@ -5,7 +5,7 @@ use ark_r1cs_std::{
     R1CSVar,
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
-use core::{borrow::Borrow, marker::PhantomData};
+use core::borrow::Borrow;
 
 use crate::utils::vec::SparseMatrix;
 
@@ -42,17 +42,14 @@ impl<F: PrimeField> VectorGadget<FpVar<F>> for [FpVar<F>] {
 }
 
 #[derive(Debug, Clone)]
-pub struct SparseMatrixVar<F: PrimeField, CF: PrimeField, FV: AllocVar<F, CF>> {
-    _f: PhantomData<F>,
-    _cf: PhantomData<CF>,
-    _fv: PhantomData<FV>,
+pub struct SparseMatrixVar<FV> {
     pub n_rows: usize,
     pub n_cols: usize,
     // same format as the native SparseMatrix (which follows ark_relations::r1cs::Matrix format
     pub coeffs: Vec<Vec<(FV, usize)>>,
 }
 
-impl<F, CF, FV> AllocVar<SparseMatrix<F>, CF> for SparseMatrixVar<F, CF, FV>
+impl<F, CF, FV> AllocVar<SparseMatrix<F>, CF> for SparseMatrixVar<FV>
 where
     F: PrimeField,
     CF: PrimeField,
@@ -77,9 +74,6 @@ where
             }
 
             Ok(Self {
-                _f: PhantomData,
-                _cf: PhantomData,
-                _fv: PhantomData,
                 n_rows: val.borrow().n_rows,
                 n_cols: val.borrow().n_cols,
                 coeffs,
@@ -88,7 +82,7 @@ where
     }
 }
 
-impl<F: PrimeField> MatrixGadget<FpVar<F>> for SparseMatrixVar<F, F, FpVar<F>> {
+impl<F: PrimeField> MatrixGadget<FpVar<F>> for SparseMatrixVar<FpVar<F>> {
     fn mul_vector(&self, v: &[FpVar<F>]) -> Result<Vec<FpVar<F>>, SynthesisError> {
         Ok(self
             .coeffs

@@ -1,6 +1,7 @@
 use ark_ff::PrimeField;
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
+    eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
     R1CSVar,
 };
@@ -8,6 +9,27 @@ use ark_relations::r1cs::{Namespace, SynthesisError};
 use core::borrow::Borrow;
 
 use crate::utils::vec::SparseMatrix;
+
+/// `EquivalenceGadget` enforces that two in-circuit variables are equivalent,
+/// where the equivalence relation is parameterized by `M`:
+/// - For `FpVar`, it is simply a equality relation, and `M` is unused.
+/// - For `NonNativeUintVar`, we consider equivalence as a congruence relation,
+///   in terms of modular arithmetic, so `M` specifies the modulus.
+pub trait EquivalenceGadget<M> {
+    fn enforce_equivalent(&self, other: &Self) -> Result<(), SynthesisError>;
+}
+impl<M, F: PrimeField> EquivalenceGadget<M> for FpVar<F> {
+    fn enforce_equivalent(&self, other: &Self) -> Result<(), SynthesisError> {
+        self.enforce_equal(other)
+    }
+}
+impl<M, T: EquivalenceGadget<M>> EquivalenceGadget<M> for [T] {
+    fn enforce_equivalent(&self, other: &Self) -> Result<(), SynthesisError> {
+        self.iter()
+            .zip(other)
+            .try_for_each(|(a, b)| a.enforce_equivalent(b))
+    }
+}
 
 pub trait MatrixGadget<FV> {
     fn mul_vector(&self, v: &[FV]) -> Result<Vec<FV>, SynthesisError>;

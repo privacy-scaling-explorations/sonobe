@@ -18,7 +18,7 @@ use num_integer::Integer;
 
 use crate::{
     transcript::{AbsorbNonNative, AbsorbNonNativeGadget},
-    utils::gadgets::{MatrixGadget, SparseMatrixVar, VectorGadget},
+    utils::gadgets::{EquivalenceGadget, MatrixGadget, SparseMatrixVar, VectorGadget},
 };
 
 /// `LimbVar` represents a single limb of a non-native unsigned integer in the
@@ -799,6 +799,12 @@ impl<F: PrimeField> NonNativeUintVar<F> {
     }
 }
 
+impl<F: PrimeField, M: PrimeField> EquivalenceGadget<M> for NonNativeUintVar<F> {
+    fn enforce_equivalent(&self, other: &Self) -> Result<(), SynthesisError> {
+        self.enforce_congruent::<M>(other)
+    }
+}
+
 impl<F: PrimeField, B: AsRef<[Boolean<F>]>> From<B> for NonNativeUintVar<F> {
     fn from(bits: B) -> Self {
         Self(
@@ -886,9 +892,7 @@ impl<F: PrimeField> VectorGadget<NonNativeUintVar<F>> for [NonNativeUintVar<F>] 
     }
 }
 
-impl<CF: PrimeField> MatrixGadget<NonNativeUintVar<CF>>
-    for SparseMatrixVar<NonNativeUintVar<CF>>
-{
+impl<CF: PrimeField> MatrixGadget<NonNativeUintVar<CF>> for SparseMatrixVar<NonNativeUintVar<CF>> {
     fn mul_vector(
         &self,
         v: &[NonNativeUintVar<CF>],

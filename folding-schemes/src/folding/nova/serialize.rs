@@ -1,10 +1,7 @@
 use ark_crypto_primitives::sponge::{poseidon::PoseidonConfig, Absorb};
 use ark_ec::{CurveGroup, Group};
 use ark_ff::PrimeField;
-use ark_r1cs_std::{
-    groups::{CurveVar, GroupOpsBounds},
-    ToConstraintFieldGadget,
-};
+use ark_r1cs_std::{groups::CurveVar, ToConstraintFieldGadget};
 use ark_relations::r1cs::ConstraintSynthesizer;
 use ark_relations::r1cs::ConstraintSystem;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError, Write};
@@ -34,8 +31,6 @@ where
     <C1 as Group>::ScalarField: Absorb,
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    for<'a> &'a GC1: GroupOpsBounds<'a, C1, GC1>,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
     GC1: CurveVar<C1, <C2 as Group>::ScalarField>,
     GC1: ToConstraintFieldGadget<<C2 as Group>::ScalarField>,
     GC2: CurveVar<C2, <C2 as CurveGroup>::BaseField>,
@@ -107,8 +102,6 @@ where
     <C1 as Group>::ScalarField: Absorb,
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    for<'a> &'a GC1: GroupOpsBounds<'a, C1, GC1>,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
     GC1: CurveVar<C1, <C2 as Group>::ScalarField>,
     GC1: ToConstraintFieldGadget<<C2 as Group>::ScalarField>,
     GC2: CurveVar<C2, CF2<C2>>,

@@ -17,7 +17,7 @@ use ark_r1cs_std::{
     ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, Namespace, SynthesisError};
-use ark_std::Zero;
+use ark_std::{log2, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::{
@@ -29,21 +29,51 @@ use crate::folding::circuits::{
     cyclefold::{CycleFoldCommittedInstance, CycleFoldWitness},
     CF1, CF2,
 };
+use crate::folding::nova::decider_eth_circuit::evaluate_gadget;
 use crate::frontend::FCircuit;
 use crate::transcript::{Transcript, TranscriptVar};
 use crate::utils::{
-    gadgets::{eval_mle, MatrixGadget, SparseMatrixVar},
+    gadgets::{eval_mle, MatrixGadget},
     vec::poly_from_vec,
 };
 use crate::Error;
 use crate::{
+    arith::{ccs::circuits::CCSMatricesVar, ArithGadget},
+    commitment::{pedersen::Params as PedersenParams, CommitmentScheme},
+};
+use crate::{
     arith::{ccs::CCS, r1cs::R1CS},
     folding::traits::{CommittedInstanceVarOps, Dummy, WitnessVarOps},
 };
-use crate::{
-    commitment::{pedersen::Params as PedersenParams, CommitmentScheme},
-    folding::nova::decider_eth_circuit::evaluate_gadget,
-};
+
+impl<C: CurveGroup> ArithGadget<WitnessVar<CF1<C>>, LCCCSVar<C>> for CCSMatricesVar<CF1<C>> {
+    type Evaluation = Vec<FpVar<CF1<C>>>;
+
+    fn eval_relation(
+        &self,
+        w: &WitnessVar<CF1<C>>,
+        u: &LCCCSVar<C>,
+    ) -> Result<Self::Evaluation, SynthesisError> {
+        let z = [&[u.u.clone()][..], &u.x, &w.w].concat();
+
+        self.M
+            .iter()
+            .map(|M_j| {
+                let s = log2(M_j.n_rows) as usize;
+                let Mz = M_j.mul_vector(&z)?;
+                Ok(eval_mle(s, Mz, u.r_x.clone()))
+            })
+            .collect()
+    }
+
+    fn enforce_evaluation(
+        _w: &WitnessVar<CF1<C>>,
+        u: &LCCCSVar<C>,
+        v: Self::Evaluation,
+    ) -> Result<(), SynthesisError> {
+        v.enforce_equal(&u.v)
+    }
+}
 
 /// In-circuit representation of the Witness associated to the CommittedInstance.
 #[derive(Debug, Clone)]
@@ -73,65 +103,6 @@ impl<F: PrimeField> AllocVar<Witness<F>, F> for WitnessVar<F> {
 impl<F: PrimeField> WitnessVarOps<F> for WitnessVar<F> {
     fn get_openings(&self) -> Vec<(&[FpVar<F>], FpVar<F>)> {
         vec![(&self.w, self.r_w.clone())]
-    }
-}
-
-/// CCSMatricesVar contains the matrices 'M' of the CCS without the rest of CCS parameters.
-#[derive(Debug, Clone)]
-pub struct CCSMatricesVar<F: PrimeField> {
-    // we only need native representation, so the constraint field==F
-    pub M: Vec<SparseMatrixVar<FpVar<F>>>,
-}
-
-impl<F> AllocVar<CCS<F>, F> for CCSMatricesVar<F>
-where
-    F: PrimeField,
-{
-    fn new_variable<T: Borrow<CCS<F>>>(
-        cs: impl Into<Namespace<F>>,
-        f: impl FnOnce() -> Result<T, SynthesisError>,
-        _mode: AllocationMode,
-    ) -> Result<Self, SynthesisError> {
-        f().and_then(|val| {
-            let cs = cs.into();
-
-            let M: Vec<SparseMatrixVar<FpVar<F>>> = val
-                .borrow()
-                .M
-                .iter()
-                .map(|M| SparseMatrixVar::<FpVar<F>>::new_constant(cs.clone(), M.clone()))
-                .collect::<Result<_, SynthesisError>>()?;
-
-            Ok(Self { M })
-        })
-    }
-}
-
-/// Gadget to check the LCCCS relation both over the native constraint field and over the
-/// non-native constraint field.
-#[derive(Debug, Clone)]
-pub struct LCCCSCheckerGadget {}
-impl LCCCSCheckerGadget {
-    /// performs in-circuit the RelaxedR1CS check for native variables (Az∘Bz==uCz+E)
-    pub fn check<F: PrimeField>(
-        s: usize,
-        ccs_mat: CCSMatricesVar<F>,
-        z: Vec<FpVar<F>>,
-        // LCCCS values
-        r_x: Vec<FpVar<F>>,
-        v: Vec<FpVar<F>>,
-    ) -> Result<(), SynthesisError> {
-        let computed_v: Vec<FpVar<F>> = ccs_mat
-            .M
-            .iter()
-            .map(|M_j| {
-                let Mz = M_j.mul_vector(&z)?;
-                Ok(eval_mle(s, Mz, r_x.clone()))
-            })
-            .collect::<Result<Vec<FpVar<F>>, SynthesisError>>()?;
-
-        (computed_v).enforce_equal(&v)?;
-        Ok(())
     }
 }
 
@@ -338,15 +309,7 @@ where
         // in order to make it easier to reason about.
 
         // 1. check LCCCS relation of U_{i+1}
-        let z_U1: Vec<FpVar<CF1<C1>>> =
-            [vec![U_i1.u.clone()], U_i1.x.to_vec(), W_i1.w.to_vec()].concat();
-        LCCCSCheckerGadget::check(
-            self.ccs.s,
-            ccs_matrices,
-            z_U1,
-            U_i1.r_x.clone(),
-            U_i1.v.clone(),
-        )?;
+        ccs_matrices.enforce_relation(&W_i1, &U_i1)?;
 
         // 3.a u_i.x[0] == H(i, z_0, z_i, U_i)
         let (u_i_x, _) = U_i.clone().hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
@@ -363,9 +326,9 @@ where
         {
             // imports here instead of at the top of the file, so we avoid having multiple
             // `#[cfg(not(test))]`
+            use crate::arith::r1cs::circuits::R1CSMatricesVar;
             use crate::commitment::pedersen::PedersenGadget;
             use crate::folding::circuits::nonnative::uint::NonNativeUintVar;
-            use crate::folding::nova::decider_eth_circuit::{R1CSVar, RelaxedR1CSGadget};
             use crate::folding::{
                 circuits::cyclefold::{
                     CycleFoldCommittedInstanceVar, CycleFoldConfig, CycleFoldWitnessVar,
@@ -407,15 +370,13 @@ where
                 PedersenGadget::<C2, GC2>::commit(H, G, cf_W_i_W_bits?, cf_W_i.rW.to_bits_le()?)?;
             cf_U_i.cmW.enforce_equal(&computed_cmW)?;
 
-            let cf_r1cs =
-                R1CSVar::<C1::BaseField, CF1<C1>, NonNativeUintVar<CF1<C1>>>::new_witness(
-                    cs.clone(),
-                    || Ok(self.cf_r1cs.clone()),
-                )?;
+            let cf_r1cs = R1CSMatricesVar::<C1::BaseField, NonNativeUintVar<CF1<C1>>>::new_witness(
+                cs.clone(),
+                || Ok(self.cf_r1cs.clone()),
+            )?;
 
             // 5. check RelaxedR1CS of cf_U_i
-            let cf_z_U = [vec![cf_U_i.u.clone()], cf_U_i.x.to_vec(), cf_W_i.W.to_vec()].concat();
-            RelaxedR1CSGadget::check_nonnative(cf_r1cs, cf_W_i.E, cf_U_i.u.clone(), cf_z_U)?;
+            cf_r1cs.enforce_relation(&cf_W_i, &cf_U_i)?;
         }
 
         // The following steps are in non-increasing order because the `computed_U_i1` is computed
@@ -528,7 +489,7 @@ pub mod tests {
         let (pedersen_params, _) =
             Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
 
-        let (lcccs, _) = ccs
+        let (lcccs, w) = ccs
             .to_lcccs::<_, Projective, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &z)
             .unwrap();
 
@@ -536,11 +497,10 @@ pub mod tests {
 
         // CCS's (sparse) matrices are constants in the circuit
         let ccs_mat = CCSMatricesVar::<Fr>::new_constant(cs.clone(), ccs.clone()).unwrap();
-        let zVar = Vec::<FpVar<Fr>>::new_input(cs.clone(), || Ok(z)).unwrap();
-        let r_xVar = Vec::<FpVar<Fr>>::new_input(cs.clone(), || Ok(lcccs.r_x)).unwrap();
-        let vVar = Vec::<FpVar<Fr>>::new_input(cs.clone(), || Ok(lcccs.v)).unwrap();
+        let w_var = WitnessVar::new_witness(cs.clone(), || Ok(w)).unwrap();
+        let lcccs_var = LCCCSVar::new_input(cs.clone(), || Ok(lcccs)).unwrap();
 
-        LCCCSCheckerGadget::check(ccs.s, ccs_mat, zVar, r_xVar, vVar).unwrap();
+        ccs_mat.enforce_relation(&w_var, &lcccs_var).unwrap();
 
         assert!(cs.is_satisfied().unwrap());
     }

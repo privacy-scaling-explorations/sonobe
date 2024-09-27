@@ -20,11 +20,15 @@ use ark_std::Zero;
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::{nonnative::uint::NonNativeUintVar, CF1, CF2};
-use crate::arith::r1cs::{extract_w_x, R1CS};
+use crate::arith::{
+    r1cs::{circuits::R1CSMatricesVar, extract_w_x, R1CS},
+    ArithGadget,
+};
 use crate::commitment::CommitmentScheme;
 use crate::constants::NOVA_N_BITS_RO;
 use crate::folding::nova::{nifs::NIFS, traits::NIFSTrait};
 use crate::transcript::{AbsorbNonNative, AbsorbNonNativeGadget, Transcript, TranscriptVar};
+use crate::utils::gadgets::{EquivalenceGadget, VectorGadget};
 use crate::Error;
 
 /// Re-export the Nova committed instance as `CycleFoldCommittedInstance` and
@@ -302,6 +306,29 @@ where
         }
 
         Ok(())
+    }
+}
+
+impl<C: CurveGroup, GC: CurveVar<C, CF2<C>>>
+    ArithGadget<CycleFoldWitnessVar<C>, CycleFoldCommittedInstanceVar<C, GC>>
+    for R1CSMatricesVar<CF1<C>, NonNativeUintVar<CF2<C>>>
+{
+    type Evaluation = (Vec<NonNativeUintVar<CF2<C>>>, Vec<NonNativeUintVar<CF2<C>>>);
+
+    fn eval_relation(
+        &self,
+        w: &CycleFoldWitnessVar<C>,
+        u: &CycleFoldCommittedInstanceVar<C, GC>,
+    ) -> Result<Self::Evaluation, SynthesisError> {
+        self.eval_at_z(&[&[u.u.clone()][..], &u.x, &w.W].concat())
+    }
+
+    fn enforce_evaluation(
+        w: &CycleFoldWitnessVar<C>,
+        _u: &CycleFoldCommittedInstanceVar<C, GC>,
+        (AzBz, uCz): Self::Evaluation,
+    ) -> Result<(), SynthesisError> {
+        EquivalenceGadget::<CF1<C>>::enforce_equivalent(&AzBz[..], &uCz.add(&w.E)?[..])
     }
 }
 

@@ -10,6 +10,8 @@ use crate::utils::vec::{
 };
 use crate::Error;
 
+pub mod circuits;
+
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct R1CS<F: PrimeField> {
     pub l: usize, // io len

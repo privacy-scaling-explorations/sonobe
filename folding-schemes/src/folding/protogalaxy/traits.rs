@@ -1,14 +1,26 @@
 use ark_crypto_primitives::sponge::{constraints::AbsorbGadget, Absorb};
 use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
-use ark_r1cs_std::{fields::fp::FpVar, uint8::UInt8, ToConstraintFieldGadget};
+use ark_r1cs_std::{
+    eq::EqGadget,
+    fields::{fp::FpVar, FieldVar},
+    uint8::UInt8,
+    ToConstraintFieldGadget,
+};
 use ark_relations::r1cs::SynthesisError;
 use ark_std::{cfg_into_iter, log2, One};
 use rayon::prelude::*;
 
-use super::{constants::RUNNING, utils::pow_i, CommittedInstance, CommittedInstanceVar, Witness};
+use super::{
+    constants::RUNNING,
+    utils::{pow_i, pow_i_var},
+    CommittedInstance, CommittedInstanceVar, Witness, WitnessVar,
+};
 use crate::{
-    arith::{r1cs::R1CS, Arith},
+    arith::{
+        r1cs::{circuits::R1CSMatricesVar, R1CS},
+        Arith, ArithGadget,
+    },
     folding::circuits::CF1,
     transcript::AbsorbNonNative,
     utils::vec::is_zero_vec,
@@ -96,6 +108,37 @@ impl<C: CurveGroup, const TYPE: bool> Arith<Witness<CF1<C>>, CommittedInstance<C
             is_zero_vec(&e)
         };
         ok.then_some(()).ok_or(Error::NotSatisfied)
+    }
+}
+
+/// Unlike its native counterpart, we only need to support running instances in
+/// circuit, as the decider circuit only checks running instance satisfiability.
+impl<C: CurveGroup> ArithGadget<WitnessVar<CF1<C>>, CommittedInstanceVar<C, RUNNING>>
+    for R1CSMatricesVar<CF1<C>, FpVar<CF1<C>>>
+{
+    type Evaluation = (Vec<FpVar<CF1<C>>>, Vec<FpVar<CF1<C>>>);
+
+    fn eval_relation(
+        &self,
+        w: &WitnessVar<CF1<C>>,
+        u: &CommittedInstanceVar<C, RUNNING>,
+    ) -> Result<Self::Evaluation, SynthesisError> {
+        self.eval_at_z(&[&[FpVar::one()][..], &u.x, &w.W].concat())
+    }
+
+    fn enforce_evaluation(
+        _w: &WitnessVar<C::ScalarField>,
+        u: &CommittedInstanceVar<C, RUNNING>,
+        (AzBz, uCz): Self::Evaluation,
+    ) -> Result<(), SynthesisError> {
+        let mut e = vec![];
+        for (i, (l, r)) in AzBz.iter().zip(uCz).enumerate() {
+            e.push(pow_i_var(i, &u.betas) * (l - r));
+        }
+        // Call `sum` on a vector instead of computing the sum in the above loop
+        // to avoid stack overflow (the cause of this is similar to issue #80
+        // https://github.com/privacy-scaling-explorations/sonobe/issues/80)
+        e.iter().sum::<FpVar<_>>().enforce_equal(&u.e)
     }
 }
 

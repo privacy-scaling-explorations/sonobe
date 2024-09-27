@@ -9,6 +9,8 @@ use crate::Error;
 use super::ArithSerializer;
 use super::{r1cs::R1CS, Arith};
 
+pub mod circuits;
+
 /// CCS represents the Customizable Constraint Systems structure defined in
 /// the [CCS paper](https://eprint.iacr.org/2023/552)
 #[derive(Debug, Clone, Eq, PartialEq)]

@@ -20,11 +20,15 @@ use ark_std::Zero;
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::{nonnative::uint::NonNativeUintVar, CF1, CF2};
-use crate::arith::r1cs::{extract_w_x, R1CS};
+use crate::arith::{
+    r1cs::{circuits::R1CSMatricesVar, extract_w_x, R1CS},
+    ArithGadget,
+};
 use crate::commitment::CommitmentScheme;
 use crate::constants::NOVA_N_BITS_RO;
 use crate::folding::nova::nifs::{nova::NIFS, NIFSTrait};
 use crate::transcript::{AbsorbNonNative, AbsorbNonNativeGadget, Transcript, TranscriptVar};
+use crate::utils::gadgets::{EquivalenceGadget, VectorGadget};
 use crate::Error;
 use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
 
@@ -306,6 +310,29 @@ where
     }
 }
 
+impl<C: CurveGroup, GC: CurveVar<C, CF2<C>>>
+    ArithGadget<CycleFoldWitnessVar<C>, CycleFoldCommittedInstanceVar<C, GC>>
+    for R1CSMatricesVar<CF1<C>, NonNativeUintVar<CF2<C>>>
+{
+    type Evaluation = (Vec<NonNativeUintVar<CF2<C>>>, Vec<NonNativeUintVar<CF2<C>>>);
+
+    fn eval_relation(
+        &self,
+        w: &CycleFoldWitnessVar<C>,
+        u: &CycleFoldCommittedInstanceVar<C, GC>,
+    ) -> Result<Self::Evaluation, SynthesisError> {
+        self.eval_at_z(&[&[u.u.clone()][..], &u.x, &w.W].concat())
+    }
+
+    fn enforce_evaluation(
+        w: &CycleFoldWitnessVar<C>,
+        _u: &CycleFoldCommittedInstanceVar<C, GC>,
+        (AzBz, uCz): Self::Evaluation,
+    ) -> Result<(), SynthesisError> {
+        EquivalenceGadget::<CF1<C>>::enforce_equivalent(&AzBz[..], &uCz.add(&w.E)?[..])
+    }
+}
+
 /// CycleFoldChallengeGadget computes the RO challenge used for the CycleFold instances NIFS, it contains a
 /// rust-native and a in-circuit compatible versions.
 pub struct CycleFoldChallengeGadget<C: CurveGroup, GC: CurveVar<C, CF2<C>>> {
@@ -494,7 +521,6 @@ pub struct CycleFoldNIFS<
 > where
     <C1 as CurveGroup>::BaseField: PrimeField,
     <C2 as CurveGroup>::BaseField: PrimeField,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     _c1: PhantomData<C1>,
     _c2: PhantomData<C2>,
@@ -510,7 +536,6 @@ where
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     fn prove(
         cf_r_Fq: C2::ScalarField, // C2::Fr==C1::Fq

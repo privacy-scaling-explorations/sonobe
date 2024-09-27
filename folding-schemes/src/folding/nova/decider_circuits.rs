@@ -24,13 +24,14 @@ use core::marker::PhantomData;
 
 use super::{
     circuits::{ChallengeGadget, CommittedInstanceVar},
-    decider_eth_circuit::{
-        evaluate_gadget, KZGChallengesGadget, R1CSVar, RelaxedR1CSGadget, WitnessVar,
-    },
+    decider_eth_circuit::{evaluate_gadget, KZGChallengesGadget, WitnessVar},
     nifs::{nova::NIFS, NIFSTrait},
     CommittedInstance, Nova, Witness,
 };
-use crate::arith::r1cs::R1CS;
+use crate::arith::{
+    r1cs::{circuits::R1CSMatricesVar, R1CS},
+    ArithGadget,
+};
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::{
     cyclefold::{
@@ -190,7 +191,7 @@ where
 {
     fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
         let r1cs =
-            R1CSVar::<C1::ScalarField, CF1<C1>, FpVar<CF1<C1>>>::new_witness(cs.clone(), || {
+            R1CSMatricesVar::<C1::ScalarField, FpVar<CF1<C1>>>::new_witness(cs.clone(), || {
                 Ok(self.r1cs.clone())
             })?;
 
@@ -264,9 +265,7 @@ where
         (u_i.x[1]).enforce_equal(&cf_u_i_x)?;
 
         // 4. check RelaxedR1CS of U_{i+1}
-        let z_U1: Vec<FpVar<CF1<C1>>> =
-            [vec![U_i1.u.clone()], U_i1.x.to_vec(), W_i1.W.to_vec()].concat();
-        RelaxedR1CSGadget::check_native(r1cs, W_i1.E.clone(), U_i1.u.clone(), z_U1)?;
+        r1cs.enforce_relation(&W_i1, &U_i1)?;
 
         // 1.1.a, 5.1 compute NIFS.V and Commitment Scheme challenges.
         // We need to ensure the order of challenge generation is the same as
@@ -431,13 +430,12 @@ where
         })?;
 
         let cf_r1cs =
-            R1CSVar::<C2::ScalarField, CF1<C2>, FpVar<CF1<C2>>>::new_witness(cs.clone(), || {
+            R1CSMatricesVar::<C2::ScalarField, FpVar<CF1<C2>>>::new_witness(cs.clone(), || {
                 Ok(self.cf_r1cs.clone())
             })?;
 
         // 6. check RelaxedR1CS of cf_U_i
-        let cf_z_U = [vec![cf_U_i.u.clone()], cf_U_i.x.to_vec(), cf_W_i.W.to_vec()].concat();
-        RelaxedR1CSGadget::check_native(cf_r1cs, cf_W_i.E.clone(), cf_U_i.u.clone(), cf_z_U)?;
+        cf_r1cs.enforce_relation(&cf_W_i, &cf_U_i)?;
 
         // `transcript` is for challenge generation.
         let mut transcript =

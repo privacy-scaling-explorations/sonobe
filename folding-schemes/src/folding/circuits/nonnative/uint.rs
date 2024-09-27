@@ -886,8 +886,8 @@ impl<F: PrimeField> VectorGadget<NonNativeUintVar<F>> for [NonNativeUintVar<F>] 
     }
 }
 
-impl<F: PrimeField, CF: PrimeField> MatrixGadget<NonNativeUintVar<CF>>
-    for SparseMatrixVar<F, CF, NonNativeUintVar<CF>>
+impl<CF: PrimeField> MatrixGadget<NonNativeUintVar<CF>>
+    for SparseMatrixVar<NonNativeUintVar<CF>>
 {
     fn mul_vector(
         &self,

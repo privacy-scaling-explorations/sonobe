@@ -196,10 +196,10 @@ where
     GC: CurveVar<C, CF<C>>,
 {
     pub fn commit(
-        h: GC,
-        g: Vec<GC>,
-        v: Vec<Vec<Boolean<CF<C>>>>,
-        r: Vec<Boolean<CF<C>>>,
+        h: &GC,
+        g: &[GC],
+        v: &[Vec<Boolean<CF<C>>>],
+        r: &[Boolean<CF<C>>],
     ) -> Result<GC, SynthesisError> {
         let mut res = GC::zero();
         if H {
@@ -300,7 +300,7 @@ mod tests {
 
         // use the gadget
         let cmVar =
-            PedersenGadget::<Projective, GVar, hiding>::commit(hVar, gVar, vVar, rVar).unwrap();
+            PedersenGadget::<Projective, GVar, hiding>::commit(&hVar, &gVar, &vVar, &rVar).unwrap();
         cmVar.enforce_equal(&expected_cmVar).unwrap();
     }
 }

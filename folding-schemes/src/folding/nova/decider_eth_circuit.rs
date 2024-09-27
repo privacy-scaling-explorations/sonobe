@@ -93,9 +93,9 @@ pub struct R1CSVar<F: PrimeField, CF: PrimeField, FV: AllocVar<F, CF>> {
     _f: PhantomData<F>,
     _cf: PhantomData<CF>,
     _fv: PhantomData<FV>,
-    pub A: SparseMatrixVar<F, CF, FV>,
-    pub B: SparseMatrixVar<F, CF, FV>,
-    pub C: SparseMatrixVar<F, CF, FV>,
+    pub A: SparseMatrixVar<FV>,
+    pub B: SparseMatrixVar<FV>,
+    pub C: SparseMatrixVar<FV>,
 }
 
 impl<F, CF, FV> AllocVar<R1CS<F>, CF> for R1CSVar<F, CF, FV>
@@ -112,9 +112,9 @@ where
         f().and_then(|val| {
             let cs = cs.into();
 
-            let A = SparseMatrixVar::<F, CF, FV>::new_constant(cs.clone(), &val.borrow().A)?;
-            let B = SparseMatrixVar::<F, CF, FV>::new_constant(cs.clone(), &val.borrow().B)?;
-            let C = SparseMatrixVar::<F, CF, FV>::new_constant(cs.clone(), &val.borrow().C)?;
+            let A = SparseMatrixVar::<FV>::new_constant(cs.clone(), &val.borrow().A)?;
+            let B = SparseMatrixVar::<FV>::new_constant(cs.clone(), &val.borrow().B)?;
+            let C = SparseMatrixVar::<FV>::new_constant(cs.clone(), &val.borrow().C)?;
 
             Ok(Self {
                 _f: PhantomData,

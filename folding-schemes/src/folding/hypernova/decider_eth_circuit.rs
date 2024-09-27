@@ -81,7 +81,7 @@ impl<F: PrimeField> WitnessVarOps<F> for WitnessVar<F> {
 #[derive(Debug, Clone)]
 pub struct CCSMatricesVar<F: PrimeField> {
     // we only need native representation, so the constraint field==F
-    pub M: Vec<SparseMatrixVar<F, F, FpVar<F>>>,
+    pub M: Vec<SparseMatrixVar<FpVar<F>>>,
 }
 
 impl<F> AllocVar<CCS<F>, F> for CCSMatricesVar<F>
@@ -96,11 +96,11 @@ where
         f().and_then(|val| {
             let cs = cs.into();
 
-            let M: Vec<SparseMatrixVar<F, F, FpVar<F>>> = val
+            let M: Vec<SparseMatrixVar<FpVar<F>>> = val
                 .borrow()
                 .M
                 .iter()
-                .map(|M| SparseMatrixVar::<F, F, FpVar<F>>::new_constant(cs.clone(), M.clone()))
+                .map(|M| SparseMatrixVar::<FpVar<F>>::new_constant(cs.clone(), M.clone()))
                 .collect::<Result<_, SynthesisError>>()?;
 
             Ok(Self { M })

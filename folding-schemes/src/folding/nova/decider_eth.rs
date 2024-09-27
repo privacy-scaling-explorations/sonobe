@@ -7,7 +7,7 @@ use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, Absorb, Cryptograp
 use ark_ec::{AffineRepr, CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
 use ark_groth16::Groth16;
-use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
+use ark_r1cs_std::{prelude::CurveVar, ToConstraintFieldGadget};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_snark::SNARK;
 use ark_std::rand::{CryptoRng, RngCore};
@@ -98,8 +98,6 @@ where
     <C1 as Group>::ScalarField: Absorb,
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    for<'b> &'b GC1: GroupOpsBounds<'b, C1, GC1>,
-    for<'b> &'b GC2: GroupOpsBounds<'b, C2, GC2>,
     // constrain FS into Nova, since this is a Decider specifically for Nova
     Nova<C1, GC1, C2, GC2, FC, CS1, CS2, false>: From<FS>,
     crate::folding::nova::ProverParams<C1, C2, CS1, CS2, false>:

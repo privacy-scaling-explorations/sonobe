@@ -15,7 +15,6 @@ use ark_r1cs_std::{
     boolean::Boolean,
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
-    groups::GroupOpsBounds,
     prelude::CurveVar,
     ToConstraintFieldGadget,
 };
@@ -100,7 +99,6 @@ where
     <C1 as Group>::ScalarField: Absorb,
     C2: CurveGroup,
     GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
-    for<'b> &'b GC2: GroupOpsBounds<'b, C2, GC2>,
 {
     pub fn from_nova<GC1, CS1, CS2, const H: bool, FC: FCircuit<C1::ScalarField>>(
         nova: Nova<C1, GC1, C2, GC2, FC, CS1, CS2, H>,
@@ -189,7 +187,6 @@ where
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
-    for<'b> &'b GC2: GroupOpsBounds<'b, C2, GC2>,
 {
     fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
         let r1cs =
@@ -418,7 +415,6 @@ where
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
-    for<'a> &'a GC1: GroupOpsBounds<'a, C1, GC1>,
 {
     fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C2>>) -> Result<(), SynthesisError> {
         let pp_hash = FpVar::<CF1<C2>>::new_input(cs.clone(), || {

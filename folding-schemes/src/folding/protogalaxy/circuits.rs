@@ -11,7 +11,7 @@ use ark_r1cs_std::{
     boolean::Boolean,
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
-    groups::{CurveVar, GroupOpsBounds},
+    groups::CurveVar,
     poly::polynomial::univariate::dense::DensePolynomialVar,
     R1CSVar, ToBitsGadget, ToConstraintFieldGadget,
 };
@@ -183,7 +183,6 @@ impl AugmentationGadget {
     ) -> Result<CycleFoldCommittedInstanceVar<C2, GC2>, SynthesisError>
     where
         C2::BaseField: PrimeField + Absorb,
-        for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
     {
         assert_eq!(cf_u_cmWs.len(), cf_u_xs.len());
         assert_eq!(cf_u_xs.len(), cf_cmTs.len());
@@ -268,8 +267,6 @@ pub struct AugmentedFCircuit<
 
 impl<C1: CurveGroup, C2: CurveGroup, GC2: CurveVar<C2, CF2<C2>>, FC: FCircuit<CF1<C1>>>
     AugmentedFCircuit<C1, C2, GC2, FC>
-where
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     pub fn empty(
         poseidon_config: &PoseidonConfig<CF1<C1>>,
@@ -317,7 +314,6 @@ where
     GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
     FC: FCircuit<CF1<C1>>,
     C2::BaseField: PrimeField + Absorb,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
         let pp_hash = FpVar::<CF1<C1>>::new_witness(cs.clone(), || Ok(self.pp_hash))?;

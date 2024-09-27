@@ -15,7 +15,6 @@ use ark_r1cs_std::{
     boolean::Boolean,
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
-    groups::GroupOpsBounds,
     poly::{domain::Radix2DomainVar, evaluations::univariate::EvaluationsVar},
     prelude::CurveVar,
     ToConstraintFieldGadget,
@@ -328,7 +327,6 @@ where
     <C1 as Group>::ScalarField: Absorb,
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    for<'b> &'b GC2: GroupOpsBounds<'b, C2, GC2>,
 {
     fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
         let r1cs =

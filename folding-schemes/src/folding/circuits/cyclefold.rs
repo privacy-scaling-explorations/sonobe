@@ -8,7 +8,6 @@ use ark_r1cs_std::{
     boolean::Boolean,
     eq::EqGadget,
     fields::fp::FpVar,
-    groups::GroupOpsBounds,
     prelude::CurveVar,
     ToConstraintFieldGadget,
 };
@@ -38,10 +37,7 @@ pub use crate::folding::nova::{
 /// CycleFoldCommittedInstanceVar is the CycleFold CommittedInstance represented
 /// in folding verifier circuit
 #[derive(Debug, Clone)]
-pub struct CycleFoldCommittedInstanceVar<C: CurveGroup, GC: CurveVar<C, CF2<C>>>
-where
-    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
-{
+pub struct CycleFoldCommittedInstanceVar<C: CurveGroup, GC: CurveVar<C, CF2<C>>> {
     pub cmE: GC,
     pub u: NonNativeUintVar<CF2<C>>,
     pub cmW: GC,
@@ -51,8 +47,6 @@ impl<C, GC> AllocVar<CycleFoldCommittedInstance<C>, CF2<C>> for CycleFoldCommitt
 where
     C: CurveGroup,
     GC: CurveVar<C, CF2<C>>,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
 {
     fn new_variable<T: Borrow<CycleFoldCommittedInstance<C>>>(
         cs: impl Into<Namespace<CF2<C>>>,
@@ -101,8 +95,7 @@ impl<C, GC> AbsorbNonNativeGadget<C::BaseField> for CycleFoldCommittedInstanceVa
 where
     C: CurveGroup,
     GC: CurveVar<C, CF2<C>> + ToConstraintFieldGadget<CF2<C>>,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField + Absorb,
-    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
+    C::BaseField: PrimeField + Absorb,
 {
     /// Extracts the underlying field elements from `CycleFoldCommittedInstanceVar`, in the order
     /// of `u`, `x`, `cmE.x`, `cmE.y`, `cmW.x`, `cmW.y`, `cmE.is_inf || cmW.is_inf` (|| is for
@@ -132,7 +125,7 @@ where
 
 impl<C: CurveGroup> CycleFoldCommittedInstance<C>
 where
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField + Absorb,
+    C::BaseField: PrimeField + Absorb,
 {
     /// hash_cyclefold implements the committed instance hash compatible with the
     /// in-circuit implementation `CycleFoldCommittedInstanceVar::hash`.
@@ -153,8 +146,7 @@ impl<C, GC> CycleFoldCommittedInstanceVar<C, GC>
 where
     C: CurveGroup,
     GC: CurveVar<C, CF2<C>> + ToConstraintFieldGadget<CF2<C>>,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField + Absorb,
-    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
+    C::BaseField: PrimeField + Absorb,
 {
     /// hash implements the committed instance hash compatible with the native
     /// implementation `CycleFoldCommittedInstance::hash_cyclefold`.
@@ -182,10 +174,7 @@ where
 /// represented as native points, which are folded on the auxiliary curve constraints field (E2::Fr
 /// = E1::Fq).
 #[derive(Debug, Clone)]
-pub struct CommittedInstanceInCycleFoldVar<C: CurveGroup, GC: CurveVar<C, CF2<C>>>
-where
-    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
-{
+pub struct CommittedInstanceInCycleFoldVar<C: CurveGroup, GC: CurveVar<C, CF2<C>>> {
     _c: PhantomData<C>,
     pub cmE: GC,
     pub cmW: GC,
@@ -196,7 +185,6 @@ impl<C, GC> AllocVar<CycleFoldCommittedInstance<C>, CF2<C>>
 where
     C: CurveGroup,
     GC: CurveVar<C, CF2<C>>,
-    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
 {
     fn new_variable<T: Borrow<CycleFoldCommittedInstance<C>>>(
         cs: impl Into<Namespace<CF2<C>>>,
@@ -232,7 +220,7 @@ pub struct CycleFoldWitnessVar<C: CurveGroup> {
 impl<C> AllocVar<CycleFoldWitness<C>, CF2<C>> for CycleFoldWitnessVar<C>
 where
     C: CurveGroup,
-    <C as ark_ec::CurveGroup>::BaseField: PrimeField,
+    C::BaseField: PrimeField,
 {
     fn new_variable<T: Borrow<CycleFoldWitness<C>>>(
         cs: impl Into<Namespace<CF2<C>>>,
@@ -265,8 +253,7 @@ impl<C: CurveGroup, GC: CurveVar<C, CF2<C>>> NIFSFullGadget<C, GC>
 where
     C: CurveGroup,
     GC: CurveVar<C, CF2<C>>,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
+    C::BaseField: PrimeField,
 {
     pub fn fold_committed_instance(
         r_bits: Vec<Boolean<CF2<C>>>,
@@ -329,9 +316,7 @@ impl<C, GC> CycleFoldChallengeGadget<C, GC>
 where
     C: CurveGroup,
     GC: CurveVar<C, CF2<C>> + ToConstraintFieldGadget<CF2<C>>,
-    <C as CurveGroup>::BaseField: PrimeField,
-    <C as CurveGroup>::BaseField: Absorb,
-    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
+    C::BaseField: PrimeField + Absorb,
 {
     pub fn get_challenge_native<T: Transcript<C::BaseField>>(
         transcript: &mut T,
@@ -425,7 +410,6 @@ impl<CFG: CycleFoldConfig, GC: CurveVar<CFG::C, CFG::F>> ConstraintSynthesizer<C
 where
     GC: ToConstraintFieldGadget<CFG::F>,
     CFG::F: PrimeField,
-    for<'a> &'a GC: GroupOpsBounds<'a, CFG::C, GC>,
 {
     fn generate_constraints(self, cs: ConstraintSystemRef<CFG::F>) -> Result<(), SynthesisError> {
         let r_bits = Vec::<Boolean<CFG::F>>::new_witness(cs.clone(), || {
@@ -597,8 +581,6 @@ where
     <C1 as Group>::ScalarField: Absorb,
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    for<'a> &'a GC1: GroupOpsBounds<'a, C1, GC1>,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
     cf_circuit.generate_constraints(cs2.clone())?;

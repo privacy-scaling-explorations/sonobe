@@ -1,6 +1,6 @@
 use ark_ec::CurveGroup;
 use ark_ff::Field;
-use ark_r1cs_std::{boolean::Boolean, groups::GroupOpsBounds, prelude::CurveVar};
+use ark_r1cs_std::{boolean::Boolean, prelude::CurveVar};
 use ark_relations::r1cs::SynthesisError;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::Zero;
@@ -194,9 +194,6 @@ impl<C, GC, const H: bool> PedersenGadget<C, GC, H>
 where
     C: CurveGroup,
     GC: CurveVar<C, CF<C>>,
-
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
 {
     pub fn commit(
         h: GC,

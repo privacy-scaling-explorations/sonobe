@@ -43,10 +43,7 @@ use ark_crypto_primitives::sponge::{
     Absorb, CryptographicSponge,
 };
 use ark_ec::{CurveGroup, Group};
-use ark_r1cs_std::{
-    groups::{CurveVar, GroupOpsBounds},
-    ToConstraintFieldGadget,
-};
+use ark_r1cs_std::{groups::CurveVar, ToConstraintFieldGadget};
 
 use crate::{commitment::CommitmentScheme, folding::circuits::CF2, frontend::FCircuit, Error};
 
@@ -90,7 +87,6 @@ where
         <C2 as Group>::ScalarField: PrimeField,
         <C2 as CurveGroup>::BaseField: PrimeField,
         <C2 as CurveGroup>::BaseField: Absorb,
-        for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
         GC2: ToConstraintFieldGadget<<C2 as CurveGroup>::BaseField>,
         C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     {
@@ -161,7 +157,6 @@ where
         <C2 as Group>::ScalarField: Absorb,
         <C2 as CurveGroup>::BaseField: PrimeField,
         <C2 as CurveGroup>::BaseField: Absorb,
-        for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
         GC2: ToConstraintFieldGadget<<C2 as CurveGroup>::BaseField>,
         C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     {

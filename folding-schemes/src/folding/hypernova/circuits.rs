@@ -12,7 +12,6 @@ use ark_r1cs_std::{
     boolean::Boolean,
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
-    groups::GroupOpsBounds,
     prelude::CurveVar,
     uint8::UInt8,
     R1CSVar, ToConstraintFieldGadget,
@@ -492,9 +491,7 @@ pub struct AugmentedFCircuit<
     FC: FCircuit<CF1<C1>>,
     const MU: usize,
     const NU: usize,
-> where
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
-{
+> {
     pub(super) _c2: PhantomData<C2>,
     pub(super) _gc2: PhantomData<GC2>,
     pub(super) poseidon_config: PoseidonConfig<CF1<C1>>,
@@ -532,7 +529,6 @@ where
     <C1 as Group>::ScalarField: Absorb,
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     pub fn default(
         poseidon_config: &PoseidonConfig<CF1<C1>>,
@@ -709,7 +705,6 @@ where
     <C1 as Group>::ScalarField: Absorb,
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
         let pp_hash = FpVar::<CF1<C1>>::new_witness(cs.clone(), || {
@@ -883,7 +878,7 @@ where
         // Non-base case: u_{i+1}.x[1] == H(cf_U_{i+1})
         let (cf_u_i1_x, _) = cf_U_i1.clone().hash(&sponge, pp_hash.clone())?;
         let (cf_u_i1_x_base, _) =
-            CycleFoldCommittedInstanceVar::new_constant(cs.clone(), cf_u_dummy)?
+            CycleFoldCommittedInstanceVar::<C2, GC2>::new_constant(cs.clone(), cf_u_dummy)?
                 .hash(&sponge, pp_hash)?;
         let cf_x = FpVar::new_input(cs.clone(), || {
             Ok(self.cf_x.unwrap_or(cf_u_i1_x_base.value()?))

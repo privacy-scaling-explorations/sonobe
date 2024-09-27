@@ -362,14 +362,18 @@ where
                 cf_W_i.W.iter().map(|W_i| W_i.to_bits_le()).collect();
 
             let computed_cmE = PedersenGadget::<C2, GC2>::commit(
-                H.clone(),
-                G.clone(),
-                cf_W_i_E_bits?,
-                cf_W_i.rE.to_bits_le()?,
+                &H,
+                &G,
+                &cf_W_i_E_bits?,
+                &cf_W_i.rE.to_bits_le()?,
             )?;
             cf_U_i.cmE.enforce_equal(&computed_cmE)?;
-            let computed_cmW =
-                PedersenGadget::<C2, GC2>::commit(H, G, cf_W_i_W_bits?, cf_W_i.rW.to_bits_le()?)?;
+            let computed_cmW = PedersenGadget::<C2, GC2>::commit(
+                &H,
+                &G,
+                &cf_W_i_W_bits?,
+                &cf_W_i.rW.to_bits_le()?,
+            )?;
             cf_U_i.cmW.enforce_equal(&computed_cmW)?;
 
             let cf_r1cs = R1CSMatricesVar::<C1::BaseField, NonNativeUintVar<CF1<C1>>>::new_witness(

@@ -367,7 +367,7 @@ pub mod tests {
 
         // next equalities should hold since we started from two cmE of zero-vector E's
         assert_eq!(ci3.cmE, cmT.mul(r));
-        assert_eq!(w3.E, vec_scalar_mul(&T, &r));
+        assert_eq!(w3.E, vec_scalar_mul(T.as_slice(), &r));
 
         // NIFS.Verify_Folded_Instance:
         NIFS::<Projective, Pedersen<Projective>>::verify_folded_instance(r, &ci1, &ci2, &ci3, &cmT)

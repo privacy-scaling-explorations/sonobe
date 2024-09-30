@@ -72,7 +72,7 @@ impl<F: PrimeField> CCS<F> {
         Ok((
             LCCCS::<C> {
                 C,
-                u: C::ScalarField::one(),
+                u: z[0],
                 x: z[1..(1 + self.l)].to_vec(),
                 r_x,
                 v,

@@ -494,7 +494,7 @@ mod tests {
         let mut transcript_p = PoseidonSponge::new(&poseidon_config);
         let mut transcript_v = PoseidonSponge::new(&poseidon_config);
 
-        let (_, _, F_coeffs, K_coeffs, _, _) = Folding::<Projective>::prove(
+        let (_, _, proof, _) = Folding::<Projective>::prove(
             &mut transcript_p,
             &r1cs,
             &instance,
@@ -507,16 +507,15 @@ mod tests {
             &mut transcript_v,
             &instance,
             &instances,
-            F_coeffs.clone(),
-            K_coeffs.clone(),
+            proof.clone(),
         )?;
 
         let cs = ConstraintSystem::new_ref();
         let mut transcript_var = PoseidonSpongeVar::new(cs.clone(), &poseidon_config);
         let instance_var = CommittedInstanceVar::new_witness(cs.clone(), || Ok(instance))?;
         let instances_var = Vec::new_witness(cs.clone(), || Ok(instances))?;
-        let F_coeffs_var = Vec::new_witness(cs.clone(), || Ok(F_coeffs))?;
-        let K_coeffs_var = Vec::new_witness(cs.clone(), || Ok(K_coeffs))?;
+        let F_coeffs_var = Vec::new_witness(cs.clone(), || Ok(proof.F_coeffs))?;
+        let K_coeffs_var = Vec::new_witness(cs.clone(), || Ok(proof.K_coeffs))?;
 
         let (folded_instance_var, _) = FoldingGadget::fold_committed_instance(
             &mut transcript_var,

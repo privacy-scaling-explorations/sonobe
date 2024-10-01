@@ -165,15 +165,7 @@ where
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use ark_crypto_primitives::sponge::{
-        poseidon::{PoseidonConfig, PoseidonSponge},
-        CryptographicSponge,
-    };
-    use ark_ff::{BigInteger, PrimeField};
-    use ark_pallas::{Fr, Projective};
-    use ark_std::{test_rng, UniformRand, Zero};
-
-    use crate::folding::ova::circuits::ChallengeGadget;
+    use crate::folding::ova::ChallengeGadget;
     use crate::transcript::poseidon::poseidon_canonical_config;
     use crate::{
         arith::{
@@ -186,6 +178,13 @@ pub mod tests {
         commitment::pedersen::{Params as PedersenParams, Pedersen},
         folding::ova::TestingWitness,
     };
+    use ark_crypto_primitives::sponge::{
+        poseidon::{PoseidonConfig, PoseidonSponge},
+        CryptographicSponge,
+    };
+    use ark_ff::{BigInteger, PrimeField};
+    use ark_pallas::{Fr, Projective};
+    use ark_std::{test_rng, UniformRand, Zero};
 
     fn compute_E_check_relation<C: CurveGroup, CS: CommitmentScheme<C, H>, const H: bool>(
         r1cs: &R1CS<C::ScalarField>,

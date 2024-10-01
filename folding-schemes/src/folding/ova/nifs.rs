@@ -53,13 +53,13 @@ where
     /// equal to 1. Therefore, we can save the some computations.
     pub fn compute_E(
         r1cs: &R1CS<C::ScalarField>,
-        w_acc: &Witness<C>,
-        x_acc: &[C::ScalarField],
+        W_i: &Witness<C>,
+        X_i: &[C::ScalarField],
         mu: C::ScalarField,
     ) -> Result<Vec<C::ScalarField>, Error> {
         let (A, B, C) = (r1cs.A.clone(), r1cs.B.clone(), r1cs.C.clone());
 
-        let z_prime = [&[mu], x_acc, &w_acc.w].concat();
+        let z_prime = [&[mu], X_i, &W_i.w].concat();
         // this is parallelizable (for the future)
         let Az_prime = mat_vec_mul(&A, &z_prime)?;
         let Bz_prime = mat_vec_mul(&B, &z_prime)?;
@@ -92,17 +92,17 @@ where
     /// Here, alpha is a randomness sampled from a [`Transcript`].
     pub fn fold_committed_instance(
         alpha: C::ScalarField,
-        // This is W' (running)
-        ci1: &CommittedInstance<C>,
         // This is W (incoming)
-        ci2: &CommittedInstance<C>,
+        u_i: &CommittedInstance<C>,
+        // This is W' (running)
+        U_i: &CommittedInstance<C>,
     ) -> CommittedInstance<C> {
-        let mu = ci1.mu + alpha; // ci2.mu **IS ALWAYS 1 in OVA** as we just can do sequencial IVC.
-        let cmWE = ci1.cmWE + ci2.cmWE.mul(alpha);
-        let x = ci1
+        let mu = U_i.mu + alpha; // u_i.mu **IS ALWAYS 1 in OVA** as we just can do sequencial IVC.
+        let cmWE = U_i.cmWE + u_i.cmWE.mul(alpha);
+        let x = U_i
             .x
             .iter()
-            .zip(&ci2.x)
+            .zip(&u_i.x)
             .map(|(a, b)| *a + (alpha * b))
             .collect::<Vec<C::ScalarField>>();
 
@@ -114,18 +114,19 @@ where
     /// Here, alpha is a randomness sampled from a [`Transcript`].
     pub fn fold_witness(
         alpha: C::ScalarField,
-        // runnig instance
-        w1: &Witness<C>,
         // incoming instance
-        w2: &Witness<C>,
+        w_i: &Witness<C>,
+        // running instance
+        W_i: &Witness<C>,
     ) -> Result<Witness<C>, Error> {
-        let w: Vec<C::ScalarField> =
-            w1.w.iter()
-                .zip(&w2.w)
-                .map(|(a, b)| *a + (alpha * b))
-                .collect();
+        let w: Vec<C::ScalarField> = W_i
+            .w
+            .iter()
+            .zip(&w_i.w)
+            .map(|(a, b)| *a + (alpha * b))
+            .collect();
 
-        let rW = w1.rW + alpha * w2.rW;
+        let rW = W_i.rW + alpha * w_i.rW;
         Ok(Witness::<C> { w, rW })
     }
 
@@ -134,19 +135,18 @@ where
     /// It returns the folded [`CommittedInstance`] and [`Witness`].
     pub fn fold_instances(
         r: C::ScalarField,
-        // runnig instance
-        w1: &Witness<C>,
-        ci1: &CommittedInstance<C>,
         // incoming instance
-        w2: &Witness<C>,
-        ci2: &CommittedInstance<C>,
+        w_i: &Witness<C>,
+        u_i: &CommittedInstance<C>,
+        // running instance
+        W_i: &Witness<C>,
+        U_i: &CommittedInstance<C>,
     ) -> Result<(Witness<C>, CommittedInstance<C>), Error> {
         // fold witness
-        // use r_T=0 since we don't need hiding property for cm(T)
-        let w3 = NIFS::<C, CS, H>::fold_witness(r, w1, w2)?;
+        let w3 = NIFS::<C, CS, H>::fold_witness(r, W_i, w_i)?;
 
         // fold committed instances
-        let ci3 = NIFS::<C, CS, H>::fold_committed_instance(r, ci1, ci2);
+        let ci3 = NIFS::<C, CS, H>::fold_committed_instance(r, U_i, u_i);
 
         Ok((w3, ci3))
     }
@@ -157,27 +157,32 @@ where
     pub fn verify(
         // r comes from the transcript, and is a n-bit (N_BITS_CHALLENGE) element
         alpha: C::ScalarField,
-        ci1: &CommittedInstance<C>,
-        ci2: &CommittedInstance<C>,
+        // incoming instance
+        u_i: &CommittedInstance<C>,
+        // running instance
+        U_i: &CommittedInstance<C>,
     ) -> CommittedInstance<C> {
-        NIFS::<C, CS, H>::fold_committed_instance(alpha, ci1, ci2)
+        NIFS::<C, CS, H>::fold_committed_instance(alpha, u_i, U_i)
     }
 
     #[cfg(test)]
-    /// Verify committed folded instance (ci) relations. Notice that this method does not open the
-    /// commitments, but just checks that the given committed instances (ci1, ci2) when folded
-    /// result in the folded committed instance (ci3) values.
+    /// Verify committed folded instance (ui) relations. Notice that this method does not open the
+    /// commitments, but just checks that the given committed instances (ui1, ui2) when folded
+    /// result in the folded committed instance (ui3) values.
     pub(crate) fn verify_folded_instance(
         r: C::ScalarField,
-        // running instance
-        ci1: &CommittedInstance<C>,
         // incoming instance
-        ci2: &CommittedInstance<C>,
+        u_i: &CommittedInstance<C>,
+        // running instance
+        U_i: &CommittedInstance<C>,
         // folded instance
-        ci3: &CommittedInstance<C>,
+        folded_instance: &CommittedInstance<C>,
     ) -> Result<(), Error> {
-        let expected = Self::fold_committed_instance(r, ci1, ci2);
-        if ci3.mu != expected.mu || ci3.cmWE != expected.cmWE || ci3.x != expected.x {
+        let expected = Self::fold_committed_instance(r, U_i, u_i);
+        if folded_instance.mu != expected.mu
+            || folded_instance.cmWE != expected.cmWE
+            || folded_instance.x != expected.x
+        {
             return Err(Error::NotSatisfied);
         }
         Ok(())
@@ -245,12 +250,12 @@ pub mod tests {
         PedersenParams<C>,
         PoseidonConfig<C::ScalarField>,
         R1CS<C::ScalarField>,
-        Witness<C>,           // w1
-        CommittedInstance<C>, // ci1
-        Witness<C>,           // w2
-        CommittedInstance<C>, // ci2
-        Witness<C>,           // w3
-        CommittedInstance<C>, // ci3
+        Witness<C>,           // w
+        CommittedInstance<C>, // u
+        Witness<C>,           // W
+        CommittedInstance<C>, // U
+        Witness<C>,           // w_fold
+        CommittedInstance<C>, // u_fold
         Vec<bool>,            // r_bits
         C::ScalarField,       // r_Fr
     )
@@ -259,7 +264,7 @@ pub mod tests {
         <C as CurveGroup>::BaseField: PrimeField,
         C::ScalarField: Absorb,
     {
-        // Index 1 represents the incomming instance
+        // Index 1 represents the incoming instance
         // Index 2 represents the accumulated instance
         let r1cs = get_test_r1cs();
         let z1 = get_test_z(3);
@@ -267,24 +272,26 @@ pub mod tests {
         let (w1, x1) = r1cs.split_z(&z1);
         let (w2, x2) = r1cs.split_z(&z2);
 
-        let w1 = Witness::<C>::new::<false>(w1.clone(), test_rng());
-        let w2 = Witness::<C>::new::<false>(w2.clone(), test_rng());
+        let w = Witness::<C>::new::<false>(w1.clone(), test_rng());
+        let W: Witness<C> = Witness::<C>::new::<false>(w2.clone(), test_rng());
 
         let mut rng = ark_std::test_rng();
         let (pedersen_params, _) = Pedersen::<C>::setup(&mut rng, r1cs.A.n_cols).unwrap();
 
         // In order to be able to compute the committed instances, we need to compute `t` and `e`
         // compute t
-        let t = NIFS::<C, Pedersen<C>>::compute_T(&r1cs, &w1, &x1, &w2, &x2, C::ScalarField::one())
+        let t = NIFS::<C, Pedersen<C>>::compute_T(&r1cs, &w, &x1, &W, &x2, C::ScalarField::one())
             .unwrap();
         // compute e (mu is 1 although is the running instance as we are "crafting it").
-        let e = NIFS::<C, Pedersen<C>>::compute_E(&r1cs, &w1, &x1, C::ScalarField::one()).unwrap();
+        let e = NIFS::<C, Pedersen<C>>::compute_E(&r1cs, &W, &x2, C::ScalarField::one()).unwrap();
         // compute committed instances
-        let W_prime = w1
-            .commit::<Pedersen<C>, false>(&pedersen_params, e, x1.clone())
+        // Incoming-instance
+        let u = w
+            .commit::<Pedersen<C>, false>(&pedersen_params, t, x1.clone())
             .unwrap();
-        let W = w2
-            .commit::<Pedersen<C>, false>(&pedersen_params, t, x2.clone())
+        // Running-instance
+        let U = W
+            .commit::<Pedersen<C>, false>(&pedersen_params, e, x2.clone())
             .unwrap();
 
         let poseidon_config = poseidon_canonical_config::<C::ScalarField>();
@@ -295,24 +302,25 @@ pub mod tests {
         let alpha_bits = ChallengeGadget::<C>::get_challenge_native(
             &mut transcript,
             pp_hash,
-            W_prime.clone(),
-            W.clone(),
+            u.clone(),
+            U.clone(),
         );
         let alpha_Fr = C::ScalarField::from_bigint(BigInteger::from_bits_le(&alpha_bits)).unwrap();
 
-        let (w3, ci3) =
-            NIFS::<C, Pedersen<C>>::fold_instances(alpha_Fr, &w1, &W_prime, &w2, &W).unwrap();
+        // Wrong order.
+        let (w_fold, u_fold) =
+            NIFS::<C, Pedersen<C>>::fold_instances(alpha_Fr, &w, &u, &W, &U).unwrap();
 
         (
             pedersen_params,
             poseidon_config,
             r1cs,
-            w1,
-            W_prime,
-            w2,
+            w,
+            u,
             W,
-            w3,
-            ci3,
+            U,
+            w_fold,
+            u_fold,
             alpha_bits,
             alpha_Fr,
         )
@@ -325,7 +333,6 @@ pub mod tests {
         let r1cs = get_test_r1cs::<Fr>();
 
         let w_dummy = Witness::<Projective>::dummy(&r1cs);
-
         let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, r1cs.A.n_cols).unwrap();
 
         // In order to be able to compute the committed instances, we need to compute `t` and `e`
@@ -339,6 +346,7 @@ pub mod tests {
             Fr::one(),
         )
         .unwrap();
+
         // compute e
         let e = NIFS::<Projective, Pedersen<Projective>>::compute_E(
             &r1cs,
@@ -362,75 +370,54 @@ pub mod tests {
         let u_i = u_dummy.clone();
         let W_i = w_dummy.clone();
         let U_i = U_dummy.clone();
-        r1cs.check_relation(
-            &TestingWitness {
-                w: w_i.clone().w,
-                e: e.clone(),
-                rW: w_i.rW,
-            },
-            &u_i,
-        )
-        .unwrap();
-        r1cs.check_relation(
-            &TestingWitness {
-                w: W_i.clone().w,
-                e,
-                rW: W_i.rW,
-            },
-            &U_i,
-        )
-        .unwrap();
+
+        // Check correctness of the R1CS relations of both instances.
+        compute_E_check_relation::<Projective, Pedersen<Projective>, false>(&r1cs, &w_i, &u_i);
+        compute_E_check_relation::<Projective, Pedersen<Projective>, false>(&r1cs, &W_i, &U_i);
 
         // NIFS.P
         let r_Fr = Fr::from(3_u32);
-
-        let (W_i1, U_i1) =
-            NIFS::<Projective, Pedersen<Projective>>::fold_instances(r_Fr, &W_i, &U_i, &w_i, &u_i)
+        let (w_fold, u_fold) =
+            NIFS::<Projective, Pedersen<Projective>>::fold_instances(r_Fr, &w_i, &u_i, &W_i, &U_i)
                 .unwrap();
 
-        // Compute e for the folded instance to be able to check the relation.
-        let folded_e =
-            NIFS::<Projective, Pedersen<Projective>>::compute_E(&r1cs, &W_i1, &U_i1.x, U_i1.mu)
-                .unwrap();
-        r1cs.check_relation(
-            &TestingWitness {
-                w: W_i1.w,
-                e: folded_e,
-                rW: W_i1.rW,
-            },
-            &U_i1,
-        )
-        .unwrap();
+        // Check correctness of the R1CS relation of both instances.
+        compute_E_check_relation::<Projective, Pedersen<Projective>, false>(
+            &r1cs, &w_fold, &u_fold,
+        );
     }
 
     // fold 2 instances into one
     #[test]
     fn test_nifs_one_fold() {
-        let (pedersen_params, poseidon_config, r1cs, w1, ci1, w2, ci2, w3, ci3, _, r) =
+        let (pedersen_params, poseidon_config, r1cs, w, u, W, U, w_fold, u_fold, _, r) =
             prepare_simple_fold_inputs();
 
         // NIFS.V
-        let ci3_v = NIFS::<Projective, Pedersen<Projective>>::verify(r, &ci1, &ci2);
-        assert_eq!(ci3_v, ci3);
+        let u_fold_v = NIFS::<Projective, Pedersen<Projective>>::verify(r, &u, &U);
+        assert_eq!(u_fold_v, u_fold);
 
-        // check that relations hold for the 2 inputted instances and the folded one
-        compute_E_check_relation::<Projective, Pedersen<Projective>, false>(&r1cs, &w1, &ci1);
-        compute_E_check_relation::<Projective, Pedersen<Projective>, false>(&r1cs, &w2, &ci2);
-        compute_E_check_relation::<Projective, Pedersen<Projective>, false>(&r1cs, &w3, &ci3);
+        // Check that relations hold for the 2 inputted instances and the folded one
+        compute_E_check_relation::<Projective, Pedersen<Projective>, false>(&r1cs, &w, &u);
+        compute_E_check_relation::<Projective, Pedersen<Projective>, false>(&r1cs, &W, &U);
+        compute_E_check_relation::<Projective, Pedersen<Projective>, false>(
+            &r1cs, &w_fold, &u_fold,
+        );
 
-        // check that folded commitments from folded instance (ci) are equal to folding the
-        // use folded rW to commit w3
-        let e = NIFS::<Projective, Pedersen<Projective>>::compute_E(&r1cs, &w3, &ci3.x, ci3.mu)
+        // check that folded commitments from folded instance (u) are equal to folding the
+        // use folded rW to commit w_fold
+        let e_fold = NIFS::<Projective, Pedersen<Projective>>::compute_E(
+            &r1cs, &w_fold, &u_fold.x, u_fold.mu,
+        )
+        .unwrap();
+        let mut u_fold_expected = w_fold
+            .commit::<Pedersen<Projective>, false>(&pedersen_params, e_fold, u_fold.x.clone())
             .unwrap();
-        let mut ci3_expected = w3
-            .commit::<Pedersen<Projective>, false>(&pedersen_params, e, ci3.x.clone())
-            .unwrap();
-        ci3_expected.mu = ci3.mu;
-
-        assert_eq!(ci3_expected.cmWE, ci3.cmWE);
+        u_fold_expected.mu = u_fold.mu;
+        assert_eq!(u_fold_expected.cmWE, u_fold.cmWE);
 
         // NIFS.Verify_Folded_Instance:
-        NIFS::<Projective, Pedersen<Projective>>::verify_folded_instance(r, &ci1, &ci2, &ci3)
+        NIFS::<Projective, Pedersen<Projective>>::verify_folded_instance(r, &u, &U, &u_fold)
             .unwrap();
 
         // init Prover's transcript
@@ -438,19 +425,24 @@ pub mod tests {
         // init Verifier's transcript
         let mut transcript_v = PoseidonSponge::<Fr>::new(&poseidon_config);
 
-        // prove the ci3.cmWE
+        // prove the u_fold.cmWE
         let cm_proof = NIFS::<Projective, Pedersen<Projective>>::prove_commitment(
             &r1cs,
             &mut transcript_p,
             &pedersen_params,
-            &w3,
-            &ci3,
+            &w_fold,
+            &u_fold,
         )
         .unwrap();
 
-        // verify the ci3.cmWE.
-        Pedersen::<Projective>::verify(&pedersen_params, &mut transcript_v, &ci3.cmWE, &cm_proof)
-            .unwrap();
+        // verify the u_fold.cmWE.
+        Pedersen::<Projective>::verify(
+            &pedersen_params,
+            &mut transcript_v,
+            &u_fold.cmWE,
+            &cm_proof,
+        )
+        .unwrap();
     }
 
     #[test]
@@ -463,16 +455,12 @@ pub mod tests {
         let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, r1cs.A.n_cols).unwrap();
 
         // prepare the running instance
-        let mut running_instance_w = Witness::<Projective>::new::<false>(w.clone(), &mut rng);
+        let mut W = Witness::<Projective>::new::<false>(w.clone(), &mut rng);
         // Compute e
-        let e = NIFS::<Projective, Pedersen<Projective>>::compute_E(
-            &r1cs,
-            &running_instance_w,
-            &x,
-            Fr::one(),
-        )
-        .unwrap();
-        let mut running_committed_instance = running_instance_w
+        let e =
+            NIFS::<Projective, Pedersen<Projective>>::compute_E(&r1cs, &W, &x, Fr::one()).unwrap();
+        // Compute running `CommittedInstance`.
+        let mut U = W
             .commit::<Pedersen<Projective>, false>(&pedersen_params, e, x)
             .unwrap();
 
@@ -481,54 +469,35 @@ pub mod tests {
             // prepare the incoming instance
             let incoming_instance_z = get_test_z(i + 4);
             let (w, x) = r1cs.split_z(&incoming_instance_z);
-            let incoming_instance_w = Witness::<Projective>::new::<false>(w.clone(), test_rng());
-            let t = NIFS::<Projective, Pedersen<Projective>>::compute_T(
-                &r1cs,
-                &running_instance_w,
-                &running_committed_instance.x,
-                &incoming_instance_w,
-                &x,
-                running_committed_instance.mu,
-            )
-            .unwrap();
-            let incoming_committed_instance = incoming_instance_w
+            let w = Witness::<Projective>::new::<false>(w, test_rng());
+            let t =
+                NIFS::<Projective, Pedersen<Projective>>::compute_T(&r1cs, &w, &U.x, &w, &x, U.mu)
+                    .unwrap();
+            let u = w
                 .commit::<Pedersen<Projective>, false>(&pedersen_params, t, x)
                 .unwrap();
 
-            compute_E_check_relation::<Projective, Pedersen<Projective>, false>(
-                &r1cs,
-                &incoming_instance_w,
-                &incoming_committed_instance,
-            );
+            // Check incoming instance is Ok.
+            compute_E_check_relation::<Projective, Pedersen<Projective>, false>(&r1cs, &w, &u);
 
+            // Generate "transcript randomness"
             let alpha = Fr::rand(&mut rng); // folding challenge would come from the RO
 
             // NIFS.P
-            let (folded_w, _) = NIFS::<Projective, Pedersen<Projective>>::fold_instances(
-                alpha,
-                &running_instance_w,
-                &running_committed_instance,
-                &incoming_instance_w,
-                &incoming_committed_instance,
-            )
-            .unwrap();
+            let (w_folded, _) =
+                NIFS::<Projective, Pedersen<Projective>>::fold_instances(alpha, &w, &u, &W, &u)
+                    .unwrap();
 
             // NIFS.V
-            let folded_committed_instance = NIFS::<Projective, Pedersen<Projective>>::verify(
-                alpha,
-                &running_committed_instance,
-                &incoming_committed_instance,
-            );
+            let u_folded = NIFS::<Projective, Pedersen<Projective>>::verify(alpha, &u, &U);
 
             compute_E_check_relation::<Projective, Pedersen<Projective>, false>(
-                &r1cs,
-                &folded_w,
-                &folded_committed_instance,
+                &r1cs, &w_folded, &u_folded,
             );
 
             // set running_instance for next loop iteration
-            running_instance_w = folded_w;
-            running_committed_instance = folded_committed_instance;
+            W = w_folded;
+            U = u_folded;
         }
     }
 }

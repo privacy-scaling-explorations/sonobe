@@ -6,7 +6,9 @@ use ark_crypto_primitives::sponge::{
 use ark_ec::{CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_serialize::{
+    CanonicalDeserialize, CanonicalSerialize, Compress, SerializationError, Validate,
+};
 use ark_std::{fmt::Debug, marker::PhantomData, rand::RngCore, One, Zero};
 
 pub mod cccs;
@@ -15,7 +17,6 @@ pub mod decider_eth;
 pub mod decider_eth_circuit;
 pub mod lcccs;
 pub mod nimfs;
-pub mod serialize;
 pub mod utils;
 
 use cccs::CCCS;
@@ -117,6 +118,108 @@ where
     pub ccs: Option<CCS<C1::ScalarField>>,
 }
 
+impl<
+        C1: CurveGroup,
+        C2: CurveGroup,
+        CS1: CommitmentScheme<C1, H>,
+        CS2: CommitmentScheme<C2, H>,
+        const H: bool,
+    > CanonicalSerialize for ProverParams<C1, C2, CS1, CS2, H>
+{
+    fn serialize_with_mode<W: std::io::prelude::Write>(
+        &self,
+        mut writer: W,
+        compress: Compress,
+    ) -> Result<(), SerializationError> {
+        self.cs_pp.serialize_with_mode(&mut writer, compress)?;
+        self.cf_cs_pp.serialize_with_mode(&mut writer, compress)
+    }
+
+    fn serialized_size(&self, compress: Compress) -> usize {
+        self.cs_pp.serialized_size(compress) + self.cf_cs_pp.serialized_size(compress)
+    }
+}
+
+impl<
+        C1: CurveGroup,
+        C2: CurveGroup,
+        CS1: CommitmentScheme<C1, H>,
+        CS2: CommitmentScheme<C2, H>,
+        const H: bool,
+    > ProverParams<C1, C2, CS1, CS2, H>
+{
+    pub fn deserialize_with_mode<R: std::io::prelude::Read>(
+        mut reader: R,
+        compress: Compress,
+        validate: Validate,
+        ccs: &Option<CCS<C1::ScalarField>>,
+        poseidon_config: &PoseidonConfig<C1::ScalarField>,
+    ) -> Result<Self, SerializationError> {
+        let cs_pp = CS1::ProverParams::deserialize_with_mode(&mut reader, compress, validate)?;
+        let cf_cs_pp = CS2::ProverParams::deserialize_with_mode(&mut reader, compress, validate)?;
+
+        Ok(ProverParams {
+            cs_pp,
+            cf_cs_pp,
+            ccs: ccs.clone(),
+            poseidon_config: poseidon_config.clone(),
+        })
+    }
+}
+
+impl<
+        C1: CurveGroup,
+        C2: CurveGroup,
+        CS1: CommitmentScheme<C1, H>,
+        CS2: CommitmentScheme<C2, H>,
+        const H: bool,
+    > CanonicalSerialize for VerifierParams<C1, C2, CS1, CS2, H>
+{
+    fn serialize_with_mode<W: std::io::prelude::Write>(
+        &self,
+        mut writer: W,
+        compress: Compress,
+    ) -> Result<(), SerializationError> {
+        self.cf_r1cs.serialize_with_mode(&mut writer, compress)?;
+        self.cs_vp.serialize_with_mode(&mut writer, compress)?;
+        self.cf_cs_vp.serialize_with_mode(&mut writer, compress)
+    }
+
+    fn serialized_size(&self, compress: Compress) -> usize {
+        self.cf_r1cs.serialized_size(compress)
+            + self.cs_vp.serialized_size(compress)
+            + self.cf_cs_vp.serialized_size(compress)
+    }
+}
+
+impl<
+        C1: CurveGroup,
+        C2: CurveGroup,
+        CS1: CommitmentScheme<C1, H>,
+        CS2: CommitmentScheme<C2, H>,
+        const H: bool,
+    > VerifierParams<C1, C2, CS1, CS2, H>
+{
+    pub fn deserialize_verifier_params<R: std::io::Read>(
+        mut reader: R,
+        compress: Compress,
+        validate: Validate,
+        ccs: &CCS<C1::ScalarField>,
+        poseidon_config: &PoseidonConfig<C1::ScalarField>,
+    ) -> Result<Self, SerializationError> {
+        let cf_r1cs = R1CS::deserialize_with_mode(&mut reader, compress, validate)?;
+        let cs_vp = CS1::VerifierParams::deserialize_with_mode(&mut reader, compress, validate)?;
+        let cf_cs_vp = CS2::VerifierParams::deserialize_with_mode(&mut reader, compress, validate)?;
+        Ok(VerifierParams {
+            ccs: ccs.clone(),
+            poseidon_config: poseidon_config.clone(),
+            cf_r1cs,
+            cs_vp,
+            cf_cs_vp,
+        })
+    }
+}
+
 /// Verification parameters for HyperNova-based IVC
 #[derive(Debug, Clone)]
 pub struct VerifierParams<
@@ -157,7 +260,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(PartialEq, Eq, Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct IVCProof<C1, C2>
 where
     C1: CurveGroup,
@@ -584,36 +687,42 @@ where
         // `sponge` is for digest computation.
         let sponge = PoseidonSponge::<C1::ScalarField>::new(&self.poseidon_config);
 
-        let other_instances = other_instances.ok_or(Error::MissingOtherInstances)?;
+        let (Us, Ws, us, ws) = if MU > 1 || NU > 1 {
+            let other_instances = other_instances.ok_or(Error::MissingOtherInstances(MU, NU))?;
 
-        #[allow(clippy::type_complexity)]
-        let (lcccs, cccs): (
-            Vec<(LCCCS<C1>, Witness<C1::ScalarField>)>,
-            Vec<(CCCS<C1>, Witness<C1::ScalarField>)>,
-        ) = other_instances;
+            #[allow(clippy::type_complexity)]
+            let (lcccs, cccs): (
+                Vec<(LCCCS<C1>, Witness<C1::ScalarField>)>,
+                Vec<(CCCS<C1>, Witness<C1::ScalarField>)>,
+            ) = other_instances;
 
-        // recall, mu & nu is the number of all the LCCCS & CCCS respectively, including the
-        // running and incoming instances that are not part of the 'other_instances', hence the +1
-        // in the couple of following checks.
-        if lcccs.len() + 1 != MU {
-            return Err(Error::NotSameLength(
-                "other_instances.lcccs.len()".to_string(),
-                lcccs.len(),
-                "hypernova.mu".to_string(),
-                MU,
-            ));
-        }
-        if cccs.len() + 1 != NU {
-            return Err(Error::NotSameLength(
-                "other_instances.cccs.len()".to_string(),
-                cccs.len(),
-                "hypernova.nu".to_string(),
-                NU,
-            ));
-        }
+            // recall, mu & nu is the number of all the LCCCS & CCCS respectively, including the
+            // running and incoming instances that are not part of the 'other_instances', hence the +1
+            // in the couple of following checks.
+            if lcccs.len() + 1 != MU {
+                return Err(Error::NotSameLength(
+                    "other_instances.lcccs.len()".to_string(),
+                    lcccs.len(),
+                    "hypernova.mu".to_string(),
+                    MU,
+                ));
+            }
+            if cccs.len() + 1 != NU {
+                return Err(Error::NotSameLength(
+                    "other_instances.cccs.len()".to_string(),
+                    cccs.len(),
+                    "hypernova.nu".to_string(),
+                    NU,
+                ));
+            }
 
-        let (Us, Ws): (Vec<LCCCS<C1>>, Vec<Witness<C1::ScalarField>>) = lcccs.into_iter().unzip();
-        let (us, ws): (Vec<CCCS<C1>>, Vec<Witness<C1::ScalarField>>) = cccs.into_iter().unzip();
+            let (Us, Ws): (Vec<LCCCS<C1>>, Vec<Witness<C1::ScalarField>>) =
+                lcccs.into_iter().unzip();
+            let (us, ws): (Vec<CCCS<C1>>, Vec<Witness<C1::ScalarField>>) = cccs.into_iter().unzip();
+            (Some(Us), Some(Ws), Some(us), Some(ws))
+        } else {
+            (None, None, None, None)
+        };
 
         let augmented_f_circuit: AugmentedFCircuit<C1, C2, GC2, FC, MU, NU>;
 
@@ -691,9 +800,9 @@ where
                 z_i: Some(self.z_i.clone()),
                 external_inputs: Some(external_inputs.clone()),
                 U_i: Some(self.U_i.clone()),
-                Us: Some(Us.clone()),
+                Us: Us.clone(),
                 u_i_C: Some(self.u_i.C),
-                us: Some(us.clone()),
+                us: us.clone(),
                 U_i1_C: Some(U_i1.C),
                 F: self.F.clone(),
                 x: Some(u_i1_x),
@@ -709,14 +818,31 @@ where
             let mut transcript_p: PoseidonSponge<C1::ScalarField> =
                 PoseidonSponge::<C1::ScalarField>::new(&self.poseidon_config);
             transcript_p.absorb(&self.pp_hash);
+
+            let (all_Us, all_us, all_Ws, all_ws) = if MU > 1 || NU > 1 {
+                (
+                    [vec![self.U_i.clone()], Us.clone().unwrap()].concat(),
+                    [vec![self.u_i.clone()], us.clone().unwrap()].concat(),
+                    [vec![self.W_i.clone()], Ws.unwrap()].concat(),
+                    [vec![self.w_i.clone()], ws.unwrap()].concat(),
+                )
+            } else {
+                (
+                    vec![self.U_i.clone()],
+                    vec![self.u_i.clone()],
+                    vec![self.W_i.clone()],
+                    vec![self.w_i.clone()],
+                )
+            };
+
             let (rho, nimfs_proof);
             (nimfs_proof, U_i1, W_i1, rho) = NIMFS::<C1, PoseidonSponge<C1::ScalarField>>::prove(
                 &mut transcript_p,
                 &self.ccs,
-                &[vec![self.U_i.clone()], Us.clone()].concat(),
-                &[vec![self.u_i.clone()], us.clone()].concat(),
-                &[vec![self.W_i.clone()], Ws].concat(),
-                &[vec![self.w_i.clone()], ws].concat(),
+                &all_Us,
+                &all_us,
+                &all_Ws,
+                &all_ws,
             )?;
 
             // sanity check: check the folded instance relation
@@ -743,12 +869,12 @@ where
             // where each p_i is in fact p_i.to_constraint_field()
             let cf_u_i_x = [
                 vec![rho_Fq],
-                get_cm_coordinates(&self.U_i.C),
-                Us.iter()
+                all_Us
+                    .iter()
                     .flat_map(|Us_i| get_cm_coordinates(&Us_i.C))
                     .collect(),
-                get_cm_coordinates(&self.u_i.C),
-                us.iter()
+                all_us
+                    .iter()
                     .flat_map(|us_i| get_cm_coordinates(&us_i.C))
                     .collect(),
                 get_cm_coordinates(&U_i1.C),
@@ -760,10 +886,8 @@ where
                 r_bits: Some(rho_bits.clone()),
                 points: Some(
                     [
-                        vec![self.U_i.clone().C],
-                        Us.iter().map(|Us_i| Us_i.C).collect(),
-                        vec![self.u_i.clone().C],
-                        us.iter().map(|us_i| us_i.C).collect(),
+                        all_Us.iter().map(|Us_i| Us_i.C).collect::<Vec<_>>(),
+                        all_us.iter().map(|us_i| us_i.C).collect::<Vec<_>>(),
                     ]
                     .concat(),
                 ),
@@ -804,9 +928,9 @@ where
                 z_i: Some(self.z_i.clone()),
                 external_inputs: Some(external_inputs),
                 U_i: Some(self.U_i.clone()),
-                Us: Some(Us.clone()),
+                Us: Us.clone(),
                 u_i_C: Some(self.u_i.C),
-                us: Some(us.clone()),
+                us: us.clone(),
                 U_i1_C: Some(U_i1.C),
                 F: self.F.clone(),
                 x: Some(u_i1_x),
@@ -893,6 +1017,58 @@ where
             cf_W_i: self.cf_W_i.clone(),
             cf_U_i: self.cf_U_i.clone(),
         }
+    }
+
+    fn from_ivc_proof(
+        ivc_proof: Self::IVCProof,
+        fcircuit_params: FC::Params,
+        params: (Self::ProverParam, Self::VerifierParam),
+    ) -> Result<Self, Error> {
+        let IVCProof {
+            i,
+            z_0,
+            z_i,
+            W_i,
+            U_i,
+            w_i,
+            u_i,
+            cf_W_i,
+            cf_U_i,
+        } = ivc_proof;
+        let (pp, vp) = params;
+
+        let f_circuit = FC::new(fcircuit_params).unwrap();
+        let augmented_f_circuit = AugmentedFCircuit::<C1, C2, GC2, FC, MU, NU>::empty(
+            &pp.poseidon_config,
+            f_circuit.clone(),
+            None,
+        )?;
+        let cf_circuit = HyperNovaCycleFoldCircuit::<C1, GC1, MU, NU>::empty();
+
+        let ccs = augmented_f_circuit.ccs.clone();
+        let cf_r1cs = get_r1cs_from_cs::<C2::ScalarField>(cf_circuit)?;
+
+        Ok(Self {
+            _gc1: PhantomData,
+            _c2: PhantomData,
+            _gc2: PhantomData,
+            ccs,
+            cf_r1cs,
+            poseidon_config: pp.poseidon_config,
+            cs_pp: pp.cs_pp,
+            cf_cs_pp: pp.cf_cs_pp,
+            F: f_circuit,
+            pp_hash: vp.pp_hash()?,
+            i,
+            z_0,
+            z_i,
+            w_i,
+            u_i,
+            W_i,
+            U_i,
+            cf_W_i,
+            cf_U_i,
+        })
     }
 
     /// Implements IVC.V of Hyp.clone()erNova+CycleFold. Notice that this method does not include the

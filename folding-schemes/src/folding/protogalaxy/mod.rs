@@ -208,7 +208,7 @@ impl<C: CurveGroup, const TYPE: bool> CommittedInstanceVarOps<C> for CommittedIn
     }
 }
 
-#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Witness<F: PrimeField> {
     w: Vec<F>,
     r_w: F,
@@ -358,7 +358,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(PartialEq, Eq, Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct IVCProof<C1, C2>
 where
     C1: CurveGroup,
@@ -943,6 +943,49 @@ where
             cf_W_i: self.cf_W_i.clone(),
             cf_U_i: self.cf_U_i.clone(),
         }
+    }
+
+    fn from_ivc_proof(
+        ivc_proof: Self::IVCProof,
+        fcircuit_params: FC::Params,
+        params: (Self::ProverParam, Self::VerifierParam),
+    ) -> Result<Self, Error> {
+        let IVCProof {
+            i,
+            z_0,
+            z_i,
+            W_i,
+            U_i,
+            w_i,
+            u_i,
+            cf_W_i,
+            cf_U_i,
+        } = ivc_proof;
+        let (pp, vp) = params;
+
+        let f_circuit = FC::new(fcircuit_params).unwrap();
+
+        Ok(Self {
+            _gc1: PhantomData,
+            _c2: PhantomData,
+            _gc2: PhantomData,
+            r1cs: vp.r1cs.clone(),
+            cf_r1cs: vp.cf_r1cs.clone(),
+            poseidon_config: pp.poseidon_config,
+            cs_params: pp.cs_params,
+            cf_cs_params: pp.cf_cs_params,
+            F: f_circuit,
+            pp_hash: vp.pp_hash()?,
+            i,
+            z_0,
+            z_i,
+            w_i,
+            u_i,
+            W_i,
+            U_i,
+            cf_W_i,
+            cf_U_i,
+        })
     }
 
     /// Implements IVC.V of Pro.clone()toGalaxy+CycleFold

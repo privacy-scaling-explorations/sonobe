@@ -108,8 +108,8 @@ pub enum Error {
     JSONSerdeError(String),
     #[error("Multi instances folding not supported in this scheme")]
     NoMultiInstances,
-    #[error("Missing 'other' instances, since this is a multi-instances folding scheme")]
-    MissingOtherInstances,
+    #[error("Missing 'other' instances, since this is a multi-instances folding scheme. Expected number of instances, mu:{0}, nu:{1}")]
+    MissingOtherInstances(usize, usize),
 }
 
 /// FoldingScheme defines trait that is implemented by the diverse folding schemes. It is defined
@@ -131,7 +131,7 @@ where
     type IncomingInstance: Debug; // contains the CommittedInstance + Witness
     type MultiCommittedInstanceWithWitness: Debug; // type used for the extra instances in the multi-instance folding setting
     type CFInstance: Debug; // CycleFold CommittedInstance & Witness
-    type IVCProof: Debug + CanonicalSerialize + CanonicalDeserialize;
+    type IVCProof: PartialEq + Eq + Clone + Debug + CanonicalSerialize + CanonicalDeserialize;
 
     fn preprocess(
         rng: impl RngCore,
@@ -166,6 +166,16 @@ where
 
     /// returns the last IVC state proof, which can be verified in the `verify` method
     fn ivc_proof(&self) -> Self::IVCProof;
+
+    /// constructs the FoldingScheme instance from the given IVCProof, ProverParams, VerifierParams
+    /// and PoseidonConfig.
+    /// This method is useful for when the IVCProof is sent between different parties, so that they
+    /// can continue iterating the IVC from the received IVCProof.
+    fn from_ivc_proof(
+        ivc_proof: Self::IVCProof,
+        fcircuit_params: FC::Params,
+        params: (Self::ProverParam, Self::VerifierParam),
+    ) -> Result<Self, Error>;
 
     fn verify(vp: Self::VerifierParam, ivc_proof: Self::IVCProof) -> Result<(), Error>;
 }

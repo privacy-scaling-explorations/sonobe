@@ -582,9 +582,7 @@ pub mod tests {
 
         // generate a Nova instance and do a step of it
         let mut hypernova = HN::init(&hn_params, F_circuit, z_0.clone()).unwrap();
-        hypernova
-            .prove_step(&mut rng, vec![], Some((vec![], vec![])))
-            .unwrap();
+        hypernova.prove_step(&mut rng, vec![], None).unwrap();
 
         let ivc_proof = hypernova.ivc_proof();
         HN::verify(hn_params.1, ivc_proof).unwrap();

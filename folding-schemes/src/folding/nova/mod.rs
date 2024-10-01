@@ -38,7 +38,6 @@ use crate::{arith::Arith, commitment::CommitmentScheme};
 pub mod circuits;
 pub mod nifs;
 pub mod ova;
-pub mod serialize;
 pub mod traits;
 pub mod zk;
 
@@ -429,7 +428,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(PartialEq, Eq, Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct IVCProof<C1, C2>
 where
     C1: CurveGroup,
@@ -924,6 +923,63 @@ where
             cf_W_i: self.cf_W_i.clone(),
             cf_U_i: self.cf_U_i.clone(),
         }
+    }
+
+    fn from_ivc_proof(
+        ivc_proof: IVCProof<C1, C2>,
+        fcircuit_params: FC::Params,
+        params: (Self::ProverParam, Self::VerifierParam),
+    ) -> Result<Self, Error> {
+        let IVCProof {
+            i,
+            z_0,
+            z_i,
+            W_i,
+            U_i,
+            w_i,
+            u_i,
+            cf_W_i,
+            cf_U_i,
+        } = ivc_proof;
+        let (pp, vp) = params;
+
+        let f_circuit = FC::new(fcircuit_params).unwrap();
+        let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
+        let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
+        let augmented_F_circuit =
+            AugmentedFCircuit::<C1, C2, GC2, FC>::empty(&pp.poseidon_config, f_circuit.clone());
+        let cf_circuit = NovaCycleFoldCircuit::<C1, GC1>::empty();
+
+        augmented_F_circuit.generate_constraints(cs.clone())?;
+        cs.finalize();
+        let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
+        let r1cs = extract_r1cs::<C1::ScalarField>(&cs);
+
+        cf_circuit.generate_constraints(cs2.clone())?;
+        cs2.finalize();
+        let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
+        let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2);
+        Ok(Self {
+            _gc1: PhantomData,
+            _c2: PhantomData,
+            _gc2: PhantomData,
+            r1cs,
+            cf_r1cs,
+            poseidon_config: pp.poseidon_config,
+            cs_pp: pp.cs_pp,
+            cf_cs_pp: pp.cf_cs_pp,
+            F: f_circuit,
+            pp_hash: vp.pp_hash()?,
+            i,
+            z_0,
+            z_i,
+            w_i,
+            u_i,
+            W_i,
+            U_i,
+            cf_W_i,
+            cf_U_i,
+        })
     }
 
     /// Implements IVC.V of Nov.clone()a+CycleFold. Notice that this method does not include the

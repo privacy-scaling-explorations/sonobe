@@ -377,7 +377,7 @@ pub mod tests {
             KZG<'static, Bn254>,
             Pedersen<Projective2>,
             false,
-        >::deserialize_prover_params(
+        >::deserialize_with_mode(
             hypernova_pp_serialized.as_slice(),
             Compress::Yes,
             Validate::No,

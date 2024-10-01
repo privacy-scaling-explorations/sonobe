@@ -28,16 +28,13 @@ pub mod tests {
     #[test]
     fn test_serialize_ivc() {
         let poseidon_config = poseidon_canonical_config::<Fr>();
-        let f_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
+        type FC = CubicFCircuit<Fr>;
+        let f_circuit = FC::new(()).unwrap();
 
         // test Nova
-        type N = Nova<G1, GVar1, G2, GVar2, CubicFCircuit<Fr>, Pedersen<G1>, Pedersen<G2>, false>;
+        type N = Nova<G1, GVar1, G2, GVar2, FC, Pedersen<G1>, Pedersen<G2>, false>;
         let prep_param = NovaPreprocessorParam::new(poseidon_config.clone(), f_circuit);
-        test_serialize_ivc_opt::<G1, G2, CubicFCircuit<Fr>, N>(
-            "nova".to_string(),
-            prep_param.clone(),
-        )
-        .unwrap();
+        test_serialize_ivc_opt::<G1, G2, FC, N>("nova".to_string(), prep_param.clone()).unwrap();
 
         // test HyperNova
         type HN = HyperNova<
@@ -45,27 +42,19 @@ pub mod tests {
             GVar1,
             G2,
             GVar2,
-            CubicFCircuit<Fr>,
+            FC,
             Pedersen<G1>,
             Pedersen<G2>,
             1, // mu
             1, // nu
             false,
         >;
-        test_serialize_ivc_opt::<G1, G2, CubicFCircuit<Fr>, HN>(
-            "hypernova".to_string(),
-            prep_param,
-        )
-        .unwrap();
+        test_serialize_ivc_opt::<G1, G2, FC, HN>("hypernova".to_string(), prep_param).unwrap();
 
         // test ProtoGalaxy
-        type P = ProtoGalaxy<G1, GVar1, G2, GVar2, CubicFCircuit<Fr>, Pedersen<G1>, Pedersen<G2>>;
+        type P = ProtoGalaxy<G1, GVar1, G2, GVar2, FC, Pedersen<G1>, Pedersen<G2>>;
         let prep_param = (poseidon_config, f_circuit);
-        test_serialize_ivc_opt::<G1, G2, CubicFCircuit<Fr>, P>(
-            "protogalaxy".to_string(),
-            prep_param,
-        )
-        .unwrap();
+        test_serialize_ivc_opt::<G1, G2, FC, P>("protogalaxy".to_string(), prep_param).unwrap();
     }
 
     fn test_serialize_ivc_opt<

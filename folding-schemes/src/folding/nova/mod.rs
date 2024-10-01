@@ -8,7 +8,7 @@ use ark_ec::{CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Valid};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError, Valid};
 use ark_std::fmt::Debug;
 use ark_std::rand::RngCore;
 use ark_std::{One, UniformRand, Zero};
@@ -370,37 +370,73 @@ where
         mut writer: W,
         compress: ark_serialize::Compress,
     ) -> Result<(), ark_serialize::SerializationError> {
-        self.r1cs.serialize_with_mode(&mut writer, compress)?;
-        self.cf_r1cs.serialize_with_mode(&mut writer, compress)?;
+        self.cs_vp.serialize_with_mode(&mut writer, compress)?;
         self.cs_vp.serialize_with_mode(&mut writer, compress)?;
         self.cf_cs_vp.serialize_with_mode(&mut writer, compress)
     }
 
     fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
-        self.r1cs.serialized_size(compress)
-            + self.cf_r1cs.serialized_size(compress)
-            + self.cs_vp.serialized_size(compress)
-            + self.cf_cs_vp.serialized_size(compress)
+        self.cs_vp.serialized_size(compress) + self.cf_cs_vp.serialized_size(compress)
     }
 }
-impl<C1, C2, CS1, CS2, const H: bool> CanonicalDeserialize for VerifierParams<C1, C2, CS1, CS2, H>
+impl<C1, C2, CS1, CS2, const H: bool> VerifierParams<C1, C2, CS1, CS2, H>
 where
     C1: CurveGroup,
     C2: CurveGroup,
+    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
+    <C1 as CurveGroup>::BaseField: PrimeField,
+    <C2 as CurveGroup>::BaseField: PrimeField,
+    <C1 as Group>::ScalarField: Absorb,
+    <C2 as Group>::ScalarField: Absorb,
+    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
 {
-    fn deserialize_with_mode<R: std::io::prelude::Read>(
+    pub fn deserialize_with_mode<GC1, GC2, FC, R: std::io::prelude::Read>(
         mut reader: R,
         compress: ark_serialize::Compress,
         validate: ark_serialize::Validate,
-    ) -> Result<Self, ark_serialize::SerializationError> {
-        let r1cs = R1CS::deserialize_with_mode(&mut reader, compress, validate)?;
-        let cf_r1cs = R1CS::deserialize_with_mode(&mut reader, compress, validate)?;
+        fcircuit_params: FC::Params,
+    ) -> Result<Self, SerializationError>
+    where
+        GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
+        GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+        FC: FCircuit<C1::ScalarField>,
+        for<'a> &'a GC1: GroupOpsBounds<'a, C1, GC1>,
+        for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
+    {
+        let poseidon_config = poseidon_canonical_config::<C1::ScalarField>();
+
+        // generate the r1cs & cf_r1cs needed for the VerifierParams. In this way we avoid needing
+        // to serialize them, saving significant space in the VerifierParams serialized size.
+
+        // main circuit R1CS:
+        let f_circuit = FC::new(fcircuit_params).or(Err(SerializationError::InvalidData))?;
+        let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
+        let augmented_F_circuit =
+            AugmentedFCircuit::<C1, C2, GC2, FC>::empty(&poseidon_config, f_circuit.clone());
+        augmented_F_circuit
+            .generate_constraints(cs.clone())
+            .or(Err(SerializationError::InvalidData))?;
+        cs.finalize();
+        let cs = cs.into_inner().ok_or(SerializationError::InvalidData)?;
+        let r1cs = extract_r1cs::<C1::ScalarField>(&cs);
+
+        // CycleFold circuit R1CS
+        let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
+        let cf_circuit = NovaCycleFoldCircuit::<C1, GC1>::empty();
+        cf_circuit
+            .generate_constraints(cs2.clone())
+            .or(Err(SerializationError::InvalidData))?;
+        cs2.finalize();
+        let cs2 = cs2.into_inner().ok_or(SerializationError::InvalidData)?;
+        let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2);
+
         let cs_vp = CS1::VerifierParams::deserialize_with_mode(&mut reader, compress, validate)?;
         let cf_cs_vp = CS2::VerifierParams::deserialize_with_mode(&mut reader, compress, validate)?;
+
         Ok(VerifierParams {
-            poseidon_config: poseidon_canonical_config::<C1::ScalarField>(),
+            poseidon_config,
             r1cs,
             cf_r1cs,
             cs_vp,
@@ -959,6 +995,7 @@ where
         cs2.finalize();
         let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
         let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2);
+
         Ok(Self {
             _gc1: PhantomData,
             _c2: PhantomData,

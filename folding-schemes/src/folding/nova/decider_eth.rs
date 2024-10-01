@@ -75,8 +75,8 @@ impl<C1, GC1, C2, GC2, FC, CS1, CS2, S, FS> DeciderTrait<C1, C2, FC, FS>
     for Decider<C1, GC1, C2, GC2, FC, CS1, CS2, S, FS>
 where
     C1: CurveGroup,
-    C2: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
+    C2: CurveGroup,
     GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
     FC: FCircuit<C1::ScalarField>,
     // CS1 is a KZG commitment, where challenge is C1::Fr elem
@@ -495,8 +495,12 @@ pub mod tests {
             Projective2,
             KZG<'static, Bn254>,
             Pedersen<Projective2>,
-        >::deserialize_compressed(
-            &mut nova_vp_serialized.as_slice()
+            false,
+        >::deserialize_with_mode::<GVar, GVar2, CubicFCircuit<Fr>, _>(
+            &mut nova_vp_serialized.as_slice(),
+            ark_serialize::Compress::Yes,
+            ark_serialize::Validate::Yes,
+            (), // fcircuit_params
         )
         .unwrap();
 

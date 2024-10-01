@@ -1,3 +1,6 @@
+/// This module contains the implementation of the Ova scheme NIFS (Non-Interactive Folding Scheme) as
+/// outlined in the protocol description doc: <https://hackmd.io/V4838nnlRKal9ZiTHiGYzw?both#Construction>
+/// authored by Benedikt Bünz.
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{CurveGroup, Group};
 use ark_std::One;
@@ -10,7 +13,9 @@ use crate::transcript::Transcript;
 use crate::utils::vec::{hadamard, mat_vec_mul, vec_scalar_mul, vec_sub};
 use crate::Error;
 
-/// Ova NIFS
+/// Implements all the operations executed by the Non-Interactive Folding Scheme described in the protocol
+/// spec by Bünz in the [original HackMD](https://hackmd.io/V4838nnlRKal9ZiTHiGYzw?both#Construction).
+/// `H` specifies whether the NIFS will use a blinding factor
 pub struct NIFS<C: CurveGroup, CS: CommitmentScheme<C, H>, const H: bool = false> {
     _c: PhantomData<C>,
     _cp: PhantomData<CS>,
@@ -20,6 +25,9 @@ impl<C: CurveGroup, CS: CommitmentScheme<C, H>, const H: bool> NIFS<C, CS, H>
 where
     <C as Group>::ScalarField: Absorb,
 {
+    /// Computes the T parameter (Cross Terms) as in Nova.
+    /// The wrapper is only in place to facilitate the calling as we need
+    /// to reconstruct the `z`s being folded in order to compute T.
     pub fn compute_T(
         r1cs: &R1CS<C::ScalarField>,
         w_i: &Witness<C>,
@@ -37,36 +45,12 @@ where
         )
     }
 
-    // We need to duplicate as we don't deal with cmT here.
-    pub fn compute_cmW(
-        cs_prover_params: &CS::ProverParams,
-        w: Witness<C>,
-        t_or_e: Vec<C::ScalarField>,
-    ) -> Result<C, Error> {
-        let w_concat_t_or_e: Vec<C::ScalarField> = [w.w.to_vec(), t_or_e].concat();
-
-        CS::commit(cs_prover_params, &w_concat_t_or_e, &w.rW)
-    }
-
-    pub fn fold_committed_instance(
-        alpha: C::ScalarField,
-        // This is W' (running)
-        ci1: &CommittedInstance<C>,
-        // This is W (incoming)
-        ci2: &CommittedInstance<C>,
-    ) -> CommittedInstance<C> {
-        let mu = ci1.mu + alpha; // ci2.mu **IS ALWAYS 1 in OVA** as we just can do sequencial IVC.
-        let cmWE = ci1.cmWE + ci2.cmWE.mul(alpha);
-        let x = ci1
-            .x
-            .iter()
-            .zip(&ci2.x)
-            .map(|(a, b)| *a + (alpha * b))
-            .collect::<Vec<C::ScalarField>>();
-
-        CommittedInstance::<C> { cmWE, mu, x }
-    }
-
+    /// Computes the E parameter (Error Terms) as in Nova.
+    /// The wrapper is only in place to facilitate the calling as we need
+    /// to reconstruct the `z`s being folded in order to compute E.
+    ///
+    /// Not only that, but notice that the incoming-instance `mu` parameter is always
+    /// equal to 1. Therefore, we can save the some computations.
     pub fn compute_E(
         r1cs: &R1CS<C::ScalarField>,
         w_acc: &Witness<C>,
@@ -87,7 +71,47 @@ where
         vec_sub(&Az_prime_Bz_prime, &muCz_prime)
     }
 
-    // Hiding needed here for `T`?
+    /// Computes the `W` or `W'` commitment. (The accumulated-instance W' or the incoming-instance W).
+    /// This is the result of concatenating the accumulated-instance `w` vector with
+    /// `e` or `t` and committing to the result.
+    ///
+    /// This is the exact trick that allows Ova to save up 1 commitment with respect to Nova.
+    /// At the cost of loosing the PCD property and only maintaining the IVC one.
+    pub fn compute_cmW(
+        cs_prover_params: &CS::ProverParams,
+        w: Witness<C>,
+        t_or_e: Vec<C::ScalarField>,
+    ) -> Result<C, Error> {
+        let w_concat_t_or_e: Vec<C::ScalarField> = [w.w.to_vec(), t_or_e].concat();
+
+        CS::commit(cs_prover_params, &w_concat_t_or_e, &w.rW)
+    }
+
+    /// Folds 2 [`CommittedInstance`]s returning a freshly folded one as is specified
+    /// in: <https://hackmd.io/V4838nnlRKal9ZiTHiGYzw?both#Construction>.
+    /// Here, alpha is a randomness sampled from a [`Transcript`].
+    pub fn fold_committed_instance(
+        alpha: C::ScalarField,
+        // This is W' (running)
+        ci1: &CommittedInstance<C>,
+        // This is W (incoming)
+        ci2: &CommittedInstance<C>,
+    ) -> CommittedInstance<C> {
+        let mu = ci1.mu + alpha; // ci2.mu **IS ALWAYS 1 in OVA** as we just can do sequencial IVC.
+        let cmWE = ci1.cmWE + ci2.cmWE.mul(alpha);
+        let x = ci1
+            .x
+            .iter()
+            .zip(&ci2.x)
+            .map(|(a, b)| *a + (alpha * b))
+            .collect::<Vec<C::ScalarField>>();
+
+        CommittedInstance::<C> { cmWE, mu, x }
+    }
+
+    /// Folds 2 [`Witness`]s returning a freshly folded one as is specified
+    /// in: <https://hackmd.io/V4838nnlRKal9ZiTHiGYzw?both#Construction>.
+    /// Here, alpha is a randomness sampled from a [`Transcript`].
     pub fn fold_witness(
         alpha: C::ScalarField,
         // runnig instance
@@ -105,6 +129,9 @@ where
         Ok(Witness::<C> { w, rW })
     }
 
+    /// fold_instances is part of the NIFS.P logic described in
+    /// [Ova](https://hackmd.io/V4838nnlRKal9ZiTHiGYzw?both#Construction)'s Construction section.
+    /// It returns the folded [`CommittedInstance`] and [`Witness`].
     pub fn fold_instances(
         r: C::ScalarField,
         // runnig instance
@@ -124,6 +151,9 @@ where
         Ok((w3, ci3))
     }
 
+    /// Implements NIFS.V (accumulation verifier) logic described in [Ova](https://hackmd.io/V4838nnlRKal9ZiTHiGYzw?both#Construction)'s
+    /// Construction section.
+    /// It returns the folded [`CommittedInstance`].
     pub fn verify(
         // r comes from the transcript, and is a n-bit (N_BITS_CHALLENGE) element
         alpha: C::ScalarField,
@@ -133,7 +163,11 @@ where
         NIFS::<C, CS, H>::fold_committed_instance(alpha, ci1, ci2)
     }
 
-    pub fn verify_folded_instance(
+    #[cfg(test)]
+    /// Verify committed folded instance (ci) relations. Notice that this method does not open the
+    /// commitments, but just checks that the given committed instances (ci1, ci2) when folded
+    /// result in the folded committed instance (ci3) values.
+    pub(crate) fn verify_folded_instance(
         r: C::ScalarField,
         // running instance
         ci1: &CommittedInstance<C>,
@@ -149,6 +183,7 @@ where
         Ok(())
     }
 
+    /// Generates a [`CS::Proof`] for the given [`CommittedInstance`] and [`Witness`] pair.
     pub fn prove_commitment(
         r1cs: &R1CS<C::ScalarField>,
         tr: &mut impl Transcript<C::ScalarField>,

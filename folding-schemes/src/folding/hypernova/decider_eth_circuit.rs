@@ -509,7 +509,6 @@ pub mod tests {
     use ark_bn254::{constraints::GVar, Fr, G1Projective as Projective};
     use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
     use ark_relations::r1cs::ConstraintSystem;
-    use ark_std::One;
     use ark_std::{test_rng, UniformRand};
 
     use super::*;
@@ -587,18 +586,8 @@ pub mod tests {
             .prove_step(&mut rng, vec![], Some((vec![], vec![])))
             .unwrap();
 
-        let ivc_v = hypernova.clone();
-        let (running_instance, incoming_instance, cyclefold_instance) = ivc_v.instances();
-        HN::verify(
-            hn_params.1, // HN's verifier_params
-            z_0,
-            ivc_v.z_i,
-            Fr::one(),
-            running_instance,
-            incoming_instance,
-            cyclefold_instance,
-        )
-        .unwrap();
+        let ivc_proof = hypernova.ivc_proof();
+        HN::verify(hn_params.1, ivc_proof).unwrap();
 
         // load the DeciderEthCircuit from the generated Nova instance
         let decider_circuit = DeciderEthCircuit::<

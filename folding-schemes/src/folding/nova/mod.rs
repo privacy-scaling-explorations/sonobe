@@ -429,6 +429,29 @@ where
     }
 }
 
+#[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
+pub struct IVCProof<C1, C2>
+where
+    C1: CurveGroup,
+    C2: CurveGroup,
+{
+    // current step of the IVC
+    pub i: C1::ScalarField,
+    // initial state
+    pub z_0: Vec<C1::ScalarField>,
+    // current state
+    pub z_i: Vec<C1::ScalarField>,
+    // running instance
+    pub W_i: Witness<C1>,
+    pub U_i: CommittedInstance<C1>,
+    // incoming instance
+    pub w_i: Witness<C1>,
+    pub u_i: CommittedInstance<C1>,
+    // CycleFold instances
+    pub cf_W_i: CycleFoldWitness<C2>,
+    pub cf_U_i: CycleFoldCommittedInstance<C2>,
+}
+
 /// Implements Nova+CycleFold's IVC, described in [Nova](https://eprint.iacr.org/2021/370.pdf) and
 /// [CycleFold](https://eprint.iacr.org/2023/1192.pdf), following the FoldingScheme trait
 /// The `H` const generic specifies whether the homorphic commitment scheme is blinding
@@ -500,6 +523,7 @@ where
     type IncomingInstance = (CommittedInstance<C1>, Witness<C1>);
     type MultiCommittedInstanceWithWitness = ();
     type CFInstance = (CycleFoldCommittedInstance<C2>, CycleFoldWitness<C2>);
+    type IVCProof = IVCProof<C1, C2>;
 
     fn preprocess(
         mut rng: impl RngCore,
@@ -888,17 +912,35 @@ where
         )
     }
 
-    /// Implements IVC.V of Nova+CycleFold. Notice that this method does not include the
+    fn ivc_proof(&self) -> Self::IVCProof {
+        Self::IVCProof {
+            i: self.i,
+            z_0: self.z_0.clone(),
+            z_i: self.z_i.clone(),
+            W_i: self.W_i.clone(),
+            U_i: self.U_i.clone(),
+            w_i: self.w_i.clone(),
+            u_i: self.u_i.clone(),
+            cf_W_i: self.cf_W_i.clone(),
+            cf_U_i: self.cf_U_i.clone(),
+        }
+    }
+
+    /// Implements IVC.V of Nov.clone()a+CycleFold. Notice that this method does not include the
     /// commitments verification, which is done in the Decider.
-    fn verify(
-        vp: Self::VerifierParam,
-        z_0: Vec<C1::ScalarField>, // initial state
-        z_i: Vec<C1::ScalarField>, // last state
-        num_steps: C1::ScalarField,
-        running_instance: Self::RunningInstance,
-        incoming_instance: Self::IncomingInstance,
-        cyclefold_instance: Self::CFInstance,
-    ) -> Result<(), Error> {
+    fn verify(vp: Self::VerifierParam, ivc_proof: Self::IVCProof) -> Result<(), Error> {
+        let Self::IVCProof {
+            i: num_steps,
+            z_0,
+            z_i,
+            W_i,
+            U_i,
+            w_i,
+            u_i,
+            cf_W_i,
+            cf_U_i,
+        } = ivc_proof;
+
         let sponge = PoseidonSponge::<C1::ScalarField>::new(&vp.poseidon_config);
 
         if num_steps == C1::ScalarField::zero() {
@@ -907,10 +949,6 @@ where
             }
             return Ok(());
         }
-
-        let (U_i, W_i) = running_instance;
-        let (u_i, w_i) = incoming_instance;
-        let (cf_U_i, cf_W_i) = cyclefold_instance;
 
         if u_i.x.len() != 2 || U_i.x.len() != 2 {
             return Err(Error::IVCVerificationFail);
@@ -1175,15 +1213,10 @@ pub mod tests {
         }
         assert_eq!(Fr::from(num_steps as u32), nova.i);
 
-        let (running_instance, incoming_instance, cyclefold_instance) = nova.instances();
+        let ivc_proof = nova.ivc_proof();
         Nova::<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>, CS1, CS2, H>::verify(
             nova_params.1, // Nova's verifier params
-            z_0.clone(),
-            nova.z_i.clone(),
-            nova.i,
-            running_instance,
-            incoming_instance,
-            cyclefold_instance,
+            ivc_proof,
         )
         .unwrap();
 

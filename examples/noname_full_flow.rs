@@ -99,6 +99,14 @@ fn main() {
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
 
+    // verify the last IVC proof
+    let ivc_proof = nova.ivc_proof();
+    N::verify(
+        nova_params.1, // Nova's verifier params
+        ivc_proof,
+    )
+    .unwrap();
+
     let start = Instant::now();
     let proof = D::prove(rng, decider_pp, nova.clone()).unwrap();
     println!("generated Decider proof: {:?}", start.elapsed());

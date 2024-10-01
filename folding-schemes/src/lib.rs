@@ -4,6 +4,7 @@
 
 use ark_ec::{pairing::Pairing, CurveGroup};
 use ark_ff::PrimeField;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::rand::CryptoRng;
 use ark_std::{fmt::Debug, rand::RngCore};
 use thiserror::Error;
@@ -130,6 +131,7 @@ where
     type IncomingInstance: Debug; // contains the CommittedInstance + Witness
     type MultiCommittedInstanceWithWitness: Debug; // type used for the extra instances in the multi-instance folding setting
     type CFInstance: Debug; // CycleFold CommittedInstance & Witness
+    type IVCProof: Debug + CanonicalSerialize + CanonicalDeserialize;
 
     fn preprocess(
         rng: impl RngCore,
@@ -149,11 +151,11 @@ where
         other_instances: Option<Self::MultiCommittedInstanceWithWitness>,
     ) -> Result<(), Error>;
 
-    // returns the state at the current step
+    /// returns the state at the current step
     fn state(&self) -> Vec<C1::ScalarField>;
 
-    // returns the instances at the current step, in the following order:
-    // (running_instance, incoming_instance, cyclefold_instance)
+    /// returns the instances at the current step, in the following order:
+    /// (running_instance, incoming_instance, cyclefold_instance)
     fn instances(
         &self,
     ) -> (
@@ -162,16 +164,10 @@ where
         Self::CFInstance,
     );
 
-    fn verify(
-        vp: Self::VerifierParam,
-        z_0: Vec<C1::ScalarField>, // initial state
-        z_i: Vec<C1::ScalarField>, // last state
-        // number of steps between the initial state and the last state
-        num_steps: C1::ScalarField,
-        running_instance: Self::RunningInstance,
-        incoming_instance: Self::IncomingInstance,
-        cyclefold_instance: Self::CFInstance,
-    ) -> Result<(), Error>;
+    /// returns the last IVC state proof, which can be verified in the `verify` method
+    fn ivc_proof(&self) -> Self::IVCProof;
+
+    fn verify(vp: Self::VerifierParam, ivc_proof: Self::IVCProof) -> Result<(), Error>;
 }
 
 /// Trait with auxiliary methods for multi-folding schemes (ie. HyperNova, ProtoGalaxy, etc),

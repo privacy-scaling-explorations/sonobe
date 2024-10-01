@@ -15,6 +15,7 @@ use ark_r1cs_std::{
 use ark_relations::r1cs::{
     ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, Namespace, SynthesisError,
 };
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{
     borrow::Borrow, cmp::max, fmt::Debug, log2, marker::PhantomData, rand::RngCore, One, Zero,
 };
@@ -74,7 +75,7 @@ pub type ProtoGalaxyCycleFoldCircuit<C, GC> = CycleFoldCircuit<ProtoGalaxyCycleF
 /// We use `TYPE` to distinguish between incoming and running instances, as
 /// they have slightly different structures (e.g., length of `betas`) and
 /// behaviors (e.g., in satisfiability checks).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct CommittedInstance<C: CurveGroup, const TYPE: bool> {
     phi: C,
     betas: Vec<C::ScalarField>,
@@ -207,7 +208,7 @@ impl<C: CurveGroup, const TYPE: bool> CommittedInstanceVarOps<C> for CommittedIn
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Witness<F: PrimeField> {
     w: Vec<F>,
     r_w: F,
@@ -355,6 +356,23 @@ where
             &self.poseidon_config,
         )
     }
+}
+
+#[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
+pub struct IVCProof<C1, C2>
+where
+    C1: CurveGroup,
+    C2: CurveGroup,
+{
+    pub i: C1::ScalarField,
+    pub z_0: Vec<C1::ScalarField>,
+    pub z_i: Vec<C1::ScalarField>,
+    pub W_i: Witness<C1::ScalarField>,
+    pub U_i: CommittedInstance<C1, true>,
+    pub w_i: Witness<C1::ScalarField>,
+    pub u_i: CommittedInstance<C1, false>,
+    pub cf_W_i: CycleFoldWitness<C2>,
+    pub cf_U_i: CycleFoldCommittedInstance<C2>,
 }
 
 /// Implements ProtoGalaxy+CycleFold's IVC, described in [ProtoGalaxy] and
@@ -536,6 +554,7 @@ where
     type MultiCommittedInstanceWithWitness =
         (CommittedInstance<C1, false>, Witness<C1::ScalarField>);
     type CFInstance = (CycleFoldCommittedInstance<C2>, CycleFoldWitness<C2>);
+    type IVCProof = IVCProof<C1, C2>;
 
     fn preprocess(
         mut rng: impl RngCore,
@@ -912,21 +931,35 @@ where
         )
     }
 
-    /// Implements IVC.V of ProtoGalaxy+CycleFold
-    fn verify(
-        vp: Self::VerifierParam,
-        z_0: Vec<C1::ScalarField>, // initial state
-        z_i: Vec<C1::ScalarField>, // last state
-        num_steps: C1::ScalarField,
-        running_instance: Self::RunningInstance,
-        incoming_instance: Self::IncomingInstance,
-        cyclefold_instance: Self::CFInstance,
-    ) -> Result<(), Error> {
-        let sponge = PoseidonSponge::<C1::ScalarField>::new(&vp.poseidon_config);
+    fn ivc_proof(&self) -> Self::IVCProof {
+        Self::IVCProof {
+            i: self.i,
+            z_0: self.z_0.clone(),
+            z_i: self.z_i.clone(),
+            W_i: self.W_i.clone(),
+            U_i: self.U_i.clone(),
+            w_i: self.w_i.clone(),
+            u_i: self.u_i.clone(),
+            cf_W_i: self.cf_W_i.clone(),
+            cf_U_i: self.cf_U_i.clone(),
+        }
+    }
 
-        let (U_i, W_i) = running_instance;
-        let (u_i, w_i) = incoming_instance;
-        let (cf_U_i, cf_W_i) = cyclefold_instance;
+    /// Implements IVC.V of Pro.clone()toGalaxy+CycleFold
+    fn verify(vp: Self::VerifierParam, ivc_proof: Self::IVCProof) -> Result<(), Error> {
+        let Self::IVCProof {
+            i: num_steps,
+            z_0,
+            z_i,
+            W_i,
+            U_i,
+            w_i,
+            u_i,
+            cf_W_i,
+            cf_U_i,
+        } = ivc_proof;
+
+        let sponge = PoseidonSponge::<C1::ScalarField>::new(&vp.poseidon_config);
 
         if u_i.x.len() != 2 || U_i.x.len() != 2 {
             return Err(Error::IVCVerificationFail);
@@ -1067,17 +1100,8 @@ mod tests {
         }
         assert_eq!(Fr::from(num_steps as u32), protogalaxy.i);
 
-        let (running_instance, incoming_instance, cyclefold_instance) = protogalaxy.instances();
-        PG::<CS1, CS2>::verify(
-            params.1,
-            z_0,
-            protogalaxy.z_i,
-            protogalaxy.i,
-            running_instance,
-            incoming_instance,
-            cyclefold_instance,
-        )
-        .unwrap();
+        let ivc_proof = protogalaxy.ivc_proof();
+        PG::<CS1, CS2>::verify(params.1, ivc_proof).unwrap();
     }
 
     #[ignore]

@@ -157,6 +157,23 @@ where
     }
 }
 
+#[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
+pub struct IVCProof<C1, C2>
+where
+    C1: CurveGroup,
+    C2: CurveGroup,
+{
+    pub i: C1::ScalarField,
+    pub z_0: Vec<C1::ScalarField>,
+    pub z_i: Vec<C1::ScalarField>,
+    pub W_i: Witness<C1::ScalarField>,
+    pub U_i: LCCCS<C1>,
+    pub w_i: Witness<C1::ScalarField>,
+    pub u_i: CCCS<C1>,
+    pub cf_W_i: CycleFoldWitness<C2>,
+    pub cf_U_i: CycleFoldCommittedInstance<C2>,
+}
+
 /// Implements HyperNova+CycleFold's IVC, described in
 /// [HyperNova](https://eprint.iacr.org/2023/573.pdf) and
 /// [CycleFold](https://eprint.iacr.org/2023/1192.pdf), following the FoldingScheme trait
@@ -419,6 +436,7 @@ where
     type MultiCommittedInstanceWithWitness =
         (Vec<Self::RunningInstance>, Vec<Self::IncomingInstance>);
     type CFInstance = (CycleFoldCommittedInstance<C2>, CycleFoldWitness<C2>);
+    type IVCProof = IVCProof<C1, C2>;
 
     fn preprocess(
         mut rng: impl RngCore,
@@ -863,17 +881,35 @@ where
         )
     }
 
-    /// Implements IVC.V of HyperNova+CycleFold. Notice that this method does not include the
+    fn ivc_proof(&self) -> Self::IVCProof {
+        Self::IVCProof {
+            i: self.i,
+            z_0: self.z_0.clone(),
+            z_i: self.z_i.clone(),
+            W_i: self.W_i.clone(),
+            U_i: self.U_i.clone(),
+            w_i: self.w_i.clone(),
+            u_i: self.u_i.clone(),
+            cf_W_i: self.cf_W_i.clone(),
+            cf_U_i: self.cf_U_i.clone(),
+        }
+    }
+
+    /// Implements IVC.V of Hyp.clone()erNova+CycleFold. Notice that this method does not include the
     /// commitments verification, which is done in the Decider.
-    fn verify(
-        vp: Self::VerifierParam,
-        z_0: Vec<C1::ScalarField>, // initial state
-        z_i: Vec<C1::ScalarField>, // last state
-        num_steps: C1::ScalarField,
-        running_instance: Self::RunningInstance,
-        incoming_instance: Self::IncomingInstance,
-        cyclefold_instance: Self::CFInstance,
-    ) -> Result<(), Error> {
+    fn verify(vp: Self::VerifierParam, ivc_proof: Self::IVCProof) -> Result<(), Error> {
+        let Self::IVCProof {
+            i: num_steps,
+            z_0,
+            z_i,
+            W_i,
+            U_i,
+            w_i,
+            u_i,
+            cf_W_i,
+            cf_U_i,
+        } = ivc_proof;
+
         if num_steps == C1::ScalarField::zero() {
             if z_0 != z_i {
                 return Err(Error::IVCVerificationFail);
@@ -883,9 +919,6 @@ where
         // `sponge` is for digest computation.
         let sponge = PoseidonSponge::<C1::ScalarField>::new(&vp.poseidon_config);
 
-        let (U_i, W_i) = running_instance;
-        let (u_i, w_i) = incoming_instance;
-        let (cf_U_i, cf_W_i) = cyclefold_instance;
         if u_i.x.len() != 2 || U_i.x.len() != 2 {
             return Err(Error::IVCVerificationFail);
         }
@@ -1024,18 +1057,14 @@ mod tests {
         }
         assert_eq!(Fr::from(num_steps as u32), hypernova.i);
 
-        let (running_instance, incoming_instance, cyclefold_instance) = hypernova.instances();
+        let ivc_proof = hypernova.ivc_proof();
         HN::verify(
             hypernova_params.1.clone(), // verifier_params
-            z_0,
-            hypernova.z_i.clone(),
-            hypernova.i,
-            running_instance.clone(),
-            incoming_instance.clone(),
-            cyclefold_instance.clone(),
+            ivc_proof,
         )
         .unwrap();
 
+        let (running_instance, incoming_instance, cyclefold_instance) = hypernova.instances();
         (
             hypernova,
             hypernova_params,

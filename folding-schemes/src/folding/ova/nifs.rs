@@ -1,14 +1,13 @@
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{CurveGroup, Group};
-use ark_std::{One, Zero};
+use ark_std::One;
 use std::marker::PhantomData;
 
 use super::{CommittedInstance, Witness};
 use crate::arith::r1cs::R1CS;
 use crate::commitment::CommitmentScheme;
-use crate::folding::circuits::cyclefold::{CycleFoldCommittedInstance, CycleFoldWitness};
 use crate::transcript::Transcript;
-use crate::utils::vec::{hadamard, mat_vec_mul, vec_add, vec_scalar_mul, vec_sub};
+use crate::utils::vec::{hadamard, mat_vec_mul, vec_scalar_mul, vec_sub};
 use crate::Error;
 
 /// Ova NIFS
@@ -150,7 +149,6 @@ where
         Ok(())
     }
 
-    // TODO: Revisit
     pub fn prove_commitment(
         r1cs: &R1CS<C::ScalarField>,
         tr: &mut impl Transcript<C::ScalarField>,
@@ -173,7 +171,7 @@ pub mod tests {
     };
     use ark_ff::{BigInteger, PrimeField};
     use ark_pallas::{Fr, Projective};
-    use ark_std::{ops::Mul, test_rng, UniformRand};
+    use ark_std::{test_rng, UniformRand, Zero};
 
     use crate::folding::ova::circuits::ChallengeGadget;
     use crate::transcript::poseidon::poseidon_canonical_config;
@@ -381,11 +379,10 @@ pub mod tests {
         let ci3_v = NIFS::<Projective, Pedersen<Projective>>::verify(r, &ci1, &ci2);
         assert_eq!(ci3_v, ci3);
 
-        // TODO: Uncomment and find a less verbose TestingWitness solution.
         // check that relations hold for the 2 inputted instances and the folded one
-        // r1cs.check_relation(&w1, &ci1).unwrap();
-        // r1cs.check_relation(&w2, &ci2).unwrap();
-        // r1cs.check_relation(&w3, &ci3).unwrap();
+        compute_E_check_relation::<Projective, Pedersen<Projective>, false>(&r1cs, &w1, &ci1);
+        compute_E_check_relation::<Projective, Pedersen<Projective>, false>(&r1cs, &w2, &ci2);
+        compute_E_check_relation::<Projective, Pedersen<Projective>, false>(&r1cs, &w3, &ci3);
 
         // check that folded commitments from folded instance (ci) are equal to folding the
         // use folded rW to commit w3
@@ -397,11 +394,6 @@ pub mod tests {
         ci3_expected.mu = ci3.mu;
 
         assert_eq!(ci3_expected.cmWE, ci3.cmWE);
-
-        // TODO: Think if there's any check like this that applies for Ova
-        // next equalities should hold since we started from two cmE of zero-vector E's
-        // assert_eq!(ci3.cmE, cmT.mul(r));
-        // assert_eq!(w3.E, vec_scalar_mul(T.as_slice(), &r));
 
         // NIFS.Verify_Folded_Instance:
         NIFS::<Projective, Pedersen<Projective>>::verify_folded_instance(r, &ci1, &ci2, &ci3)

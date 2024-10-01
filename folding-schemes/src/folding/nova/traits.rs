@@ -112,9 +112,6 @@ impl<C: CurveGroup> Arith<OvaWitness<C>, OvaCommittedInstance<C>> for R1CS<CF1<C
     }
 
     fn check_evaluation(
-        // We load the expected `e` inside `w` such that we do the check here with the computed `e`.
-        // This is ugly but the only way to not modify trait fn signatures.
-        // TODO: Discuss this with others.
         w: &OvaWitness<C>,
         _u: &OvaCommittedInstance<C>,
         e: Self::Evaluation,
@@ -122,41 +119,3 @@ impl<C: CurveGroup> Arith<OvaWitness<C>, OvaCommittedInstance<C>> for R1CS<CF1<C
         (w.e == e).then_some(()).ok_or(Error::NotSatisfied)
     }
 }
-
-// impl<C: CurveGroup> ArithSampler<C, OvaWitness<C>, OvaCommittedInstance<C>> for R1CS<CF1<C>> {
-//     fn sample_witness_instance<CS: CommitmentScheme<C, true>>(
-//         &self,
-//         params: &CS::ProverParams,
-//         mut rng: impl RngCore,
-//     ) -> Result<(OvaWitness<C>, OvaCommittedInstance<C>), Error> {
-//         let u = C::ScalarField::rand(&mut rng);
-//         let rW = C::ScalarField::rand(&mut rng);
-
-//         let w = (0..self.A.n_cols - self.l - 1)
-//             .map(|_| C::ScalarField::rand(&mut rng))
-//             .collect();
-//         let x = (0..self.l)
-//             .map(|_| C::ScalarField::rand(&mut rng))
-//             .collect::<Vec<C::ScalarField>>();
-//         let mut z = vec![u];
-//         z.extend(&x);
-//         z.extend(&w);
-
-//         let e = self.eval_at_z(&z)?;
-
-//         let witness = OvaWitness { e, w, rW };
-//         let mut cm_witness = witness.commit::<CS, true>(params, x)?;
-
-//         // witness.commit() sets u to 1, we set it to the sampled u value
-//         cm_witness.mu = u;
-
-//         debug_assert!(
-//             self.check_relation(&witness, &cm_witness).is_ok(),
-//             "Sampled a non satisfiable relaxed R1CS, sampled u: {}, computed E: {:?}",
-//             u,
-//             witness.e
-//         );
-
-//         Ok((witness, cm_witness))
-//     }
-// }

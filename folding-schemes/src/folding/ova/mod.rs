@@ -1,38 +1,18 @@
 /// Implements the scheme described in [Nova](https://eprint.iacr.org/2021/370.pdf) and
 /// [CycleFold](https://eprint.iacr.org/2023/1192.pdf).
-use ark_crypto_primitives::sponge::{
-    poseidon::{PoseidonConfig, PoseidonSponge},
-    Absorb, CryptographicSponge,
-};
-use ark_ec::{CurveGroup, Group};
-use ark_ff::{BigInteger, PrimeField};
-use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Valid};
+use ark_crypto_primitives::sponge::Absorb;
+use ark_ec::CurveGroup;
+use ark_ff::PrimeField;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::fmt::Debug;
 use ark_std::rand::RngCore;
 use ark_std::{One, UniformRand, Zero};
-use core::marker::PhantomData;
 
-use crate::folding::circuits::cyclefold::{
-    fold_cyclefold_circuit, CycleFoldCircuit, CycleFoldCommittedInstance, CycleFoldConfig,
-    CycleFoldWitness,
-};
-use crate::folding::{
-    circuits::{CF1, CF2},
-    traits::Dummy,
-};
-use crate::frontend::FCircuit;
-use crate::transcript::{poseidon::poseidon_canonical_config, AbsorbNonNative, Transcript};
-use crate::utils::vec::is_zero_vec;
+use crate::arith::r1cs::R1CS;
+use crate::commitment::CommitmentScheme;
+use crate::folding::{circuits::CF1, traits::Dummy};
+use crate::transcript::AbsorbNonNative;
 use crate::Error;
-use crate::FoldingScheme;
-use crate::{
-    arith::r1cs::{extract_r1cs, extract_w_x, R1CS},
-    constants::NOVA_N_BITS_RO,
-    utils::{get_cm_coordinates, pp_hash},
-};
-use crate::{arith::Arith, commitment::CommitmentScheme};
 
 pub mod circuits;
 pub mod nifs;

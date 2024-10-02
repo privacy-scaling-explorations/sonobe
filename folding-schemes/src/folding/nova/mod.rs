@@ -35,14 +35,15 @@ use crate::{
 };
 use crate::{arith::Arith, commitment::CommitmentScheme};
 
-use circuits::{AugmentedFCircuit, ChallengeGadget, CommittedInstanceVar};
-use nifs::NIFS;
-
 pub mod circuits;
 pub mod nifs;
 pub mod serialize;
 pub mod traits;
 pub mod zk;
+
+use circuits::{AugmentedFCircuit, ChallengeGadget, CommittedInstanceVar};
+use nifs::NIFS;
+use traits::NIFSTrait;
 
 // offchain decider
 pub mod decider;
@@ -678,15 +679,16 @@ where
             .step_native(i_usize, self.z_i.clone(), external_inputs.clone())?;
 
         // compute T and cmT for AugmentedFCircuit
-        let (T, cmT) = self.compute_cmT()?;
+        let (aux_p, aux_v) = self.compute_cmT()?;
+        let cmT = aux_v;
 
         // r_bits is the r used to the RLC of the F' instances
-        let r_bits = ChallengeGadget::<C1>::get_challenge_native(
+        let r_bits = ChallengeGadget::<C1, CommittedInstance<C1>>::get_challenge_native(
             &mut transcript,
             self.pp_hash,
-            self.U_i.clone(),
-            self.u_i.clone(),
-            cmT,
+            &self.U_i,
+            &self.u_i,
+            &cmT,
         );
         let r_Fr = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
             .ok_or(Error::OutOfBounds)?;
@@ -694,10 +696,9 @@ where
             .ok_or(Error::OutOfBounds)?;
 
         // fold Nova instances
-        let (W_i1, U_i1): (Witness<C1>, CommittedInstance<C1>) =
-            NIFS::<C1, CS1, H>::fold_instances(
-                r_Fr, &self.W_i, &self.U_i, &self.w_i, &self.u_i, &T, cmT,
-            )?;
+        let (W_i1, U_i1): (Witness<C1>, CommittedInstance<C1>) = NIFS::<C1, CS1, H>::prove(
+            r_Fr, &self.W_i, &self.U_i, &self.w_i, &self.u_i, &aux_p, &aux_v,
+        )?;
 
         // folded instance output (public input, x)
         // u_{i+1}.x[0] = H(i+1, z_0, z_{i+1}, U_{i+1})
@@ -958,7 +959,7 @@ where
 {
     // computes T and cmT for the AugmentedFCircuit
     fn compute_cmT(&self) -> Result<(Vec<C1::ScalarField>, C1), Error> {
-        NIFS::<C1, CS1, H>::compute_cmT(
+        NIFS::<C1, CS1, H>::compute_aux(
             &self.cs_pp,
             &self.r1cs,
             &self.w_i,

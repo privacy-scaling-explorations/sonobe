@@ -51,7 +51,9 @@ use ark_r1cs_std::{
 
 use crate::{commitment::CommitmentScheme, folding::circuits::CF2, frontend::FCircuit, Error};
 
-use super::{circuits::ChallengeGadget, nifs::NIFS, CommittedInstance, Nova, Witness};
+use super::{
+    circuits::ChallengeGadget, nifs::NIFS, traits::NIFSTrait, CommittedInstance, Nova, Witness,
+};
 
 // We use the same definition of a folding proof as in https://eprint.iacr.org/2023/969.pdf
 // It consists in the commitment to the T term
@@ -83,7 +85,9 @@ where
         u_i: CommittedInstance<C1>,
         cmT: C1,
     ) -> Result<C1::ScalarField, Error> {
-        let r_bits = ChallengeGadget::<C1>::get_challenge_native(sponge, pp_hash, U_i, u_i, cmT);
+        let r_bits = ChallengeGadget::<C1, CommittedInstance<C1>>::get_challenge_native(
+            sponge, pp_hash, &U_i, &u_i, &cmT,
+        );
         C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits)).ok_or(Error::OutOfBounds)
     }
 
@@ -134,9 +138,8 @@ where
         )?;
 
         // c. Compute fold
-        let (W_f, U_f) = NIFS::<C1, CS1, true>::fold_instances(
-            r, &nova.w_i, &nova.u_i, &nova.W_i, &nova.U_i, &T, cmT,
-        )?;
+        let (W_f, U_f) =
+            NIFS::<C1, CS1, true>::prove(r, &nova.w_i, &nova.u_i, &nova.W_i, &nova.U_i, &T, &cmT)?;
 
         // d. Store folding proof
         let pi = FoldingProof { cmT };
@@ -161,15 +164,8 @@ where
         )?;
 
         // c. Compute fold
-        let (W_i_prime, _) = NIFS::<C1, CS1, true>::fold_instances(
-            r_2,
-            &W_f,
-            &U_f,
-            &W_r,
-            &U_r,
-            &T_i_prime,
-            cmT_i_prime,
-        )?;
+        let (W_i_prime, _) =
+            NIFS::<C1, CS1, true>::prove(r_2, &W_f, &U_f, &W_r, &U_r, &T_i_prime, &cmT_i_prime)?;
 
         // d. Store folding proof
         let pi_prime = FoldingProof { cmT: cmT_i_prime };
@@ -255,12 +251,7 @@ where
         )?;
 
         // b. Get the U_f instance
-        let U_f = NIFS::<C1, CS1, true>::fold_committed_instance(
-            r,
-            &proof.u_i,
-            &proof.U_i,
-            &proof.pi.cmT,
-        );
+        let U_f = NIFS::<C1, CS1, true>::verify(r, &proof.u_i, &proof.U_i, &proof.pi.cmT);
 
         // 4. Obtain the U^{\prime}_i folded instance
         // a. Compute folding challenge
@@ -273,12 +264,7 @@ where
         )?;
 
         // b. Compute fold
-        let U_i_prime = NIFS::<C1, CS1, true>::fold_committed_instance(
-            r_2,
-            &U_f,
-            &proof.U_r,
-            &proof.pi_prime.cmT,
-        );
+        let U_i_prime = NIFS::<C1, CS1, true>::verify(r_2, &U_f, &proof.U_r, &proof.pi_prime.cmT);
 
         // 5. Check that W^{\prime}_i is a satisfying witness
         r1cs.check_relation(&proof.W_i_prime, &U_i_prime)?;

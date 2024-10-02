@@ -60,6 +60,8 @@ where
     }
 }
 
+// Clippy flag needed for now.
+#[allow(dead_code)]
 /// A Witness in [Ova](https://hackmd.io/V4838nnlRKal9ZiTHiGYzw?view) is represented by `w`.
 /// It also contains a blinder which can or not be used when committing to the witness itself.
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
@@ -145,5 +147,4 @@ where
 pub(crate) struct TestingWitness<C: CurveGroup> {
     pub(crate) w: Vec<C::ScalarField>,
     pub(crate) e: Vec<C::ScalarField>,
-    pub(crate) rW: C::ScalarField,
 }

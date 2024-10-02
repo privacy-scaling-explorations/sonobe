@@ -37,7 +37,7 @@ where
         mu: C::ScalarField,
     ) -> Result<Vec<C::ScalarField>, Error> {
         crate::folding::nova::nifs::NIFS::<C, CS, H>::compute_T(
-            &r1cs,
+            r1cs,
             C::ScalarField::one(),
             mu,
             &[vec![C::ScalarField::one()], x_i.to_vec(), w_i.w.to_vec()].concat(),
@@ -196,7 +196,7 @@ where
         w: &Witness<C>,
         ci: &CommittedInstance<C>,
     ) -> Result<CS::Proof, Error> {
-        let e = NIFS::<C, CS, H>::compute_E(&r1cs, &w, &ci.x, ci.mu).unwrap();
+        let e = NIFS::<C, CS, H>::compute_E(r1cs, w, &ci.x, ci.mu).unwrap();
         let w_concat_e: Vec<C::ScalarField> = [w.w.clone(), e].concat();
         CS::prove(cs_prover_params, tr, &ci.cmWE, &w_concat_e, &w.rW, None)
     }
@@ -233,16 +233,9 @@ pub mod tests {
     ) where
         <C as Group>::ScalarField: Absorb,
     {
-        let e = NIFS::<C, CS, H>::compute_E(&r1cs, &w, &u.x, u.mu).unwrap();
-        r1cs.check_relation(
-            &TestingWitness::<C> {
-                e,
-                w: w.clone().w,
-                rW: w.rW,
-            },
-            &u,
-        )
-        .unwrap();
+        let e = NIFS::<C, CS, H>::compute_E(r1cs, w, &u.x, u.mu).unwrap();
+        r1cs.check_relation(&TestingWitness::<C> { e, w: w.w.clone() }, u)
+            .unwrap();
     }
 
     #[allow(clippy::type_complexity)]

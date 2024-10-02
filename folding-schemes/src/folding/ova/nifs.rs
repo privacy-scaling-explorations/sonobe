@@ -97,7 +97,7 @@ where
         // This is W' (running)
         U_i: &CommittedInstance<C>,
     ) -> CommittedInstance<C> {
-        let mu = U_i.mu + alpha; // u_i.mu **IS ALWAYS 1 in OVA** as we just can do sequencial IVC.
+        let mu = U_i.mu + alpha; // u_i.mu **IS ALWAYS 1 in OVA** as we just can do sequential IVC.
         let cmWE = U_i.cmWE + u_i.cmWE.mul(alpha);
         let x = U_i
             .x

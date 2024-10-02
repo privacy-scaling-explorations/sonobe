@@ -37,6 +37,7 @@ use crate::{arith::Arith, commitment::CommitmentScheme};
 
 pub mod circuits;
 pub mod nifs;
+pub mod ova;
 pub mod serialize;
 pub mod traits;
 pub mod zk;

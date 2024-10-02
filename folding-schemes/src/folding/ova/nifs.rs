@@ -143,10 +143,10 @@ where
         U_i: &CommittedInstance<C>,
     ) -> Result<(Witness<C>, CommittedInstance<C>), Error> {
         // fold witness
-        let w3 = NIFS::<C, CS, H>::fold_witness(r, W_i, w_i)?;
+        let w3 = NIFS::<C, CS, H>::fold_witness(r, w_i, W_i)?;
 
         // fold committed instances
-        let ci3 = NIFS::<C, CS, H>::fold_committed_instance(r, U_i, u_i);
+        let ci3 = NIFS::<C, CS, H>::fold_committed_instance(r, u_i, U_i);
 
         Ok((w3, ci3))
     }
@@ -178,7 +178,7 @@ where
         // folded instance
         folded_instance: &CommittedInstance<C>,
     ) -> Result<(), Error> {
-        let expected = Self::fold_committed_instance(r, U_i, u_i);
+        let expected = Self::fold_committed_instance(r, u_i, U_i);
         if folded_instance.mu != expected.mu
             || folded_instance.cmWE != expected.cmWE
             || folded_instance.x != expected.x
@@ -307,9 +307,11 @@ pub mod tests {
         );
         let alpha_Fr = C::ScalarField::from_bigint(BigInteger::from_bits_le(&alpha_bits)).unwrap();
 
-        // Wrong order.
         let (w_fold, u_fold) =
-            NIFS::<C, Pedersen<C>>::fold_instances(alpha_Fr, &w, &u, &W, &U).unwrap();
+            NIFS::<C, Pedersen<C>, false>::fold_instances(alpha_Fr, &w, &u, &W, &U).unwrap();
+
+        // Check correctness of the R1CS relation of the folded instance.
+        compute_E_check_relation::<C, Pedersen<C>, false>(&r1cs, &w_fold, &u_fold);
 
         (
             pedersen_params,

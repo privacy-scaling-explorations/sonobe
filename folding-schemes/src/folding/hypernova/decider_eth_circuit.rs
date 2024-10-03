@@ -26,7 +26,7 @@ use super::{
     nimfs::{NIMFSProof, NIMFS},
     HyperNova, Witness, CCCS, LCCCS,
 };
-use crate::commitment::{pedersen::Params as PedersenParams, CommitmentScheme};
+use crate::{commitment::{pedersen::Params as PedersenParams, CommitmentScheme}, folding::nova::decider_eth_circuit::evaluate_gadget};
 use crate::folding::circuits::{
     cyclefold::{CycleFoldCommittedInstance, CycleFoldWitness},
     CF1, CF2,
@@ -322,7 +322,7 @@ where
         let kzg_challenge = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
             Ok(self.kzg_challenge.unwrap_or_else(CF1::<C1>::zero))
         })?;
-        let _eval_W = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
+        let eval_W = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
             Ok(self.eval_W.unwrap_or_else(CF1::<C1>::zero))
         })?;
 
@@ -423,14 +423,6 @@ where
         // `rho_bits` computed along the way of computing `computed_U_i1` for the later `rho_powers`
         // check (6.b).
 
-        // Check 7 is temporary disabled due
-        // https://github.com/privacy-scaling-explorations/sonobe/issues/80
-        log::warn!("[WARNING]: issue #80 (https://github.com/privacy-scaling-explorations/sonobe/issues/80) is not resolved yet.");
-        //
-        // 7. check eval_W==p_W(c_W)
-        // let incircuit_eval_W = evaluate_gadget::<CF1<C1>>(W_i1.W, incircuit_c_W)?;
-        // incircuit_eval_W.enforce_equal(&eval_W)?;
-
         // 8.a verify the NIMFS.V of the final fold, and check that the obtained rho_powers from the
         // transcript match the one from the public input (so we avoid the onchain logic of the
         // verifier computing it).
@@ -461,6 +453,10 @@ where
         computed_U_i1.u.enforce_equal(&U_i1.u)?;
         computed_U_i1.r_x.enforce_equal(&U_i1.r_x)?;
         computed_U_i1.v.enforce_equal(&U_i1.v)?;
+
+        // 7. check eval_W==p_W(c_W)
+        let incircuit_eval_W = evaluate_gadget::<CF1<C1>>(W_i1.w, incircuit_challenge)?;
+        incircuit_eval_W.enforce_equal(&eval_W)?;
 
         // 8.b check that the in-circuit computed r is equal to the inputted r.
 

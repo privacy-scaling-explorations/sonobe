@@ -84,9 +84,10 @@ where
     /// CycleFold running instance
     pub cf_U_i: Option<CycleFoldCommittedInstance<C2>>,
 
-    /// KZG challenges
-    pub kzg_c_W: Option<C1::ScalarField>,
-    pub kzg_c_E: Option<C1::ScalarField>,
+    /// Commitment Scheme challenges
+    pub cs_c_W: Option<C1::ScalarField>,
+    pub cs_c_E: Option<C1::ScalarField>,
+    /// Evaluations of the committed polynomials at the challenge
     pub eval_W: Option<C1::ScalarField>,
     pub eval_E: Option<C1::ScalarField>,
 }
@@ -134,11 +135,11 @@ where
             r_Fr, &nova.W_i, &nova.U_i, &nova.w_i, &nova.u_i, &T, cmT,
         )?;
 
-        // compute the KZG challenges used as inputs in the circuit
-        let (kzg_challenge_W, kzg_challenge_E) =
+        // compute the commitment scheme challenges used as inputs in the circuit
+        let (cs_challenge_W, cs_challenge_E) =
             KZGChallengesGadget::<C1>::get_challenges_native(&mut transcript, U_i1.clone());
 
-        // get KZG evals
+        // get evals of the committed polys at the challenges
         let mut W = W_i1.W.clone();
         W.extend(
             std::iter::repeat(C1::ScalarField::zero())
@@ -150,9 +151,9 @@ where
                 .take(W_i1.E.len().next_power_of_two() - W_i1.E.len()),
         );
         let p_W = poly_from_vec(W.to_vec())?;
-        let eval_W = p_W.evaluate(&kzg_challenge_W);
+        let eval_W = p_W.evaluate(&cs_challenge_W);
         let p_E = poly_from_vec(E.to_vec())?;
-        let eval_E = p_E.evaluate(&kzg_challenge_E);
+        let eval_E = p_E.evaluate(&cs_challenge_E);
 
         Ok(Self {
             _c1: PhantomData,
@@ -176,8 +177,8 @@ where
             cmT: Some(cmT),
             r: Some(r_Fr),
             cf_U_i: Some(nova.cf_U_i),
-            kzg_c_W: Some(kzg_challenge_W),
-            kzg_c_E: Some(kzg_challenge_E),
+            cs_c_W: Some(cs_challenge_W),
+            cs_c_E: Some(cs_challenge_E),
             eval_W: Some(eval_W),
             eval_E: Some(eval_E),
         })
@@ -232,11 +233,11 @@ where
         })?;
 
         // allocate the inputs for the check 6
-        let kzg_c_W = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
-            Ok(self.kzg_c_W.unwrap_or_else(CF1::<C1>::zero))
+        let cs_c_W = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
+            Ok(self.cs_c_W.unwrap_or_else(CF1::<C1>::zero))
         })?;
-        let kzg_c_E = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
-            Ok(self.kzg_c_E.unwrap_or_else(CF1::<C1>::zero))
+        let cs_c_E = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
+            Ok(self.cs_c_E.unwrap_or_else(CF1::<C1>::zero))
         })?;
         let _eval_W = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
             Ok(self.eval_W.unwrap_or_else(CF1::<C1>::zero))
@@ -276,7 +277,7 @@ where
             [vec![U_i1.u.clone()], U_i1.x.to_vec(), W_i1.W.to_vec()].concat();
         RelaxedR1CSGadget::check_native(r1cs, W_i1.E.clone(), U_i1.u.clone(), z_U1)?;
 
-        // 1.1.a, 5.1 compute NIFS.V and KZG challenges.
+        // 1.1.a, 5.1 compute NIFS.V and Commitment Scheme challenges.
         // We need to ensure the order of challenge generation is the same as
         // the native counterpart, so we first compute the challenges here and
         // do the actual checks later.
@@ -292,8 +293,8 @@ where
         // 5.1.
         let (incircuit_c_W, incircuit_c_E) =
             KZGChallengesGadget::<C1>::get_challenges_gadget(&mut transcript, U_i1.clone())?;
-        incircuit_c_W.enforce_equal(&kzg_c_W)?;
-        incircuit_c_E.enforce_equal(&kzg_c_E)?;
+        incircuit_c_W.enforce_equal(&cs_c_W)?;
+        incircuit_c_E.enforce_equal(&cs_c_E)?;
 
         // Check 5.2 is temporary disabled due
         // https://github.com/privacy-scaling-explorations/sonobe/issues/80
@@ -342,9 +343,10 @@ where
     /// be computed natively
     pub cf_U_i: Option<CommittedInstance<C2>>,
     pub cf_W_i: Option<CycleFoldWitness<C2>>,
-    /// KZG challenges
-    pub kzg_c_W: Option<C2::ScalarField>,
-    pub kzg_c_E: Option<C2::ScalarField>,
+    /// Commitment Scheme challenges
+    pub cs_c_W: Option<C2::ScalarField>,
+    pub cs_c_E: Option<C2::ScalarField>,
+    /// Evaluations of the committed polynomials at the challenge
     pub eval_W: Option<C2::ScalarField>,
     pub eval_E: Option<C2::ScalarField>,
 }
@@ -366,8 +368,8 @@ where
         CS1: CommitmentScheme<C1, H>,
         CS2: CommitmentScheme<C2, H>,
     {
-        // compute the KZG challenges of the CycleFold instance commitments, used as inputs in the
-        // circuit
+        // compute the Commitment Scheme challenges of the CycleFold instance commitments, used as
+        // inputs in the circuit
         let poseidon_config =
             crate::transcript::poseidon::poseidon_canonical_config::<C2::ScalarField>();
         let mut transcript = PoseidonSponge::<C2::ScalarField>::new(&poseidon_config);
@@ -375,10 +377,10 @@ where
             C2::ScalarField::from_le_bytes_mod_order(&nova.pp_hash.into_bigint().to_bytes_le());
         transcript.absorb(&pp_hash_Fq);
 
-        let (kzg_challenge_W, kzg_challenge_E) =
+        let (cs_challenge_W, cs_challenge_E) =
             KZGChallengesGadget::<C2>::get_challenges_native(&mut transcript, nova.cf_U_i.clone());
 
-        // get KZG evals
+        // get evals of the committed polynomials at the challenge
         let mut W = nova.cf_W_i.W.clone();
         W.extend(
             std::iter::repeat(C2::ScalarField::zero())
@@ -390,9 +392,9 @@ where
                 .take(nova.cf_W_i.E.len().next_power_of_two() - nova.cf_W_i.E.len()),
         );
         let p_W = poly_from_vec(W.to_vec())?;
-        let eval_W = p_W.evaluate(&kzg_challenge_W);
+        let eval_W = p_W.evaluate(&cs_challenge_W);
         let p_E = poly_from_vec(E.to_vec())?;
-        let eval_E = p_E.evaluate(&kzg_challenge_E);
+        let eval_E = p_E.evaluate(&cs_challenge_E);
 
         Ok(Self {
             _c1: PhantomData,
@@ -407,9 +409,9 @@ where
             cf_U_i: Some(nova.cf_U_i),
             cf_W_i: Some(nova.cf_W_i),
 
-            // CycleFold instance commitments kzg challenges
-            kzg_c_W: Some(kzg_challenge_W),
-            kzg_c_E: Some(kzg_challenge_E),
+            // CycleFold instance commitments challenges
+            cs_c_W: Some(cs_challenge_W),
+            cs_c_E: Some(cs_challenge_E),
             eval_W: Some(eval_W),
             eval_E: Some(eval_E),
         })
@@ -457,11 +459,11 @@ where
         transcript.absorb(&pp_hash)?;
 
         // allocate the inputs for the check 7.1
-        let kzg_c_W = FpVar::<CF1<C2>>::new_input(cs.clone(), || {
-            Ok(self.kzg_c_W.unwrap_or_else(CF1::<C2>::zero))
+        let cs_c_W = FpVar::<CF1<C2>>::new_input(cs.clone(), || {
+            Ok(self.cs_c_W.unwrap_or_else(CF1::<C2>::zero))
         })?;
-        let kzg_c_E = FpVar::<CF1<C2>>::new_input(cs.clone(), || {
-            Ok(self.kzg_c_E.unwrap_or_else(CF1::<C2>::zero))
+        let cs_c_E = FpVar::<CF1<C2>>::new_input(cs.clone(), || {
+            Ok(self.cs_c_E.unwrap_or_else(CF1::<C2>::zero))
         })?;
         // allocate the inputs for the check 7.2
         let _eval_W = FpVar::<CF1<C2>>::new_input(cs.clone(), || {
@@ -471,11 +473,11 @@ where
             Ok(self.eval_E.unwrap_or_else(CF1::<C2>::zero))
         })?;
 
-        // 7.1. check the KZG challenges correct computation
+        // 7.1. check the commitment scheme challenges correct computation
         let (incircuit_c_W, incircuit_c_E) =
             KZGChallengesGadget::<C2>::get_challenges_gadget(&mut transcript, cf_U_i.clone())?;
-        incircuit_c_W.enforce_equal(&kzg_c_W)?;
-        incircuit_c_E.enforce_equal(&kzg_c_E)?;
+        incircuit_c_W.enforce_equal(&cs_c_W)?;
+        incircuit_c_E.enforce_equal(&cs_c_E)?;
 
         // Check 7.2 is temporary disabled due
         // https://github.com/privacy-scaling-explorations/sonobe/issues/80

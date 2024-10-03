@@ -917,19 +917,6 @@ where
     fn state(&self) -> Vec<C1::ScalarField> {
         self.z_i.clone()
     }
-    fn instances(
-        &self,
-    ) -> (
-        Self::RunningInstance,
-        Self::IncomingInstance,
-        Self::CFInstance,
-    ) {
-        (
-            (self.U_i.clone(), self.W_i.clone()),
-            (self.u_i.clone(), self.w_i.clone()),
-            (self.cf_U_i.clone(), self.cf_W_i.clone()),
-        )
-    }
 
     fn ivc_proof(&self) -> Self::IVCProof {
         Self::IVCProof {
@@ -988,7 +975,7 @@ where
         })
     }
 
-    /// Implements IVC.V of Pro.clone()toGalaxy+CycleFold
+    /// Implements IVC.V of ProtoGalaxy+CycleFold
     fn verify(vp: Self::VerifierParam, ivc_proof: Self::IVCProof) -> Result<(), Error> {
         let Self::IVCProof {
             i: num_steps,

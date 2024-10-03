@@ -344,15 +344,6 @@ where
     CS2: CommitmentScheme<C2, H>,
 {
     fn check(&self) -> Result<(), ark_serialize::SerializationError> {
-        self.poseidon_config.full_rounds.check()?;
-        self.poseidon_config.partial_rounds.check()?;
-        self.poseidon_config.alpha.check()?;
-        self.poseidon_config.ark.check()?;
-        self.poseidon_config.mds.check()?;
-        self.poseidon_config.rate.check()?;
-        self.poseidon_config.capacity.check()?;
-        self.r1cs.check()?;
-        self.cf_r1cs.check()?;
         self.cs_vp.check()?;
         self.cf_cs_vp.check()?;
         Ok(())
@@ -370,7 +361,6 @@ where
         mut writer: W,
         compress: ark_serialize::Compress,
     ) -> Result<(), ark_serialize::SerializationError> {
-        self.cs_vp.serialize_with_mode(&mut writer, compress)?;
         self.cs_vp.serialize_with_mode(&mut writer, compress)?;
         self.cf_cs_vp.serialize_with_mode(&mut writer, compress)
     }
@@ -411,13 +401,13 @@ where
         // to serialize them, saving significant space in the VerifierParams serialized size.
 
         // main circuit R1CS:
-        let f_circuit = FC::new(fcircuit_params).or(Err(SerializationError::InvalidData))?;
+        let f_circuit = FC::new(fcircuit_params).map_err(|_| SerializationError::InvalidData)?;
         let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
         let augmented_F_circuit =
             AugmentedFCircuit::<C1, C2, GC2, FC>::empty(&poseidon_config, f_circuit.clone());
         augmented_F_circuit
             .generate_constraints(cs.clone())
-            .or(Err(SerializationError::InvalidData))?;
+            .map_err(|_| SerializationError::InvalidData)?;
         cs.finalize();
         let cs = cs.into_inner().ok_or(SerializationError::InvalidData)?;
         let r1cs = extract_r1cs::<C1::ScalarField>(&cs);
@@ -427,7 +417,7 @@ where
         let cf_circuit = NovaCycleFoldCircuit::<C1, GC1>::empty();
         cf_circuit
             .generate_constraints(cs2.clone())
-            .or(Err(SerializationError::InvalidData))?;
+            .map_err(|_| SerializationError::InvalidData)?;
         cs2.finalize();
         let cs2 = cs2.into_inner().ok_or(SerializationError::InvalidData)?;
         let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2);
@@ -931,20 +921,6 @@ where
 
     fn state(&self) -> Vec<C1::ScalarField> {
         self.z_i.clone()
-    }
-
-    fn instances(
-        &self,
-    ) -> (
-        Self::RunningInstance,
-        Self::IncomingInstance,
-        Self::CFInstance,
-    ) {
-        (
-            (self.U_i.clone(), self.W_i.clone()),
-            (self.u_i.clone(), self.w_i.clone()),
-            (self.cf_U_i.clone(), self.cf_W_i.clone()),
-        )
     }
 
     fn ivc_proof(&self) -> Self::IVCProof {

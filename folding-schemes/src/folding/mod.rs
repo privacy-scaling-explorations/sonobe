@@ -25,8 +25,10 @@ pub mod tests {
     use crate::Error;
     use crate::FoldingScheme;
 
+    /// tests the IVC proofs and its serializers for the 3 implemented IVCs: Nova, HyperNova and
+    /// ProtoGalaxy.
     #[test]
-    fn test_serialize_ivc() {
+    fn test_serialize_ivc_nova_hypernova_protogalaxy() {
         let poseidon_config = poseidon_canonical_config::<Fr>();
         type FC = CubicFCircuit<Fr>;
         let f_circuit = FC::new(()).unwrap();

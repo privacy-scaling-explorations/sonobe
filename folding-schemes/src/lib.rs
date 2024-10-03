@@ -154,16 +154,6 @@ where
     /// returns the state at the current step
     fn state(&self) -> Vec<C1::ScalarField>;
 
-    /// returns the instances at the current step, in the following order:
-    /// (running_instance, incoming_instance, cyclefold_instance)
-    fn instances(
-        &self,
-    ) -> (
-        Self::RunningInstance,
-        Self::IncomingInstance,
-        Self::CFInstance,
-    );
-
     /// returns the last IVC state proof, which can be verified in the `verify` method
     fn ivc_proof(&self) -> Self::IVCProof;
 

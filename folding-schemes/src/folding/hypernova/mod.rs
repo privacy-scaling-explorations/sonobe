@@ -991,20 +991,6 @@ where
         self.z_i.clone()
     }
 
-    fn instances(
-        &self,
-    ) -> (
-        Self::RunningInstance,
-        Self::IncomingInstance,
-        Self::CFInstance,
-    ) {
-        (
-            (self.U_i.clone(), self.W_i.clone()),
-            (self.u_i.clone(), self.w_i.clone()),
-            (self.cf_U_i.clone(), self.cf_W_i.clone()),
-        )
-    }
-
     fn ivc_proof(&self) -> Self::IVCProof {
         Self::IVCProof {
             i: self.i,
@@ -1168,18 +1154,6 @@ mod tests {
     >(
         poseidon_config: PoseidonConfig<Fr>,
         F_circuit: CubicFCircuit<Fr>,
-    ) -> (
-        HyperNova<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>, CS1, CS2, 2, 3, H>,
-        (
-            ProverParams<Projective, Projective2, CS1, CS2, H>,
-            VerifierParams<Projective, Projective2, CS1, CS2, H>,
-        ),
-        (LCCCS<Projective>, Witness<Fr>),
-        (CCCS<Projective>, Witness<Fr>),
-        (
-            CycleFoldCommittedInstance<Projective2>,
-            CycleFoldWitness<Projective2>,
-        ),
     ) {
         let mut rng = ark_std::test_rng();
 
@@ -1239,14 +1213,5 @@ mod tests {
             ivc_proof,
         )
         .unwrap();
-
-        let (running_instance, incoming_instance, cyclefold_instance) = hypernova.instances();
-        (
-            hypernova,
-            hypernova_params,
-            running_instance,
-            incoming_instance,
-            cyclefold_instance,
-        )
     }
 }

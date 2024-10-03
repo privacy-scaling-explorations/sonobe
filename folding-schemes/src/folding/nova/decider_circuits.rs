@@ -477,6 +477,7 @@ where
         incircuit_c_W.enforce_equal(&cs_c_W)?;
         incircuit_c_E.enforce_equal(&cs_c_E)?;
 
+        // 7.2. check eval_W==p_W(c_W) and eval_E==p_E(c_E)
         let incircuit_eval_W = evaluate_gadget::<CF1<C2>>(cf_W_i.W, incircuit_c_W)?;
         let incircuit_eval_E = evaluate_gadget::<CF1<C2>>(cf_W_i.E, incircuit_c_E)?;
         incircuit_eval_W.enforce_equal(&eval_W)?;

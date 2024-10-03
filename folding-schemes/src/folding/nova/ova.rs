@@ -169,13 +169,11 @@ where
     ) -> Vec<bool> {
         // reuse Nova's get_challenge method
         ChallengeGadget::<C, Self::CommittedInstance>::get_challenge_native(
-            transcript,
-            pp_hash,
-            U_i,
-            u_i,
-            &C::zero(), // empty in Ova's case
+            transcript, pp_hash, U_i, u_i, None, // empty in Ova's case
         )
     }
+
+    // Notice: `prove` method is implemented at the trait level.
 
     fn verify(
         // r comes from the transcript, and is a n-bit (N_BITS_CHALLENGE) element
@@ -184,7 +182,7 @@ where
         u_i: &Self::CommittedInstance,
         _aux: &Self::VerifierAux,
     ) -> Self::CommittedInstance {
-        // recall that r <==> alpha, and u <==} mu between Nova and Ova respectively
+        // recall that r <==> alpha, and u <==> mu between Nova and Ova respectively
         let u = U_i.u + r; // u_i.u is always 1 IN ova as we just can do sequential IVC.
         let cmWE = U_i.cmWE + u_i.cmWE.mul(r);
         let x = U_i

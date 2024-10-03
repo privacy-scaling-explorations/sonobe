@@ -98,9 +98,15 @@ where
         aux: &Self::VerifierAux, // cmT
     ) -> Vec<bool> {
         ChallengeGadget::<C, Self::CommittedInstance>::get_challenge_native(
-            transcript, pp_hash, U_i, u_i, aux,
+            transcript,
+            pp_hash,
+            U_i,
+            u_i,
+            Some(aux),
         )
     }
+
+    // Notice: `prove` method is implemented at the trait level.
 
     fn verify(
         // r comes from the transcript, and is a n-bit (N_BITS_CHALLENGE) element

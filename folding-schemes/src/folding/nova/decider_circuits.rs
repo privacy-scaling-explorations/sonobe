@@ -288,7 +288,7 @@ where
             pp_hash,
             U_i_vec,
             u_i.clone(),
-            cmT.clone(),
+            Some(cmT.clone()),
         )?;
         // 5.1.
         let (incircuit_c_W, incircuit_c_E) =

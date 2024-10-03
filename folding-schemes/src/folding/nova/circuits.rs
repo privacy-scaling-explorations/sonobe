@@ -183,12 +183,15 @@ where
         pp_hash: C::ScalarField, // public params hash
         U_i: &CI,
         u_i: &CI,
-        cmT: &C,
+        cmT: Option<&C>,
     ) -> Vec<bool> {
         transcript.absorb(&pp_hash);
         transcript.absorb(&U_i);
         transcript.absorb(&u_i);
-        transcript.absorb_nonnative(cmT);
+        // in the Nova case we absorb the cmT, in Ova case we don't since it is not used.
+        if let Some(cmT_value) = cmT {
+            transcript.absorb_nonnative(cmT_value);
+        }
         transcript.squeeze_bits(NOVA_N_BITS_RO)
     }
 
@@ -198,12 +201,15 @@ where
         pp_hash: FpVar<CF1<C>>,      // public params hash
         U_i_vec: Vec<FpVar<CF1<C>>>, // apready processed input, so we don't have to recompute these values
         u_i: CommittedInstanceVar<C>,
-        cmT: NonNativeAffineVar<C>,
+        cmT: Option<NonNativeAffineVar<C>>,
     ) -> Result<Vec<Boolean<C::ScalarField>>, SynthesisError> {
         transcript.absorb(&pp_hash)?;
         transcript.absorb(&U_i_vec)?;
         transcript.absorb(&u_i)?;
-        transcript.absorb_nonnative(&cmT)?;
+        // in the Nova case we absorb the cmT, in Ova case we don't since it is not used.
+        if let Some(cmT_value) = cmT {
+            transcript.absorb_nonnative(&cmT_value)?;
+        }
         transcript.squeeze_bits(NOVA_N_BITS_RO)
     }
 }
@@ -382,7 +388,7 @@ where
             pp_hash.clone(),
             U_i_vec,
             u_i.clone(),
-            cmT.clone(),
+            Some(cmT.clone()),
         )?;
         let r = Boolean::le_bits_to_fp_var(&r_bits)?;
         // Also convert r_bits to a `NonNativeFieldVar`
@@ -692,7 +698,7 @@ pub mod tests {
                 pp_hash,
                 &U_i,
                 &u_i,
-                &cmT,
+                Some(&cmT),
             );
         let r = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
 
@@ -721,7 +727,7 @@ pub mod tests {
                 pp_hashVar,
                 U_iVar_vec,
                 u_iVar,
-                cmTVar,
+                Some(cmTVar),
             )
             .unwrap();
         assert!(cs.is_satisfied().unwrap());

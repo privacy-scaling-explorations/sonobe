@@ -260,7 +260,7 @@ where
             nova.pp_hash,
             &nova.U_i,
             &nova.u_i,
-            &cmT,
+            Some(&cmT),
         );
         let r_Fr = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
             .ok_or(Error::OutOfBounds)?;
@@ -490,7 +490,7 @@ where
             pp_hash,
             U_i_vec,
             u_i.clone(),
-            cmT.clone(),
+            Some(cmT),
         )?;
         // 5.1.
         let (incircuit_c_W, incircuit_c_E) =

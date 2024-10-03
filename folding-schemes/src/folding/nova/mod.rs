@@ -689,7 +689,7 @@ where
             self.pp_hash,
             &self.U_i,
             &self.u_i,
-            &cmT,
+            Some(&cmT),
         );
         let r_Fr = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
             .ok_or(Error::OutOfBounds)?;

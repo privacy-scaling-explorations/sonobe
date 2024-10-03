@@ -86,7 +86,11 @@ where
         cmT: C1,
     ) -> Result<C1::ScalarField, Error> {
         let r_bits = ChallengeGadget::<C1, CommittedInstance<C1>>::get_challenge_native(
-            sponge, pp_hash, &U_i, &u_i, &cmT,
+            sponge,
+            pp_hash,
+            &U_i,
+            &u_i,
+            Some(&cmT),
         );
         C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits)).ok_or(Error::OutOfBounds)
     }

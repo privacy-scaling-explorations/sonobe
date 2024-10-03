@@ -25,7 +25,9 @@ use core::marker::PhantomData;
 
 use super::{
     circuits::{ChallengeGadget, CommittedInstanceVar},
-    decider_eth_circuit::{evaluate_gadget, KZGChallengesGadget, R1CSVar, RelaxedR1CSGadget, WitnessVar},
+    decider_eth_circuit::{
+        evaluate_gadget, KZGChallengesGadget, R1CSVar, RelaxedR1CSGadget, WitnessVar,
+    },
     nifs::NIFS,
     traits::NIFSTrait,
     CommittedInstance, Nova, Witness,

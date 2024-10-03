@@ -26,7 +26,6 @@ use super::{
     nimfs::{NIMFSProof, NIMFS},
     HyperNova, Witness, CCCS, LCCCS,
 };
-use crate::{commitment::{pedersen::Params as PedersenParams, CommitmentScheme}, folding::nova::decider_eth_circuit::evaluate_gadget};
 use crate::folding::circuits::{
     cyclefold::{CycleFoldCommittedInstance, CycleFoldWitness},
     CF1, CF2,
@@ -41,6 +40,10 @@ use crate::Error;
 use crate::{
     arith::{ccs::CCS, r1cs::R1CS},
     folding::traits::{CommittedInstanceVarOps, Dummy, WitnessVarOps},
+};
+use crate::{
+    commitment::{pedersen::Params as PedersenParams, CommitmentScheme},
+    folding::nova::decider_eth_circuit::evaluate_gadget,
 };
 
 /// In-circuit representation of the Witness associated to the CommittedInstance.

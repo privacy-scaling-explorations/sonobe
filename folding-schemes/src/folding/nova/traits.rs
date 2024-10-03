@@ -6,6 +6,9 @@ use crate::arith::ArithSampler;
 use crate::arith::{r1cs::R1CS, Arith};
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::CF1;
+use crate::folding::ova::{
+    CommittedInstance as OvaCommittedInstance, TestingWitness as OvaWitness,
+};
 use crate::Error;
 
 /// Implements `Arith` for R1CS, where the witness is of type [`Witness`], and
@@ -93,5 +96,26 @@ impl<C: CurveGroup> ArithSampler<C, Witness<C>, CommittedInstance<C>> for R1CS<C
         );
 
         Ok((witness, cm_witness))
+    }
+}
+
+// Sadly, this forces duplication of code. We can try to abstract with more traits if needed..
+impl<C: CurveGroup> Arith<OvaWitness<C>, OvaCommittedInstance<C>> for R1CS<CF1<C>> {
+    type Evaluation = Vec<CF1<C>>;
+
+    fn eval_relation(
+        &self,
+        w: &OvaWitness<C>,
+        u: &OvaCommittedInstance<C>,
+    ) -> Result<Self::Evaluation, Error> {
+        self.eval_at_z(&[&[u.mu], u.x.as_slice(), &w.w].concat())
+    }
+
+    fn check_evaluation(
+        w: &OvaWitness<C>,
+        _u: &OvaCommittedInstance<C>,
+        e: Self::Evaluation,
+    ) -> Result<(), Error> {
+        (w.e == e).then_some(()).ok_or(Error::NotSatisfied)
     }
 }

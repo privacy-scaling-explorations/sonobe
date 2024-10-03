@@ -950,6 +950,7 @@ mod tests {
         test_ivc_opt::<KZG<Bn254>, Pedersen<Projective2>, false>(poseidon_config, F_circuit);
     }
 
+    #[allow(clippy::type_complexity)]
     // test_ivc allowing to choose the CommitmentSchemes
     pub fn test_ivc_opt<
         CS1: CommitmentScheme<Projective, H>,
@@ -1028,7 +1029,7 @@ mod tests {
             hypernova_params.1.clone(), // verifier_params
             z_0,
             hypernova.z_i.clone(),
-            hypernova.i.clone(),
+            hypernova.i,
             running_instance.clone(),
             incoming_instance.clone(),
             cyclefold_instance.clone(),

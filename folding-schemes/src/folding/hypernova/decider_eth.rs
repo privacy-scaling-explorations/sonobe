@@ -416,7 +416,7 @@ pub mod tests {
 
         let verified = D::verify(
             decider_vp.clone(),
-            hypernova.i.clone(),
+            hypernova.i,
             hypernova.z_0.clone(),
             hypernova.z_i.clone(),
             &(),
@@ -483,7 +483,7 @@ pub mod tests {
 
         let verified = D::verify(
             decider_vp_deserialized,
-            i_deserialized.clone(),
+            i_deserialized,
             z_0_deserialized.clone(),
             z_i_deserialized.clone(),
             &(),

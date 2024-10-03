@@ -25,7 +25,9 @@ use core::marker::PhantomData;
 
 use super::{
     circuits::{ChallengeGadget, CommittedInstanceVar},
-    decider_eth_circuit::{KZGChallengesGadget, R1CSVar, RelaxedR1CSGadget, WitnessVar},
+    decider_eth_circuit::{
+        evaluate_gadget, KZGChallengesGadget, R1CSVar, RelaxedR1CSGadget, WitnessVar,
+    },
     nifs::NIFS,
     traits::NIFSTrait,
     CommittedInstance, Nova, Witness,
@@ -239,10 +241,10 @@ where
         let cs_c_E = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
             Ok(self.cs_c_E.unwrap_or_else(CF1::<C1>::zero))
         })?;
-        let _eval_W = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
+        let eval_W = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
             Ok(self.eval_W.unwrap_or_else(CF1::<C1>::zero))
         })?;
-        let _eval_E = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
+        let eval_E = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
             Ok(self.eval_E.unwrap_or_else(CF1::<C1>::zero))
         })?;
 
@@ -296,15 +298,11 @@ where
         incircuit_c_W.enforce_equal(&cs_c_W)?;
         incircuit_c_E.enforce_equal(&cs_c_E)?;
 
-        // Check 5.2 is temporary disabled due
-        // https://github.com/privacy-scaling-explorations/sonobe/issues/80
-        log::warn!("[WARNING]: issue #80 (https://github.com/privacy-scaling-explorations/sonobe/issues/80) is not resolved yet.");
-        //
         // 5.2. check eval_W==p_W(c_W) and eval_E==p_E(c_E)
-        // let incircuit_eval_W = evaluate_gadget::<CF1<C1>>(W_i1.W, incircuit_c_W)?;
-        // let incircuit_eval_E = evaluate_gadget::<CF1<C1>>(W_i1.E, incircuit_c_E)?;
-        // incircuit_eval_W.enforce_equal(&eval_W)?;
-        // incircuit_eval_E.enforce_equal(&eval_E)?;
+        let incircuit_eval_W = evaluate_gadget::<CF1<C1>>(W_i1.W, incircuit_c_W)?;
+        let incircuit_eval_E = evaluate_gadget::<CF1<C1>>(W_i1.E, incircuit_c_E)?;
+        incircuit_eval_W.enforce_equal(&eval_W)?;
+        incircuit_eval_E.enforce_equal(&eval_E)?;
 
         // 1.1.b check that the NIFS.V challenge matches the one from the public input (so we avoid
         //   the verifier computing it)
@@ -451,7 +449,7 @@ where
 
         // 6. check RelaxedR1CS of cf_U_i
         let cf_z_U = [vec![cf_U_i.u.clone()], cf_U_i.x.to_vec(), cf_W_i.W.to_vec()].concat();
-        RelaxedR1CSGadget::check_native(cf_r1cs, cf_W_i.E, cf_U_i.u.clone(), cf_z_U)?;
+        RelaxedR1CSGadget::check_native(cf_r1cs, cf_W_i.E.clone(), cf_U_i.u.clone(), cf_z_U)?;
 
         // `transcript` is for challenge generation.
         let mut transcript =
@@ -466,10 +464,10 @@ where
             Ok(self.cs_c_E.unwrap_or_else(CF1::<C2>::zero))
         })?;
         // allocate the inputs for the check 7.2
-        let _eval_W = FpVar::<CF1<C2>>::new_input(cs.clone(), || {
+        let eval_W = FpVar::<CF1<C2>>::new_input(cs.clone(), || {
             Ok(self.eval_W.unwrap_or_else(CF1::<C2>::zero))
         })?;
-        let _eval_E = FpVar::<CF1<C2>>::new_input(cs.clone(), || {
+        let eval_E = FpVar::<CF1<C2>>::new_input(cs.clone(), || {
             Ok(self.eval_E.unwrap_or_else(CF1::<C2>::zero))
         })?;
 
@@ -479,14 +477,11 @@ where
         incircuit_c_W.enforce_equal(&cs_c_W)?;
         incircuit_c_E.enforce_equal(&cs_c_E)?;
 
-        // Check 7.2 is temporary disabled due
-        // https://github.com/privacy-scaling-explorations/sonobe/issues/80
-        log::warn!("[WARNING]: issue #80 (https://github.com/privacy-scaling-explorations/sonobe/issues/80) is not resolved yet.");
         // 7.2. check eval_W==p_W(c_W) and eval_E==p_E(c_E)
-        // let incircuit_eval_W = evaluate_gadget::<CF1<C1>>(W_i1.W, incircuit_c_W)?;
-        // let incircuit_eval_E = evaluate_gadget::<CF1<C1>>(W_i1.E, incircuit_c_E)?;
-        // incircuit_eval_W.enforce_equal(&eval_W)?;
-        // incircuit_eval_E.enforce_equal(&eval_E)?;
+        let incircuit_eval_W = evaluate_gadget::<CF1<C2>>(cf_W_i.W, incircuit_c_W)?;
+        let incircuit_eval_E = evaluate_gadget::<CF1<C2>>(cf_W_i.E, incircuit_c_E)?;
+        incircuit_eval_W.enforce_equal(&eval_W)?;
+        incircuit_eval_E.enforce_equal(&eval_E)?;
 
         Ok(())
     }

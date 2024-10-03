@@ -383,10 +383,10 @@ where
             Ok(self.kzg_c_E.unwrap_or_else(CF1::<C1>::zero))
         })?;
         // allocate the inputs for the check 5.2
-        let _eval_W = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
+        let eval_W = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
             Ok(self.eval_W.unwrap_or_else(CF1::<C1>::zero))
         })?;
-        let _eval_E = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
+        let eval_E = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
             Ok(self.eval_E.unwrap_or_else(CF1::<C1>::zero))
         })?;
 
@@ -498,15 +498,11 @@ where
         incircuit_c_W.enforce_equal(&kzg_c_W)?;
         incircuit_c_E.enforce_equal(&kzg_c_E)?;
 
-        // Check 5.2 is temporary disabled due
-        // https://github.com/privacy-scaling-explorations/sonobe/issues/80
-        log::warn!("[WARNING]: issue #80 (https://github.com/privacy-scaling-explorations/sonobe/issues/80) is not resolved yet.");
-        //
         // 5.2. check eval_W==p_W(c_W) and eval_E==p_E(c_E)
-        // let incircuit_eval_W = evaluate_gadget::<CF1<C1>>(W_i1.W, incircuit_c_W)?;
-        // let incircuit_eval_E = evaluate_gadget::<CF1<C1>>(W_i1.E, incircuit_c_E)?;
-        // incircuit_eval_W.enforce_equal(&eval_W)?;
-        // incircuit_eval_E.enforce_equal(&eval_E)?;
+        let incircuit_eval_W = evaluate_gadget::<CF1<C1>>(W_i1.W, incircuit_c_W)?;
+        let incircuit_eval_E = evaluate_gadget::<CF1<C1>>(W_i1.E, incircuit_c_E)?;
+        incircuit_eval_W.enforce_equal(&eval_W)?;
+        incircuit_eval_E.enforce_equal(&eval_E)?;
 
         // 1.1.b check that the NIFS.V challenge matches the one from the public input (so we avoid
         //   the verifier computing it)
@@ -523,13 +519,11 @@ where
 /// Interpolates the polynomial from the given vector, and then returns it's evaluation at the
 /// given point.
 #[allow(unused)] // unused while check 7 is disabled
-fn evaluate_gadget<F: PrimeField>(
-    v: Vec<FpVar<F>>,
+pub fn evaluate_gadget<F: PrimeField>(
+    mut v: Vec<FpVar<F>>,
     point: FpVar<F>,
 ) -> Result<FpVar<F>, SynthesisError> {
-    if !v.len().is_power_of_two() {
-        return Err(SynthesisError::Unsatisfiable);
-    }
+    v.resize(v.len().next_power_of_two(), FpVar::zero());
     let n = v.len() as u64;
     let gen = F::get_root_of_unity(n).unwrap();
     let domain = Radix2DomainVar::new(gen, log2(v.len()) as u64, FpVar::one()).unwrap();
@@ -884,10 +878,6 @@ pub mod tests {
         assert_eq!(challenge_E_Var.value().unwrap(), challenge_E);
     }
 
-    // The test test_polynomial_interpolation is temporary disabled due
-    // https://github.com/privacy-scaling-explorations/sonobe/issues/80
-    // for n<=11 it will work, but for n>11 it will fail with stack overflow.
-    #[ignore]
     #[test]
     fn test_polynomial_interpolation() {
         let mut rng = ark_std::test_rng();

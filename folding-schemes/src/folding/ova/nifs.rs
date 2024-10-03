@@ -71,22 +71,6 @@ where
         vec_sub(&Az_prime_Bz_prime, &muCz_prime)
     }
 
-    /// Computes the `W` or `W'` commitment. (The accumulated-instance W' or the incoming-instance W).
-    /// This is the result of concatenating the accumulated-instance `w` vector with
-    /// `e` or `t` and committing to the result.
-    ///
-    /// This is the exact trick that allows Ova to save up 1 commitment with respect to Nova.
-    /// At the cost of loosing the PCD property and only maintaining the IVC one.
-    pub fn compute_cmW(
-        cs_prover_params: &CS::ProverParams,
-        w: Witness<C>,
-        t_or_e: Vec<C::ScalarField>,
-    ) -> Result<C, Error> {
-        let w_concat_t_or_e: Vec<C::ScalarField> = [w.w.to_vec(), t_or_e].concat();
-
-        CS::commit(cs_prover_params, &w_concat_t_or_e, &w.rW)
-    }
-
     /// Folds 2 [`CommittedInstance`]s returning a freshly folded one as is specified
     /// in: <https://hackmd.io/V4838nnlRKal9ZiTHiGYzw?both#Construction>.
     /// Here, alpha is a randomness sampled from a [`Transcript`].

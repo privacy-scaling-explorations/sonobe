@@ -85,9 +85,16 @@ impl<C: CurveGroup> Witness<C> {
         }
     }
 
-    /// Given a [`Witness`], `t` or `e` (which we always concatenate in Ova. See: <https://hackmd.io/V4838nnlRKal9ZiTHiGYzw?view#Construction>)
-    /// and the public inputs `x`, generates a [`CommittedInstance`] as a result
-    /// which will or not be blinded depending on how the const generic `HC` is set up.
+    /// Computes the `W` or `W'` commitment (The accumulated-instance W' or the incoming-instance W)
+    /// as specified in Ova. See: <https://hackmd.io/V4838nnlRKal9ZiTHiGYzw?view#Construction>.
+    ///
+    /// This is the result of concatenating the accumulated-instance `w` vector with
+    /// `e` or `t`.
+    /// Generates a [`CommittedInstance`] as a result which will or not be blinded depending on how the
+    /// const generic `HC` is set up.
+    ///
+    /// This is the exact trick that allows Ova to save up 1 commitment with respect to Nova.
+    /// At the cost of loosing the PCD property and only maintaining the IVC one.
     pub fn commit<CS: CommitmentScheme<C, HC>, const HC: bool>(
         &self,
         params: &CS::ProverParams,

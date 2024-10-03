@@ -168,10 +168,11 @@ where
 
 /// ChallengeGadget computes the RO challenge used for the Nova instances NIFS, it contains a
 /// rust-native and a in-circuit compatible versions.
-pub struct ChallengeGadget<C: CurveGroup> {
+pub struct ChallengeGadget<C: CurveGroup, CI: Absorb> {
     _c: PhantomData<C>,
+    _ci: PhantomData<CI>,
 }
-impl<C: CurveGroup> ChallengeGadget<C>
+impl<C: CurveGroup, CI: Absorb> ChallengeGadget<C, CI>
 where
     C: CurveGroup,
     <C as CurveGroup>::BaseField: PrimeField,
@@ -180,14 +181,17 @@ where
     pub fn get_challenge_native<T: Transcript<C::ScalarField>>(
         transcript: &mut T,
         pp_hash: C::ScalarField, // public params hash
-        U_i: CommittedInstance<C>,
-        u_i: CommittedInstance<C>,
-        cmT: C,
+        U_i: &CI,
+        u_i: &CI,
+        cmT: Option<&C>,
     ) -> Vec<bool> {
         transcript.absorb(&pp_hash);
         transcript.absorb(&U_i);
         transcript.absorb(&u_i);
-        transcript.absorb_nonnative(&cmT);
+        // in the Nova case we absorb the cmT, in Ova case we don't since it is not used.
+        if let Some(cmT_value) = cmT {
+            transcript.absorb_nonnative(cmT_value);
+        }
         transcript.squeeze_bits(NOVA_N_BITS_RO)
     }
 
@@ -197,12 +201,15 @@ where
         pp_hash: FpVar<CF1<C>>,      // public params hash
         U_i_vec: Vec<FpVar<CF1<C>>>, // apready processed input, so we don't have to recompute these values
         u_i: CommittedInstanceVar<C>,
-        cmT: NonNativeAffineVar<C>,
+        cmT: Option<NonNativeAffineVar<C>>,
     ) -> Result<Vec<Boolean<C::ScalarField>>, SynthesisError> {
         transcript.absorb(&pp_hash)?;
         transcript.absorb(&U_i_vec)?;
         transcript.absorb(&u_i)?;
-        transcript.absorb_nonnative(&cmT)?;
+        // in the Nova case we absorb the cmT, in Ova case we don't since it is not used.
+        if let Some(cmT_value) = cmT {
+            transcript.absorb_nonnative(&cmT_value)?;
+        }
         transcript.squeeze_bits(NOVA_N_BITS_RO)
     }
 }
@@ -376,12 +383,12 @@ where
         // P.3. nifs.verify, obtains U_{i+1} by folding u_i & U_i .
 
         // compute r = H(u_i, U_i, cmT)
-        let r_bits = ChallengeGadget::<C1>::get_challenge_gadget(
+        let r_bits = ChallengeGadget::<C1, CommittedInstance<C1>>::get_challenge_gadget(
             &mut transcript,
             pp_hash.clone(),
             U_i_vec,
             u_i.clone(),
-            cmT.clone(),
+            Some(cmT.clone()),
         )?;
         let r = Boolean::le_bits_to_fp_var(&r_bits)?;
         // Also convert r_bits to a `NonNativeFieldVar`
@@ -522,8 +529,8 @@ pub mod tests {
     use ark_std::UniformRand;
 
     use crate::commitment::pedersen::Pedersen;
-    use crate::folding::nova::nifs::tests::prepare_simple_fold_inputs;
     use crate::folding::nova::nifs::NIFS;
+    use crate::folding::nova::traits::NIFSTrait;
     use crate::folding::traits::CommittedInstanceOps;
     use crate::transcript::poseidon::poseidon_canonical_config;
 
@@ -550,10 +557,22 @@ pub mod tests {
 
     #[test]
     fn test_nifs_gadget() {
-        let (_, _, _, _, ci1, _, ci2, _, ci3, _, cmT, _, r_Fr) = prepare_simple_fold_inputs();
+        let mut rng = ark_std::test_rng();
 
-        let ci3_verifier = NIFS::<Projective, Pedersen<Projective>>::verify(r_Fr, &ci1, &ci2, &cmT);
-        assert_eq!(ci3_verifier, ci3);
+        // prepare the committed instances to test in-circuit
+        let ci: Vec<CommittedInstance<Projective>> = (0..2)
+            .into_iter()
+            .map(|_| CommittedInstance::<Projective> {
+                cmE: Projective::rand(&mut rng),
+                u: Fr::rand(&mut rng),
+                cmW: Projective::rand(&mut rng),
+                x: vec![Fr::rand(&mut rng); 1],
+            })
+            .collect();
+        let (ci1, ci2) = (ci[0].clone(), ci[1].clone());
+        let r_Fr = Fr::rand(&mut rng);
+        let cmT = Projective::rand(&mut rng);
+        let ci3 = NIFS::<Projective, Pedersen<Projective>>::verify(r_Fr, &ci1, &ci2, &cmT);
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
@@ -673,13 +692,14 @@ pub mod tests {
         let pp_hash = Fr::from(42u32); // only for testing
 
         // compute the challenge natively
-        let r_bits = ChallengeGadget::<Projective>::get_challenge_native(
-            &mut transcript,
-            pp_hash,
-            U_i.clone(),
-            u_i.clone(),
-            cmT,
-        );
+        let r_bits =
+            ChallengeGadget::<Projective, CommittedInstance<Projective>>::get_challenge_native(
+                &mut transcript,
+                pp_hash,
+                &U_i,
+                &u_i,
+                Some(&cmT),
+            );
         let r = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
 
         let cs = ConstraintSystem::<Fr>::new_ref();
@@ -701,14 +721,15 @@ pub mod tests {
             U_iVar.cmW.to_constraint_field().unwrap(),
         ]
         .concat();
-        let r_bitsVar = ChallengeGadget::<Projective>::get_challenge_gadget(
-            &mut transcriptVar,
-            pp_hashVar,
-            U_iVar_vec,
-            u_iVar,
-            cmTVar,
-        )
-        .unwrap();
+        let r_bitsVar =
+            ChallengeGadget::<Projective, CommittedInstance<Projective>>::get_challenge_gadget(
+                &mut transcriptVar,
+                pp_hashVar,
+                U_iVar_vec,
+                u_iVar,
+                Some(cmTVar),
+            )
+            .unwrap();
         assert!(cs.is_satisfied().unwrap());
 
         // check that the natively computed and in-circuit computed hashes match

@@ -13,7 +13,7 @@ use ark_std::{One, Zero};
 use core::marker::PhantomData;
 
 use super::decider_circuits::{DeciderCircuit1, DeciderCircuit2};
-use super::{nifs::NIFS, CommittedInstance, Nova};
+use super::{nifs::NIFS, traits::NIFSTrait, CommittedInstance, Nova};
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::{
     cyclefold::CycleFoldCommittedInstance,

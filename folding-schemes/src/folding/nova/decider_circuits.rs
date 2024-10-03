@@ -27,6 +27,7 @@ use super::{
     circuits::{ChallengeGadget, CommittedInstanceVar},
     decider_eth_circuit::{KZGChallengesGadget, R1CSVar, RelaxedR1CSGadget, WitnessVar},
     nifs::NIFS,
+    traits::NIFSTrait,
     CommittedInstance, Nova, Witness,
 };
 use crate::arith::r1cs::R1CS;
@@ -122,18 +123,17 @@ where
             &nova.W_i.clone(),
             &nova.U_i.clone(),
         )?;
-        let r_bits = ChallengeGadget::<C1>::get_challenge_native(
+        let r_bits = NIFS::<C1, CS1, H>::get_challenge(
             &mut transcript,
             nova.pp_hash,
-            nova.U_i.clone(),
-            nova.u_i.clone(),
-            cmT,
+            &nova.U_i,
+            &nova.u_i,
+            &cmT,
         );
         let r_Fr = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
             .ok_or(Error::OutOfBounds)?;
-        let (W_i1, U_i1) = NIFS::<C1, CS1, H>::fold_instances(
-            r_Fr, &nova.W_i, &nova.U_i, &nova.w_i, &nova.u_i, &T, cmT,
-        )?;
+        let (W_i1, U_i1) =
+            NIFS::<C1, CS1, H>::prove(r_Fr, &nova.W_i, &nova.U_i, &nova.w_i, &nova.u_i, &T, &cmT)?;
 
         // compute the commitment scheme challenges used as inputs in the circuit
         let (cs_challenge_W, cs_challenge_E) =
@@ -283,12 +283,12 @@ where
         // do the actual checks later.
         let cmT =
             NonNativeAffineVar::new_input(cs.clone(), || Ok(self.cmT.unwrap_or_else(C1::zero)))?;
-        let r_bits = ChallengeGadget::<C1>::get_challenge_gadget(
+        let r_bits = ChallengeGadget::<C1, CommittedInstance<C1>>::get_challenge_gadget(
             &mut transcript,
             pp_hash,
             U_i_vec,
             u_i.clone(),
-            cmT.clone(),
+            Some(cmT.clone()),
         )?;
         // 5.1.
         let (incircuit_c_W, incircuit_c_E) =

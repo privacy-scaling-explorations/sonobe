@@ -15,6 +15,7 @@ use ark_std::{One, Zero};
 use core::marker::PhantomData;
 
 pub use super::decider_eth_circuit::DeciderEthCircuit;
+use super::traits::NIFSTrait;
 use super::{nifs::NIFS, CommittedInstance, Nova};
 use crate::commitment::{
     kzg::{Proof as KZGProof, KZG},

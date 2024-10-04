@@ -22,7 +22,8 @@ use crate::commitment::{
     pedersen::Params as PedersenParams,
     CommitmentScheme,
 };
-use crate::folding::circuits::{nonnative::affine::NonNativeAffineVar, CF2};
+use crate::folding::circuits::CF2;
+use crate::folding::traits::Inputize;
 use crate::frontend::FCircuit;
 use crate::Error;
 use crate::{Decider as DeciderTrait, FoldingScheme};
@@ -212,27 +213,17 @@ where
         // compute U = U_{d+1}= NIFS.V(U_d, u_d, cmT)
         let U = NIFS::<C1, CS1>::verify(proof.r, running_instance, incoming_instance, &proof.cmT);
 
-        let (cmE_x, cmE_y) = NonNativeAffineVar::inputize(U.cmE)?;
-        let (cmW_x, cmW_y) = NonNativeAffineVar::inputize(U.cmW)?;
-        let (cmT_x, cmT_y) = NonNativeAffineVar::inputize(proof.cmT)?;
-
         let public_input: Vec<C1::ScalarField> = [
             vec![vp.pp_hash, i],
             z_0,
             z_i,
-            vec![U.u],
-            U.x.clone(),
-            cmE_x,
-            cmE_y,
-            cmW_x,
-            cmW_y,
+            U.inputize(),
             proof.kzg_challenges.to_vec(),
             vec![
                 proof.kzg_proofs[0].eval, // eval_W
                 proof.kzg_proofs[1].eval, // eval_E
             ],
-            cmT_x,
-            cmT_y,
+            proof.cmT.inputize(),
             vec![proof.r],
         ]
         .concat();

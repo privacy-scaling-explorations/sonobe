@@ -17,6 +17,7 @@ use num_bigint::BigUint;
 use num_integer::Integer;
 
 use crate::{
+    folding::traits::Inputize,
     transcript::{AbsorbNonNative, AbsorbNonNativeGadget},
     utils::gadgets::{EquivalenceGadget, MatrixGadget, SparseMatrixVar, VectorGadget},
 };
@@ -259,15 +260,15 @@ impl<F: PrimeField, G: Field> AllocVar<G, F> for NonNativeUintVar<F> {
     }
 }
 
-impl<F: PrimeField> NonNativeUintVar<F> {
-    pub fn inputize<T: Field>(x: T) -> Vec<F> {
+impl<F: PrimeField, T: Field> Inputize<F, NonNativeUintVar<F>> for T {
+    fn inputize(&self) -> Vec<F> {
         assert_eq!(T::extension_degree(), 1);
-        x.to_base_prime_field_elements()
+        self.to_base_prime_field_elements()
             .next()
             .unwrap()
             .into_bigint()
             .to_bits_le()
-            .chunks(Self::bits_per_limb())
+            .chunks(NonNativeUintVar::<F>::bits_per_limb())
             .map(|chunk| F::from_bigint(F::BigInt::from_bits_le(chunk)).unwrap())
             .collect()
     }

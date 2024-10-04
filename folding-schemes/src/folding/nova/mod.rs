@@ -56,7 +56,7 @@ pub mod decider_circuits;
 pub mod decider_eth;
 pub mod decider_eth_circuit;
 
-use super::traits::{CommittedInstanceOps, WitnessOps};
+use super::traits::{CommittedInstanceOps, Inputize, WitnessOps};
 
 /// Configuration for Nova's CycleFold circuit
 pub struct NovaCycleFoldConfig<C: CurveGroup> {
@@ -134,6 +134,18 @@ impl<C: CurveGroup> CommittedInstanceOps<C> for CommittedInstance<C> {
 
     fn is_incoming(&self) -> bool {
         self.cmE == C::zero() && self.u == One::one()
+    }
+}
+
+impl<C: CurveGroup> Inputize<C::ScalarField, CommittedInstanceVar<C>> for CommittedInstance<C> {
+    fn inputize(&self) -> Vec<C::ScalarField> {
+        [
+            &[self.u][..],
+            &self.x,
+            &self.cmE.inputize(),
+            &self.cmW.inputize(),
+        ]
+        .concat()
     }
 }
 

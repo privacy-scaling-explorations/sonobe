@@ -52,7 +52,7 @@ use circuits::AugmentedFCircuit;
 use folding::Folding;
 
 use super::traits::{
-    CommittedInstanceOps, CommittedInstanceVarOps, Dummy, WitnessOps, WitnessVarOps,
+    CommittedInstanceOps, CommittedInstanceVarOps, Dummy, Inputize, WitnessOps, WitnessVarOps,
 };
 
 /// Configuration for ProtoGalaxy's CycleFold circuit
@@ -118,6 +118,14 @@ impl<C: CurveGroup, const TYPE: bool> CommittedInstanceOps<C> for CommittedInsta
 
     fn is_incoming(&self) -> bool {
         TYPE == INCOMING
+    }
+}
+
+impl<C: CurveGroup, const TYPE: bool> Inputize<C::ScalarField, CommittedInstanceVar<C, TYPE>>
+    for CommittedInstance<C, TYPE>
+{
+    fn inputize(&self) -> Vec<C::ScalarField> {
+        [&self.phi.inputize(), &self.betas, &[self.e][..], &self.x].concat()
     }
 }
 

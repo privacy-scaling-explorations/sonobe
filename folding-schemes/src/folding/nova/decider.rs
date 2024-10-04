@@ -3,7 +3,7 @@
 /// More details can be found at the documentation page:
 /// https://privacy-scaling-explorations.github.io/sonobe-docs/design/nova-decider-offchain.html
 use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, Absorb, CryptographicSponge};
-use ark_ec::{AffineRepr, CurveGroup, Group};
+use ark_ec::{CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -19,10 +19,10 @@ use super::{
 };
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::{
-    cyclefold::CycleFoldCommittedInstance,
-    nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
+    cyclefold::{CycleFoldCommittedInstance, CycleFoldCommittedInstanceVar},
     CF2,
 };
+use crate::folding::traits::Inputize;
 use crate::frontend::FCircuit;
 use crate::transcript::poseidon::poseidon_canonical_config;
 use crate::Error;
@@ -299,50 +299,21 @@ where
         let r = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
             .ok_or(Error::OutOfBounds)?;
 
-        let (cmE_x, cmE_y) = NonNativeAffineVar::inputize(U.cmE)?;
-        let (cmW_x, cmW_y) = NonNativeAffineVar::inputize(U.cmW)?;
-        let (cmT_x, cmT_y) = NonNativeAffineVar::inputize(proof.cmT)?;
-
-        let zero = (&C2::BaseField::zero(), &C2::BaseField::zero());
-        let cmE_affine = proof.cf_U_i.cmE.into_affine();
-        let cmW_affine = proof.cf_U_i.cmW.into_affine();
-        let (cf_cmE_x, cf_cmE_y) = cmE_affine.xy().unwrap_or(zero);
-        let cf_cmE_z = C1::ScalarField::one();
-        let (cf_cmW_x, cf_cmW_y) = cmW_affine.xy().unwrap_or(zero);
-        let cf_cmW_z = C1::ScalarField::one();
-
         // snark proof 1
         let c1_public_input: Vec<C1::ScalarField> = [
             vec![vp.pp_hash, i],
             z_0,
             z_i,
-            // U_{i+1} values:
-            vec![U.u],
-            U.x.clone(),
-            cmE_x,
-            cmE_y,
-            cmW_x,
-            cmW_y,
+            U.inputize(),
             // CS1 values:
             proof.cs1_challenges.to_vec(), // c_W, c_E
             vec![
                 proof.cs1_proofs[0].eval, // eval_W
                 proof.cs1_proofs[1].eval, // eval_E
             ],
-            // cf_U_i values
-            NonNativeUintVar::<CF2<C2>>::inputize(proof.cf_U_i.u),
-            proof
-                .cf_U_i
-                .x
-                .iter()
-                .flat_map(|&x_i| NonNativeUintVar::<CF2<C2>>::inputize(x_i))
-                .collect::<Vec<C1::ScalarField>>(),
-            vec![
-                *cf_cmE_x, *cf_cmE_y, cf_cmE_z, *cf_cmW_x, *cf_cmW_y, cf_cmW_z,
-            ],
+            Inputize::<CF2<C2>, CycleFoldCommittedInstanceVar<C2, GC2>>::inputize(&proof.cf_U_i),
             // NIFS values:
-            cmT_x,
-            cmT_y,
+            proof.cmT.inputize(),
             vec![r],
         ]
         .concat();
@@ -353,21 +324,13 @@ where
             return Err(Error::SNARKVerificationFail);
         }
 
-        let (cf2_cmE_x, cf2_cmE_y) = NonNativeAffineVar::inputize(proof.cf_U_i.cmE)?;
-        let (cf2_cmW_x, cf2_cmW_y) = NonNativeAffineVar::inputize(proof.cf_U_i.cmW)?;
-
         // snark proof 2
         // migrate pp_hash from C1::Fr to C1::Fq
         let pp_hash_Fq =
             C2::ScalarField::from_le_bytes_mod_order(&vp.pp_hash.into_bigint().to_bytes_le());
         let c2_public_input: Vec<C2::ScalarField> = [
             vec![pp_hash_Fq],
-            vec![proof.cf_U_i.u],
-            proof.cf_U_i.x.clone(),
-            cf2_cmE_x,
-            cf2_cmE_y,
-            cf2_cmW_x,
-            cf2_cmW_y,
+            proof.cf_U_i.inputize(),
             proof.cs2_challenges.to_vec(),
             vec![
                 proof.cs2_proofs[0].eval, // eval_W

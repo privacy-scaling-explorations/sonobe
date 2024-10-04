@@ -503,12 +503,8 @@ mod tests {
             &witnesses,
         )?;
 
-        let folded_instance = Folding::<Projective>::verify(
-            &mut transcript_v,
-            &instance,
-            &instances,
-            proof.clone(),
-        )?;
+        let folded_instance =
+            Folding::<Projective>::verify(&mut transcript_v, &instance, &instances, proof.clone())?;
 
         let cs = ConstraintSystem::new_ref();
         let mut transcript_var = PoseidonSpongeVar::new(cs.clone(), &poseidon_config);

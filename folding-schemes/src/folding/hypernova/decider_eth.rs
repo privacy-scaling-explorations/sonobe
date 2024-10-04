@@ -14,8 +14,9 @@ use super::{lcccs::LCCCS, HyperNova};
 use crate::commitment::{
     kzg::Proof as KZGProof, pedersen::Params as PedersenParams, CommitmentScheme,
 };
-use crate::folding::circuits::{nonnative::affine::NonNativeAffineVar, CF2};
+use crate::folding::circuits::CF2;
 use crate::folding::nova::decider_eth::VerifierParam;
+use crate::folding::traits::Inputize;
 use crate::frontend::FCircuit;
 use crate::Error;
 use crate::{Decider as DeciderTrait, FoldingScheme};
@@ -192,19 +193,11 @@ where
         // Note: the NIMFS proof is checked inside the DeciderEthCircuit, which ensures that the
         // 'proof.U_i1' is correctly computed
 
-        let (cmC_x, cmC_y) = NonNativeAffineVar::inputize(proof.U_i1.C)?;
-
         let public_input: Vec<C1::ScalarField> = [
             vec![pp_hash, i],
             z_0,
             z_i,
-            // U_i+1:
-            cmC_x,
-            cmC_y,
-            vec![proof.U_i1.u],
-            proof.U_i1.x.clone(),
-            proof.U_i1.r_x.clone(),
-            proof.U_i1.v.clone(),
+            proof.U_i1.inputize(),
             vec![proof.kzg_challenge, proof.kzg_proof.eval, proof.rho],
         ]
         .concat();

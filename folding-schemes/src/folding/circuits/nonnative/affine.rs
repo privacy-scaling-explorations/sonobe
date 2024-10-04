@@ -10,7 +10,10 @@ use ark_serialize::{CanonicalSerialize, CanonicalSerializeWithFlags};
 use ark_std::Zero;
 use core::borrow::Borrow;
 
-use crate::transcript::{AbsorbNonNative, AbsorbNonNativeGadget};
+use crate::{
+    folding::traits::Inputize,
+    transcript::{AbsorbNonNative, AbsorbNonNativeGadget},
+};
 
 use super::uint::{nonnative_field_to_field_elements, NonNativeUintVar};
 
@@ -104,21 +107,19 @@ pub(crate) fn nonnative_affine_to_field_elements<C: CurveGroup>(
     (x, y)
 }
 
-impl<C: CurveGroup> NonNativeAffineVar<C> {
-    // Extracts a list of field elements of type `C::ScalarField` from the public input
-    // `p`, in exactly the same way as how `NonNativeAffineVar` is represented as limbs of type
-    // `FpVar` in-circuit.
-    #[allow(clippy::type_complexity)]
-    pub fn inputize(p: C) -> Result<(Vec<C::ScalarField>, Vec<C::ScalarField>), SynthesisError> {
-        let affine = p.into_affine();
+impl<C: CurveGroup> Inputize<C::ScalarField, NonNativeAffineVar<C>> for C {
+    fn inputize(&self) -> Vec<C::ScalarField> {
+        let affine = self.into_affine();
         let zero = (&C::BaseField::zero(), &C::BaseField::zero());
         let (x, y) = affine.xy().unwrap_or(zero);
 
-        let x = NonNativeUintVar::inputize(*x);
-        let y = NonNativeUintVar::inputize(*y);
-        Ok((x, y))
+        let x = x.inputize();
+        let y = y.inputize();
+        [x, y].concat()
     }
+}
 
+impl<C: CurveGroup> NonNativeAffineVar<C> {
     pub fn zero() -> Self {
         Self::new_constant(ConstraintSystemRef::None, C::zero()).unwrap()
     }
@@ -179,9 +180,11 @@ mod tests {
         let mut rng = ark_std::test_rng();
         let p = Projective::rand(&mut rng);
         let pVar = NonNativeAffineVar::<Projective>::new_witness(cs.clone(), || Ok(p)).unwrap();
-        let (x, y) = NonNativeAffineVar::inputize(p).unwrap();
+        let xy = p.inputize();
 
-        assert_eq!(pVar.x.0.value().unwrap(), x);
-        assert_eq!(pVar.y.0.value().unwrap(), y);
+        assert_eq!(
+            [pVar.x.0.value().unwrap(), pVar.y.0.value().unwrap()].concat(),
+            xy
+        );
     }
 }

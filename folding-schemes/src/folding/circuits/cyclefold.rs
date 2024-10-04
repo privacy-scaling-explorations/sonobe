@@ -16,20 +16,23 @@ use ark_relations::r1cs::{
 };
 use ark_std::fmt::Debug;
 use ark_std::rand::RngCore;
-use ark_std::Zero;
+use ark_std::{One, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::{nonnative::uint::NonNativeUintVar, CF1, CF2};
-use crate::arith::{
-    r1cs::{circuits::R1CSMatricesVar, extract_w_x, R1CS},
-    ArithGadget,
-};
 use crate::commitment::CommitmentScheme;
 use crate::constants::NOVA_N_BITS_RO;
 use crate::folding::nova::nifs::{nova::NIFS, NIFSTrait};
 use crate::transcript::{AbsorbNonNative, AbsorbNonNativeGadget, Transcript, TranscriptVar};
 use crate::utils::gadgets::{EquivalenceGadget, VectorGadget};
 use crate::Error;
+use crate::{
+    arith::{
+        r1cs::{circuits::R1CSMatricesVar, extract_w_x, R1CS},
+        ArithGadget,
+    },
+    folding::traits::Inputize,
+};
 use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
 
 /// Re-export the Nova committed instance as `CycleFoldCommittedInstance` and
@@ -37,6 +40,35 @@ use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
 pub use crate::folding::nova::{
     CommittedInstance as CycleFoldCommittedInstance, Witness as CycleFoldWitness,
 };
+
+impl<C: CurveGroup, GC: CurveVar<C, CF2<C>>> Inputize<CF2<C>, CycleFoldCommittedInstanceVar<C, GC>>
+    for CycleFoldCommittedInstance<C>
+{
+    fn inputize(&self) -> Vec<CF2<C>> {
+        let zero = (&C::BaseField::zero(), &C::BaseField::zero());
+        let cmE = self.cmE.into_affine();
+        let cmW = self.cmW.into_affine();
+        let (cmE_x, cmE_y) = cmE.xy().unwrap_or(zero);
+        let (cmW_x, cmW_y) = cmW.xy().unwrap_or(zero);
+        self.u
+            .inputize()
+            .into_iter()
+            .chain(self.x.iter().flat_map(|x| x.inputize()))
+            .chain(
+                [
+                    *cmE_x,
+                    *cmE_y,
+                    C::BaseField::one(),
+                    *cmW_x,
+                    *cmW_y,
+                    C::BaseField::one(),
+                ]
+                .into_iter()
+                .flat_map(|x| x.to_base_prime_field_elements()),
+            )
+            .collect()
+    }
+}
 
 /// CycleFoldCommittedInstanceVar is the CycleFold CommittedInstance represented
 /// in folding verifier circuit

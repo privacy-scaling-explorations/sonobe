@@ -366,7 +366,6 @@ mod tests {
         n_steps: usize,
     ) {
         let (decider_pp, decider_vp) = decider_params;
-        let pp_hash = fs_params.1.pp_hash().unwrap();
 
         let f_circuit = FC::new(()).unwrap();
 
@@ -389,8 +388,8 @@ mod tests {
             nova.i,
             nova.z_0.clone(),
             nova.z_i.clone(),
-            &nova.U_i,
-            &nova.u_i,
+            &(),
+            &(),
             &proof,
         )
         .unwrap();
@@ -401,7 +400,6 @@ mod tests {
 
         let calldata: Vec<u8> = prepare_calldata(
             function_selector,
-            pp_hash,
             nova.i,
             nova.z_0,
             nova.z_i,

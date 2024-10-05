@@ -72,7 +72,6 @@ fn main() {
     // prepare the Nova prover & verifier params
     let nova_preprocess_params = PreprocessorParam::new(poseidon_config, f_circuit.clone());
     let nova_params = N::preprocess(&mut rng, &nova_preprocess_params).unwrap();
-    let pp_hash = nova_params.1.pp_hash().unwrap();
 
     // initialize the folding scheme engine, in our case we use Nova
     let mut nova = N::init(&nova_params, f_circuit.clone(), z_0).unwrap();
@@ -104,8 +103,8 @@ fn main() {
         nova.i,
         nova.z_0.clone(),
         nova.z_i.clone(),
-        &nova.U_i,
-        &nova.u_i,
+        &(),
+        &(),
         &proof,
     )
     .unwrap();
@@ -118,7 +117,6 @@ fn main() {
 
     let calldata: Vec<u8> = prepare_calldata(
         function_selector,
-        pp_hash,
         nova.i,
         nova.z_0,
         nova.z_i,

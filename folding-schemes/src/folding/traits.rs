@@ -130,6 +130,12 @@ impl<T: Default + Clone> Dummy<usize> for Vec<T> {
     }
 }
 
+impl<T: Default> Dummy<()> for T {
+    fn dummy(_: ()) -> Self {
+        Default::default()
+    }
+}
+
 /// Converts a value `self` into a vector of field elements, ordered in the same
 /// way as how a variable of type `Var` would be represented in the circuit.
 /// This is useful for the verifier to compute the public inputs.

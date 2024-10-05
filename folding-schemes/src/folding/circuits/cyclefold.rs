@@ -193,7 +193,7 @@ where
     /// (reconstraining) them.
     #[allow(clippy::type_complexity)]
     pub fn hash<S: CryptographicSponge, T: TranscriptVar<CF2<C>, S>>(
-        self,
+        &self,
         sponge: &T,
         pp_hash: FpVar<CF2<C>>, // public params hash
     ) -> Result<(FpVar<CF2<C>>, Vec<FpVar<CF2<C>>>), SynthesisError> {

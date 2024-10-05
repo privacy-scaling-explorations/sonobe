@@ -3,7 +3,7 @@
 /// More details can be found at the documentation page:
 /// https://privacy-scaling-explorations.github.io/sonobe-docs/design/nova-decider-onchain.html
 use ark_bn254::Bn254;
-use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, Absorb, CryptographicSponge};
+use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{AffineRepr, CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
 use ark_groth16::Groth16;
@@ -15,38 +15,31 @@ use ark_std::{One, Zero};
 use core::marker::PhantomData;
 
 pub use super::decider_eth_circuit::DeciderEthCircuit;
-use super::{
-    nifs::{nova::NIFS, NIFSTrait},
-    CommittedInstance, Nova,
-};
+use super::{CommittedInstance, Nova};
 use crate::commitment::{
     kzg::{Proof as KZGProof, KZG},
     pedersen::Params as PedersenParams,
     CommitmentScheme,
 };
 use crate::folding::circuits::CF2;
-use crate::folding::traits::Inputize;
-use crate::folding::nova::circuits::ChallengeGadget;
+use crate::folding::traits::{CommittedInstanceOps, Inputize, WitnessOps};
 use crate::frontend::FCircuit;
-use crate::transcript::poseidon::poseidon_canonical_config;
 use crate::Error;
 use crate::{Decider as DeciderTrait, FoldingScheme};
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Proof<C1, CS1, S>
+pub struct Proof<C, CS, S>
 where
-    C1: CurveGroup,
-    CS1: CommitmentScheme<C1, ProverChallenge = C1::ScalarField, Challenge = C1::ScalarField>,
-    S: SNARK<C1::ScalarField>,
+    C: CurveGroup,
+    CS: CommitmentScheme<C, ProverChallenge = C::ScalarField, Challenge = C::ScalarField>,
+    S: SNARK<C::ScalarField>,
 {
     snark_proof: S::Proof,
-    kzg_proofs: [CS1::Proof; 2],
-    // cmT and r are values for the last fold, U_{i+1}=NIFS.V(r, U_i, u_i, cmT), and they are
-    // checked in-circuit
-    cmT: C1,
+    kzg_proofs: [CS::Proof; 2],
+    U_final: CommittedInstance<C>,
     // the KZG challenges are provided by the prover, but in-circuit they are checked to match
     // the in-circuit computed computed ones.
-    kzg_challenges: [C1::ScalarField; 2],
+    kzg_challenges: [C::ScalarField; 2],
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
@@ -111,15 +104,14 @@ where
     type Proof = Proof<C1, CS1, S>;
     type VerifierParam = VerifierParam<C1, CS1::VerifierParams, S::VerifyingKey>;
     type PublicInput = Vec<C1::ScalarField>;
-    type CommittedInstance = CommittedInstance<C1>;
+    type CommittedInstance = ();
 
     fn preprocess(
         mut rng: impl RngCore + CryptoRng,
         prep_param: Self::PreprocessorParam,
         fs: FS,
     ) -> Result<(Self::ProverParam, Self::VerifierParam), Error> {
-        let circuit =
-            DeciderEthCircuit::<C1, GC1, C2, GC2, CS1, CS2>::from_nova::<FC>(fs.into()).unwrap();
+        let circuit = DeciderEthCircuit::<C1, C2, GC2>::try_from(Nova::from(fs))?;
 
         // get the Groth16 specific setup for the circuit
         let (g16_pk, g16_vk) = S::circuit_specific_setup(circuit, &mut rng).unwrap();
@@ -155,46 +147,33 @@ where
     ) -> Result<Self::Proof, Error> {
         let (snark_pk, cs_pk): (S::ProvingKey, CS1::ProverParams) = pp;
 
-        let circuit = DeciderEthCircuit::<C1, GC1, C2, GC2, CS1, CS2>::from_nova::<FC>(
-            folding_scheme.into(),
-        )?;
+        let circuit = DeciderEthCircuit::<C1, C2, GC2>::try_from(Nova::from(folding_scheme))?;
 
-        let snark_proof = S::prove(&snark_pk, circuit.clone(), &mut rng)
-            .map_err(|e| Error::Other(e.to_string()))?;
-
-        let cmT = circuit.cmT.unwrap();
-        let W_i1 = circuit.W_i1.unwrap();
+        let U_final = circuit.U_i1.clone();
 
         // get the challenges that have been already computed when preparing the circuit inputs in
-        // the above `from_nova` call
-        let challenge_W = circuit
-            .kzg_c_W
-            .ok_or(Error::MissingValue("kzg_c_W".to_string()))?;
-        let challenge_E = circuit
-            .kzg_c_E
-            .ok_or(Error::MissingValue("kzg_c_E".to_string()))?;
+        // the above `try_from` call
+        let kzg_challenges = circuit.kzg_challenges.clone();
 
         // generate KZG proofs
-        let U_cmW_proof = CS1::prove_with_challenge(
-            &cs_pk,
-            challenge_W,
-            &W_i1.W,
-            &C1::ScalarField::zero(),
-            None,
-        )?;
-        let U_cmE_proof = CS1::prove_with_challenge(
-            &cs_pk,
-            challenge_E,
-            &W_i1.E,
-            &C1::ScalarField::zero(),
-            None,
-        )?;
+        let kzg_proofs = circuit
+            .W_i1
+            .get_openings()
+            .iter()
+            .zip(&kzg_challenges)
+            .map(|((v, _), &c)| {
+                CS1::prove_with_challenge(&cs_pk, c, v, &C1::ScalarField::zero(), None)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let snark_proof =
+            S::prove(&snark_pk, circuit, &mut rng).map_err(|e| Error::Other(e.to_string()))?;
 
         Ok(Self::Proof {
             snark_proof,
-            kzg_proofs: [U_cmW_proof, U_cmE_proof],
-            cmT,
-            kzg_challenges: [challenge_W, challenge_E],
+            U_final,
+            kzg_proofs: kzg_proofs.try_into().unwrap(),
+            kzg_challenges: kzg_challenges.try_into().unwrap(),
         })
     }
 
@@ -203,61 +182,48 @@ where
         i: C1::ScalarField,
         z_0: Vec<C1::ScalarField>,
         z_i: Vec<C1::ScalarField>,
-        running_instance: &Self::CommittedInstance,
-        incoming_instance: &Self::CommittedInstance,
+        // we don't use the instances at the verifier level, since we check them in-circuit
+        _running_instance: &Self::CommittedInstance,
+        _incoming_instance: &Self::CommittedInstance,
         proof: &Self::Proof,
     ) -> Result<bool, Error> {
         if i <= C1::ScalarField::one() {
             return Err(Error::NotEnoughSteps);
         }
 
-        // compute U = U_{d+1}= NIFS.V(U_d, u_d, cmT)
-        let poseidon_config = poseidon_canonical_config::<C1::ScalarField>();
-        let mut transcript = PoseidonSponge::<C1::ScalarField>::new(&poseidon_config);
-        let (U, r_bits) = NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>>::verify(
-            &mut transcript,
-            vp.pp_hash,
-            running_instance,
-            incoming_instance,
-            &proof.cmT,
-        )?;
-        let r = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
-            .ok_or(Error::OutOfBounds)?;
+        let Self::VerifierParam {
+            pp_hash,
+            snark_vp,
+            cs_vp,
+        } = vp;
 
-        let public_input: Vec<C1::ScalarField> = [
-            vec![vp.pp_hash, i],
-            z_0,
-            z_i,
-            U.inputize(),
-            proof.kzg_challenges.to_vec(),
-            vec![
-                proof.kzg_proofs[0].eval, // eval_W
-                proof.kzg_proofs[1].eval, // eval_E
-            ],
-            proof.cmT.inputize(),
-            vec![r],
+        let U = proof.U_final.clone();
+
+        let public_input = [
+            &[pp_hash, i][..],
+            &z_0,
+            &z_i,
+            &U.inputize(),
+            &proof.kzg_challenges,
+            &proof.kzg_proofs.iter().map(|p| p.eval).collect::<Vec<_>>(),
         ]
         .concat();
 
-        let snark_v = S::verify(&vp.snark_vp, &public_input, &proof.snark_proof)
+        let snark_v = S::verify(&snark_vp, &public_input, &proof.snark_proof)
             .map_err(|e| Error::Other(e.to_string()))?;
         if !snark_v {
             return Err(Error::SNARKVerificationFail);
         }
 
-        // we're at the Ethereum EVM case, so the CS1 is KZG commitments
-        CS1::verify_with_challenge(
-            &vp.cs_vp,
-            proof.kzg_challenges[0],
-            &U.cmW,
-            &proof.kzg_proofs[0],
-        )?;
-        CS1::verify_with_challenge(
-            &vp.cs_vp,
-            proof.kzg_challenges[1],
-            &U.cmE,
-            &proof.kzg_proofs[1],
-        )?;
+        for ((cm, &c), pi) in U
+            .get_commitments()
+            .iter()
+            .zip(&proof.kzg_challenges)
+            .zip(&proof.kzg_proofs)
+        {
+            // we're at the Ethereum EVM case, so the CS1 is KZG commitments
+            CS1::verify_with_challenge(&cs_vp, c, cm, pi)?;
+        }
 
         Ok(true)
     }
@@ -267,30 +233,13 @@ where
 #[allow(clippy::too_many_arguments)]
 pub fn prepare_calldata(
     function_signature_check: [u8; 4],
-    pp_hash: ark_bn254::Fr,
     i: ark_bn254::Fr,
     z_0: Vec<ark_bn254::Fr>,
     z_i: Vec<ark_bn254::Fr>,
-    running_instance: &CommittedInstance<ark_bn254::G1Projective>,
-    incoming_instance: &CommittedInstance<ark_bn254::G1Projective>,
+    _running_instance: &CommittedInstance<ark_bn254::G1Projective>,
+    _incoming_instance: &CommittedInstance<ark_bn254::G1Projective>,
     proof: Proof<ark_bn254::G1Projective, KZG<'static, Bn254>, Groth16<Bn254>>,
 ) -> Result<Vec<u8>, Error> {
-    // compute the challenge r
-    let poseidon_config = poseidon_canonical_config::<ark_bn254::Fr>();
-    let mut transcript = PoseidonSponge::<ark_bn254::Fr>::new(&poseidon_config);
-    let r_bits = ChallengeGadget::<
-        ark_bn254::G1Projective,
-        CommittedInstance<ark_bn254::G1Projective>,
-    >::get_challenge_native(
-        &mut transcript,
-        pp_hash,
-        running_instance,
-        incoming_instance,
-        Some(&proof.cmT),
-    );
-    let r =
-        ark_bn254::Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).ok_or(Error::OutOfBounds)?;
-
     Ok(vec![
         function_signature_check.to_vec(),
         i.into_bigint().to_bytes_be(), // i
@@ -300,23 +249,15 @@ pub fn prepare_calldata(
         z_i.iter()
             .flat_map(|v| v.into_bigint().to_bytes_be())
             .collect::<Vec<u8>>(), // z_i
-        point_to_eth_format(running_instance.cmW.into_affine())?, // U_i_cmW
-        point_to_eth_format(running_instance.cmE.into_affine())?, // U_i_cmE
-        running_instance.u.into_bigint().to_bytes_be(), // U_i_u
-        incoming_instance.u.into_bigint().to_bytes_be(), // u_i_u
-        r.into_bigint().to_bytes_be(), // r
-        running_instance
+        point_to_eth_format(proof.U_final.cmW.into_affine())?, // U_final_cmW
+        point_to_eth_format(proof.U_final.cmE.into_affine())?, // U_final_cmE
+        proof.U_final.u.into_bigint().to_bytes_be(), // U_final_u
+        proof
+            .U_final
             .x
             .iter()
             .flat_map(|v| v.into_bigint().to_bytes_be())
-            .collect::<Vec<u8>>(), // U_i_x
-        point_to_eth_format(incoming_instance.cmW.into_affine())?, // u_i_cmW
-        incoming_instance
-            .x
-            .iter()
-            .flat_map(|v| v.into_bigint().to_bytes_be())
-            .collect::<Vec<u8>>(), // u_i_x
-        point_to_eth_format(proof.cmT.into_affine())?, // cmT
+            .collect::<Vec<u8>>(), // U_final_x
         point_to_eth_format(proof.snark_proof.a)?, // pA
         point2_to_eth_format(proof.snark_proof.b)?, // pB
         point_to_eth_format(proof.snark_proof.c)?, // pC
@@ -423,8 +364,8 @@ pub mod tests {
             nova.i,
             nova.z_0.clone(),
             nova.z_i.clone(),
-            &nova.U_i,
-            &nova.u_i,
+            &(),
+            &(),
             &proof,
         )
         .unwrap();
@@ -432,10 +373,7 @@ pub mod tests {
         println!("Decider verify, {:?}", start.elapsed());
 
         // decider proof verification using the deserialized data
-        let verified = D::verify(
-            decider_vp, nova.i, nova.z_0, nova.z_i, &nova.U_i, &nova.u_i, &proof,
-        )
-        .unwrap();
+        let verified = D::verify(decider_vp, nova.i, nova.z_0, nova.z_i, &(), &(), &proof).unwrap();
         assert!(verified);
     }
 
@@ -539,8 +477,8 @@ pub mod tests {
             nova.i,
             nova.z_0.clone(),
             nova.z_i.clone(),
-            &nova.U_i,
-            &nova.u_i,
+            &(),
+            &(),
             &proof,
         )
         .unwrap();
@@ -568,12 +506,6 @@ pub mod tests {
         nova.z_i
             .serialize_compressed(&mut public_inputs_serialized)
             .unwrap();
-        nova.U_i
-            .serialize_compressed(&mut public_inputs_serialized)
-            .unwrap();
-        nova.u_i
-            .serialize_compressed(&mut public_inputs_serialized)
-            .unwrap();
 
         // deserialize back the verifier_params, proof and public inputs
         let decider_vp_deserialized =
@@ -594,10 +526,6 @@ pub mod tests {
         let i_deserialized = Fr::deserialize_compressed(&mut reader).unwrap();
         let z_0_deserialized = Vec::<Fr>::deserialize_compressed(&mut reader).unwrap();
         let z_i_deserialized = Vec::<Fr>::deserialize_compressed(&mut reader).unwrap();
-        let U_i_deserialized =
-            CommittedInstance::<Projective>::deserialize_compressed(&mut reader).unwrap();
-        let u_i_deserialized =
-            CommittedInstance::<Projective>::deserialize_compressed(&mut reader).unwrap();
 
         // decider proof verification using the deserialized data
         let verified = D::verify(
@@ -605,8 +533,8 @@ pub mod tests {
             i_deserialized,
             z_0_deserialized,
             z_i_deserialized,
-            &U_i_deserialized,
-            &u_i_deserialized,
+            &(),
+            &(),
             &proof_deserialized,
         )
         .unwrap();

@@ -72,11 +72,7 @@ where
     }
 }
 
-impl<C> AbsorbGadget<C::ScalarField> for CommittedInstanceVar<C>
-where
-    C: CurveGroup,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-{
+impl<C: CurveGroup> AbsorbGadget<C::ScalarField> for CommittedInstanceVar<C> {
     fn to_sponge_bytes(&self) -> Result<Vec<UInt8<C::ScalarField>>, SynthesisError> {
         FpVar::batch_to_sponge_bytes(&self.to_sponge_field_elements()?)
     }
@@ -123,11 +119,7 @@ pub struct NIFSGadget<C: CurveGroup> {
     _c: PhantomData<C>,
 }
 
-impl<C: CurveGroup> NIFSGadget<C>
-where
-    C: CurveGroup,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-{
+impl<C: CurveGroup> NIFSGadget<C> {
     pub fn fold_committed_instance(
         r: FpVar<CF1<C>>,
         ci1: CommittedInstanceVar<C>, // U_i
@@ -173,8 +165,6 @@ pub struct ChallengeGadget<C: CurveGroup, CI: Absorb> {
 }
 impl<C: CurveGroup, CI: Absorb> ChallengeGadget<C, CI>
 where
-    C: CurveGroup,
-    <C as CurveGroup>::BaseField: PrimeField,
     <C as Group>::ScalarField: Absorb,
 {
     pub fn get_challenge_native<T: Transcript<C::ScalarField>>(

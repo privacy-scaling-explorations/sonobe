@@ -62,10 +62,8 @@ contract NovaDecider is Groth16Verifier, KZG10Verifier {
     function verifyNovaProof(
         // inputs are grouped to prevent errors due stack too deep
         uint256[{{ 1 + z_len * 2 }}] calldata i_z0_zi, // [i, z0, zi] where |z0| == |zi|
-        uint256[4] calldata U_i_cmW_U_i_cmE, // [U_i_cmW[2], U_i_cmE[2]]
-        uint256[3] calldata U_i_u_u_i_u_r, // [U_i_u, u_i_u, r]
-        uint256[4] calldata U_i_x_u_i_cmW, // [U_i_x[2], u_i_cmW[2]]
-        uint256[4] calldata u_i_x_cmT, // [u_i_x[2], cmT[2]]
+        uint256[4] calldata U_final_cmW_U_final_cmE, // [U_final_cmW[2], U_final_cmE[2]]
+        uint256[3] calldata U_final_u_U_final_x, // [U_final_u, U_final_x[2]]
         uint256[2] calldata pA, // groth16 
         uint256[2][2] calldata pB, // groth16
         uint256[2] calldata pC, // groth16
@@ -86,21 +84,13 @@ contract NovaDecider is Groth16Verifier, KZG10Verifier {
         }
 
         {
-            // U_i.u + r * u_i.u
-            uint256 u = rlc(U_i_u_u_i_u_r[0], U_i_u_u_i_u_r[2], U_i_u_u_i_u_r[1]);
-            // U_i.x + r * u_i.x
-            uint256 x0 = rlc(U_i_x_u_i_cmW[0], U_i_u_u_i_u_r[2], u_i_x_cmT[0]);
-            uint256 x1 = rlc(U_i_x_u_i_cmW[1], U_i_u_u_i_u_r[2], u_i_x_cmT[1]);
-
-            public_inputs[{{ z_len * 2 + 2 }}] = u;
-            public_inputs[{{ z_len * 2 + 3 }}] = x0;
-            public_inputs[{{ z_len * 2 + 4 }}] = x1;
+            public_inputs[{{ z_len * 2 + 2 }}] = U_final_u_U_final_x[0];
+            public_inputs[{{ z_len * 2 + 3 }}] = U_final_u_U_final_x[1];
+            public_inputs[{{ z_len * 2 + 4 }}] = U_final_u_U_final_x[2];
         }
 
         {
-            // U_i.cmE + r * u_i.cmT
-            uint256[2] memory mulScalarPoint = super.mulScalar([u_i_x_cmT[2], u_i_x_cmT[3]], U_i_u_u_i_u_r[2]);
-            uint256[2] memory cmE = super.add([U_i_cmW_U_i_cmE[2], U_i_cmW_U_i_cmE[3]], mulScalarPoint);
+            uint256[2] memory cmE = [U_final_cmW_U_final_cmE[2], U_final_cmW_U_final_cmE[3]];
 
             {
                 uint256[{{num_limbs}}] memory cmE_x_limbs = LimbsDecomposition.decompose(cmE[0]);
@@ -116,9 +106,7 @@ contract NovaDecider is Groth16Verifier, KZG10Verifier {
         }
 
         {
-            // U_i.cmW + r * u_i.cmW
-            uint256[2] memory mulScalarPoint = super.mulScalar([U_i_x_u_i_cmW[2], U_i_x_u_i_cmW[3]], U_i_u_u_i_u_r[2]);
-            uint256[2] memory cmW = super.add([U_i_cmW_U_i_cmE[0], U_i_cmW_U_i_cmE[1]], mulScalarPoint);
+            uint256[2] memory cmW = [U_final_cmW_U_final_cmE[0], U_final_cmW_U_final_cmE[1]];
         
             {
                 uint256[{{num_limbs}}] memory cmW_x_limbs = LimbsDecomposition.decompose(cmW[0]);
@@ -140,20 +128,6 @@ contract NovaDecider is Groth16Verifier, KZG10Verifier {
             public_inputs[{{ z_len * 2 + 5 + num_limbs * 4 + 2 }}] = challenge_W_challenge_E_kzg_evals[2];
             public_inputs[{{ z_len * 2 + 5 + num_limbs * 4 + 3 }}] = challenge_W_challenge_E_kzg_evals[3];
         
-            uint256[{{num_limbs}}] memory cmT_x_limbs;
-            uint256[{{num_limbs}}] memory cmT_y_limbs;
-        
-            cmT_x_limbs = LimbsDecomposition.decompose(u_i_x_cmT[2]);
-            cmT_y_limbs = LimbsDecomposition.decompose(u_i_x_cmT[3]);
-        
-            for (uint8 k = 0; k < {{num_limbs}}; k++) {
-                public_inputs[{{ z_len * 2 + 5 + num_limbs * 4 }} + 4 + k] = cmT_x_limbs[k]; 
-                public_inputs[{{ z_len * 2 + 5 + num_limbs * 5}} + 4 + k] = cmT_y_limbs[k];
-            }
-        
-            // last element of the groth16 proof's public inputs is `r`
-            public_inputs[{{ public_inputs_len - 2 }}] = U_i_u_u_i_u_r[2];
-            
             bool success_g16 = this.verifyProof(pA, pB, pC, public_inputs);
             require(success_g16 == true, "Groth16: verifying proof failed");
         }

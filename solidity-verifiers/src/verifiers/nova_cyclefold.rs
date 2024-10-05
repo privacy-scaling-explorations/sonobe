@@ -388,8 +388,8 @@ mod tests {
             nova.i,
             nova.z_0.clone(),
             nova.z_i.clone(),
-            &nova.U_i,
-            &nova.u_i,
+            &(),
+            &(),
             &proof,
         )
         .unwrap();

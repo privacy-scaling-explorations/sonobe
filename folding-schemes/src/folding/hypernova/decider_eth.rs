@@ -16,7 +16,7 @@ use crate::commitment::{
 };
 use crate::folding::circuits::CF2;
 use crate::folding::nova::decider_eth::VerifierParam;
-use crate::folding::traits::Inputize;
+use crate::folding::traits::{CommittedInstanceOps, Inputize, WitnessOps};
 use crate::frontend::FCircuit;
 use crate::Error;
 use crate::{Decider as DeciderTrait, FoldingScheme};
@@ -30,9 +30,7 @@ where
 {
     snark_proof: S::Proof,
     kzg_proof: CS1::Proof,
-    // rho used at the last fold, U_{i+1}=NIMFS.V(rho, U_i, u_i), it is checked in-circuit
-    rho: C1::ScalarField,
-    U_i1: LCCCS<C1>, // U_{i+1}, which is checked in-circuit
+    U_final: LCCCS<C1>,
     // the KZG challenge is provided by the prover, but in-circuit it is checked to match
     // the in-circuit computed computed one.
     kzg_challenge: C1::ScalarField,
@@ -95,11 +93,7 @@ where
         prep_param: Self::PreprocessorParam,
         fs: FS,
     ) -> Result<(Self::ProverParam, Self::VerifierParam), Error> {
-        let circuit =
-            DeciderEthCircuit::<C1, GC1, C2, GC2, CS1, CS2>::from_hypernova::<FC, MU, NU>(
-                fs.into(),
-            )
-            .unwrap();
+        let circuit = DeciderEthCircuit::<C1, C2, GC2>::try_from(HyperNova::from(fs)).unwrap();
 
         // get the Groth16 specific setup for the circuit
         let (g16_pk, g16_vk) = S::circuit_specific_setup(circuit, &mut rng).unwrap();
@@ -121,7 +115,7 @@ where
 
         let pp = (g16_pk, hypernova_pp.cs_pp);
 
-        let vp = VerifierParam {
+        let vp = Self::VerifierParam {
             pp_hash,
             snark_vp: g16_vk,
             cs_vp: hypernova_vp.cs_vp,
@@ -136,40 +130,38 @@ where
     ) -> Result<Self::Proof, Error> {
         let (snark_pk, cs_pk): (S::ProvingKey, CS1::ProverParams) = pp;
 
-        let circuit = DeciderEthCircuit::<C1, GC1, C2, GC2, CS1, CS2>::from_hypernova::<FC, MU, NU>(
-            folding_scheme.into(),
-        )?;
+        let circuit =
+            DeciderEthCircuit::<C1, C2, GC2>::try_from(HyperNova::from(folding_scheme)).unwrap();
 
-        let snark_proof = S::prove(&snark_pk, circuit.clone(), &mut rng)
-            .map_err(|e| Error::Other(e.to_string()))?;
-
-        // Notice that since the `circuit` has been constructed at the `from_hypernova` call, which
-        // in case of failure it would have returned an error there, the next two unwraps should
-        // never reach an error.
-        let rho_Fr = circuit.rho.ok_or(Error::Empty)?;
-        let W_i1 = circuit.W_i1.ok_or(Error::Empty)?;
+        let U_final = circuit.U_i1.clone();
 
         // get the challenges that have been already computed when preparing the circuit inputs in
-        // the above `from_hypernova` call
-        let challenge_W = circuit
-            .kzg_challenge
-            .ok_or(Error::MissingValue("kzg_challenge".to_string()))?;
+        // the above `try_from` call
+        let kzg_challenges = circuit.kzg_challenges.clone();
 
         // generate KZG proofs
-        let U_cmW_proof = CS1::prove_with_challenge(
-            &cs_pk,
-            challenge_W,
-            &W_i1.w,
-            &C1::ScalarField::zero(),
-            None,
-        )?;
+        let kzg_proofs = circuit
+            .W_i1
+            .get_openings()
+            .iter()
+            .zip(&kzg_challenges)
+            .map(|((v, _), &c)| {
+                CS1::prove_with_challenge(&cs_pk, c, v, &C1::ScalarField::zero(), None)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let snark_proof =
+            S::prove(&snark_pk, circuit, &mut rng).map_err(|e| Error::Other(e.to_string()))?;
 
         Ok(Self::Proof {
             snark_proof,
-            kzg_proof: U_cmW_proof,
-            rho: rho_Fr,
-            U_i1: circuit.U_i1.ok_or(Error::Empty)?,
-            kzg_challenge: challenge_W,
+            U_final,
+            kzg_proof: (kzg_proofs.len() == 1)
+                .then(|| kzg_proofs[0].clone())
+                .ok_or(Error::NotExpectedLength(kzg_proofs.len(), 1))?,
+            kzg_challenge: (kzg_challenges.len() == 1)
+                .then(|| kzg_challenges[0])
+                .ok_or(Error::NotExpectedLength(kzg_challenges.len(), 1))?,
         })
     }
 
@@ -187,29 +179,43 @@ where
             return Err(Error::NotEnoughSteps);
         }
 
-        let (pp_hash, snark_vk, cs_vk): (C1::ScalarField, S::VerifyingKey, CS1::VerifierParams) =
-            (vp.pp_hash, vp.snark_vp, vp.cs_vp);
+        let Self::VerifierParam {
+            pp_hash,
+            snark_vp,
+            cs_vp,
+        } = vp;
+
+        let U = proof.U_final.clone();
 
         // Note: the NIMFS proof is checked inside the DeciderEthCircuit, which ensures that the
         // 'proof.U_i1' is correctly computed
-
         let public_input: Vec<C1::ScalarField> = [
             vec![pp_hash, i],
             z_0,
             z_i,
-            proof.U_i1.inputize(),
-            vec![proof.kzg_challenge, proof.kzg_proof.eval, proof.rho],
+            U.inputize(),
+            vec![proof.kzg_challenge, proof.kzg_proof.eval],
         ]
         .concat();
 
-        let snark_v = S::verify(&snark_vk, &public_input, &proof.snark_proof)
+        let snark_v = S::verify(&snark_vp, &public_input, &proof.snark_proof)
             .map_err(|e| Error::Other(e.to_string()))?;
         if !snark_v {
             return Err(Error::SNARKVerificationFail);
         }
 
+        let commitments = U.get_commitments();
+        if commitments.len() != 1 {
+            return Err(Error::NotExpectedLength(commitments.len(), 1));
+        }
+
         // we're at the Ethereum EVM case, so the CS1 is KZG commitments
-        CS1::verify_with_challenge(&cs_vk, proof.kzg_challenge, &proof.U_i1.C, &proof.kzg_proof)?;
+        CS1::verify_with_challenge(
+            &cs_vp,
+            proof.kzg_challenge,
+            &commitments[0],
+            &proof.kzg_proof,
+        )?;
 
         Ok(true)
     }
@@ -220,13 +226,12 @@ pub mod tests {
     use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as Projective};
     use ark_groth16::Groth16;
     use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
-    use ark_serialize::{Compress, Validate};
+    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress, Validate};
 
     use super::*;
     use crate::commitment::{kzg::KZG, pedersen::Pedersen};
     use crate::folding::hypernova::cccs::CCCS;
     use crate::folding::hypernova::PreprocessorParam;
-    use crate::folding::nova::decider_eth::VerifierParam;
     use crate::frontend::utils::CubicFCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
 

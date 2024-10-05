@@ -194,7 +194,6 @@ pub struct ProofVar<C: CurveGroup> {
 impl<C> AllocVar<NIMFSProof<C>, CF1<C>> for ProofVar<C>
 where
     C: CurveGroup,
-    <C as ark_ec::CurveGroup>::BaseField: PrimeField,
     <C as Group>::ScalarField: Absorb,
 {
     fn new_variable<T: Borrow<NIMFSProof<C>>>(
@@ -236,10 +235,7 @@ where
 pub struct NIMFSGadget<C: CurveGroup> {
     _c: PhantomData<C>,
 }
-impl<C: CurveGroup> NIMFSGadget<C>
-where
-    <C as CurveGroup>::BaseField: PrimeField,
-{
+impl<C: CurveGroup> NIMFSGadget<C> {
     /// Runs (in-circuit) the NIMFS.V, which outputs the new folded LCCCS instance together with
     /// the rho_powers, which will be used in other parts of the AugmentedFCircuit
     #[allow(clippy::type_complexity)]

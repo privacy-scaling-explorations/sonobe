@@ -42,6 +42,7 @@ use crate::{
 
 pub mod circuits;
 pub mod constants;
+pub mod decider_eth_circuit;
 pub mod folding;
 pub mod traits;
 pub(crate) mod utils;

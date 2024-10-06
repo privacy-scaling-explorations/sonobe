@@ -17,8 +17,9 @@ use num_bigint::BigUint;
 use num_integer::Integer;
 
 use crate::{
+    folding::traits::Inputize,
     transcript::{AbsorbNonNative, AbsorbNonNativeGadget},
-    utils::gadgets::{MatrixGadget, SparseMatrixVar, VectorGadget},
+    utils::gadgets::{EquivalenceGadget, MatrixGadget, SparseMatrixVar, VectorGadget},
 };
 
 /// `LimbVar` represents a single limb of a non-native unsigned integer in the
@@ -259,15 +260,15 @@ impl<F: PrimeField, G: Field> AllocVar<G, F> for NonNativeUintVar<F> {
     }
 }
 
-impl<F: PrimeField> NonNativeUintVar<F> {
-    pub fn inputize<T: Field>(x: T) -> Vec<F> {
+impl<F: PrimeField, T: Field> Inputize<F, NonNativeUintVar<F>> for T {
+    fn inputize(&self) -> Vec<F> {
         assert_eq!(T::extension_degree(), 1);
-        x.to_base_prime_field_elements()
+        self.to_base_prime_field_elements()
             .next()
             .unwrap()
             .into_bigint()
             .to_bits_le()
-            .chunks(Self::bits_per_limb())
+            .chunks(NonNativeUintVar::<F>::bits_per_limb())
             .map(|chunk| F::from_bigint(F::BigInt::from_bits_le(chunk)).unwrap())
             .collect()
     }
@@ -799,6 +800,12 @@ impl<F: PrimeField> NonNativeUintVar<F> {
     }
 }
 
+impl<F: PrimeField, M: PrimeField> EquivalenceGadget<M> for NonNativeUintVar<F> {
+    fn enforce_equivalent(&self, other: &Self) -> Result<(), SynthesisError> {
+        self.enforce_congruent::<M>(other)
+    }
+}
+
 impl<F: PrimeField, B: AsRef<[Boolean<F>]>> From<B> for NonNativeUintVar<F> {
     fn from(bits: B) -> Self {
         Self(
@@ -886,9 +893,7 @@ impl<F: PrimeField> VectorGadget<NonNativeUintVar<F>> for [NonNativeUintVar<F>] 
     }
 }
 
-impl<F: PrimeField, CF: PrimeField> MatrixGadget<NonNativeUintVar<CF>>
-    for SparseMatrixVar<F, CF, NonNativeUintVar<CF>>
-{
+impl<CF: PrimeField> MatrixGadget<NonNativeUintVar<CF>> for SparseMatrixVar<NonNativeUintVar<CF>> {
     fn mul_vector(
         &self,
         v: &[NonNativeUintVar<CF>],

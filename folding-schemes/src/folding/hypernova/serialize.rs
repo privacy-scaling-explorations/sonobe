@@ -6,7 +6,7 @@ use ark_crypto_primitives::sponge::poseidon::PoseidonConfig;
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{CurveGroup, Group};
 use ark_ff::PrimeField;
-use ark_r1cs_std::groups::{CurveVar, GroupOpsBounds};
+use ark_r1cs_std::groups::CurveVar;
 use ark_r1cs_std::ToConstraintFieldGadget;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::{CanonicalSerialize, Compress, SerializationError, Validate};
@@ -106,8 +106,6 @@ where
     <C1 as Group>::ScalarField: Absorb,
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    for<'a> &'a GC1: GroupOpsBounds<'a, C1, GC1>,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     #[allow(clippy::too_many_arguments)]
     pub fn deserialize_hypernova<R: std::io::prelude::Read>(

@@ -11,7 +11,6 @@ use ark_r1cs_std::{
     boolean::Boolean,
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
-    groups::GroupOpsBounds,
     prelude::CurveVar,
     uint8::UInt8,
     R1CSVar, ToConstraintFieldGadget,
@@ -73,11 +72,7 @@ where
     }
 }
 
-impl<C> AbsorbGadget<C::ScalarField> for CommittedInstanceVar<C>
-where
-    C: CurveGroup,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-{
+impl<C: CurveGroup> AbsorbGadget<C::ScalarField> for CommittedInstanceVar<C> {
     fn to_sponge_bytes(&self) -> Result<Vec<UInt8<C::ScalarField>>, SynthesisError> {
         FpVar::batch_to_sponge_bytes(&self.to_sponge_field_elements()?)
     }
@@ -124,11 +119,7 @@ pub struct NIFSGadget<C: CurveGroup> {
     _c: PhantomData<C>,
 }
 
-impl<C: CurveGroup> NIFSGadget<C>
-where
-    C: CurveGroup,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-{
+impl<C: CurveGroup> NIFSGadget<C> {
     pub fn fold_committed_instance(
         r: FpVar<CF1<C>>,
         ci1: CommittedInstanceVar<C>, // U_i
@@ -174,8 +165,6 @@ pub struct ChallengeGadget<C: CurveGroup, CI: Absorb> {
 }
 impl<C: CurveGroup, CI: Absorb> ChallengeGadget<C, CI>
 where
-    C: CurveGroup,
-    <C as CurveGroup>::BaseField: PrimeField,
     <C as Group>::ScalarField: Absorb,
 {
     pub fn get_challenge_native<T: Transcript<C::ScalarField>>(
@@ -232,9 +221,7 @@ pub struct AugmentedFCircuit<
     C2: CurveGroup,
     GC2: CurveVar<C2, CF2<C2>>,
     FC: FCircuit<CF1<C1>>,
-> where
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
-{
+> {
     pub(super) _gc2: PhantomData<GC2>,
     pub(super) poseidon_config: PoseidonConfig<CF1<C1>>,
     pub(super) pp_hash: Option<CF1<C1>>,
@@ -264,8 +251,6 @@ pub struct AugmentedFCircuit<
 
 impl<C1: CurveGroup, C2: CurveGroup, GC2: CurveVar<C2, CF2<C2>>, FC: FCircuit<CF1<C1>>>
     AugmentedFCircuit<C1, C2, GC2, FC>
-where
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     pub fn empty(poseidon_config: &PoseidonConfig<CF1<C1>>, F_circuit: FC) -> Self {
         Self {
@@ -306,7 +291,6 @@ where
     <C1 as Group>::ScalarField: Absorb,
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
         let pp_hash = FpVar::<CF1<C1>>::new_witness(cs.clone(), || {
@@ -508,7 +492,7 @@ where
         // Non-base case: u_{i+1}.x[1] == H(cf_U_{i+1})
         let (cf_u_i1_x, _) = cf_U_i1.clone().hash(&sponge, pp_hash.clone())?;
         let (cf_u_i1_x_base, _) =
-            CycleFoldCommittedInstanceVar::new_constant(cs.clone(), cf_u_dummy)?
+            CycleFoldCommittedInstanceVar::<C2, GC2>::new_constant(cs.clone(), cf_u_dummy)?
                 .hash(&sponge, pp_hash)?;
         let cf_x = FpVar::new_input(cs.clone(), || {
             Ok(self.cf_x.unwrap_or(cf_u_i1_x_base.value()?))

@@ -135,7 +135,7 @@ where
         // compute the U_{i+1}, W_{i+1}, by folding the last running & incoming instances
         let mut transcript = PoseidonSponge::<C1::ScalarField>::new(&hn.poseidon_config);
         transcript.absorb(&hn.pp_hash);
-        let (nimfs_proof, U_i1, W_i1, _) = NIMFS::<C1, PoseidonSponge<C1::ScalarField>>::prove(
+        let (nimfs_proof, U_i1, W_i1, rho) = NIMFS::<C1, PoseidonSponge<C1::ScalarField>>::prove(
             &mut transcript,
             &hn.ccs,
             &[hn.U_i.clone()],
@@ -173,6 +173,7 @@ where
             U_i1,
             W_i1,
             proof: nimfs_proof,
+            randomness: rho,
             cf_U_i: hn.cf_U_i,
             cf_W_i: hn.cf_W_i,
             kzg_challenges,
@@ -190,6 +191,8 @@ where
 {
     type ProofDummyCfg = (usize, usize, usize, usize);
     type Proof = NIMFSProof<C>;
+    type Randomness = CF1<C>;
+    type RandomnessDummyCfg = ();
 
     fn fold_gadget(
         arith: &CCS<CF1<C>>,
@@ -199,11 +202,13 @@ where
         _U_vec: Vec<FpVar<CF1<C>>>,
         u: CCCSVar<C>,
         proof: Self::Proof,
+        randomness: Self::Randomness,
     ) -> Result<LCCCSVar<C>, SynthesisError> {
         let cs = transcript.cs();
         transcript.absorb(&pp_hash)?;
         let nimfs_proof = NIMFSProofVar::<C>::new_witness(cs.clone(), || Ok(proof))?;
-        let (computed_U_i1, _) = NIMFSGadget::<C>::verify(
+        let rho = FpVar::<CF1<C>>::new_input(cs.clone(), || Ok(randomness))?;
+        let (computed_U_i1, rho_bits) = NIMFSGadget::<C>::verify(
             cs.clone(),
             arith,
             transcript,
@@ -212,6 +217,7 @@ where
             nimfs_proof,
             Boolean::TRUE, // enabled
         )?;
+        Boolean::le_bits_to_fp_var(&rho_bits)?.enforce_equal(&rho)?;
         Ok(computed_U_i1)
     }
 }

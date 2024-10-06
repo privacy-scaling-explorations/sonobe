@@ -22,7 +22,7 @@ pub fn get_function_selector_for_nova_cyclefold_verifier(
     first_param_array_length: usize,
 ) -> [u8; 4] {
     let mut hasher = Sha3::keccak256();
-    let fn_sig = format!("verifyNovaProof(uint256[{}],uint256[4],uint256[3],uint256[2],uint256[2][2],uint256[2],uint256[4],uint256[2][2])", first_param_array_length);
+    let fn_sig = format!("verifyNovaProof(uint256[{}],uint256[4],uint256[2],uint256[3],uint256[2],uint256[2][2],uint256[2],uint256[4],uint256[2][2])", first_param_array_length);
     hasher.input_str(&fn_sig);
     let hash = &mut [0u8; 32];
     hasher.result(hash);

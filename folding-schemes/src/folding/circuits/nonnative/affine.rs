@@ -2,7 +2,9 @@ use ark_ec::{short_weierstrass::SWFlags, AffineRepr, CurveGroup};
 use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
+    eq::EqGadget,
     fields::fp::FpVar,
+    prelude::Boolean,
     R1CSVar, ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{ConstraintSystemRef, Namespace, SynthesisError};
@@ -90,6 +92,53 @@ impl<C: CurveGroup> ToConstraintFieldGadget<C::ScalarField> for NonNativeAffineV
         let x = self.x.to_constraint_field()?;
         let y = self.y.to_constraint_field()?;
         Ok([x, y].concat())
+    }
+}
+
+impl<C: CurveGroup> EqGadget<C::ScalarField> for NonNativeAffineVar<C> {
+    fn is_eq(&self, other: &Self) -> Result<Boolean<C::ScalarField>, SynthesisError> {
+        let mut result = Boolean::TRUE;
+        if self.x.0.len() != other.x.0.len() {
+            return Err(SynthesisError::Unsatisfiable);
+        }
+        if self.y.0.len() != other.y.0.len() {
+            return Err(SynthesisError::Unsatisfiable);
+        }
+        for (l, r) in self
+            .x
+            .0
+            .iter()
+            .chain(&self.y.0)
+            .zip(other.x.0.iter().chain(&other.y.0))
+        {
+            if l.ub != r.ub {
+                return Err(SynthesisError::Unsatisfiable);
+            }
+            result = result.and(&l.v.is_eq(&r.v)?)?;
+        }
+        Ok(result)
+    }
+
+    fn enforce_equal(&self, other: &Self) -> Result<(), SynthesisError> {
+        if self.x.0.len() != other.x.0.len() {
+            return Err(SynthesisError::Unsatisfiable);
+        }
+        if self.y.0.len() != other.y.0.len() {
+            return Err(SynthesisError::Unsatisfiable);
+        }
+        for (l, r) in self
+            .x
+            .0
+            .iter()
+            .chain(&self.y.0)
+            .zip(other.x.0.iter().chain(&other.y.0))
+        {
+            if l.ub != r.ub {
+                return Err(SynthesisError::Unsatisfiable);
+            }
+            l.v.enforce_equal(&r.v)?;
+        }
+        Ok(())
     }
 }
 

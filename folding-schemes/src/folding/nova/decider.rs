@@ -13,7 +13,7 @@ use ark_std::{One, Zero};
 use core::marker::PhantomData;
 
 use super::decider_circuits::{DeciderCircuit1, DeciderCircuit2};
-use super::{CommittedInstance, Nova};
+use super::Nova;
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::{
     cyclefold::{CycleFoldCommittedInstance, CycleFoldCommittedInstanceVar},
@@ -38,7 +38,10 @@ where
     c2_snark_proof: S2::Proof,
     cs1_proofs: [CS1::Proof; 2],
     cs2_proofs: [CS2::Proof; 2],
-    U_final: CommittedInstance<C1>,
+    // cmT and r are values for the last fold, U_{i+1}=NIFS.V(r, U_i, u_i, cmT), and they are
+    // checked in-circuit
+    cmT: C1,
+    r: C1::ScalarField,
     // cyclefold committed instance
     cf_U_final: CycleFoldCommittedInstance<C2>,
     // the CS challenges are provided by the prover, but in-circuit they are checked to match the
@@ -141,7 +144,7 @@ where
         S2::VerifyingKey,
     >;
     type PublicInput = Vec<C1::ScalarField>;
-    type CommittedInstance = ();
+    type CommittedInstance = Vec<C1>;
 
     fn preprocess(
         mut rng: impl RngCore + CryptoRng,
@@ -194,7 +197,8 @@ where
         let circuit1 = DeciderCircuit1::<C1, C2, GC2>::try_from(Nova::from(fs.clone()))?;
         let circuit2 = DeciderCircuit2::<C2>::try_from(Nova::from(fs))?;
 
-        let U_final = circuit1.U_i1.clone();
+        let cmT = circuit1.proof;
+        let r = circuit1.randomness;
         let cf_U_final = circuit1.cf_U_i.clone();
 
         let c1_kzg_challenges = circuit1.kzg_challenges.clone();
@@ -228,7 +232,8 @@ where
             c2_snark_proof,
             cs1_proofs: c1_kzg_proofs.try_into().unwrap(),
             cs2_proofs: c2_kzg_proofs.try_into().unwrap(),
-            U_final,
+            cmT,
+            r,
             cf_U_final,
             cs1_challenges: c1_kzg_challenges.try_into().unwrap(),
             cs2_challenges: c2_kzg_challenges.try_into().unwrap(),
@@ -241,15 +246,20 @@ where
         z_0: Vec<C1::ScalarField>,
         z_i: Vec<C1::ScalarField>,
         // we don't use the instances at the verifier level, since we check them in-circuit
-        _running_instance: &Self::CommittedInstance,
-        _incoming_instance: &Self::CommittedInstance,
+        running_commitments: &Self::CommittedInstance,
+        incoming_commitments: &Self::CommittedInstance,
         proof: &Self::Proof,
     ) -> Result<bool, Error> {
         if i <= C1::ScalarField::one() {
             return Err(Error::NotEnoughSteps);
         }
 
-        let U = proof.U_final.clone();
+        let U_cmW = running_commitments[0];
+        let U_cmE = running_commitments[1];
+        let u_cmW = incoming_commitments[0];
+        let u_cmE = incoming_commitments[1];
+        let cmW = U_cmW + u_cmW.mul(proof.r);
+        let cmE = U_cmE + proof.cmT.mul(proof.r) + u_cmE.mul(proof.r * proof.r);
         let cf_U = proof.cf_U_final.clone();
 
         // snark proof 1
@@ -257,10 +267,13 @@ where
             &[vp.pp_hash, i][..],
             &z_0,
             &z_i,
-            &U.inputize(),
+            &cmW.inputize(),
+            &cmE.inputize(),
             &Inputize::<CF2<C2>, CycleFoldCommittedInstanceVar<C2, GC2>>::inputize(&cf_U),
             &proof.cs1_challenges,
             &proof.cs1_proofs.iter().map(|p| p.eval).collect::<Vec<_>>(),
+            &proof.cmT.inputize(),
+            &[proof.r],
         ]
         .concat();
 
@@ -289,8 +302,7 @@ where
         }
 
         // check C1 commitments (main instance commitments)
-        for ((cm, &c), pi) in U
-            .get_commitments()
+        for ((cm, &c), pi) in [cmW, cmE]
             .iter()
             .zip(&proof.cs1_challenges)
             .zip(&proof.cs1_proofs)
@@ -391,7 +403,16 @@ pub mod tests {
 
         // decider proof verification
         let start = Instant::now();
-        let verified = D::verify(decider_vp, nova.i, nova.z_0, nova.z_i, &(), &(), &proof).unwrap();
+        let verified = D::verify(
+            decider_vp,
+            nova.i,
+            nova.z_0,
+            nova.z_i,
+            &nova.U_i.get_commitments(),
+            &nova.u_i.get_commitments(),
+            &proof,
+        )
+        .unwrap();
         assert!(verified);
         println!("Decider verify, {:?}", start.elapsed());
     }

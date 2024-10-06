@@ -25,6 +25,7 @@ use crate::{
                 CycleFoldCommittedInstance, CycleFoldCommittedInstanceVar, CycleFoldWitness,
             },
             decider::{EvalGadget, KZGChallengesGadget},
+            nonnative::affine::NonNativeAffineVar,
             CF1, CF2,
         },
         nova::{circuits::CommittedInstanceVar, decider_eth_circuit::WitnessVar},
@@ -69,6 +70,7 @@ pub struct GenericOffchainDeciderCircuit1<
 
     /// Helper for folding verification
     pub proof: D::Proof,
+    pub randomness: D::Randomness,
 
     /// CycleFold running instance
     pub cf_U_i: CycleFoldCommittedInstance<C2>,
@@ -94,16 +96,26 @@ impl<
         &R1CS<CF1<C2>>,
         PoseidonConfig<CF1<C1>>,
         D::ProofDummyCfg,
+        D::RandomnessDummyCfg,
         usize,
         usize,
     )> for GenericOffchainDeciderCircuit1<C1, C2, GC2, RU, IU, W, A, AVar, D>
 {
     fn dummy(
-        (arith, cf_arith, poseidon_config, proof_config, state_len, num_commitments): (
+        (
+            arith,
+            cf_arith,
+            poseidon_config,
+            proof_config,
+            randomness_config,
+            state_len,
+            num_commitments,
+        ): (
             A,
             &R1CS<CF1<C2>>,
             PoseidonConfig<CF1<C1>>,
             D::ProofDummyCfg,
+            D::RandomnessDummyCfg,
             usize,
             usize,
         ),
@@ -123,6 +135,7 @@ impl<
             U_i1: RU::dummy(&arith),
             W_i1: W::dummy(&arith),
             proof: D::Proof::dummy(proof_config),
+            randomness: D::Randomness::dummy(randomness_config),
             cf_U_i: CycleFoldCommittedInstance::dummy(cf_arith),
             kzg_challenges: vec![Zero::zero(); num_commitments],
             kzg_evaluations: vec![Zero::zero(); num_commitments],
@@ -144,7 +157,7 @@ impl<
     > ConstraintSynthesizer<CF1<C1>>
     for GenericOffchainDeciderCircuit1<C1, C2, GC2, RU, IU, W, A, AVar, D>
 where
-    RU::Var: AbsorbGadget<CF1<C1>>,
+    RU::Var: AbsorbGadget<CF1<C1>> + CommittedInstanceVarOps<C1, PointVar = NonNativeAffineVar<C1>>,
     CF1<C1>: Absorb,
 {
     fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
@@ -158,8 +171,12 @@ where
         let u_i = IU::Var::new_witness(cs.clone(), || Ok(self.u_i))?;
         let U_i = RU::Var::new_witness(cs.clone(), || Ok(self.U_i))?;
         // here (U_i1, W_i1) = NIFS.P( (U_i,W_i), (u_i,w_i))
-        let U_i1 = RU::Var::new_input(cs.clone(), || Ok(self.U_i1))?;
+        let U_i1_commitments = Vec::<NonNativeAffineVar<C1>>::new_input(cs.clone(), || {
+            Ok(self.U_i1.get_commitments())
+        })?;
+        let U_i1 = RU::Var::new_witness(cs.clone(), || Ok(self.U_i1))?;
         let W_i1 = W::Var::new_witness(cs.clone(), || Ok(self.W_i1))?;
+        U_i1.get_commitments().enforce_equal(&U_i1_commitments)?;
 
         let cf_U_i =
             CycleFoldCommittedInstanceVar::<C2, GC2>::new_input(cs.clone(), || Ok(self.cf_U_i))?;
@@ -194,6 +211,7 @@ where
             U_i_vec,
             u_i,
             self.proof,
+            self.randomness,
         )?
         .enforce_partial_equal(&U_i1)?;
 

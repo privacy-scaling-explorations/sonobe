@@ -62,8 +62,9 @@ contract NovaDecider is Groth16Verifier, KZG10Verifier {
     function verifyNovaProof(
         // inputs are grouped to prevent errors due stack too deep
         uint256[{{ 1 + z_len * 2 }}] calldata i_z0_zi, // [i, z0, zi] where |z0| == |zi|
-        uint256[4] calldata U_final_cmW_U_final_cmE, // [U_final_cmW[2], U_final_cmE[2]]
-        uint256[3] calldata U_final_u_U_final_x, // [U_final_u, U_final_x[2]]
+        uint256[4] calldata U_i_cmW_U_i_cmE, // [U_i_cmW[2], U_i_cmE[2]]
+        uint256[2] calldata u_i_cmW, // [u_i_cmW[2]]
+        uint256[3] calldata cmT_r, // [cmT[2], r]
         uint256[2] calldata pA, // groth16 
         uint256[2][2] calldata pB, // groth16
         uint256[2] calldata pC, // groth16
@@ -84,37 +85,17 @@ contract NovaDecider is Groth16Verifier, KZG10Verifier {
         }
 
         {
-            public_inputs[{{ z_len * 2 + 2 }}] = U_final_u_U_final_x[0];
-            public_inputs[{{ z_len * 2 + 3 }}] = U_final_u_U_final_x[1];
-            public_inputs[{{ z_len * 2 + 4 }}] = U_final_u_U_final_x[2];
-        }
+            // U_i.cmW + r * u_i.cmW
+            uint256[2] memory mulScalarPoint = super.mulScalar([u_i_cmW[0], u_i_cmW[1]], cmT_r[2]);
+            uint256[2] memory cmW = super.add([U_i_cmW_U_i_cmE[0], U_i_cmW_U_i_cmE[1]], mulScalarPoint);
 
-        {
-            uint256[2] memory cmE = [U_final_cmW_U_final_cmE[2], U_final_cmW_U_final_cmE[3]];
-
-            {
-                uint256[{{num_limbs}}] memory cmE_x_limbs = LimbsDecomposition.decompose(cmE[0]);
-                uint256[{{num_limbs}}] memory cmE_y_limbs = LimbsDecomposition.decompose(cmE[1]);
-            
-                for (uint8 k = 0; k < {{num_limbs}}; k++) {
-                    public_inputs[{{ z_len * 2 + 5 }} + k] = cmE_x_limbs[k];
-                    public_inputs[{{ z_len * 2 + 5 + num_limbs }} + k] = cmE_y_limbs[k];
-                }
-            }
-
-            require(this.check(cmE, kzg_proof[1], challenge_W_challenge_E_kzg_evals[1], challenge_W_challenge_E_kzg_evals[3]), "KZG: verifying proof for challenge E failed");
-        }
-
-        {
-            uint256[2] memory cmW = [U_final_cmW_U_final_cmE[0], U_final_cmW_U_final_cmE[1]];
-        
             {
                 uint256[{{num_limbs}}] memory cmW_x_limbs = LimbsDecomposition.decompose(cmW[0]);
                 uint256[{{num_limbs}}] memory cmW_y_limbs = LimbsDecomposition.decompose(cmW[1]);
         
                 for (uint8 k = 0; k < {{num_limbs}}; k++) {
-                    public_inputs[{{ z_len * 2 + 5 + num_limbs * 2 }} + k] = cmW_x_limbs[k];
-                    public_inputs[{{ z_len * 2 + 5 + num_limbs * 3 }} + k] = cmW_y_limbs[k];
+                    public_inputs[{{ z_len * 2 + 2 }} + k] = cmW_x_limbs[k];
+                    public_inputs[{{ z_len * 2 + 2 + num_limbs }} + k] = cmW_y_limbs[k];
                 }
             }
         
@@ -122,12 +103,44 @@ contract NovaDecider is Groth16Verifier, KZG10Verifier {
         }
 
         {
+            // U_i.cmE + r * cmT
+            uint256[2] memory mulScalarPoint = super.mulScalar([cmT_r[0], cmT_r[1]], cmT_r[2]);
+            uint256[2] memory cmE = super.add([U_i_cmW_U_i_cmE[2], U_i_cmW_U_i_cmE[3]], mulScalarPoint);
+
+            {
+                uint256[{{num_limbs}}] memory cmE_x_limbs = LimbsDecomposition.decompose(cmE[0]);
+                uint256[{{num_limbs}}] memory cmE_y_limbs = LimbsDecomposition.decompose(cmE[1]);
+            
+                for (uint8 k = 0; k < {{num_limbs}}; k++) {
+                    public_inputs[{{ z_len * 2 + 2 + num_limbs * 2 }} + k] = cmE_x_limbs[k];
+                    public_inputs[{{ z_len * 2 + 2 + num_limbs * 3 }} + k] = cmE_y_limbs[k];
+                }
+            }
+
+            require(this.check(cmE, kzg_proof[1], challenge_W_challenge_E_kzg_evals[1], challenge_W_challenge_E_kzg_evals[3]), "KZG: verifying proof for challenge E failed");
+        }
+
+        {
             // add challenges
-            public_inputs[{{ z_len * 2 + 5 + num_limbs * 4 }}] = challenge_W_challenge_E_kzg_evals[0];
-            public_inputs[{{ z_len * 2 + 5 + num_limbs * 4 + 1 }}] = challenge_W_challenge_E_kzg_evals[1];
-            public_inputs[{{ z_len * 2 + 5 + num_limbs * 4 + 2 }}] = challenge_W_challenge_E_kzg_evals[2];
-            public_inputs[{{ z_len * 2 + 5 + num_limbs * 4 + 3 }}] = challenge_W_challenge_E_kzg_evals[3];
+            public_inputs[{{ z_len * 2 + 2 + num_limbs * 4 }}] = challenge_W_challenge_E_kzg_evals[0];
+            public_inputs[{{ z_len * 2 + 2 + num_limbs * 4 + 1 }}] = challenge_W_challenge_E_kzg_evals[1];
+            public_inputs[{{ z_len * 2 + 2 + num_limbs * 4 + 2 }}] = challenge_W_challenge_E_kzg_evals[2];
+            public_inputs[{{ z_len * 2 + 2 + num_limbs * 4 + 3 }}] = challenge_W_challenge_E_kzg_evals[3];
+
+            uint256[{{num_limbs}}] memory cmT_x_limbs;
+            uint256[{{num_limbs}}] memory cmT_y_limbs;
         
+            cmT_x_limbs = LimbsDecomposition.decompose(cmT_r[0]);
+            cmT_y_limbs = LimbsDecomposition.decompose(cmT_r[1]);
+        
+            for (uint8 k = 0; k < {{num_limbs}}; k++) {
+                public_inputs[{{ z_len * 2 + 2 + num_limbs * 4 }} + 4 + k] = cmT_x_limbs[k]; 
+                public_inputs[{{ z_len * 2 + 2 + num_limbs * 5 }} + 4 + k] = cmT_y_limbs[k];
+            }
+        
+            // last element of the groth16 proof's public inputs is `r`
+            public_inputs[{{ public_inputs_len - 2 }}] = cmT_r[2];
+
             bool success_g16 = this.verifyProof(pA, pB, pC, public_inputs);
             require(success_g16 == true, "Groth16: verifying proof failed");
         }

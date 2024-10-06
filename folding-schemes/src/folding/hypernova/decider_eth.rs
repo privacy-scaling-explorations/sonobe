@@ -10,13 +10,13 @@ use ark_std::{One, Zero};
 use core::marker::PhantomData;
 
 pub use super::decider_eth_circuit::DeciderEthCircuit;
-use super::{lcccs::LCCCS, HyperNova};
+use super::HyperNova;
 use crate::commitment::{
     kzg::Proof as KZGProof, pedersen::Params as PedersenParams, CommitmentScheme,
 };
 use crate::folding::circuits::CF2;
 use crate::folding::nova::decider_eth::VerifierParam;
-use crate::folding::traits::{CommittedInstanceOps, Inputize, WitnessOps};
+use crate::folding::traits::{Inputize, WitnessOps};
 use crate::frontend::FCircuit;
 use crate::Error;
 use crate::{Decider as DeciderTrait, FoldingScheme};
@@ -30,7 +30,8 @@ where
 {
     snark_proof: S::Proof,
     kzg_proof: CS1::Proof,
-    U_final: LCCCS<C1>,
+    // rho used at the last fold, U_{i+1}=NIMFS.V(rho, U_i, u_i), it is checked in-circuit
+    rho: C1::ScalarField,
     // the KZG challenge is provided by the prover, but in-circuit it is checked to match
     // the in-circuit computed computed one.
     kzg_challenge: C1::ScalarField,
@@ -86,7 +87,7 @@ where
     type Proof = Proof<C1, CS1, S>;
     type VerifierParam = VerifierParam<C1, CS1::VerifierParams, S::VerifyingKey>;
     type PublicInput = Vec<C1::ScalarField>;
-    type CommittedInstance = ();
+    type CommittedInstance = Vec<C1>;
 
     fn preprocess(
         mut rng: impl RngCore + CryptoRng,
@@ -133,7 +134,7 @@ where
         let circuit =
             DeciderEthCircuit::<C1, C2, GC2>::try_from(HyperNova::from(folding_scheme)).unwrap();
 
-        let U_final = circuit.U_i1.clone();
+        let rho = circuit.randomness;
 
         // get the challenges that have been already computed when preparing the circuit inputs in
         // the above `try_from` call
@@ -155,7 +156,7 @@ where
 
         Ok(Self::Proof {
             snark_proof,
-            U_final,
+            rho,
             kzg_proof: (kzg_proofs.len() == 1)
                 .then(|| kzg_proofs[0].clone())
                 .ok_or(Error::NotExpectedLength(kzg_proofs.len(), 1))?,
@@ -171,8 +172,8 @@ where
         z_0: Vec<C1::ScalarField>,
         z_i: Vec<C1::ScalarField>,
         // we don't use the instances at the verifier level, since we check them in-circuit
-        _running_instance: &Self::CommittedInstance,
-        _incoming_instance: &Self::CommittedInstance,
+        running_commitments: &Self::CommittedInstance,
+        incoming_commitments: &Self::CommittedInstance,
         proof: &Self::Proof,
     ) -> Result<bool, Error> {
         if i <= C1::ScalarField::one() {
@@ -185,16 +186,18 @@ where
             cs_vp,
         } = vp;
 
-        let U = proof.U_final.clone();
+        let U_C = running_commitments[0];
+        let u_C = incoming_commitments[0];
+        let C = U_C + u_C.mul(proof.rho);
 
         // Note: the NIMFS proof is checked inside the DeciderEthCircuit, which ensures that the
         // 'proof.U_i1' is correctly computed
         let public_input: Vec<C1::ScalarField> = [
-            vec![pp_hash, i],
-            z_0,
-            z_i,
-            U.inputize(),
-            vec![proof.kzg_challenge, proof.kzg_proof.eval],
+            &[pp_hash, i][..],
+            &z_0,
+            &z_i,
+            &C.inputize(),
+            &[proof.kzg_challenge, proof.kzg_proof.eval, proof.rho],
         ]
         .concat();
 
@@ -204,18 +207,8 @@ where
             return Err(Error::SNARKVerificationFail);
         }
 
-        let commitments = U.get_commitments();
-        if commitments.len() != 1 {
-            return Err(Error::NotExpectedLength(commitments.len(), 1));
-        }
-
         // we're at the Ethereum EVM case, so the CS1 is KZG commitments
-        CS1::verify_with_challenge(
-            &cs_vp,
-            proof.kzg_challenge,
-            &commitments[0],
-            &proof.kzg_proof,
-        )?;
+        CS1::verify_with_challenge(&cs_vp, proof.kzg_challenge, &C, &proof.kzg_proof)?;
 
         Ok(true)
     }
@@ -231,7 +224,9 @@ pub mod tests {
     use super::*;
     use crate::commitment::{kzg::KZG, pedersen::Pedersen};
     use crate::folding::hypernova::cccs::CCCS;
+    use crate::folding::hypernova::lcccs::LCCCS;
     use crate::folding::hypernova::PreprocessorParam;
+    use crate::folding::traits::CommittedInstanceOps;
     use crate::frontend::utils::CubicFCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
 
@@ -296,8 +291,8 @@ pub mod tests {
             hypernova.i,
             hypernova.z_0,
             hypernova.z_i,
-            &(),
-            &(),
+            &hypernova.U_i.get_commitments(),
+            &hypernova.u_i.get_commitments(),
             &proof,
         )
         .unwrap();
@@ -399,8 +394,8 @@ pub mod tests {
             hypernova.i,
             hypernova.z_0.clone(),
             hypernova.z_i.clone(),
-            &(),
-            &(),
+            &hypernova.U_i.get_commitments(),
+            &hypernova.u_i.get_commitments(),
             &proof,
         )
         .unwrap();
@@ -466,8 +461,8 @@ pub mod tests {
             i_deserialized,
             z_0_deserialized.clone(),
             z_i_deserialized.clone(),
-            &(),
-            &(),
+            &hypernova.U_i.get_commitments(),
+            &hypernova.u_i.get_commitments(),
             &proof_deserialized,
         )
         .unwrap();

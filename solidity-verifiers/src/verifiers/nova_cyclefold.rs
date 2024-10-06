@@ -153,9 +153,12 @@ mod tests {
 
     use folding_schemes::{
         commitment::{kzg::KZG, pedersen::Pedersen},
-        folding::nova::{
-            decider_eth::{prepare_calldata, Decider as DeciderEth},
-            Nova, PreprocessorParam,
+        folding::{
+            nova::{
+                decider_eth::{prepare_calldata, Decider as DeciderEth},
+                Nova, PreprocessorParam,
+            },
+            traits::CommittedInstanceOps,
         },
         frontend::FCircuit,
         transcript::poseidon::poseidon_canonical_config,
@@ -388,8 +391,8 @@ mod tests {
             nova.i,
             nova.z_0.clone(),
             nova.z_i.clone(),
-            &(),
-            &(),
+            &nova.U_i.get_commitments(),
+            &nova.u_i.get_commitments(),
             &proof,
         )
         .unwrap();

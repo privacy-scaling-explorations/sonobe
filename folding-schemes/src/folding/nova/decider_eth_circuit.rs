@@ -12,6 +12,7 @@ use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
+    eq::EqGadget,
     fields::fp::FpVar,
     prelude::CurveVar,
     ToConstraintFieldGadget,
@@ -156,6 +157,7 @@ where
             U_i1,
             W_i1,
             proof: cmT,
+            randomness: r_Fr,
             cf_U_i: nova.cf_U_i,
             cf_W_i: nova.cf_W_i,
             kzg_challenges,
@@ -174,6 +176,8 @@ where
 {
     type ProofDummyCfg = ();
     type Proof = C;
+    type RandomnessDummyCfg = ();
+    type Randomness = CF1<C>;
 
     fn fold_gadget(
         _arith: &R1CS<CF1<C>>,
@@ -183,9 +187,11 @@ where
         U_vec: Vec<FpVar<CF1<C>>>,
         u: CommittedInstanceVar<C>,
         proof: C,
+        randomness: CF1<C>,
     ) -> Result<CommittedInstanceVar<C>, SynthesisError> {
         let cs = transcript.cs();
-        let cmT = NonNativeAffineVar::new_witness(cs.clone(), || Ok(proof))?;
+        let cmT = NonNativeAffineVar::new_input(cs.clone(), || Ok(proof))?;
+        let r = FpVar::new_input(cs.clone(), || Ok(randomness))?;
         let r_bits = ChallengeGadget::<C, CommittedInstance<C>>::get_challenge_gadget(
             transcript,
             pp_hash,
@@ -193,7 +199,7 @@ where
             u.clone(),
             Some(cmT),
         )?;
-        let r = Boolean::le_bits_to_fp_var(&r_bits)?;
+        Boolean::le_bits_to_fp_var(&r_bits)?.enforce_equal(&r)?;
 
         NIFSGadget::<C>::fold_committed_instance(r, U, u)
     }

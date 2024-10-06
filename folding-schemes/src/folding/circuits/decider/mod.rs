@@ -104,6 +104,8 @@ pub trait DeciderEnabledNIFS<
 {
     type ProofDummyCfg;
     type Proof: Dummy<Self::ProofDummyCfg>;
+    type RandomnessDummyCfg;
+    type Randomness: Dummy<Self::RandomnessDummyCfg>;
 
     #[allow(clippy::too_many_arguments)]
     fn fold_gadget(
@@ -114,6 +116,7 @@ pub trait DeciderEnabledNIFS<
         U_vec: Vec<FpVar<CF1<C>>>,
         u: IU::Var,
         proof: Self::Proof,
+        randomness: Self::Randomness,
     ) -> Result<RU::Var, SynthesisError>;
 }
 

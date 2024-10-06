@@ -9,6 +9,7 @@ use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
+    eq::EqGadget,
     fields::fp::FpVar,
     groups::CurveVar,
     ToConstraintFieldGadget,
@@ -101,7 +102,7 @@ where
     fn try_from(protogalaxy: ProtoGalaxy<C1, GC1, C2, GC2, FC, CS1, CS2>) -> Result<Self, Error> {
         let mut transcript = PoseidonSponge::<C1::ScalarField>::new(&protogalaxy.poseidon_config);
 
-        let (U_i1, W_i1, proof, _) = Folding::prove(
+        let (U_i1, W_i1, proof, aux) = Folding::prove(
             &mut transcript,
             &protogalaxy.r1cs,
             &protogalaxy.U_i,
@@ -139,6 +140,7 @@ where
             U_i1,
             W_i1,
             proof,
+            randomness: aux.L_X_evals,
             cf_U_i: protogalaxy.cf_U_i,
             cf_W_i: protogalaxy.cf_W_i,
             kzg_challenges,
@@ -160,6 +162,8 @@ impl<C: CurveGroup>
 {
     type Proof = ProtoGalaxyProof<CF1<C>>;
     type ProofDummyCfg = (usize, usize, usize);
+    type Randomness = Vec<CF1<C>>;
+    type RandomnessDummyCfg = usize;
 
     fn fold_gadget(
         _arith: &R1CS<CF1<C>>,
@@ -169,12 +173,18 @@ impl<C: CurveGroup>
         _U_vec: Vec<FpVar<CF1<C>>>,
         u: CommittedInstanceVar<C, INCOMING>,
         proof: Self::Proof,
+        randomness: Self::Randomness,
     ) -> Result<CommittedInstanceVar<C, RUNNING>, SynthesisError> {
         let cs = transcript.cs();
         let F_coeffs = Vec::new_witness(cs.clone(), || Ok(&proof.F_coeffs[..]))?;
         let K_coeffs = Vec::new_witness(cs.clone(), || Ok(&proof.K_coeffs[..]))?;
+        let challenge = Vec::new_input(cs.clone(), || Ok(randomness))?;
 
-        Ok(FoldingGadget::fold_committed_instance(transcript, &U, &[u], F_coeffs, K_coeffs)?.0)
+        let (U_next, L_X_evals) =
+            FoldingGadget::fold_committed_instance(transcript, &U, &[u], F_coeffs, K_coeffs)?;
+        L_X_evals.enforce_equal(&challenge)?;
+
+        Ok(U_next)
     }
 }
 

@@ -22,7 +22,7 @@ use crate::commitment::{
     CommitmentScheme,
 };
 use crate::folding::circuits::CF2;
-use crate::folding::traits::{CommittedInstanceOps, Inputize, WitnessOps};
+use crate::folding::traits::{Inputize, WitnessOps};
 use crate::frontend::FCircuit;
 use crate::Error;
 use crate::{Decider as DeciderTrait, FoldingScheme};
@@ -36,7 +36,10 @@ where
 {
     snark_proof: S::Proof,
     kzg_proofs: [CS::Proof; 2],
-    U_final: CommittedInstance<C>,
+    // cmT and r are values for the last fold, U_{i+1}=NIFS.V(r, U_i, u_i, cmT), and they are
+    // checked in-circuit
+    cmT: C,
+    r: C::ScalarField,
     // the KZG challenges are provided by the prover, but in-circuit they are checked to match
     // the in-circuit computed computed ones.
     kzg_challenges: [C::ScalarField; 2],
@@ -104,7 +107,7 @@ where
     type Proof = Proof<C1, CS1, S>;
     type VerifierParam = VerifierParam<C1, CS1::VerifierParams, S::VerifyingKey>;
     type PublicInput = Vec<C1::ScalarField>;
-    type CommittedInstance = ();
+    type CommittedInstance = Vec<C1>;
 
     fn preprocess(
         mut rng: impl RngCore + CryptoRng,
@@ -149,7 +152,8 @@ where
 
         let circuit = DeciderEthCircuit::<C1, C2, GC2>::try_from(Nova::from(folding_scheme))?;
 
-        let U_final = circuit.U_i1.clone();
+        let cmT = circuit.proof;
+        let r = circuit.randomness;
 
         // get the challenges that have been already computed when preparing the circuit inputs in
         // the above `try_from` call
@@ -171,7 +175,8 @@ where
 
         Ok(Self::Proof {
             snark_proof,
-            U_final,
+            cmT,
+            r,
             kzg_proofs: kzg_proofs.try_into().unwrap(),
             kzg_challenges: kzg_challenges.try_into().unwrap(),
         })
@@ -183,8 +188,8 @@ where
         z_0: Vec<C1::ScalarField>,
         z_i: Vec<C1::ScalarField>,
         // we don't use the instances at the verifier level, since we check them in-circuit
-        _running_instance: &Self::CommittedInstance,
-        _incoming_instance: &Self::CommittedInstance,
+        running_commitments: &Self::CommittedInstance,
+        incoming_commitments: &Self::CommittedInstance,
         proof: &Self::Proof,
     ) -> Result<bool, Error> {
         if i <= C1::ScalarField::one() {
@@ -196,16 +201,26 @@ where
             snark_vp,
             cs_vp,
         } = vp;
-
-        let U = proof.U_final.clone();
+        let U_cmW = running_commitments[0];
+        let U_cmE = running_commitments[1];
+        let u_cmW = incoming_commitments[0];
+        let u_cmE = incoming_commitments[1];
+        if !u_cmE.is_zero() {
+            return Err(Error::NotIncomingCommittedInstance);
+        }
+        let cmW = U_cmW + u_cmW.mul(proof.r);
+        let cmE = U_cmE + proof.cmT.mul(proof.r);
 
         let public_input = [
             &[pp_hash, i][..],
             &z_0,
             &z_i,
-            &U.inputize(),
+            &cmW.inputize(),
+            &cmE.inputize(),
             &proof.kzg_challenges,
             &proof.kzg_proofs.iter().map(|p| p.eval).collect::<Vec<_>>(),
+            &proof.cmT.inputize(),
+            &[proof.r],
         ]
         .concat();
 
@@ -215,8 +230,7 @@ where
             return Err(Error::SNARKVerificationFail);
         }
 
-        for ((cm, &c), pi) in U
-            .get_commitments()
+        for ((cm, &c), pi) in [cmW, cmE]
             .iter()
             .zip(&proof.kzg_challenges)
             .zip(&proof.kzg_proofs)
@@ -236,8 +250,8 @@ pub fn prepare_calldata(
     i: ark_bn254::Fr,
     z_0: Vec<ark_bn254::Fr>,
     z_i: Vec<ark_bn254::Fr>,
-    _running_instance: &CommittedInstance<ark_bn254::G1Projective>,
-    _incoming_instance: &CommittedInstance<ark_bn254::G1Projective>,
+    running_instance: &CommittedInstance<ark_bn254::G1Projective>,
+    incoming_instance: &CommittedInstance<ark_bn254::G1Projective>,
     proof: Proof<ark_bn254::G1Projective, KZG<'static, Bn254>, Groth16<Bn254>>,
 ) -> Result<Vec<u8>, Error> {
     Ok(vec![
@@ -249,18 +263,14 @@ pub fn prepare_calldata(
         z_i.iter()
             .flat_map(|v| v.into_bigint().to_bytes_be())
             .collect::<Vec<u8>>(), // z_i
-        point_to_eth_format(proof.U_final.cmW.into_affine())?, // U_final_cmW
-        point_to_eth_format(proof.U_final.cmE.into_affine())?, // U_final_cmE
-        proof.U_final.u.into_bigint().to_bytes_be(), // U_final_u
-        proof
-            .U_final
-            .x
-            .iter()
-            .flat_map(|v| v.into_bigint().to_bytes_be())
-            .collect::<Vec<u8>>(), // U_final_x
-        point_to_eth_format(proof.snark_proof.a)?, // pA
-        point2_to_eth_format(proof.snark_proof.b)?, // pB
-        point_to_eth_format(proof.snark_proof.c)?, // pC
+        point_to_eth_format(running_instance.cmW.into_affine())?,
+        point_to_eth_format(running_instance.cmE.into_affine())?,
+        point_to_eth_format(incoming_instance.cmW.into_affine())?,
+        point_to_eth_format(proof.cmT.into_affine())?, // cmT
+        proof.r.into_bigint().to_bytes_be(),           // r
+        point_to_eth_format(proof.snark_proof.a)?,     // pA
+        point2_to_eth_format(proof.snark_proof.b)?,    // pB
+        point_to_eth_format(proof.snark_proof.c)?,     // pC
         proof.kzg_challenges[0].into_bigint().to_bytes_be(), // challenge_W
         proof.kzg_challenges[1].into_bigint().to_bytes_be(), // challenge_E
         proof.kzg_proofs[0].eval.into_bigint().to_bytes_be(), // eval W
@@ -303,6 +313,7 @@ pub mod tests {
     use super::*;
     use crate::commitment::pedersen::Pedersen;
     use crate::folding::nova::{PreprocessorParam, ProverParams as NovaProverParams};
+    use crate::folding::traits::CommittedInstanceOps;
     use crate::frontend::utils::CubicFCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
 
@@ -364,8 +375,8 @@ pub mod tests {
             nova.i,
             nova.z_0.clone(),
             nova.z_i.clone(),
-            &(),
-            &(),
+            &nova.U_i.get_commitments(),
+            &nova.u_i.get_commitments(),
             &proof,
         )
         .unwrap();
@@ -373,7 +384,16 @@ pub mod tests {
         println!("Decider verify, {:?}", start.elapsed());
 
         // decider proof verification using the deserialized data
-        let verified = D::verify(decider_vp, nova.i, nova.z_0, nova.z_i, &(), &(), &proof).unwrap();
+        let verified = D::verify(
+            decider_vp,
+            nova.i,
+            nova.z_0,
+            nova.z_i,
+            &nova.U_i.get_commitments(),
+            &nova.u_i.get_commitments(),
+            &proof,
+        )
+        .unwrap();
         assert!(verified);
     }
 
@@ -477,8 +497,8 @@ pub mod tests {
             nova.i,
             nova.z_0.clone(),
             nova.z_i.clone(),
-            &(),
-            &(),
+            &nova.U_i.get_commitments(),
+            &nova.u_i.get_commitments(),
             &proof,
         )
         .unwrap();
@@ -533,8 +553,8 @@ pub mod tests {
             i_deserialized,
             z_0_deserialized,
             z_i_deserialized,
-            &(),
-            &(),
+            &nova.U_i.get_commitments(),
+            &nova.u_i.get_commitments(),
             &proof_deserialized,
         )
         .unwrap();

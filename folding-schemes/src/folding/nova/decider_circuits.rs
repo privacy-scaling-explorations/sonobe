@@ -102,6 +102,7 @@ where
             U_i1,
             W_i1,
             proof: cmT,
+            randomness: r_Fr,
             cf_U_i: nova.cf_U_i,
             kzg_challenges,
             kzg_evaluations,

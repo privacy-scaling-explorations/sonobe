@@ -1,3 +1,4 @@
+#![allow(unused)]
 use crate::commitment::CommitmentScheme;
 use crate::transcript::AbsorbNonNative;
 use crate::utils::mle::dense_vec_to_dense_mle;

@@ -1282,10 +1282,64 @@ pub mod tests {
         }
         assert_eq!(Fr::from(num_steps as u32), nova.i);
 
+        // serialize the Nova Prover & Verifier params. These params are the trusted setup of the commitment schemes used
+        let mut nova_pp_serialized = vec![];
+        nova_params
+            .0
+            .serialize_compressed(&mut nova_pp_serialized)
+            .unwrap();
+        let mut nova_vp_serialized = vec![];
+        nova_params
+            .1
+            .serialize_compressed(&mut nova_vp_serialized)
+            .unwrap();
+
+        // deserialize the Nova params
+        let _nova_pp_deserialized =
+            ProverParams::<Projective, Projective2, CS1, CS2, H>::deserialize_compressed(
+                &mut nova_pp_serialized.as_slice(),
+            )
+            .unwrap();
+        let nova_vp_deserialized =
+            VerifierParams::<Projective, Projective2, CS1, CS2, H>::deserialize_with_mode::<
+                GVar,
+                GVar2,
+                CubicFCircuit<Fr>,
+                _,
+            >(
+                &mut nova_vp_serialized.as_slice(),
+                ark_serialize::Compress::Yes,
+                ark_serialize::Validate::Yes,
+                (), // fcircuit_params
+            )
+            .unwrap();
+
         let ivc_proof = nova.ivc_proof();
+
+        // serialize IVCProof
+        let mut ivc_proof_serialized = vec![];
+        assert!(ivc_proof
+            .serialize_compressed(&mut ivc_proof_serialized)
+            .is_ok());
+        // deserialize IVCProof
+        let ivc_proof_deserialized = <Nova::<
+            Projective,
+            GVar,
+            Projective2,
+            GVar2,
+            CubicFCircuit<Fr>,
+            CS1,
+            CS2,
+            H,
+        > as FoldingScheme<Projective,Projective2, CubicFCircuit<Fr>>>::IVCProof::deserialize_compressed(
+            ivc_proof_serialized.as_slice()
+        )
+        .unwrap();
+
+        // verify the deserialized IVCProof with the deserialized VerifierParams
         Nova::<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>, CS1, CS2, H>::verify(
-            nova_params.1, // Nova's verifier params
-            ivc_proof,
+            nova_vp_deserialized, // Nova's verifier params
+            ivc_proof_deserialized,
         )
         .unwrap();
 

@@ -234,9 +234,7 @@ pub mod tests {
     use super::*;
     use crate::commitment::{kzg::KZG, pedersen::Pedersen};
     use crate::folding::hypernova::cccs::CCCS;
-    use crate::folding::hypernova::{
-        PreprocessorParam, ProverParams, VerifierParams as HyperNovaVerifierParams,
-    };
+    use crate::folding::hypernova::PreprocessorParam;
     use crate::folding::nova::decider_eth::VerifierParam;
     use crate::frontend::utils::CubicFCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
@@ -371,33 +369,19 @@ pub mod tests {
             .serialize_compressed(&mut hypernova_vp_serialized)
             .unwrap();
 
-        let hypernova_pp_deserialized = ProverParams::<
-            Projective,
-            Projective2,
-            KZG<'static, Bn254>,
-            Pedersen<Projective2>,
-            false,
-        >::deserialize_with_mode(
+        let hypernova_pp_deserialized = HN::pp_deserialize_with_mode(
             hypernova_pp_serialized.as_slice(),
             Compress::Yes,
             Validate::No,
-            &hypernova_params.0.ccs,
-            &poseidon_config,
+            (), // FCircuit's Params
         )
         .unwrap();
 
-        let hypernova_vp_deserialized = HyperNovaVerifierParams::<
-            Projective,
-            Projective2,
-            KZG<'static, Bn254>,
-            Pedersen<Projective2>,
-            false,
-        >::deserialize_verifier_params(
+        let hypernova_vp_deserialized = HN::vp_deserialize_with_mode(
             hypernova_vp_serialized.as_slice(),
             Compress::Yes,
             Validate::No,
-            &hypernova_params.0.ccs.unwrap(),
-            &poseidon_config,
+            (), // FCircuit's Params
         )
         .unwrap();
 

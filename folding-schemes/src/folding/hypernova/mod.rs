@@ -6,9 +6,7 @@ use ark_crypto_primitives::sponge::{
 use ark_ec::{CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
-use ark_serialize::{
-    CanonicalDeserialize, CanonicalSerialize, Compress, SerializationError, Validate,
-};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress, SerializationError};
 use ark_std::{fmt::Debug, marker::PhantomData, rand::RngCore, One, Zero};
 
 pub mod cccs;
@@ -39,6 +37,7 @@ use crate::folding::{
     traits::{CommittedInstanceOps, Dummy, WitnessOps},
 };
 use crate::frontend::FCircuit;
+use crate::transcript::poseidon::poseidon_canonical_config;
 use crate::utils::{get_cm_coordinates, pp_hash};
 use crate::Error;
 use crate::{
@@ -140,86 +139,6 @@ impl<
     }
 }
 
-impl<
-        C1: CurveGroup,
-        C2: CurveGroup,
-        CS1: CommitmentScheme<C1, H>,
-        CS2: CommitmentScheme<C2, H>,
-        const H: bool,
-    > ProverParams<C1, C2, CS1, CS2, H>
-{
-    pub fn deserialize_with_mode<R: std::io::prelude::Read>(
-        mut reader: R,
-        compress: Compress,
-        validate: Validate,
-        ccs: &Option<CCS<C1::ScalarField>>,
-        poseidon_config: &PoseidonConfig<C1::ScalarField>,
-    ) -> Result<Self, SerializationError> {
-        let cs_pp = CS1::ProverParams::deserialize_with_mode(&mut reader, compress, validate)?;
-        let cf_cs_pp = CS2::ProverParams::deserialize_with_mode(&mut reader, compress, validate)?;
-
-        Ok(ProverParams {
-            cs_pp,
-            cf_cs_pp,
-            ccs: ccs.clone(),
-            poseidon_config: poseidon_config.clone(),
-        })
-    }
-}
-
-impl<
-        C1: CurveGroup,
-        C2: CurveGroup,
-        CS1: CommitmentScheme<C1, H>,
-        CS2: CommitmentScheme<C2, H>,
-        const H: bool,
-    > CanonicalSerialize for VerifierParams<C1, C2, CS1, CS2, H>
-{
-    fn serialize_with_mode<W: std::io::prelude::Write>(
-        &self,
-        mut writer: W,
-        compress: Compress,
-    ) -> Result<(), SerializationError> {
-        self.cf_r1cs.serialize_with_mode(&mut writer, compress)?;
-        self.cs_vp.serialize_with_mode(&mut writer, compress)?;
-        self.cf_cs_vp.serialize_with_mode(&mut writer, compress)
-    }
-
-    fn serialized_size(&self, compress: Compress) -> usize {
-        self.cf_r1cs.serialized_size(compress)
-            + self.cs_vp.serialized_size(compress)
-            + self.cf_cs_vp.serialized_size(compress)
-    }
-}
-
-impl<
-        C1: CurveGroup,
-        C2: CurveGroup,
-        CS1: CommitmentScheme<C1, H>,
-        CS2: CommitmentScheme<C2, H>,
-        const H: bool,
-    > VerifierParams<C1, C2, CS1, CS2, H>
-{
-    pub fn deserialize_verifier_params<R: std::io::Read>(
-        mut reader: R,
-        compress: Compress,
-        validate: Validate,
-        ccs: &CCS<C1::ScalarField>,
-        poseidon_config: &PoseidonConfig<C1::ScalarField>,
-    ) -> Result<Self, SerializationError> {
-        let cf_r1cs = R1CS::deserialize_with_mode(&mut reader, compress, validate)?;
-        let cs_vp = CS1::VerifierParams::deserialize_with_mode(&mut reader, compress, validate)?;
-        let cf_cs_vp = CS2::VerifierParams::deserialize_with_mode(&mut reader, compress, validate)?;
-        Ok(VerifierParams {
-            ccs: ccs.clone(),
-            poseidon_config: poseidon_config.clone(),
-            cf_r1cs,
-            cs_vp,
-            cf_cs_vp,
-        })
-    }
-}
-
 /// Verification parameters for HyperNova-based IVC
 #[derive(Debug, Clone)]
 pub struct VerifierParams<
@@ -239,6 +158,27 @@ pub struct VerifierParams<
     pub cs_vp: CS1::VerifierParams,
     /// Verification parameters of the underlying commitment scheme over C2
     pub cf_cs_vp: CS2::VerifierParams,
+}
+
+impl<C1, C2, CS1, CS2, const H: bool> CanonicalSerialize for VerifierParams<C1, C2, CS1, CS2, H>
+where
+    C1: CurveGroup,
+    C2: CurveGroup,
+    CS1: CommitmentScheme<C1, H>,
+    CS2: CommitmentScheme<C2, H>,
+{
+    fn serialize_with_mode<W: std::io::prelude::Write>(
+        &self,
+        mut writer: W,
+        compress: ark_serialize::Compress,
+    ) -> Result<(), ark_serialize::SerializationError> {
+        self.cs_vp.serialize_with_mode(&mut writer, compress)?;
+        self.cf_cs_vp.serialize_with_mode(&mut writer, compress)
+    }
+
+    fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
+        self.cs_vp.serialized_size(compress) + self.cf_cs_vp.serialized_size(compress)
+    }
 }
 
 impl<C1, C2, CS1, CS2, const H: bool> VerifierParams<C1, C2, CS1, CS2, H>
@@ -540,6 +480,73 @@ where
         (Vec<Self::RunningInstance>, Vec<Self::IncomingInstance>);
     type CFInstance = (CycleFoldCommittedInstance<C2>, CycleFoldWitness<C2>);
     type IVCProof = IVCProof<C1, C2>;
+
+    fn pp_deserialize_with_mode<R: std::io::prelude::Read>(
+        mut reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+        fc_params: FC::Params,
+    ) -> Result<Self::ProverParam, Error> {
+        let poseidon_config = poseidon_canonical_config::<C1::ScalarField>();
+
+        // generate the r1cs & cf_r1cs needed for the VerifierParams. In this way we avoid needing
+        // to serialize them, saving significant space in the VerifierParams serialized size.
+
+        // main circuit R1CS:
+        let f_circuit = FC::new(fc_params)?;
+        let augmented_F_circuit = AugmentedFCircuit::<C1, C2, GC2, FC, MU, NU>::empty(
+            &poseidon_config,
+            f_circuit.clone(),
+            None,
+        )?;
+        let ccs = augmented_F_circuit.ccs;
+
+        let cs_pp = CS1::ProverParams::deserialize_with_mode(&mut reader, compress, validate)?;
+        let cf_cs_pp = CS2::ProverParams::deserialize_with_mode(&mut reader, compress, validate)?;
+
+        Ok(ProverParams {
+            poseidon_config,
+            cs_pp,
+            cf_cs_pp,
+            ccs: Some(ccs),
+        })
+    }
+
+    fn vp_deserialize_with_mode<R: std::io::prelude::Read>(
+        mut reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+        fc_params: FC::Params,
+    ) -> Result<Self::VerifierParam, Error> {
+        let poseidon_config = poseidon_canonical_config::<C1::ScalarField>();
+
+        // generate the r1cs & cf_r1cs needed for the VerifierParams. In this way we avoid needing
+        // to serialize them, saving significant space in the VerifierParams serialized size.
+
+        // main circuit R1CS:
+        let f_circuit = FC::new(fc_params)?;
+        let augmented_F_circuit = AugmentedFCircuit::<C1, C2, GC2, FC, MU, NU>::empty(
+            &poseidon_config,
+            f_circuit.clone(),
+            None,
+        )?;
+        let ccs = augmented_F_circuit.ccs;
+
+        // CycleFold circuit R1CS
+        let cf_circuit = HyperNovaCycleFoldCircuit::<C1, GC1, MU, NU>::empty();
+        let cf_r1cs = get_r1cs_from_cs::<C2::ScalarField>(cf_circuit)?;
+
+        let cs_vp = CS1::VerifierParams::deserialize_with_mode(&mut reader, compress, validate)?;
+        let cf_cs_vp = CS2::VerifierParams::deserialize_with_mode(&mut reader, compress, validate)?;
+
+        Ok(VerifierParams {
+            poseidon_config,
+            ccs,
+            cf_r1cs,
+            cs_vp,
+            cf_cs_vp,
+        })
+    }
 
     fn preprocess(
         mut rng: impl RngCore,

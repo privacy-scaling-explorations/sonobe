@@ -343,9 +343,7 @@ pub mod tests {
 
     use super::*;
     use crate::commitment::pedersen::Pedersen;
-    use crate::folding::nova::{
-        PreprocessorParam, ProverParams as NovaProverParams, VerifierParams as NovaVerifierParams,
-    };
+    use crate::folding::nova::{PreprocessorParam, ProverParams as NovaProverParams};
     use crate::frontend::utils::CubicFCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
 
@@ -490,13 +488,11 @@ pub mod tests {
             &mut nova_pp_serialized.as_slice()
         )
         .unwrap();
-        let nova_vp_deserialized = NovaVerifierParams::<
+        let nova_vp_deserialized = <N as FoldingScheme<
             Projective,
             Projective2,
-            KZG<'static, Bn254>,
-            Pedersen<Projective2>,
-            false,
-        >::deserialize_with_mode::<GVar, GVar2, CubicFCircuit<Fr>, _>(
+            CubicFCircuit<Fr>,
+        >>::vp_deserialize_with_mode(
             &mut nova_vp_serialized.as_slice(),
             ark_serialize::Compress::Yes,
             ark_serialize::Validate::Yes,

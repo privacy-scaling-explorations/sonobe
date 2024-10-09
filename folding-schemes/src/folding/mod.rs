@@ -112,6 +112,27 @@ pub mod tests {
         // build the FS from the given IVCProof, FC::Params, ProverParams and VerifierParams
         let mut new_fs = FS::from_ivc_proof(deserialized_ivc_proof, (), fs_params.clone()).unwrap();
 
+        // serialize the Nova params
+        let mut fs_pp_serialized = vec![];
+        fs_params
+            .0
+            .serialize_compressed(&mut fs_pp_serialized)
+            .unwrap();
+        let mut fs_vp_serialized = vec![];
+        fs_params
+            .1
+            .serialize_compressed(&mut fs_vp_serialized)
+            .unwrap();
+
+        // deserialize the Nova params. This would be done by the client reading from a file
+        let _fs_pp_deserialized = FS::pp_deserialize_with_mode(
+            &mut fs_pp_serialized.as_slice(),
+            ark_serialize::Compress::Yes,
+            ark_serialize::Validate::Yes,
+            (), // FCircuit's Params
+        )
+        .unwrap();
+
         // perform several IVC steps on both the original FS instance and the recovered from the
         // serialization new FS instance
         let num_steps: usize = 3;
@@ -123,9 +144,28 @@ pub mod tests {
         // check that the IVCProofs from both FS instances are equal
         assert_eq!(new_fs.ivc_proof(), fs.ivc_proof());
 
-        // verify the last IVCProof from the recovered from serialization FS
+        let fs_vp_deserialized = FS::vp_deserialize_with_mode(
+            &mut fs_vp_serialized.as_slice(),
+            ark_serialize::Compress::Yes,
+            ark_serialize::Validate::Yes,
+            (), // fcircuit_params
+        )
+        .unwrap();
+
+        // get the IVCProof
         let ivc_proof: FS::IVCProof = new_fs.ivc_proof();
-        FS::verify(fs_params.1.clone(), ivc_proof.clone()).unwrap();
+
+        // serialize IVCProof
+        let mut ivc_proof_serialized = vec![];
+        assert!(ivc_proof
+            .serialize_compressed(&mut ivc_proof_serialized)
+            .is_ok());
+        // deserialize IVCProof
+        let ivc_proof_deserialized =
+            FS::IVCProof::deserialize_compressed(ivc_proof_serialized.as_slice()).unwrap();
+
+        // verify the last IVCProof from the recovered from serialization FS
+        FS::verify(fs_vp_deserialized.clone(), ivc_proof_deserialized).unwrap();
 
         Ok(())
     }

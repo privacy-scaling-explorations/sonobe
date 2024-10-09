@@ -125,13 +125,37 @@ where
     FC: FCircuit<C1::ScalarField>,
 {
     type PreprocessorParam: Debug + Clone;
-    type ProverParam: Debug + Clone;
-    type VerifierParam: Debug + Clone;
+    type ProverParam: Debug + Clone + CanonicalSerialize;
+    type VerifierParam: Debug + Clone + CanonicalSerialize;
     type RunningInstance: Debug; // contains the CommittedInstance + Witness
     type IncomingInstance: Debug; // contains the CommittedInstance + Witness
     type MultiCommittedInstanceWithWitness: Debug; // type used for the extra instances in the multi-instance folding setting
     type CFInstance: Debug; // CycleFold CommittedInstance & Witness
     type IVCProof: PartialEq + Eq + Clone + Debug + CanonicalSerialize + CanonicalDeserialize;
+
+    /// deserialize Self::ProverParam and recover the not serialized data that is recomputed on the
+    /// fly to save serialized bytes.
+    /// Internally it generates the r1cs/ccs & cf_r1cs needed for the VerifierParams. In this way
+    /// we avoid needing to serialize them, saving significant space in the VerifierParams
+    /// serialized size.
+    fn pp_deserialize_with_mode<R: std::io::prelude::Read>(
+        reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+        fc_params: FC::Params, // FCircuit params
+    ) -> Result<Self::ProverParam, Error>;
+
+    /// deserialize Self::VerifierParam and recover the not serialized data that is recomputed on
+    /// the fly to save serialized bytes.
+    /// Internally it generates the r1cs/ccs & cf_r1cs needed for the VerifierParams. In this way
+    /// we avoid needing to serialize them, saving significant space in the VerifierParams
+    /// serialized size.
+    fn vp_deserialize_with_mode<R: std::io::prelude::Read>(
+        reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+        fc_params: FC::Params, // FCircuit params
+    ) -> Result<Self::VerifierParam, Error>;
 
     fn preprocess(
         rng: impl RngCore,

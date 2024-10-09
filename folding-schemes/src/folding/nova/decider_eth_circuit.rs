@@ -589,7 +589,7 @@ pub mod tests {
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::{
         rand::{thread_rng, Rng},
-        One, UniformRand,
+        UniformRand,
     };
     use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
 
@@ -810,18 +810,8 @@ pub mod tests {
         // generate a Nova instance and do a step of it
         let mut nova = N::init(&nova_params, F_circuit, z_0.clone()).unwrap();
         nova.prove_step(&mut rng, vec![], None).unwrap();
-        let ivc_v = nova.clone();
-        let (running_instance, incoming_instance, cyclefold_instance) = ivc_v.instances();
-        N::verify(
-            nova_params.1, // verifier_params
-            z_0,
-            ivc_v.z_i,
-            Fr::one(),
-            running_instance,
-            incoming_instance,
-            cyclefold_instance,
-        )
-        .unwrap();
+        let ivc_proof = nova.ivc_proof();
+        N::verify(nova_params.1, ivc_proof).unwrap();
 
         // load the DeciderEthCircuit from the Nova instance
         let decider_eth_circuit = DeciderEthCircuit::<

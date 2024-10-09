@@ -491,7 +491,6 @@ where
 pub mod tests {
     use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
     use ark_relations::r1cs::ConstraintSystem;
-    use ark_std::One;
     use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
 
     use super::*;
@@ -533,18 +532,9 @@ pub mod tests {
         // generate a Nova instance and do a step of it
         let mut nova = N::init(&nova_params, F_circuit, z_0.clone()).unwrap();
         nova.prove_step(&mut rng, vec![], None).unwrap();
-        let ivc_v = nova.clone();
-        let (running_instance, incoming_instance, cyclefold_instance) = ivc_v.instances();
-        N::verify(
-            nova_params.1, // verifier_params
-            z_0,
-            ivc_v.z_i,
-            Fr::one(),
-            running_instance,
-            incoming_instance,
-            cyclefold_instance,
-        )
-        .unwrap();
+        // verify the IVC
+        let ivc_proof = nova.ivc_proof();
+        N::verify(nova_params.1, ivc_proof).unwrap();
 
         // load the DeciderCircuit 1 & 2 from the Nova instance
         let decider_circuit1 =

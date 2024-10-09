@@ -4,6 +4,7 @@
 
 use ark_ec::{pairing::Pairing, CurveGroup};
 use ark_ff::PrimeField;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::rand::CryptoRng;
 use ark_std::{fmt::Debug, rand::RngCore};
 use thiserror::Error;
@@ -107,8 +108,8 @@ pub enum Error {
     JSONSerdeError(String),
     #[error("Multi instances folding not supported in this scheme")]
     NoMultiInstances,
-    #[error("Missing 'other' instances, since this is a multi-instances folding scheme")]
-    MissingOtherInstances,
+    #[error("Missing 'other' instances, since this is a multi-instances folding scheme. Expected number of instances, mu:{0}, nu:{1}")]
+    MissingOtherInstances(usize, usize),
 }
 
 /// FoldingScheme defines trait that is implemented by the diverse folding schemes. It is defined
@@ -124,12 +125,37 @@ where
     FC: FCircuit<C1::ScalarField>,
 {
     type PreprocessorParam: Debug + Clone;
-    type ProverParam: Debug + Clone;
-    type VerifierParam: Debug + Clone;
+    type ProverParam: Debug + Clone + CanonicalSerialize;
+    type VerifierParam: Debug + Clone + CanonicalSerialize;
     type RunningInstance: Debug; // contains the CommittedInstance + Witness
     type IncomingInstance: Debug; // contains the CommittedInstance + Witness
     type MultiCommittedInstanceWithWitness: Debug; // type used for the extra instances in the multi-instance folding setting
     type CFInstance: Debug; // CycleFold CommittedInstance & Witness
+    type IVCProof: PartialEq + Eq + Clone + Debug + CanonicalSerialize + CanonicalDeserialize;
+
+    /// deserialize Self::ProverParam and recover the not serialized data that is recomputed on the
+    /// fly to save serialized bytes.
+    /// Internally it generates the r1cs/ccs & cf_r1cs needed for the VerifierParams. In this way
+    /// we avoid needing to serialize them, saving significant space in the VerifierParams
+    /// serialized size.
+    fn pp_deserialize_with_mode<R: std::io::prelude::Read>(
+        reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+        fc_params: FC::Params, // FCircuit params
+    ) -> Result<Self::ProverParam, Error>;
+
+    /// deserialize Self::VerifierParam and recover the not serialized data that is recomputed on
+    /// the fly to save serialized bytes.
+    /// Internally it generates the r1cs/ccs & cf_r1cs needed for the VerifierParams. In this way
+    /// we avoid needing to serialize them, saving significant space in the VerifierParams
+    /// serialized size.
+    fn vp_deserialize_with_mode<R: std::io::prelude::Read>(
+        reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+        fc_params: FC::Params, // FCircuit params
+    ) -> Result<Self::VerifierParam, Error>;
 
     fn preprocess(
         rng: impl RngCore,
@@ -149,29 +175,23 @@ where
         other_instances: Option<Self::MultiCommittedInstanceWithWitness>,
     ) -> Result<(), Error>;
 
-    // returns the state at the current step
+    /// returns the state at the current step
     fn state(&self) -> Vec<C1::ScalarField>;
 
-    // returns the instances at the current step, in the following order:
-    // (running_instance, incoming_instance, cyclefold_instance)
-    fn instances(
-        &self,
-    ) -> (
-        Self::RunningInstance,
-        Self::IncomingInstance,
-        Self::CFInstance,
-    );
+    /// returns the last IVC state proof, which can be verified in the `verify` method
+    fn ivc_proof(&self) -> Self::IVCProof;
 
-    fn verify(
-        vp: Self::VerifierParam,
-        z_0: Vec<C1::ScalarField>, // initial state
-        z_i: Vec<C1::ScalarField>, // last state
-        // number of steps between the initial state and the last state
-        num_steps: C1::ScalarField,
-        running_instance: Self::RunningInstance,
-        incoming_instance: Self::IncomingInstance,
-        cyclefold_instance: Self::CFInstance,
-    ) -> Result<(), Error>;
+    /// constructs the FoldingScheme instance from the given IVCProof, ProverParams, VerifierParams
+    /// and PoseidonConfig.
+    /// This method is useful for when the IVCProof is sent between different parties, so that they
+    /// can continue iterating the IVC from the received IVCProof.
+    fn from_ivc_proof(
+        ivc_proof: Self::IVCProof,
+        fcircuit_params: FC::Params,
+        params: (Self::ProverParam, Self::VerifierParam),
+    ) -> Result<Self, Error>;
+
+    fn verify(vp: Self::VerifierParam, ivc_proof: Self::IVCProof) -> Result<(), Error>;
 }
 
 /// Trait with auxiliary methods for multi-folding schemes (ie. HyperNova, ProtoGalaxy, etc),

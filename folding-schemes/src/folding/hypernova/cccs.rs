@@ -18,7 +18,7 @@ use crate::utils::virtual_polynomial::{build_eq_x_r_vec, VirtualPolynomial};
 use crate::Error;
 
 /// Committed CCS instance
-#[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct CCCS<C: CurveGroup> {
     // Commitment to witness
     pub C: C,

@@ -14,3 +14,5 @@ solidity-verifiers/generated
 examples/*.sol
 examples/*.calldata
 examples/*.inputs
+*.serialized
+*/*.serialized

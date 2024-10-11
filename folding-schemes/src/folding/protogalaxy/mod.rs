@@ -15,7 +15,7 @@ use ark_r1cs_std::{
 use ark_relations::r1cs::{
     ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, Namespace, SynthesisError,
 };
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError, Valid};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Valid};
 use ark_std::{
     borrow::Borrow, cmp::max, fmt::Debug, log2, marker::PhantomData, rand::RngCore, One, Zero,
 };
@@ -430,21 +430,6 @@ where
 
     fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
         self.cs_vp.serialized_size(compress) + self.cf_cs_vp.serialized_size(compress)
-    }
-}
-impl<C1, C2, CS1, CS2> CanonicalDeserialize for VerifierParams<C1, C2, CS1, CS2>
-where
-    C1: CurveGroup,
-    C2: CurveGroup,
-    CS1: CommitmentScheme<C1>,
-    CS2: CommitmentScheme<C2>,
-{
-    fn deserialize_with_mode<R: std::io::prelude::Read>(
-        mut _reader: R,
-        _compress: ark_serialize::Compress,
-        _validate: ark_serialize::Validate,
-    ) -> Result<Self, SerializationError> {
-        unimplemented!("use FoldingScheme::vp_deserialize_with_mode method instead");
     }
 }
 

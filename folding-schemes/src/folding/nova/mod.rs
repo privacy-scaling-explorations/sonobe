@@ -8,7 +8,7 @@ use ark_ec::{CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError, Valid};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Valid};
 use ark_std::fmt::Debug;
 use ark_std::rand::RngCore;
 use ark_std::{One, UniformRand, Zero};
@@ -367,21 +367,6 @@ where
 
     fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
         self.cs_vp.serialized_size(compress) + self.cf_cs_vp.serialized_size(compress)
-    }
-}
-impl<C1, C2, CS1, CS2, const H: bool> CanonicalDeserialize for VerifierParams<C1, C2, CS1, CS2, H>
-where
-    C1: CurveGroup,
-    C2: CurveGroup,
-    CS1: CommitmentScheme<C1, H>,
-    CS2: CommitmentScheme<C2, H>,
-{
-    fn deserialize_with_mode<R: std::io::prelude::Read>(
-        mut _reader: R,
-        _compress: ark_serialize::Compress,
-        _validate: ark_serialize::Validate,
-    ) -> Result<Self, SerializationError> {
-        unimplemented!("use FoldingScheme::vp_deserialize_with_mode method instead");
     }
 }
 

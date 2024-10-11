@@ -15,6 +15,7 @@ use ark_r1cs_std::{
 use ark_relations::r1cs::{
     ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, Namespace, SynthesisError,
 };
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Valid};
 use ark_std::{
     borrow::Borrow, cmp::max, fmt::Debug, log2, marker::PhantomData, rand::RngCore, One, Zero,
 };
@@ -36,6 +37,7 @@ use crate::{
         CF1, CF2,
     },
     frontend::{utils::DummyCircuit, FCircuit},
+    transcript::poseidon::poseidon_canonical_config,
     utils::{get_cm_coordinates, pp_hash},
     Error, FoldingScheme,
 };
@@ -74,7 +76,7 @@ pub type ProtoGalaxyCycleFoldCircuit<C, GC> = CycleFoldCircuit<ProtoGalaxyCycleF
 /// We use `TYPE` to distinguish between incoming and running instances, as
 /// they have slightly different structures (e.g., length of `betas`) and
 /// behaviors (e.g., in satisfiability checks).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct CommittedInstance<C: CurveGroup, const TYPE: bool> {
     phi: C,
     betas: Vec<C::ScalarField>,
@@ -207,7 +209,7 @@ impl<C: CurveGroup, const TYPE: bool> CommittedInstanceVarOps<C> for CommittedIn
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Witness<F: PrimeField> {
     w: Vec<F>,
     r_w: F,
@@ -313,6 +315,68 @@ where
     /// Proving parameters of the underlying commitment scheme over C2
     pub cf_cs_params: CS2::ProverParams,
 }
+impl<C1, C2, CS1, CS2> CanonicalSerialize for ProverParams<C1, C2, CS1, CS2>
+where
+    C1: CurveGroup,
+    C2: CurveGroup,
+    CS1: CommitmentScheme<C1, false>,
+    CS2: CommitmentScheme<C2, false>,
+{
+    fn serialize_with_mode<W: std::io::prelude::Write>(
+        &self,
+        mut writer: W,
+        compress: ark_serialize::Compress,
+    ) -> Result<(), ark_serialize::SerializationError> {
+        self.cs_params.serialize_with_mode(&mut writer, compress)?;
+        self.cf_cs_params.serialize_with_mode(&mut writer, compress)
+    }
+
+    fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
+        self.cs_params.serialized_size(compress) + self.cf_cs_params.serialized_size(compress)
+    }
+}
+impl<C1, C2, CS1, CS2> Valid for ProverParams<C1, C2, CS1, CS2>
+where
+    C1: CurveGroup,
+    C2: CurveGroup,
+    CS1: CommitmentScheme<C1>,
+    CS2: CommitmentScheme<C2>,
+{
+    fn check(&self) -> Result<(), ark_serialize::SerializationError> {
+        self.poseidon_config.full_rounds.check()?;
+        self.poseidon_config.partial_rounds.check()?;
+        self.poseidon_config.alpha.check()?;
+        self.poseidon_config.ark.check()?;
+        self.poseidon_config.mds.check()?;
+        self.poseidon_config.rate.check()?;
+        self.poseidon_config.capacity.check()?;
+        self.cs_params.check()?;
+        self.cf_cs_params.check()?;
+        Ok(())
+    }
+}
+impl<C1, C2, CS1, CS2> CanonicalDeserialize for ProverParams<C1, C2, CS1, CS2>
+where
+    C1: CurveGroup,
+    C2: CurveGroup,
+    CS1: CommitmentScheme<C1, false>,
+    CS2: CommitmentScheme<C2, false>,
+{
+    fn deserialize_with_mode<R: std::io::prelude::Read>(
+        mut reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        let cs_params = CS1::ProverParams::deserialize_with_mode(&mut reader, compress, validate)?;
+        let cf_cs_params =
+            CS2::ProverParams::deserialize_with_mode(&mut reader, compress, validate)?;
+        Ok(ProverParams {
+            poseidon_config: poseidon_canonical_config::<C1::ScalarField>(),
+            cs_params,
+            cf_cs_params,
+        })
+    }
+}
 
 /// Verification parameters for ProtoGalaxy-based IVC
 #[derive(Debug, Clone)]
@@ -335,6 +399,40 @@ where
     pub cf_cs_vp: CS2::VerifierParams,
 }
 
+impl<C1, C2, CS1, CS2> Valid for VerifierParams<C1, C2, CS1, CS2>
+where
+    C1: CurveGroup,
+    C2: CurveGroup,
+    CS1: CommitmentScheme<C1>,
+    CS2: CommitmentScheme<C2>,
+{
+    fn check(&self) -> Result<(), ark_serialize::SerializationError> {
+        self.cs_vp.check()?;
+        self.cf_cs_vp.check()?;
+        Ok(())
+    }
+}
+impl<C1, C2, CS1, CS2> CanonicalSerialize for VerifierParams<C1, C2, CS1, CS2>
+where
+    C1: CurveGroup,
+    C2: CurveGroup,
+    CS1: CommitmentScheme<C1>,
+    CS2: CommitmentScheme<C2>,
+{
+    fn serialize_with_mode<W: std::io::prelude::Write>(
+        &self,
+        mut writer: W,
+        compress: ark_serialize::Compress,
+    ) -> Result<(), ark_serialize::SerializationError> {
+        self.cs_vp.serialize_with_mode(&mut writer, compress)?;
+        self.cf_cs_vp.serialize_with_mode(&mut writer, compress)
+    }
+
+    fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
+        self.cs_vp.serialized_size(compress) + self.cf_cs_vp.serialized_size(compress)
+    }
+}
+
 impl<C1, C2, CS1, CS2> VerifierParams<C1, C2, CS1, CS2>
 where
     C1: CurveGroup,
@@ -355,6 +453,23 @@ where
             &self.poseidon_config,
         )
     }
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
+pub struct IVCProof<C1, C2>
+where
+    C1: CurveGroup,
+    C2: CurveGroup,
+{
+    pub i: C1::ScalarField,
+    pub z_0: Vec<C1::ScalarField>,
+    pub z_i: Vec<C1::ScalarField>,
+    pub W_i: Witness<C1::ScalarField>,
+    pub U_i: CommittedInstance<C1, true>,
+    pub w_i: Witness<C1::ScalarField>,
+    pub u_i: CommittedInstance<C1, false>,
+    pub cf_W_i: CycleFoldWitness<C2>,
+    pub cf_U_i: CycleFoldCommittedInstance<C2>,
 }
 
 /// Implements ProtoGalaxy+CycleFold's IVC, described in [ProtoGalaxy] and
@@ -536,6 +651,68 @@ where
     type MultiCommittedInstanceWithWitness =
         (CommittedInstance<C1, false>, Witness<C1::ScalarField>);
     type CFInstance = (CycleFoldCommittedInstance<C2>, CycleFoldWitness<C2>);
+    type IVCProof = IVCProof<C1, C2>;
+
+    fn pp_deserialize_with_mode<R: std::io::prelude::Read>(
+        reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+        _fc_params: FC::Params, // FCircuit params
+    ) -> Result<Self::ProverParam, Error> {
+        Ok(Self::ProverParam::deserialize_with_mode(
+            reader, compress, validate,
+        )?)
+    }
+
+    fn vp_deserialize_with_mode<R: std::io::prelude::Read>(
+        mut reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+        fc_params: FC::Params,
+    ) -> Result<Self::VerifierParam, Error> {
+        let poseidon_config = poseidon_canonical_config::<C1::ScalarField>();
+
+        // generate the r1cs & cf_r1cs needed for the VerifierParams. In this way we avoid needing
+        // to serialize them, saving significant space in the VerifierParams serialized size.
+
+        let f_circuit = FC::new(fc_params)?;
+        let k = 1;
+        let d = 2;
+        let t = Self::compute_t(&poseidon_config, &f_circuit, d, k)?;
+
+        // main circuit R1CS:
+        let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
+        let augmented_F_circuit = AugmentedFCircuit::<C1, C2, GC2, FC>::empty(
+            &poseidon_config,
+            f_circuit.clone(),
+            t,
+            d,
+            k,
+        );
+        augmented_F_circuit.generate_constraints(cs.clone())?;
+        cs.finalize();
+        let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
+        let r1cs = extract_r1cs::<C1::ScalarField>(&cs);
+
+        // CycleFold circuit R1CS
+        let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
+        let cf_circuit = ProtoGalaxyCycleFoldCircuit::<C1, GC1>::empty();
+        cf_circuit.generate_constraints(cs2.clone())?;
+        cs2.finalize();
+        let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
+        let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2);
+
+        let cs_vp = CS1::VerifierParams::deserialize_with_mode(&mut reader, compress, validate)?;
+        let cf_cs_vp = CS2::VerifierParams::deserialize_with_mode(&mut reader, compress, validate)?;
+
+        Ok(Self::VerifierParam {
+            poseidon_config,
+            r1cs,
+            cf_r1cs,
+            cs_vp,
+            cf_cs_vp,
+        })
+    }
 
     fn preprocess(
         mut rng: impl RngCore,
@@ -898,35 +1075,79 @@ where
     fn state(&self) -> Vec<C1::ScalarField> {
         self.z_i.clone()
     }
-    fn instances(
-        &self,
-    ) -> (
-        Self::RunningInstance,
-        Self::IncomingInstance,
-        Self::CFInstance,
-    ) {
-        (
-            (self.U_i.clone(), self.W_i.clone()),
-            (self.u_i.clone(), self.w_i.clone()),
-            (self.cf_U_i.clone(), self.cf_W_i.clone()),
-        )
+
+    fn ivc_proof(&self) -> Self::IVCProof {
+        Self::IVCProof {
+            i: self.i,
+            z_0: self.z_0.clone(),
+            z_i: self.z_i.clone(),
+            W_i: self.W_i.clone(),
+            U_i: self.U_i.clone(),
+            w_i: self.w_i.clone(),
+            u_i: self.u_i.clone(),
+            cf_W_i: self.cf_W_i.clone(),
+            cf_U_i: self.cf_U_i.clone(),
+        }
+    }
+
+    fn from_ivc_proof(
+        ivc_proof: Self::IVCProof,
+        fcircuit_params: FC::Params,
+        params: (Self::ProverParam, Self::VerifierParam),
+    ) -> Result<Self, Error> {
+        let IVCProof {
+            i,
+            z_0,
+            z_i,
+            W_i,
+            U_i,
+            w_i,
+            u_i,
+            cf_W_i,
+            cf_U_i,
+        } = ivc_proof;
+        let (pp, vp) = params;
+
+        let f_circuit = FC::new(fcircuit_params).unwrap();
+
+        Ok(Self {
+            _gc1: PhantomData,
+            _c2: PhantomData,
+            _gc2: PhantomData,
+            r1cs: vp.r1cs.clone(),
+            cf_r1cs: vp.cf_r1cs.clone(),
+            poseidon_config: pp.poseidon_config,
+            cs_params: pp.cs_params,
+            cf_cs_params: pp.cf_cs_params,
+            F: f_circuit,
+            pp_hash: vp.pp_hash()?,
+            i,
+            z_0,
+            z_i,
+            w_i,
+            u_i,
+            W_i,
+            U_i,
+            cf_W_i,
+            cf_U_i,
+        })
     }
 
     /// Implements IVC.V of ProtoGalaxy+CycleFold
-    fn verify(
-        vp: Self::VerifierParam,
-        z_0: Vec<C1::ScalarField>, // initial state
-        z_i: Vec<C1::ScalarField>, // last state
-        num_steps: C1::ScalarField,
-        running_instance: Self::RunningInstance,
-        incoming_instance: Self::IncomingInstance,
-        cyclefold_instance: Self::CFInstance,
-    ) -> Result<(), Error> {
-        let sponge = PoseidonSponge::<C1::ScalarField>::new(&vp.poseidon_config);
+    fn verify(vp: Self::VerifierParam, ivc_proof: Self::IVCProof) -> Result<(), Error> {
+        let Self::IVCProof {
+            i: num_steps,
+            z_0,
+            z_i,
+            W_i,
+            U_i,
+            w_i,
+            u_i,
+            cf_W_i,
+            cf_U_i,
+        } = ivc_proof;
 
-        let (U_i, W_i) = running_instance;
-        let (u_i, w_i) = incoming_instance;
-        let (cf_U_i, cf_W_i) = cyclefold_instance;
+        let sponge = PoseidonSponge::<C1::ScalarField>::new(&vp.poseidon_config);
 
         if u_i.x.len() != 2 || U_i.x.len() != 2 {
             return Err(Error::IVCVerificationFail);
@@ -1067,17 +1288,8 @@ mod tests {
         }
         assert_eq!(Fr::from(num_steps as u32), protogalaxy.i);
 
-        let (running_instance, incoming_instance, cyclefold_instance) = protogalaxy.instances();
-        PG::<CS1, CS2>::verify(
-            params.1,
-            z_0,
-            protogalaxy.z_i,
-            protogalaxy.i,
-            running_instance,
-            incoming_instance,
-            cyclefold_instance,
-        )
-        .unwrap();
+        let ivc_proof = protogalaxy.ivc_proof();
+        PG::<CS1, CS2>::verify(params.1, ivc_proof).unwrap();
     }
 
     #[ignore]

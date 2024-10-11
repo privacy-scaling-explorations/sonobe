@@ -79,7 +79,8 @@ fn main() {
     let mut nova = N::init(&nova_params, f_circuit.clone(), z_0).unwrap();
 
     // prepare the Decider prover & verifier params
-    let (decider_pp, decider_vp) = D::preprocess(&mut rng, nova_params, nova.clone()).unwrap();
+    let (decider_pp, decider_vp) =
+        D::preprocess(&mut rng, nova_params.clone(), nova.clone()).unwrap();
 
     // run n steps of the folding iteration
     for i in 0..5 {
@@ -87,6 +88,13 @@ fn main() {
         nova.prove_step(rng, vec![], None).unwrap();
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
+    // verify the last IVC proof
+    let ivc_proof = nova.ivc_proof();
+    N::verify(
+        nova_params.1, // Nova's verifier params
+        ivc_proof,
+    )
+    .unwrap();
 
     let start = Instant::now();
     let proof = D::prove(rng, decider_pp, nova.clone()).unwrap();

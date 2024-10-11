@@ -75,8 +75,8 @@ impl<C1, GC1, C2, GC2, FC, CS1, CS2, S, FS> DeciderTrait<C1, C2, FC, FS>
     for Decider<C1, GC1, C2, GC2, FC, CS1, CS2, S, FS>
 where
     C1: CurveGroup,
-    C2: CurveGroup,
     GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
+    C2: CurveGroup,
     GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
     FC: FCircuit<C1::ScalarField>,
     // CS1 is a KZG commitment, where challenge is C1::Fr elem
@@ -343,9 +343,7 @@ pub mod tests {
 
     use super::*;
     use crate::commitment::pedersen::Pedersen;
-    use crate::folding::nova::{
-        PreprocessorParam, ProverParams as NovaProverParams, VerifierParams as NovaVerifierParams,
-    };
+    use crate::folding::nova::{PreprocessorParam, ProverParams as NovaProverParams};
     use crate::frontend::utils::CubicFCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
 
@@ -490,13 +488,15 @@ pub mod tests {
             &mut nova_pp_serialized.as_slice()
         )
         .unwrap();
-        let nova_vp_deserialized = NovaVerifierParams::<
+        let nova_vp_deserialized = <N as FoldingScheme<
             Projective,
             Projective2,
-            KZG<'static, Bn254>,
-            Pedersen<Projective2>,
-        >::deserialize_compressed(
-            &mut nova_vp_serialized.as_slice()
+            CubicFCircuit<Fr>,
+        >>::vp_deserialize_with_mode(
+            &mut nova_vp_serialized.as_slice(),
+            ark_serialize::Compress::Yes,
+            ark_serialize::Validate::Yes,
+            (), // fcircuit_params
         )
         .unwrap();
 

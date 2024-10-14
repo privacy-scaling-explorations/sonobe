@@ -3,7 +3,7 @@
 /// More details can be found at the documentation page:
 /// https://privacy-scaling-explorations.github.io/sonobe-docs/design/nova-decider-offchain.html
 use ark_crypto_primitives::sponge::Absorb;
-use ark_ec::{AffineRepr, CurveGroup, Group};
+use ark_ec::{CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -13,13 +13,15 @@ use ark_std::{One, Zero};
 use core::marker::PhantomData;
 
 use super::decider_circuits::{DeciderCircuit1, DeciderCircuit2};
-use super::{nifs::NIFS, traits::NIFSTrait, CommittedInstance, Nova};
+use super::decider_eth_circuit::DeciderNovaGadget;
+use super::Nova;
 use crate::commitment::CommitmentScheme;
+use crate::folding::circuits::decider::DeciderEnabledNIFS;
 use crate::folding::circuits::{
-    cyclefold::CycleFoldCommittedInstance,
-    nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
+    cyclefold::{CycleFoldCommittedInstance, CycleFoldCommittedInstanceVar},
     CF2,
 };
+use crate::folding::traits::{CommittedInstanceOps, Inputize, WitnessOps};
 use crate::frontend::FCircuit;
 use crate::Error;
 use crate::{Decider as DeciderTrait, FoldingScheme};
@@ -43,7 +45,7 @@ where
     cmT: C1,
     r: C1::ScalarField,
     // cyclefold committed instance
-    cf_U_i: CycleFoldCommittedInstance<C2>,
+    cf_U_final: CycleFoldCommittedInstance<C2>,
     // the CS challenges are provided by the prover, but in-circuit they are checked to match the
     // in-circuit computed computed ones.
     cs1_challenges: [C1::ScalarField; 2],
@@ -144,18 +146,15 @@ where
         S2::VerifyingKey,
     >;
     type PublicInput = Vec<C1::ScalarField>;
-    type CommittedInstance = CommittedInstance<C1>;
+    type CommittedInstance = Vec<C1>;
 
     fn preprocess(
         mut rng: impl RngCore + CryptoRng,
         prep_param: Self::PreprocessorParam,
         fs: FS,
     ) -> Result<(Self::ProverParam, Self::VerifierParam), Error> {
-        let circuit1 = DeciderCircuit1::<C1, C2, GC2>::from_nova::<GC1, CS1, CS2, false, FC>(
-            fs.clone().into(),
-        )?;
-        let circuit2 =
-            DeciderCircuit2::<C1, GC1, C2>::from_nova::<GC2, CS1, CS2, false, FC>(fs.into())?;
+        let circuit1 = DeciderCircuit1::<C1, C2, GC2>::try_from(Nova::from(fs.clone()))?;
+        let circuit2 = DeciderCircuit2::<C2>::try_from(Nova::from(fs))?;
 
         // get the Groth16 specific setup for the circuits
         let (c1_g16_pk, c1_g16_vk) = S1::circuit_specific_setup(circuit1, &mut rng).unwrap();
@@ -197,78 +196,49 @@ where
         pp: Self::ProverParam,
         fs: FS,
     ) -> Result<Self::Proof, Error> {
-        let circuit1 = DeciderCircuit1::<C1, C2, GC2>::from_nova::<GC1, CS1, CS2, false, FC>(
-            fs.clone().into(),
-        )?;
-        let circuit2 =
-            DeciderCircuit2::<C1, GC1, C2>::from_nova::<GC2, CS1, CS2, false, FC>(fs.into())?;
+        let circuit1 = DeciderCircuit1::<C1, C2, GC2>::try_from(Nova::from(fs.clone()))?;
+        let circuit2 = DeciderCircuit2::<C2>::try_from(Nova::from(fs))?;
 
-        let c1_snark_proof = S1::prove(&pp.c1_snark_pp, circuit1.clone(), &mut rng)
+        let cmT = circuit1.proof;
+        let r = circuit1.randomness;
+        let cf_U_final = circuit1.cf_U_i.clone();
+
+        let c1_kzg_challenges = circuit1.kzg_challenges.clone();
+        let c1_kzg_proofs = circuit1
+            .W_i1
+            .get_openings()
+            .iter()
+            .zip(&c1_kzg_challenges)
+            .map(|((v, _), &c)| {
+                CS1::prove_with_challenge(&pp.c1_cs_pp, c, v, &C1::ScalarField::zero(), None)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let c2_kzg_challenges = circuit2.kzg_challenges.clone();
+        let c2_kzg_proofs = circuit2
+            .cf_W_i
+            .get_openings()
+            .iter()
+            .zip(&c2_kzg_challenges)
+            .map(|((v, _), &c)| {
+                CS2::prove_with_challenge(&pp.c2_cs_pp, c, v, &C2::ScalarField::zero(), None)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let c1_snark_proof = S1::prove(&pp.c1_snark_pp, circuit1, &mut rng)
             .map_err(|e| Error::Other(e.to_string()))?;
-        let c2_snark_proof = S2::prove(&pp.c2_snark_pp, circuit2.clone(), &mut rng)
+        let c2_snark_proof = S2::prove(&pp.c2_snark_pp, circuit2, &mut rng)
             .map_err(|e| Error::Other(e.to_string()))?;
-
-        let cmT = circuit1.cmT.unwrap();
-        let r_Fr = circuit1.r.unwrap();
-        let W_i1 = circuit1.W_i1.unwrap();
-        let cf_W_i = circuit2.cf_W_i.unwrap();
-
-        // get the challenges that have been already computed when preparing the circuits inputs in
-        // the above `from_nova` calls
-        let challenge_W = circuit1
-            .cs_c_W
-            .ok_or(Error::MissingValue("cs_c_W".to_string()))?;
-        let challenge_E = circuit1
-            .cs_c_E
-            .ok_or(Error::MissingValue("cs_c_E".to_string()))?;
-        let c2_challenge_W = circuit2
-            .cs_c_W
-            .ok_or(Error::MissingValue("c2's cs_c_W".to_string()))?;
-        let c2_challenge_E = circuit2
-            .cs_c_E
-            .ok_or(Error::MissingValue("c2's cs_c_E".to_string()))?;
-
-        // generate CommitmentScheme proofs for the main instance
-        let U_cmW_proof = CS1::prove_with_challenge(
-            &pp.c1_cs_pp,
-            challenge_W,
-            &W_i1.W,
-            &C1::ScalarField::zero(),
-            None,
-        )?;
-        let U_cmE_proof = CS1::prove_with_challenge(
-            &pp.c1_cs_pp,
-            challenge_E,
-            &W_i1.E,
-            &C1::ScalarField::zero(),
-            None,
-        )?;
-        // CS proofs for the CycleFold instance
-        let cf_cmW_proof = CS2::prove_with_challenge(
-            &pp.c2_cs_pp,
-            c2_challenge_W,
-            &cf_W_i.W,
-            &C2::ScalarField::zero(),
-            None,
-        )?;
-        let cf_cmE_proof = CS2::prove_with_challenge(
-            &pp.c2_cs_pp,
-            c2_challenge_E,
-            &cf_W_i.E,
-            &C2::ScalarField::zero(),
-            None,
-        )?;
 
         Ok(Self::Proof {
             c1_snark_proof,
             c2_snark_proof,
-            cs1_proofs: [U_cmW_proof, U_cmE_proof],
-            cs2_proofs: [cf_cmW_proof, cf_cmE_proof],
+            cs1_proofs: c1_kzg_proofs.try_into().unwrap(),
+            cs2_proofs: c2_kzg_proofs.try_into().unwrap(),
             cmT,
-            r: r_Fr,
-            cf_U_i: circuit1.cf_U_i.unwrap(),
-            cs1_challenges: [challenge_W, challenge_E],
-            cs2_challenges: [c2_challenge_W, c2_challenge_E],
+            r,
+            cf_U_final,
+            cs1_challenges: c1_kzg_challenges.try_into().unwrap(),
+            cs2_challenges: c2_kzg_challenges.try_into().unwrap(),
         })
     }
 
@@ -277,62 +247,38 @@ where
         i: C1::ScalarField,
         z_0: Vec<C1::ScalarField>,
         z_i: Vec<C1::ScalarField>,
-        running_instance: &Self::CommittedInstance,
-        incoming_instance: &Self::CommittedInstance,
+        // we don't use the instances at the verifier level, since we check them in-circuit
+        running_commitments: &Self::CommittedInstance,
+        incoming_commitments: &Self::CommittedInstance,
         proof: &Self::Proof,
     ) -> Result<bool, Error> {
         if i <= C1::ScalarField::one() {
             return Err(Error::NotEnoughSteps);
         }
 
-        // compute U = U_{d+1}= NIFS.V(U_d, u_d, cmT)
-        let U = NIFS::<C1, CS1>::verify(proof.r, running_instance, incoming_instance, &proof.cmT);
-
-        let (cmE_x, cmE_y) = NonNativeAffineVar::inputize(U.cmE)?;
-        let (cmW_x, cmW_y) = NonNativeAffineVar::inputize(U.cmW)?;
-        let (cmT_x, cmT_y) = NonNativeAffineVar::inputize(proof.cmT)?;
-
-        let zero = (&C2::BaseField::zero(), &C2::BaseField::zero());
-        let cmE_affine = proof.cf_U_i.cmE.into_affine();
-        let cmW_affine = proof.cf_U_i.cmW.into_affine();
-        let (cf_cmE_x, cf_cmE_y) = cmE_affine.xy().unwrap_or(zero);
-        let cf_cmE_z = C1::ScalarField::one();
-        let (cf_cmW_x, cf_cmW_y) = cmW_affine.xy().unwrap_or(zero);
-        let cf_cmW_z = C1::ScalarField::one();
+        // 6.2. Fold the commitments
+        let U_final_commitments = DeciderNovaGadget::fold_group_elements_native(
+            running_commitments,
+            incoming_commitments,
+            Some(proof.cmT),
+            proof.r,
+        )?;
+        let cf_U = proof.cf_U_final.clone();
 
         // snark proof 1
-        let c1_public_input: Vec<C1::ScalarField> = [
-            vec![vp.pp_hash, i],
-            z_0,
-            z_i,
-            // U_{i+1} values:
-            vec![U.u],
-            U.x.clone(),
-            cmE_x,
-            cmE_y,
-            cmW_x,
-            cmW_y,
-            // CS1 values:
-            proof.cs1_challenges.to_vec(), // c_W, c_E
-            vec![
-                proof.cs1_proofs[0].eval, // eval_W
-                proof.cs1_proofs[1].eval, // eval_E
-            ],
-            // cf_U_i values
-            NonNativeUintVar::<CF2<C2>>::inputize(proof.cf_U_i.u),
-            proof
-                .cf_U_i
-                .x
+        let c1_public_input = [
+            &[vp.pp_hash, i][..],
+            &z_0,
+            &z_i,
+            &U_final_commitments
                 .iter()
-                .flat_map(|&x_i| NonNativeUintVar::<CF2<C2>>::inputize(x_i))
-                .collect::<Vec<C1::ScalarField>>(),
-            vec![
-                *cf_cmE_x, *cf_cmE_y, cf_cmE_z, *cf_cmW_x, *cf_cmW_y, cf_cmW_z,
-            ],
-            // NIFS values:
-            cmT_x,
-            cmT_y,
-            vec![proof.r],
+                .flat_map(|c| c.inputize())
+                .collect::<Vec<_>>(),
+            &Inputize::<CF2<C2>, CycleFoldCommittedInstanceVar<C2, GC2>>::inputize(&cf_U),
+            &proof.cs1_challenges,
+            &proof.cs1_proofs.iter().map(|p| p.eval).collect::<Vec<_>>(),
+            &proof.cmT.inputize(),
+            &[proof.r],
         ]
         .concat();
 
@@ -342,26 +288,15 @@ where
             return Err(Error::SNARKVerificationFail);
         }
 
-        let (cf2_cmE_x, cf2_cmE_y) = NonNativeAffineVar::inputize(proof.cf_U_i.cmE)?;
-        let (cf2_cmW_x, cf2_cmW_y) = NonNativeAffineVar::inputize(proof.cf_U_i.cmW)?;
-
         // snark proof 2
         // migrate pp_hash from C1::Fr to C1::Fq
         let pp_hash_Fq =
             C2::ScalarField::from_le_bytes_mod_order(&vp.pp_hash.into_bigint().to_bytes_le());
         let c2_public_input: Vec<C2::ScalarField> = [
-            vec![pp_hash_Fq],
-            vec![proof.cf_U_i.u],
-            proof.cf_U_i.x.clone(),
-            cf2_cmE_x,
-            cf2_cmE_y,
-            cf2_cmW_x,
-            cf2_cmW_y,
-            proof.cs2_challenges.to_vec(),
-            vec![
-                proof.cs2_proofs[0].eval, // eval_W
-                proof.cs2_proofs[1].eval, // eval_E
-            ],
+            &[pp_hash_Fq][..],
+            &cf_U.inputize(),
+            &proof.cs2_challenges,
+            &proof.cs2_proofs.iter().map(|p| p.eval).collect::<Vec<_>>(),
         ]
         .concat();
 
@@ -371,33 +306,24 @@ where
             return Err(Error::SNARKVerificationFail);
         }
 
-        // check C1 commitments (main instance commitments)
-        CS1::verify_with_challenge(
-            &vp.c1_cs_vp,
-            proof.cs1_challenges[0],
-            &U.cmW,
-            &proof.cs1_proofs[0],
-        )?;
-        CS1::verify_with_challenge(
-            &vp.c1_cs_vp,
-            proof.cs1_challenges[1],
-            &U.cmE,
-            &proof.cs1_proofs[1],
-        )?;
+        // 7.3. check C1 commitments (main instance commitments)
+        for ((cm, &c), pi) in U_final_commitments
+            .iter()
+            .zip(&proof.cs1_challenges)
+            .zip(&proof.cs1_proofs)
+        {
+            CS1::verify_with_challenge(&vp.c1_cs_vp, c, cm, pi)?;
+        }
 
-        // check C2 commitments (CycleFold instance commitments)
-        CS2::verify_with_challenge(
-            &vp.c2_cs_vp,
-            proof.cs2_challenges[0],
-            &proof.cf_U_i.cmW,
-            &proof.cs2_proofs[0],
-        )?;
-        CS2::verify_with_challenge(
-            &vp.c2_cs_vp,
-            proof.cs2_challenges[1],
-            &proof.cf_U_i.cmE,
-            &proof.cs2_proofs[1],
-        )?;
+        // 4.3. check C2 commitments (CycleFold instance commitments)
+        for ((cm, &c), pi) in cf_U
+            .get_commitments()
+            .iter()
+            .zip(&proof.cs2_challenges)
+            .zip(&proof.cs2_proofs)
+        {
+            CS2::verify_with_challenge(&vp.c2_cs_vp, c, cm, pi)?;
+        }
 
         Ok(true)
     }
@@ -483,7 +409,13 @@ pub mod tests {
         // decider proof verification
         let start = Instant::now();
         let verified = D::verify(
-            decider_vp, nova.i, nova.z_0, nova.z_i, &nova.U_i, &nova.u_i, &proof,
+            decider_vp,
+            nova.i,
+            nova.z_0,
+            nova.z_i,
+            &nova.U_i.get_commitments(),
+            &nova.u_i.get_commitments(),
+            &proof,
         )
         .unwrap();
         assert!(verified);

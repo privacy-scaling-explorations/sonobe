@@ -27,14 +27,6 @@ Work in progress:
 
 - [ProtoGalaxy: Efficient ProtoStar-style folding of multiple instances](https://eprint.iacr.org/2023/1106.pdf), Liam Eagen, Ariel Gabizon. 2023
 
-## Available frontends
-
-Available frontends to define the folded circuit:
-
-- [arkworks](https://github.com/arkworks-rs), arkworks contributors
-- [Circom](https://github.com/iden3/circom), iden3, 0Kims Association
-- [Noname](https://github.com/zksecurity/noname), zkSecurity
-
 ## Usage
 
 ### Build & test

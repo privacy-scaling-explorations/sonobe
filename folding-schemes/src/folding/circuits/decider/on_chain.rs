@@ -216,7 +216,7 @@ where
         let cf_U_i =
             CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || Ok(self.cf_U_i))?;
 
-        // allocate the inputs for the check 6
+        // allocate the inputs for the check 7.1 and 7.2
         let kzg_challenges = Vec::new_input(cs.clone(), || Ok(self.kzg_challenges))?;
         let kzg_evaluations = Vec::new_input(cs.clone(), || Ok(self.kzg_evaluations))?;
 
@@ -292,7 +292,7 @@ where
             cf_r1cs.enforce_relation(&cf_W_i, &cf_U_i)?;
         }
 
-        // 6. enforce `NIFS.V(U_i, u_i) = U_{i+1}`.
+        // 6.1. partially enforce `NIFS.V(U_i, u_i) = U_{i+1}`.
         D::fold_gadget(
             &self.arith,
             &mut transcript,
@@ -305,11 +305,11 @@ where
         )?
         .enforce_partial_equal(&U_i1)?;
 
-        // 7. compute and check KZG challenges
+        // 7.1. compute and check KZG challenges
         KZGChallengesGadget::get_challenges_gadget(&mut transcript, &U_i1)?
             .enforce_equal(&kzg_challenges)?;
 
-        // 8. check the claimed evaluations
+        // 7.2. check the claimed evaluations
         for (((v, _r), c), e) in W_i1
             .get_openings()
             .iter()

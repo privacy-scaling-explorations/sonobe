@@ -201,6 +201,8 @@ where
             snark_vp,
             cs_vp,
         } = vp;
+
+        // 6.2. Fold the commitments
         let U_cmW = running_commitments[0];
         let U_cmE = running_commitments[1];
         let u_cmW = incoming_commitments[0];
@@ -230,6 +232,7 @@ where
             return Err(Error::SNARKVerificationFail);
         }
 
+        // 7.3. Verify the KZG proofs
         for ((cm, &c), pi) in [cmW, cmE]
             .iter()
             .zip(&proof.kzg_challenges)

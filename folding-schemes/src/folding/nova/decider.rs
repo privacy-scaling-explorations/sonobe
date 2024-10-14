@@ -254,12 +254,16 @@ where
             return Err(Error::NotEnoughSteps);
         }
 
+        // 6.2. Fold the commitments
         let U_cmW = running_commitments[0];
         let U_cmE = running_commitments[1];
         let u_cmW = incoming_commitments[0];
         let u_cmE = incoming_commitments[1];
+        if !u_cmE.is_zero() {
+            return Err(Error::NotIncomingCommittedInstance);
+        }
         let cmW = U_cmW + u_cmW.mul(proof.r);
-        let cmE = U_cmE + proof.cmT.mul(proof.r) + u_cmE.mul(proof.r * proof.r);
+        let cmE = U_cmE + proof.cmT.mul(proof.r);
         let cf_U = proof.cf_U_final.clone();
 
         // snark proof 1
@@ -301,7 +305,7 @@ where
             return Err(Error::SNARKVerificationFail);
         }
 
-        // check C1 commitments (main instance commitments)
+        // 7.3. check C1 commitments (main instance commitments)
         for ((cm, &c), pi) in [cmW, cmE]
             .iter()
             .zip(&proof.cs1_challenges)
@@ -310,7 +314,7 @@ where
             CS1::verify_with_challenge(&vp.c1_cs_vp, c, cm, pi)?;
         }
 
-        // check C2 commitments (CycleFold instance commitments)
+        // 4.3. check C2 commitments (CycleFold instance commitments)
         for ((cm, &c), pi) in cf_U
             .get_commitments()
             .iter()

@@ -181,7 +181,7 @@ where
         let cf_U_i =
             CycleFoldCommittedInstanceVar::<C2, GC2>::new_input(cs.clone(), || Ok(self.cf_U_i))?;
 
-        // allocate the inputs for the check 6
+        // allocate the inputs for the checks 7.1 and 7.2
         let kzg_challenges = Vec::new_input(cs.clone(), || Ok(self.kzg_challenges))?;
         let kzg_evaluations = Vec::new_input(cs.clone(), || Ok(self.kzg_evaluations))?;
 
@@ -202,7 +202,7 @@ where
         let (cf_u_i_x, _) = cf_U_i.hash(&sponge, pp_hash.clone())?;
         u_i.get_public_inputs().enforce_equal(&[u_i_x, cf_u_i_x])?;
 
-        // 4. enforce `NIFS.V(U_i, u_i) = U_{i+1}`.
+        // 6.1. partially enforce `NIFS.V(U_i, u_i) = U_{i+1}`.
         D::fold_gadget(
             &self.arith,
             &mut transcript,
@@ -215,11 +215,11 @@ where
         )?
         .enforce_partial_equal(&U_i1)?;
 
-        // 5. compute and check KZG challenges
+        // 7.1. compute and check KZG challenges
         KZGChallengesGadget::get_challenges_gadget(&mut transcript, &U_i1)?
             .enforce_equal(&kzg_challenges)?;
 
-        // 6. check the claimed evaluations
+        // 7.2. check the claimed evaluations
         for (((v, _r), c), e) in W_i1
             .get_openings()
             .iter()
@@ -285,6 +285,7 @@ impl<C2: CurveGroup> ConstraintSynthesizer<CF1<C2>> for GenericOffchainDeciderCi
         let cf_U_i = CommittedInstanceVar::new_input(cs.clone(), || Ok(self.cf_U_i))?;
         let cf_W_i = WitnessVar::new_witness(cs.clone(), || Ok(self.cf_W_i))?;
 
+        // allocate the inputs for the checks 4.1 and 4.2
         let kzg_challenges = Vec::new_input(cs.clone(), || Ok(self.kzg_challenges))?;
         let kzg_evaluations = Vec::new_input(cs.clone(), || Ok(self.kzg_evaluations))?;
 
@@ -292,14 +293,14 @@ impl<C2: CurveGroup> ConstraintSynthesizer<CF1<C2>> for GenericOffchainDeciderCi
         let mut transcript = PoseidonSpongeVar::new(cs.clone(), &self.poseidon_config);
         transcript.absorb(&pp_hash)?;
 
-        // 1. enforce `cf_U_i` and `cf_W_i` satisfy `cf_r1cs`
+        // 5. enforce `cf_U_i` and `cf_W_i` satisfy `cf_r1cs`
         cf_r1cs.enforce_relation(&cf_W_i, &cf_U_i)?;
 
-        // 2. compute and check KZG challenges
+        // 4.1. compute and check KZG challenges
         KZGChallengesGadget::get_challenges_gadget(&mut transcript, &cf_U_i)?
             .enforce_equal(&kzg_challenges)?;
 
-        // 3. check the claimed evaluations
+        // 4.2. check the claimed evaluations
         for (((v, _r), c), e) in cf_W_i
             .get_openings()
             .iter()

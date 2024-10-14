@@ -186,6 +186,7 @@ where
             cs_vp,
         } = vp;
 
+        // 6.2. Fold the commitments
         let U_C = running_commitments[0];
         let u_C = incoming_commitments[0];
         let C = U_C + u_C.mul(proof.rho);
@@ -207,6 +208,7 @@ where
             return Err(Error::SNARKVerificationFail);
         }
 
+        // 7.3. Verify the KZG proof
         // we're at the Ethereum EVM case, so the CS1 is KZG commitments
         CS1::verify_with_challenge(&cs_vp, proof.kzg_challenge, &C, &proof.kzg_proof)?;
 

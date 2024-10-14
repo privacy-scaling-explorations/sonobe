@@ -13,8 +13,10 @@ use ark_std::{One, Zero};
 use core::marker::PhantomData;
 
 use super::decider_circuits::{DeciderCircuit1, DeciderCircuit2};
+use super::decider_eth_circuit::DeciderNovaGadget;
 use super::Nova;
 use crate::commitment::CommitmentScheme;
+use crate::folding::circuits::decider::DeciderEnabledNIFS;
 use crate::folding::circuits::{
     cyclefold::{CycleFoldCommittedInstance, CycleFoldCommittedInstanceVar},
     CF2,
@@ -255,15 +257,12 @@ where
         }
 
         // 6.2. Fold the commitments
-        let U_cmW = running_commitments[0];
-        let U_cmE = running_commitments[1];
-        let u_cmW = incoming_commitments[0];
-        let u_cmE = incoming_commitments[1];
-        if !u_cmE.is_zero() {
-            return Err(Error::NotIncomingCommittedInstance);
-        }
-        let cmW = U_cmW + u_cmW.mul(proof.r);
-        let cmE = U_cmE + proof.cmT.mul(proof.r);
+        let U_final_commitments = DeciderNovaGadget::fold_group_elements_native(
+            running_commitments,
+            incoming_commitments,
+            Some(proof.cmT),
+            proof.r,
+        )?;
         let cf_U = proof.cf_U_final.clone();
 
         // snark proof 1
@@ -271,8 +270,10 @@ where
             &[vp.pp_hash, i][..],
             &z_0,
             &z_i,
-            &cmW.inputize(),
-            &cmE.inputize(),
+            &U_final_commitments
+                .iter()
+                .flat_map(|c| c.inputize())
+                .collect::<Vec<_>>(),
             &Inputize::<CF2<C2>, CycleFoldCommittedInstanceVar<C2, GC2>>::inputize(&cf_U),
             &proof.cs1_challenges,
             &proof.cs1_proofs.iter().map(|p| p.eval).collect::<Vec<_>>(),
@@ -306,7 +307,7 @@ where
         }
 
         // 7.3. check C1 commitments (main instance commitments)
-        for ((cm, &c), pi) in [cmW, cmE]
+        for ((cm, &c), pi) in U_final_commitments
             .iter()
             .zip(&proof.cs1_challenges)
             .zip(&proof.cs1_proofs)

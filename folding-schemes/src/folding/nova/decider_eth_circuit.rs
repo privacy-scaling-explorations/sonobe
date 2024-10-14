@@ -179,7 +179,7 @@ where
     type RandomnessDummyCfg = ();
     type Randomness = CF1<C>;
 
-    fn fold_gadget(
+    fn fold_field_elements_gadget(
         _arith: &R1CS<CF1<C>>,
         transcript: &mut PoseidonSpongeVar<CF1<C>>,
         pp_hash: FpVar<CF1<C>>,
@@ -202,6 +202,25 @@ where
         Boolean::le_bits_to_fp_var(&r_bits)?.enforce_equal(&r)?;
 
         NIFSGadget::<C>::fold_committed_instance(r, U, u)
+    }
+
+    fn fold_group_elements_native(
+        U_commitments: &[C],
+        u_commitments: &[C],
+        cmT: Option<Self::Proof>,
+        r: Self::Randomness,
+    ) -> Result<Vec<C>, Error> {
+        let cmT = cmT.ok_or(Error::Empty)?;
+        let U_cmW = U_commitments[0];
+        let U_cmE = U_commitments[1];
+        let u_cmW = u_commitments[0];
+        let u_cmE = u_commitments[1];
+        if !u_cmE.is_zero() {
+            return Err(Error::NotIncomingCommittedInstance);
+        }
+        let cmW = U_cmW + u_cmW.mul(r);
+        let cmE = U_cmE + cmT.mul(r);
+        Ok(vec![cmW, cmE])
     }
 }
 

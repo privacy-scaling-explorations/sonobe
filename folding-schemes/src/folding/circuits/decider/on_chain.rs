@@ -293,7 +293,7 @@ where
         }
 
         // 6.1. partially enforce `NIFS.V(U_i, u_i) = U_{i+1}`.
-        D::fold_gadget(
+        D::fold_field_elements_gadget(
             &self.arith,
             &mut transcript,
             pp_hash,

@@ -165,7 +165,7 @@ impl<C: CurveGroup>
     type Randomness = Vec<CF1<C>>;
     type RandomnessDummyCfg = usize;
 
-    fn fold_gadget(
+    fn fold_field_elements_gadget(
         _arith: &R1CS<CF1<C>>,
         transcript: &mut PoseidonSpongeVar<CF1<C>>,
         _pp_hash: FpVar<CF1<C>>,
@@ -178,13 +178,24 @@ impl<C: CurveGroup>
         let cs = transcript.cs();
         let F_coeffs = Vec::new_witness(cs.clone(), || Ok(&proof.F_coeffs[..]))?;
         let K_coeffs = Vec::new_witness(cs.clone(), || Ok(&proof.K_coeffs[..]))?;
-        let challenge = Vec::new_input(cs.clone(), || Ok(randomness))?;
+        let randomness = Vec::new_input(cs.clone(), || Ok(randomness))?;
 
         let (U_next, L_X_evals) =
             FoldingGadget::fold_committed_instance(transcript, &U, &[u], F_coeffs, K_coeffs)?;
-        L_X_evals.enforce_equal(&challenge)?;
+        L_X_evals.enforce_equal(&randomness)?;
 
         Ok(U_next)
+    }
+
+    fn fold_group_elements_native(
+        U_commitments: &[C],
+        u_commitments: &[C],
+        _: Option<Self::Proof>,
+        L_X_evals: Self::Randomness,
+    ) -> Result<Vec<C>, Error> {
+        let U_phi = U_commitments[0];
+        let u_phi = u_commitments[0];
+        Ok(vec![U_phi * L_X_evals[0] + u_phi * L_X_evals[1]])
     }
 }
 

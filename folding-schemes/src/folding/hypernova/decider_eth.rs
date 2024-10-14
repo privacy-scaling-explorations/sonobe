@@ -10,10 +10,12 @@ use ark_std::{One, Zero};
 use core::marker::PhantomData;
 
 pub use super::decider_eth_circuit::DeciderEthCircuit;
+use super::decider_eth_circuit::DeciderHyperNovaGadget;
 use super::HyperNova;
 use crate::commitment::{
     kzg::Proof as KZGProof, pedersen::Params as PedersenParams, CommitmentScheme,
 };
+use crate::folding::circuits::decider::DeciderEnabledNIFS;
 use crate::folding::circuits::CF2;
 use crate::folding::nova::decider_eth::VerifierParam;
 use crate::folding::traits::{Inputize, WitnessOps};
@@ -187,9 +189,12 @@ where
         } = vp;
 
         // 6.2. Fold the commitments
-        let U_C = running_commitments[0];
-        let u_C = incoming_commitments[0];
-        let C = U_C + u_C.mul(proof.rho);
+        let C = DeciderHyperNovaGadget::fold_group_elements_native(
+            running_commitments,
+            incoming_commitments,
+            None,
+            proof.rho,
+        )?[0];
 
         // Note: the NIMFS proof is checked inside the DeciderEthCircuit, which ensures that the
         // 'proof.U_i1' is correctly computed

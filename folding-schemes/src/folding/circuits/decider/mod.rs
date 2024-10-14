@@ -88,11 +88,11 @@ impl EvalGadget {
     }
 }
 
-/// This is a temporary workaround for step 8 (running NIFS.V in circuit) in a
-/// folding scheme-agnostic way, as different folding schemes have different
-/// interfaces of folding verification now.
+/// This is a temporary workaround for step 6 (running NIFS.V for group elements
+/// in circuit) in an NIFS-agnostic way, because different folding schemes have
+/// different interfaces of folding verification now.
 ///
-/// In the future, we may introduce a better solution that use a trait for all
+/// In the future, we may introduce a better solution that uses a trait for all
 /// folding schemes that specifies their native and in-circuit behaviors.
 pub trait DeciderEnabledNIFS<
     C: CurveGroup,
@@ -107,8 +107,12 @@ pub trait DeciderEnabledNIFS<
     type RandomnessDummyCfg;
     type Randomness: Dummy<Self::RandomnessDummyCfg>;
 
+    /// Fold the field elements in `U` and `u` inside the circuit.
+    ///
+    /// `U_vec` is `U` expressed as a vector of `FpVar`s, which can be reused
+    /// before or after calling this function to save constraints.
     #[allow(clippy::too_many_arguments)]
-    fn fold_gadget(
+    fn fold_field_elements_gadget(
         arith: &A,
         transcript: &mut PoseidonSpongeVar<CF1<C>>,
         pp_hash: FpVar<CF1<C>>,
@@ -118,6 +122,15 @@ pub trait DeciderEnabledNIFS<
         proof: Self::Proof,
         randomness: Self::Randomness,
     ) -> Result<RU::Var, SynthesisError>;
+
+    /// Fold the group elements (i.e., commitments) in `U` and `u` outside the
+    /// circuit.
+    fn fold_group_elements_native(
+        U_commitments: &[C],
+        u_commitments: &[C],
+        proof: Option<Self::Proof>,
+        randomness: Self::Randomness,
+    ) -> Result<Vec<C>, Error>;
 }
 
 #[cfg(test)]

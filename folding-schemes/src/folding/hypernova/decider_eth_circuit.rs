@@ -194,7 +194,7 @@ where
     type Randomness = CF1<C>;
     type RandomnessDummyCfg = ();
 
-    fn fold_gadget(
+    fn fold_field_elements_gadget(
         arith: &CCS<CF1<C>>,
         transcript: &mut PoseidonSpongeVar<CF1<C>>,
         pp_hash: FpVar<CF1<C>>,
@@ -219,6 +219,18 @@ where
         )?;
         Boolean::le_bits_to_fp_var(&rho_bits)?.enforce_equal(&rho)?;
         Ok(computed_U_i1)
+    }
+
+    fn fold_group_elements_native(
+        U_commitments: &[C],
+        u_commitments: &[C],
+        _: Option<Self::Proof>,
+        r: Self::Randomness,
+    ) -> Result<Vec<C>, Error> {
+        let U_C = U_commitments[0];
+        let u_C = u_commitments[0];
+        let C = U_C + u_C.mul(r);
+        Ok(vec![C])
     }
 }
 

@@ -203,7 +203,7 @@ where
         u_i.get_public_inputs().enforce_equal(&[u_i_x, cf_u_i_x])?;
 
         // 6.1. partially enforce `NIFS.V(U_i, u_i) = U_{i+1}`.
-        D::fold_gadget(
+        D::fold_field_elements_gadget(
             &self.arith,
             &mut transcript,
             pp_hash,

@@ -13,9 +13,11 @@ use num_bigint::BigInt;
 use std::rc::Rc;
 use std::{fmt, usize};
 
+#[cfg(feature = "browser")]
 pub mod browser;
 pub mod utils;
 
+#[cfg(feature = "browser")]
 pub use browser::{load_witness_from_bin_reader, CircomFCircuitBrowser};
 use utils::CircomWrapper;
 

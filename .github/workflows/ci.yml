@@ -61,9 +61,9 @@ jobs:
           curl -sSfL https://github.com/ethereum/solidity/releases/download/v0.8.4/solc-static-linux -o /usr/local/bin/solc
           chmod +x /usr/local/bin/solc
       - name: Execute compile.sh to generate .r1cs and .wasm from .circom
-        run: ./folding-schemes/src/frontend/circom/test_folder/compile.sh
+        run: ./frontends/src/circom/test_folder/compile.sh
       - name: Execute compile.sh to generate .json from noir
-        run: ./folding-schemes/src/frontend/noir/test_folder/compile.sh
+        run: ./frontends/src/noir/test_folder/compile.sh
       - name: Run tests
         uses: actions-rs/cargo@v1
         with:
@@ -95,11 +95,16 @@ jobs:
           default: true
       - name: Add target
         run: rustup target add ${{ matrix.target }}
-      - name: Wasm-compat build
+      - name: Wasm-compat frontends build
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: -p folding-schemes --no-default-features --target ${{ matrix.target }} --features "wasm, parallel"
+          args: -p frontends --no-default-features --target ${{ matrix.target }} --features "wasm, parallel"
+      - name: Wasm-compat folding-schemes build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: -p folding-schemes --no-default-features --target ${{ matrix.target }} --features "default,light-test"
       - name: Run wasm-compat script
         run: |
           chmod +x .github/scripts/wasm-target-test-build.sh
@@ -127,9 +132,9 @@ jobs:
           curl -sSfL https://github.com/ethereum/solidity/releases/download/v0.8.4/solc-static-linux -o /usr/local/bin/solc
           chmod +x /usr/local/bin/solc
       - name: Execute compile.sh to generate .r1cs and .wasm from .circom
-        run: ./folding-schemes/src/frontend/circom/test_folder/compile.sh
+        run: ./frontends/src/circom/test_folder/compile.sh
       - name: Execute compile.sh to generate .json from noir
-        run: ./folding-schemes/src/frontend/noir/test_folder/compile.sh
+        run: ./frontends/src/noir/test_folder/compile.sh
       - name: Run examples tests
         run: cargo test --examples
       - name: Run examples
@@ -160,9 +165,9 @@ jobs:
         include:
           - feature_set: basic
             features: --features default,light-test
-            # We only want to test `folding-schemes` package with `wasm` feature.
+            # We only want to test `frontends` package with `wasm` feature.
           - feature_set: wasm
-            features: -p folding-schemes --features wasm,parallel --target wasm32-unknown-unknown
+            features: -p frontends --features wasm,parallel --target wasm32-unknown-unknown
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1

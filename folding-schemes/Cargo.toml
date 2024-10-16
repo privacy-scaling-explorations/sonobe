@@ -9,28 +9,20 @@ ark-ff = { version = "^0.4.0", default-features = false, features = ["parallel",
 ark-poly = { version = "^0.4.0", default-features = false, features = ["parallel"] }
 ark-std = { version = "^0.4.0", default-features = false, features = ["parallel"] }
 ark-crypto-primitives = { version = "^0.4.0", default-features = false, features = ["r1cs", "sponge", "crh", "parallel"] }
-ark-grumpkin = { version = "0.4.0", default-features = false }
 ark-poly-commit = { version = "^0.4.0", default-features = false, features = ["parallel"] }
 ark-relations = { version = "^0.4.0", default-features = false }
-# this is patched at the workspace level
+# ark-r1cs-std is patched at the workspace level
 ark-r1cs-std = { version = "0.4.0", default-features = false, features = ["parallel"] }
 ark-snark = { version = "^0.4.0", default-features = false }
 ark-serialize = { version = "^0.4.0", default-features = false }
-ark-circom = { git = "https://github.com/arnaucube/circom-compat", default-features = false }
 ark-groth16 = { version = "^0.4.0", default-features = false, features = ["parallel"]}
 ark-bn254 = { version = "^0.4.0", default-features = false }
+ark-grumpkin = { version = "0.4.0", default-features = false }
 thiserror = "1.0"
 rayon = "1"
 num-bigint = "0.4"
 num-integer = "0.1"
-color-eyre = "=0.6.2"
 sha3 = "0.10"
-ark-noname = { git = "https://github.com/dmpierre/ark-noname", branch = "feat/sonobe-integration" }
-noname = { git = "https://github.com/dmpierre/noname" }
-serde_json = "1.0.85"                                                                # to (de)serialize JSON
-serde = "1.0.203"
-acvm = { git = "https://github.com/noir-lang/noir", rev="2b4853e", default-features = false }
-noir_arkworks_backend = { package="arkworks_backend", git = "https://github.com/dmpierre/arkworks_backend", branch = "feat/sonobe-integration" }
 log = "0.4"
 
 # tmp import for espresso's sumcheck
@@ -46,6 +38,7 @@ ark-grumpkin = {version="0.4.0", features=["r1cs"]}
 ark-mnt4-298 = {version="0.4.0", features=["r1cs"]}
 ark-mnt6-298 = {version="0.4.0", features=["r1cs"]}
 rand = "0.8.5"
+num-bigint = {version = "0.4", features = ["rand"]}
 tracing = { version = "0.1", default-features = false, features = [ "attributes" ] }
 tracing-subscriber = { version = "0.2" }
 
@@ -55,9 +48,8 @@ tracing-subscriber = { version = "0.2" }
 getrandom = { version = "0.2", features = ["js"] }
 
 [features]
-default = ["ark-circom/default", "parallel"]
+default = ["parallel"]
 parallel = []
-wasm = ["ark-circom/wasm"]
 light-test = []
 
 

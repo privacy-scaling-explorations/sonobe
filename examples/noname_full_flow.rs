@@ -21,10 +21,11 @@ use folding_schemes::{
         decider_eth::{prepare_calldata, Decider as DeciderEth},
         Nova, PreprocessorParam,
     },
-    frontend::{noname::NonameFCircuit, FCircuit},
+    frontend::FCircuit,
     transcript::poseidon::poseidon_canonical_config,
     Decider, FoldingScheme,
 };
+use frontends::noname::NonameFCircuit;
 use std::time::Instant;
 
 use solidity_verifiers::{

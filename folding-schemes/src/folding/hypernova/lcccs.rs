@@ -1,5 +1,5 @@
 use ark_crypto_primitives::sponge::Absorb;
-use ark_ec::{CurveGroup, Group};
+use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_poly::DenseMultilinearExtension;
 use ark_poly::MultilinearExtension;
@@ -8,10 +8,14 @@ use ark_serialize::CanonicalSerialize;
 use ark_std::rand::Rng;
 use ark_std::Zero;
 
+use super::circuits::LCCCSVar;
 use super::Witness;
 use crate::arith::ccs::CCS;
+use crate::arith::Arith;
 use crate::commitment::CommitmentScheme;
-use crate::transcript::{AbsorbNonNative, Transcript};
+use crate::folding::circuits::CF1;
+use crate::folding::traits::{CommittedInstanceOps, Dummy};
+use crate::transcript::AbsorbNonNative;
 use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::utils::vec::mat_vec_mul;
 use crate::Error;
@@ -78,42 +82,41 @@ impl<F: PrimeField> CCS<F> {
     }
 }
 
-impl<C: CurveGroup> LCCCS<C> {
-    pub fn dummy(l: usize, t: usize, s: usize) -> LCCCS<C>
-    where
-        C::ScalarField: PrimeField,
-    {
-        LCCCS::<C> {
+impl<C: CurveGroup> Dummy<&CCS<CF1<C>>> for LCCCS<C> {
+    fn dummy(ccs: &CCS<CF1<C>>) -> Self {
+        Self {
             C: C::zero(),
-            u: C::ScalarField::zero(),
-            x: vec![C::ScalarField::zero(); l],
-            r_x: vec![C::ScalarField::zero(); s],
-            v: vec![C::ScalarField::zero(); t],
+            u: CF1::<C>::zero(),
+            x: vec![CF1::<C>::zero(); ccs.l],
+            r_x: vec![CF1::<C>::zero(); ccs.s],
+            v: vec![CF1::<C>::zero(); ccs.t],
         }
     }
+}
+
+impl<C: CurveGroup> Arith<Witness<CF1<C>>, LCCCS<C>> for CCS<CF1<C>> {
+    type Evaluation = Vec<CF1<C>>;
 
     /// Perform the check of the LCCCS instance described at section 4.2,
     /// notice that this method does not check the commitment correctness
-    pub fn check_relation(
-        &self,
-        ccs: &CCS<C::ScalarField>,
-        w: &Witness<C::ScalarField>,
-    ) -> Result<(), Error> {
-        // check CCS relation
-        let z: Vec<C::ScalarField> = [vec![self.u], self.x.clone(), w.w.to_vec()].concat();
+    fn eval_relation(&self, w: &Witness<CF1<C>>, u: &LCCCS<C>) -> Result<Self::Evaluation, Error> {
+        let z = [&[u.u][..], &u.x, &w.w].concat();
 
-        let computed_v: Vec<C::ScalarField> = ccs
-            .M
+        self.M
             .iter()
             .map(|M_j| {
-                let Mz_mle = dense_vec_to_dense_mle(ccs.s, &mat_vec_mul(M_j, &z)?);
-                Mz_mle.evaluate(&self.r_x).ok_or(Error::EvaluationFail)
+                let Mz_mle = dense_vec_to_dense_mle(self.s, &mat_vec_mul(M_j, &z)?);
+                Mz_mle.evaluate(&u.r_x).ok_or(Error::EvaluationFail)
             })
-            .collect::<Result<_, Error>>()?;
-        if computed_v != self.v {
-            return Err(Error::NotSatisfied);
-        }
-        Ok(())
+            .collect()
+    }
+
+    fn check_evaluation(
+        _w: &Witness<CF1<C>>,
+        u: &LCCCS<C>,
+        e: Self::Evaluation,
+    ) -> Result<(), Error> {
+        (u.v == e).then_some(()).ok_or(Error::NotSatisfied)
     }
 }
 
@@ -121,9 +124,8 @@ impl<C: CurveGroup> Absorb for LCCCS<C>
 where
     C::ScalarField: Absorb,
 {
-    fn to_sponge_bytes(&self, _dest: &mut Vec<u8>) {
-        // This is never called
-        unimplemented!()
+    fn to_sponge_bytes(&self, dest: &mut Vec<u8>) {
+        C::ScalarField::batch_to_sponge_bytes(&self.to_sponge_field_elements_as_vec(), dest);
     }
 
     fn to_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
@@ -140,29 +142,15 @@ where
     }
 }
 
-impl<C: CurveGroup> LCCCS<C>
-where
-    <C as Group>::ScalarField: Absorb,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-{
-    /// [`LCCCS`].hash implements the committed instance hash compatible with the gadget
-    /// implemented in nova/circuits.rs::CommittedInstanceVar.hash.
-    /// Returns `H(i, z_0, z_i, U_i)`, where `i` can be `i` but also `i+1`, and `U_i` is the LCCCS.
-    pub fn hash<T: Transcript<C::ScalarField>>(
-        &self,
-        sponge: &T,
-        pp_hash: C::ScalarField,
-        i: C::ScalarField,
-        z_0: Vec<C::ScalarField>,
-        z_i: Vec<C::ScalarField>,
-    ) -> C::ScalarField {
-        let mut sponge = sponge.clone();
-        sponge.absorb(&pp_hash);
-        sponge.absorb(&i);
-        sponge.absorb(&z_0);
-        sponge.absorb(&z_i);
-        sponge.absorb(&self);
-        sponge.squeeze_field_elements(1)[0]
+impl<C: CurveGroup> CommittedInstanceOps<C> for LCCCS<C> {
+    type Var = LCCCSVar<C>;
+
+    fn get_commitments(&self) -> Vec<C> {
+        vec![self.C]
+    }
+
+    fn is_incoming(&self) -> bool {
+        false
     }
 }
 
@@ -216,7 +204,7 @@ pub mod tests {
         let n_rows = 2_u32.pow(5) as usize;
         let n_cols = 2_u32.pow(5) as usize;
         let r1cs = R1CS::<Fr>::rand(&mut rng, n_rows, n_cols);
-        let ccs = CCS::from_r1cs(r1cs);
+        let ccs = CCS::from(r1cs);
         let z: Vec<Fr> = (0..n_cols).map(|_| Fr::rand(&mut rng)).collect();
 
         let (pedersen_params, _) =
@@ -250,12 +238,14 @@ pub mod tests {
 
         let ccs = get_test_ccs();
         let z = get_test_z(3);
-        ccs.check_relation(&z.clone()).unwrap();
+        let (w, x) = ccs.split_z(&z);
+        ccs.check_relation(&w, &x).unwrap();
 
         // Mutate z so that the relation does not hold
         let mut bad_z = z.clone();
         bad_z[3] = Fr::zero();
-        assert!(ccs.check_relation(&bad_z.clone()).is_err());
+        let (bad_w, bad_x) = ccs.split_z(&bad_z);
+        assert!(ccs.check_relation(&bad_w, &bad_x).is_err());
 
         let (pedersen_params, _) =
             Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();

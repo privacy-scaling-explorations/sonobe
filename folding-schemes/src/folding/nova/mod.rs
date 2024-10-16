@@ -13,33 +13,46 @@ use ark_std::fmt::Debug;
 use ark_std::rand::RngCore;
 use ark_std::{One, UniformRand, Zero};
 use core::marker::PhantomData;
+use decider_eth_circuit::WitnessVar;
 
 use crate::folding::circuits::cyclefold::{
     fold_cyclefold_circuit, CycleFoldCircuit, CycleFoldCommittedInstance, CycleFoldConfig,
     CycleFoldWitness,
 };
-use crate::folding::circuits::CF2;
+use crate::folding::{
+    circuits::{CF1, CF2},
+    traits::Dummy,
+};
 use crate::frontend::FCircuit;
 use crate::transcript::{poseidon::poseidon_canonical_config, AbsorbNonNative, Transcript};
 use crate::utils::vec::is_zero_vec;
 use crate::Error;
 use crate::FoldingScheme;
-use crate::{arith::r1cs::RelaxedR1CS, commitment::CommitmentScheme};
 use crate::{
     arith::r1cs::{extract_r1cs, extract_w_x, R1CS},
     constants::NOVA_N_BITS_RO,
     utils::{get_cm_coordinates, pp_hash},
 };
+use crate::{arith::Arith, commitment::CommitmentScheme};
 
 pub mod circuits;
-pub mod decider_eth;
-pub mod decider_eth_circuit;
 pub mod nifs;
-pub mod serialize;
+pub mod ova;
 pub mod traits;
 pub mod zk;
-use circuits::{AugmentedFCircuit, ChallengeGadget};
+
+use circuits::{AugmentedFCircuit, ChallengeGadget, CommittedInstanceVar};
 use nifs::NIFS;
+use traits::NIFSTrait;
+
+// offchain decider
+pub mod decider;
+pub mod decider_circuits;
+// onchain decider
+pub mod decider_eth;
+pub mod decider_eth_circuit;
+
+use super::traits::{CommittedInstanceOps, WitnessOps};
 
 /// Configuration for Nova's CycleFold circuit
 pub struct NovaCycleFoldConfig<C: CurveGroup> {
@@ -68,14 +81,20 @@ pub struct CommittedInstance<C: CurveGroup> {
     pub x: Vec<C::ScalarField>,
 }
 
-impl<C: CurveGroup> CommittedInstance<C> {
-    pub fn dummy(io_len: usize) -> Self {
+impl<C: CurveGroup> Dummy<usize> for CommittedInstance<C> {
+    fn dummy(io_len: usize) -> Self {
         Self {
             cmE: C::zero(),
-            u: C::ScalarField::zero(),
+            u: CF1::<C>::zero(),
             cmW: C::zero(),
-            x: vec![C::ScalarField::zero(); io_len],
+            x: vec![CF1::<C>::zero(); io_len],
         }
+    }
+}
+
+impl<C: CurveGroup> Dummy<&R1CS<CF1<C>>> for CommittedInstance<C> {
+    fn dummy(r1cs: &R1CS<CF1<C>>) -> Self {
+        Self::dummy(r1cs.l)
     }
 }
 
@@ -83,9 +102,8 @@ impl<C: CurveGroup> Absorb for CommittedInstance<C>
 where
     C::ScalarField: Absorb,
 {
-    fn to_sponge_bytes(&self, _dest: &mut Vec<u8>) {
-        // This is never called
-        unimplemented!()
+    fn to_sponge_bytes(&self, dest: &mut Vec<u8>) {
+        C::ScalarField::batch_to_sponge_bytes(&self.to_sponge_field_elements_as_vec(), dest);
     }
 
     fn to_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
@@ -103,30 +121,15 @@ where
     }
 }
 
-impl<C: CurveGroup> CommittedInstance<C>
-where
-    <C as Group>::ScalarField: Absorb,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-{
-    /// hash implements the committed instance hash compatible with the gadget implemented in
-    /// nova/circuits.rs::CommittedInstanceVar.hash.
-    /// Returns `H(i, z_0, z_i, U_i)`, where `i` can be `i` but also `i+1`, and `U_i` is the
-    /// `CommittedInstance`.
-    pub fn hash<T: Transcript<C::ScalarField>>(
-        &self,
-        sponge: &T,
-        pp_hash: C::ScalarField, // public params hash
-        i: C::ScalarField,
-        z_0: Vec<C::ScalarField>,
-        z_i: Vec<C::ScalarField>,
-    ) -> C::ScalarField {
-        let mut sponge = sponge.clone();
-        sponge.absorb(&pp_hash);
-        sponge.absorb(&i);
-        sponge.absorb(&z_0);
-        sponge.absorb(&z_i);
-        sponge.absorb(&self);
-        sponge.squeeze_field_elements(1)[0]
+impl<C: CurveGroup> CommittedInstanceOps<C> for CommittedInstance<C> {
+    type Var = CommittedInstanceVar<C>;
+
+    fn get_commitments(&self) -> Vec<C> {
+        vec![self.cmW, self.cmE]
+    }
+
+    fn is_incoming(&self) -> bool {
+        self.cmE == C::zero() && self.u == One::one()
     }
 }
 
@@ -157,18 +160,6 @@ impl<C: CurveGroup> Witness<C> {
         }
     }
 
-    pub fn dummy(w_len: usize, e_len: usize) -> Self {
-        let (rW, rE) = (C::ScalarField::zero(), C::ScalarField::zero());
-        let w = vec![C::ScalarField::zero(); w_len];
-
-        Self {
-            E: vec![C::ScalarField::zero(); e_len],
-            rE,
-            W: w,
-            rW,
-        }
-    }
-
     pub fn commit<CS: CommitmentScheme<C, HC>, const HC: bool>(
         &self,
         params: &CS::ProverParams,
@@ -185,6 +176,25 @@ impl<C: CurveGroup> Witness<C> {
             cmW,
             x,
         })
+    }
+}
+
+impl<C: CurveGroup> Dummy<&R1CS<CF1<C>>> for Witness<C> {
+    fn dummy(r1cs: &R1CS<CF1<C>>) -> Self {
+        Self {
+            E: vec![C::ScalarField::zero(); r1cs.A.n_rows],
+            rE: C::ScalarField::zero(),
+            W: vec![C::ScalarField::zero(); r1cs.A.n_cols - 1 - r1cs.l],
+            rW: C::ScalarField::zero(),
+        }
+    }
+}
+
+impl<C: CurveGroup> WitnessOps<C::ScalarField> for Witness<C> {
+    type Var = WitnessVar<C>;
+
+    fn get_openings(&self) -> Vec<(&[C::ScalarField], C::ScalarField)> {
+        vec![(&self.W, self.rW), (&self.E, self.rE)]
     }
 }
 
@@ -334,15 +344,6 @@ where
     CS2: CommitmentScheme<C2, H>,
 {
     fn check(&self) -> Result<(), ark_serialize::SerializationError> {
-        self.poseidon_config.full_rounds.check()?;
-        self.poseidon_config.partial_rounds.check()?;
-        self.poseidon_config.alpha.check()?;
-        self.poseidon_config.ark.check()?;
-        self.poseidon_config.mds.check()?;
-        self.poseidon_config.rate.check()?;
-        self.poseidon_config.capacity.check()?;
-        self.r1cs.check()?;
-        self.cf_r1cs.check()?;
         self.cs_vp.check()?;
         self.cf_cs_vp.check()?;
         Ok(())
@@ -360,42 +361,12 @@ where
         mut writer: W,
         compress: ark_serialize::Compress,
     ) -> Result<(), ark_serialize::SerializationError> {
-        self.r1cs.serialize_with_mode(&mut writer, compress)?;
-        self.cf_r1cs.serialize_with_mode(&mut writer, compress)?;
         self.cs_vp.serialize_with_mode(&mut writer, compress)?;
         self.cf_cs_vp.serialize_with_mode(&mut writer, compress)
     }
 
     fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
-        self.r1cs.serialized_size(compress)
-            + self.cf_r1cs.serialized_size(compress)
-            + self.cs_vp.serialized_size(compress)
-            + self.cf_cs_vp.serialized_size(compress)
-    }
-}
-impl<C1, C2, CS1, CS2, const H: bool> CanonicalDeserialize for VerifierParams<C1, C2, CS1, CS2, H>
-where
-    C1: CurveGroup,
-    C2: CurveGroup,
-    CS1: CommitmentScheme<C1, H>,
-    CS2: CommitmentScheme<C2, H>,
-{
-    fn deserialize_with_mode<R: std::io::prelude::Read>(
-        mut reader: R,
-        compress: ark_serialize::Compress,
-        validate: ark_serialize::Validate,
-    ) -> Result<Self, ark_serialize::SerializationError> {
-        let r1cs = R1CS::deserialize_with_mode(&mut reader, compress, validate)?;
-        let cf_r1cs = R1CS::deserialize_with_mode(&mut reader, compress, validate)?;
-        let cs_vp = CS1::VerifierParams::deserialize_with_mode(&mut reader, compress, validate)?;
-        let cf_cs_vp = CS2::VerifierParams::deserialize_with_mode(&mut reader, compress, validate)?;
-        Ok(VerifierParams {
-            poseidon_config: poseidon_canonical_config::<C1::ScalarField>(),
-            r1cs,
-            cf_r1cs,
-            cs_vp,
-            cf_cs_vp,
-        })
+        self.cs_vp.serialized_size(compress) + self.cf_cs_vp.serialized_size(compress)
     }
 }
 
@@ -416,6 +387,29 @@ where
             &self.poseidon_config,
         )
     }
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
+pub struct IVCProof<C1, C2>
+where
+    C1: CurveGroup,
+    C2: CurveGroup,
+{
+    // current step of the IVC
+    pub i: C1::ScalarField,
+    // initial state
+    pub z_0: Vec<C1::ScalarField>,
+    // current state
+    pub z_i: Vec<C1::ScalarField>,
+    // running instance
+    pub W_i: Witness<C1>,
+    pub U_i: CommittedInstance<C1>,
+    // incoming instance
+    pub w_i: Witness<C1>,
+    pub u_i: CommittedInstance<C1>,
+    // CycleFold instances
+    pub cf_W_i: CycleFoldWitness<C2>,
+    pub cf_U_i: CycleFoldCommittedInstance<C2>,
 }
 
 /// Implements Nova+CycleFold's IVC, described in [Nova](https://eprint.iacr.org/2021/370.pdf) and
@@ -489,6 +483,58 @@ where
     type IncomingInstance = (CommittedInstance<C1>, Witness<C1>);
     type MultiCommittedInstanceWithWitness = ();
     type CFInstance = (CycleFoldCommittedInstance<C2>, CycleFoldWitness<C2>);
+    type IVCProof = IVCProof<C1, C2>;
+
+    fn pp_deserialize_with_mode<R: std::io::prelude::Read>(
+        reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+        _fc_params: FC::Params, // FCircuit params
+    ) -> Result<Self::ProverParam, Error> {
+        Ok(Self::ProverParam::deserialize_with_mode(
+            reader, compress, validate,
+        )?)
+    }
+    fn vp_deserialize_with_mode<R: std::io::prelude::Read>(
+        mut reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+        fc_params: FC::Params,
+    ) -> Result<Self::VerifierParam, Error> {
+        let poseidon_config = poseidon_canonical_config::<C1::ScalarField>();
+
+        // generate the r1cs & cf_r1cs needed for the VerifierParams. In this way we avoid needing
+        // to serialize them, saving significant space in the VerifierParams serialized size.
+
+        // main circuit R1CS:
+        let f_circuit = FC::new(fc_params)?;
+        let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
+        let augmented_F_circuit =
+            AugmentedFCircuit::<C1, C2, GC2, FC>::empty(&poseidon_config, f_circuit.clone());
+        augmented_F_circuit.generate_constraints(cs.clone())?;
+        cs.finalize();
+        let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
+        let r1cs = extract_r1cs::<C1::ScalarField>(&cs);
+
+        // CycleFold circuit R1CS
+        let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
+        let cf_circuit = NovaCycleFoldCircuit::<C1, GC1>::empty();
+        cf_circuit.generate_constraints(cs2.clone())?;
+        cs2.finalize();
+        let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
+        let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2);
+
+        let cs_vp = CS1::VerifierParams::deserialize_with_mode(&mut reader, compress, validate)?;
+        let cf_cs_vp = CS2::VerifierParams::deserialize_with_mode(&mut reader, compress, validate)?;
+
+        Ok(Self::VerifierParam {
+            poseidon_config,
+            r1cs,
+            cf_r1cs,
+            cs_vp,
+            cf_cs_vp,
+        })
+    }
 
     fn preprocess(
         mut rng: impl RngCore,
@@ -562,9 +608,9 @@ where
         let pp_hash = vp.pp_hash()?;
 
         // setup the dummy instances
-        let (W_dummy, U_dummy) = r1cs.dummy_running_instance();
-        let (w_dummy, u_dummy) = r1cs.dummy_incoming_instance();
-        let (cf_W_dummy, cf_U_dummy) = cf_r1cs.dummy_running_instance();
+        let (W_dummy, U_dummy) = r1cs.dummy_witness_instance();
+        let (w_dummy, u_dummy) = r1cs.dummy_witness_instance();
+        let (cf_W_dummy, cf_U_dummy) = cf_r1cs.dummy_witness_instance();
 
         // W_dummy=W_0 is a 'dummy witness', all zeroes, but with the size corresponding to the
         // R1CS that we're working with.
@@ -669,15 +715,16 @@ where
             .step_native(i_usize, self.z_i.clone(), external_inputs.clone())?;
 
         // compute T and cmT for AugmentedFCircuit
-        let (T, cmT) = self.compute_cmT()?;
+        let (aux_p, aux_v) = self.compute_cmT()?;
+        let cmT = aux_v;
 
         // r_bits is the r used to the RLC of the F' instances
-        let r_bits = ChallengeGadget::<C1>::get_challenge_native(
+        let r_bits = ChallengeGadget::<C1, CommittedInstance<C1>>::get_challenge_native(
             &mut transcript,
             self.pp_hash,
-            self.U_i.clone(),
-            self.u_i.clone(),
-            cmT,
+            &self.U_i,
+            &self.u_i,
+            Some(&cmT),
         );
         let r_Fr = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
             .ok_or(Error::OutOfBounds)?;
@@ -685,10 +732,9 @@ where
             .ok_or(Error::OutOfBounds)?;
 
         // fold Nova instances
-        let (W_i1, U_i1): (Witness<C1>, CommittedInstance<C1>) =
-            NIFS::<C1, CS1, H>::fold_instances(
-                r_Fr, &self.W_i, &self.U_i, &self.w_i, &self.u_i, &T, cmT,
-            )?;
+        let (W_i1, U_i1): (Witness<C1>, CommittedInstance<C1>) = NIFS::<C1, CS1, H>::prove(
+            r_Fr, &self.W_i, &self.U_i, &self.w_i, &self.u_i, &aux_p, &aux_v,
+        )?;
 
         // folded instance output (public input, x)
         // u_{i+1}.x[0] = H(i+1, z_0, z_{i+1}, U_{i+1})
@@ -696,8 +742,8 @@ where
             &sponge,
             self.pp_hash,
             self.i + C1::ScalarField::one(),
-            self.z_0.clone(),
-            z_i1.clone(),
+            &self.z_0,
+            &z_i1,
         );
         // u_{i+1}.x[1] = H(cf_U_{i+1})
         let cf_u_i1_x: C1::ScalarField;
@@ -815,10 +861,11 @@ where
 
             #[cfg(test)]
             {
-                self.cf_r1cs.check_tight_relation(&_cfW_w_i, &cfW_u_i)?;
-                self.cf_r1cs.check_tight_relation(&_cfE_w_i, &cfE_u_i)?;
-                self.cf_r1cs
-                    .check_relaxed_relation(&self.cf_W_i, &self.cf_U_i)?;
+                cfW_u_i.check_incoming()?;
+                cfE_u_i.check_incoming()?;
+                self.cf_r1cs.check_relation(&_cfW_w_i, &cfW_u_i)?;
+                self.cf_r1cs.check_relation(&_cfE_w_i, &cfE_u_i)?;
+                self.cf_r1cs.check_relation(&self.cf_W_i, &self.cf_U_i)?;
             }
         }
 
@@ -850,8 +897,9 @@ where
 
         #[cfg(test)]
         {
-            self.r1cs.check_tight_relation(&self.w_i, &self.u_i)?;
-            self.r1cs.check_relaxed_relation(&self.W_i, &self.U_i)?;
+            self.u_i.check_incoming()?;
+            self.r1cs.check_relation(&self.w_i, &self.u_i)?;
+            self.r1cs.check_relation(&self.W_i, &self.U_i)?;
         }
 
         Ok(())
@@ -861,31 +909,93 @@ where
         self.z_i.clone()
     }
 
-    fn instances(
-        &self,
-    ) -> (
-        Self::RunningInstance,
-        Self::IncomingInstance,
-        Self::CFInstance,
-    ) {
-        (
-            (self.U_i.clone(), self.W_i.clone()),
-            (self.u_i.clone(), self.w_i.clone()),
-            (self.cf_U_i.clone(), self.cf_W_i.clone()),
-        )
+    fn ivc_proof(&self) -> Self::IVCProof {
+        Self::IVCProof {
+            i: self.i,
+            z_0: self.z_0.clone(),
+            z_i: self.z_i.clone(),
+            W_i: self.W_i.clone(),
+            U_i: self.U_i.clone(),
+            w_i: self.w_i.clone(),
+            u_i: self.u_i.clone(),
+            cf_W_i: self.cf_W_i.clone(),
+            cf_U_i: self.cf_U_i.clone(),
+        }
     }
 
-    /// Implements IVC.V of Nova+CycleFold. Notice that this method does not include the
+    fn from_ivc_proof(
+        ivc_proof: IVCProof<C1, C2>,
+        fcircuit_params: FC::Params,
+        params: (Self::ProverParam, Self::VerifierParam),
+    ) -> Result<Self, Error> {
+        let IVCProof {
+            i,
+            z_0,
+            z_i,
+            W_i,
+            U_i,
+            w_i,
+            u_i,
+            cf_W_i,
+            cf_U_i,
+        } = ivc_proof;
+        let (pp, vp) = params;
+
+        let f_circuit = FC::new(fcircuit_params).unwrap();
+        let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
+        let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
+        let augmented_F_circuit =
+            AugmentedFCircuit::<C1, C2, GC2, FC>::empty(&pp.poseidon_config, f_circuit.clone());
+        let cf_circuit = NovaCycleFoldCircuit::<C1, GC1>::empty();
+
+        augmented_F_circuit.generate_constraints(cs.clone())?;
+        cs.finalize();
+        let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
+        let r1cs = extract_r1cs::<C1::ScalarField>(&cs);
+
+        cf_circuit.generate_constraints(cs2.clone())?;
+        cs2.finalize();
+        let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
+        let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2);
+
+        Ok(Self {
+            _gc1: PhantomData,
+            _c2: PhantomData,
+            _gc2: PhantomData,
+            r1cs,
+            cf_r1cs,
+            poseidon_config: pp.poseidon_config,
+            cs_pp: pp.cs_pp,
+            cf_cs_pp: pp.cf_cs_pp,
+            F: f_circuit,
+            pp_hash: vp.pp_hash()?,
+            i,
+            z_0,
+            z_i,
+            w_i,
+            u_i,
+            W_i,
+            U_i,
+            cf_W_i,
+            cf_U_i,
+        })
+    }
+
+    /// Implements IVC.V of Nov.clone()a+CycleFold. Notice that this method does not include the
     /// commitments verification, which is done in the Decider.
-    fn verify(
-        vp: Self::VerifierParam,
-        z_0: Vec<C1::ScalarField>, // initial state
-        z_i: Vec<C1::ScalarField>, // last state
-        num_steps: C1::ScalarField,
-        running_instance: Self::RunningInstance,
-        incoming_instance: Self::IncomingInstance,
-        cyclefold_instance: Self::CFInstance,
-    ) -> Result<(), Error> {
+    fn verify(vp: Self::VerifierParam, ivc_proof: Self::IVCProof) -> Result<(), Error> {
+        let Self::IVCProof {
+            i: num_steps,
+            z_0,
+            z_i,
+            W_i,
+            U_i,
+            w_i,
+            u_i,
+            cf_W_i,
+            cf_U_i,
+        } = ivc_proof;
+
         let sponge = PoseidonSponge::<C1::ScalarField>::new(&vp.poseidon_config);
 
         if num_steps == C1::ScalarField::zero() {
@@ -895,10 +1005,6 @@ where
             return Ok(());
         }
 
-        let (U_i, W_i) = running_instance;
-        let (u_i, w_i) = incoming_instance;
-        let (cf_U_i, cf_W_i) = cyclefold_instance;
-
         if u_i.x.len() != 2 || U_i.x.len() != 2 {
             return Err(Error::IVCVerificationFail);
         }
@@ -907,7 +1013,7 @@ where
 
         // check that u_i's output points to the running instance
         // u_i.X[0] == H(i, z_0, z_i, U_i)
-        let expected_u_i_x = U_i.hash(&sponge, pp_hash, num_steps, z_0, z_i.clone());
+        let expected_u_i_x = U_i.hash(&sponge, pp_hash, num_steps, &z_0, &z_i);
         if expected_u_i_x != u_i.x[0] {
             return Err(Error::IVCVerificationFail);
         }
@@ -917,13 +1023,15 @@ where
             return Err(Error::IVCVerificationFail);
         }
 
-        // check R1CS satisfiability, which also enforces u_i.cmE==0, u_i.u==1
-        vp.r1cs.check_tight_relation(&w_i, &u_i)?;
+        // check R1CS satisfiability, which is equivalent to checking if `u_i`
+        // is an incoming instance and if `w_i` and `u_i` satisfy RelaxedR1CS
+        u_i.check_incoming()?;
+        vp.r1cs.check_relation(&w_i, &u_i)?;
         // check RelaxedR1CS satisfiability
-        vp.r1cs.check_relaxed_relation(&W_i, &U_i)?;
+        vp.r1cs.check_relation(&W_i, &U_i)?;
 
         // check CycleFold RelaxedR1CS satisfiability
-        vp.cf_r1cs.check_relaxed_relation(&cf_W_i, &cf_U_i)?;
+        vp.cf_r1cs.check_relation(&cf_W_i, &cf_U_i)?;
 
         Ok(())
     }
@@ -945,7 +1053,7 @@ where
 {
     // computes T and cmT for the AugmentedFCircuit
     fn compute_cmT(&self) -> Result<(Vec<C1::ScalarField>, C1), Error> {
-        NIFS::<C1, CS1, H>::compute_cmT(
+        NIFS::<C1, CS1, H>::compute_aux(
             &self.cs_pp,
             &self.r1cs,
             &self.w_i,
@@ -1160,15 +1268,67 @@ pub mod tests {
         }
         assert_eq!(Fr::from(num_steps as u32), nova.i);
 
-        let (running_instance, incoming_instance, cyclefold_instance) = nova.instances();
+        // serialize the Nova Prover & Verifier params. These params are the trusted setup of the commitment schemes used
+        let mut nova_pp_serialized = vec![];
+        nova_params
+            .0
+            .serialize_compressed(&mut nova_pp_serialized)
+            .unwrap();
+        let mut nova_vp_serialized = vec![];
+        nova_params
+            .1
+            .serialize_compressed(&mut nova_vp_serialized)
+            .unwrap();
+
+        // deserialize the Nova params
+        let _nova_pp_deserialized =
+            ProverParams::<Projective, Projective2, CS1, CS2, H>::deserialize_compressed(
+                &mut nova_pp_serialized.as_slice(),
+            )
+            .unwrap();
+        let nova_vp_deserialized = Nova::<
+            Projective,
+            GVar,
+            Projective2,
+            GVar2,
+            CubicFCircuit<Fr>,
+            CS1,
+            CS2,
+            H,
+        >::vp_deserialize_with_mode(
+            &mut nova_vp_serialized.as_slice(),
+            ark_serialize::Compress::Yes,
+            ark_serialize::Validate::Yes,
+            (), // fcircuit_params
+        )
+        .unwrap();
+
+        let ivc_proof = nova.ivc_proof();
+
+        // serialize IVCProof
+        let mut ivc_proof_serialized = vec![];
+        assert!(ivc_proof
+            .serialize_compressed(&mut ivc_proof_serialized)
+            .is_ok());
+        // deserialize IVCProof
+        let ivc_proof_deserialized = <Nova::<
+            Projective,
+            GVar,
+            Projective2,
+            GVar2,
+            CubicFCircuit<Fr>,
+            CS1,
+            CS2,
+            H,
+        > as FoldingScheme<Projective,Projective2, CubicFCircuit<Fr>>>::IVCProof::deserialize_compressed(
+            ivc_proof_serialized.as_slice()
+        )
+        .unwrap();
+
+        // verify the deserialized IVCProof with the deserialized VerifierParams
         Nova::<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>, CS1, CS2, H>::verify(
-            nova_params.1, // Nova's verifier params
-            z_0.clone(),
-            nova.z_i.clone(),
-            nova.i,
-            running_instance,
-            incoming_instance,
-            cyclefold_instance,
+            nova_vp_deserialized, // Nova's verifier params
+            ivc_proof_deserialized,
         )
         .unwrap();
 

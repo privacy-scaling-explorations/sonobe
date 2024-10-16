@@ -35,7 +35,8 @@ use ark_ff::{BigInteger, PrimeField};
 use ark_std::{One, Zero};
 
 use crate::{
-    arith::r1cs::{RelaxedR1CS, R1CS},
+    arith::{r1cs::R1CS, Arith, ArithSampler},
+    folding::traits::CommittedInstanceOps,
     RngCore,
 };
 use ark_crypto_primitives::sponge::{
@@ -50,7 +51,9 @@ use ark_r1cs_std::{
 
 use crate::{commitment::CommitmentScheme, folding::circuits::CF2, frontend::FCircuit, Error};
 
-use super::{circuits::ChallengeGadget, nifs::NIFS, CommittedInstance, Nova, Witness};
+use super::{
+    circuits::ChallengeGadget, nifs::NIFS, traits::NIFSTrait, CommittedInstance, Nova, Witness,
+};
 
 // We use the same definition of a folding proof as in https://eprint.iacr.org/2023/969.pdf
 // It consists in the commitment to the T term
@@ -82,7 +85,13 @@ where
         u_i: CommittedInstance<C1>,
         cmT: C1,
     ) -> Result<C1::ScalarField, Error> {
-        let r_bits = ChallengeGadget::<C1>::get_challenge_native(sponge, pp_hash, U_i, u_i, cmT);
+        let r_bits = ChallengeGadget::<C1, CommittedInstance<C1>>::get_challenge_native(
+            sponge,
+            pp_hash,
+            &U_i,
+            &u_i,
+            Some(&cmT),
+        );
         C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits)).ok_or(Error::OutOfBounds)
     }
 
@@ -133,15 +142,16 @@ where
         )?;
 
         // c. Compute fold
-        let (W_f, U_f) = NIFS::<C1, CS1, true>::fold_instances(
-            r, &nova.w_i, &nova.u_i, &nova.W_i, &nova.U_i, &T, cmT,
-        )?;
+        let (W_f, U_f) =
+            NIFS::<C1, CS1, true>::prove(r, &nova.w_i, &nova.u_i, &nova.W_i, &nova.U_i, &T, &cmT)?;
 
         // d. Store folding proof
         let pi = FoldingProof { cmT };
 
         // 2. Sample a satisfying relaxed R1CS instance-witness pair (W_r, U_r)
-        let (W_r, U_r) = nova.r1cs.sample::<CS1>(&nova.cs_pp, &mut rng)?;
+        let (W_r, U_r) = nova
+            .r1cs
+            .sample_witness_instance::<CS1>(&nova.cs_pp, &mut rng)?;
 
         // 3. Fold the instance-witness pair (U_f, W_f) with (U_r, W_r)
         // a. Compute T
@@ -158,15 +168,8 @@ where
         )?;
 
         // c. Compute fold
-        let (W_i_prime, _) = NIFS::<C1, CS1, true>::fold_instances(
-            r_2,
-            &W_f,
-            &U_f,
-            &W_r,
-            &U_r,
-            &T_i_prime,
-            cmT_i_prime,
-        )?;
+        let (W_i_prime, _) =
+            NIFS::<C1, CS1, true>::prove(r_2, &W_f, &U_f, &W_r, &U_r, &T_i_prime, &cmT_i_prime)?;
 
         // d. Store folding proof
         let pi_prime = FoldingProof { cmT: cmT_i_prime };
@@ -226,7 +229,7 @@ where
 
         // b. Check computed hashes are correct
         let mut sponge = PoseidonSponge::<C1::ScalarField>::new(poseidon_config);
-        let expected_u_i_x = proof.U_i.hash(&sponge, pp_hash, i, z_0, z_i);
+        let expected_u_i_x = proof.U_i.hash(&sponge, pp_hash, i, &z_0, &z_i);
         if expected_u_i_x != proof.u_i.x[0] {
             return Err(Error::zkIVCVerificationFail);
         }
@@ -252,12 +255,7 @@ where
         )?;
 
         // b. Get the U_f instance
-        let U_f = NIFS::<C1, CS1, true>::fold_committed_instance(
-            r,
-            &proof.u_i,
-            &proof.U_i,
-            &proof.pi.cmT,
-        );
+        let U_f = NIFS::<C1, CS1, true>::verify(r, &proof.u_i, &proof.U_i, &proof.pi.cmT);
 
         // 4. Obtain the U^{\prime}_i folded instance
         // a. Compute folding challenge
@@ -270,18 +268,13 @@ where
         )?;
 
         // b. Compute fold
-        let U_i_prime = NIFS::<C1, CS1, true>::fold_committed_instance(
-            r_2,
-            &U_f,
-            &proof.U_r,
-            &proof.pi_prime.cmT,
-        );
+        let U_i_prime = NIFS::<C1, CS1, true>::verify(r_2, &U_f, &proof.U_r, &proof.pi_prime.cmT);
 
         // 5. Check that W^{\prime}_i is a satisfying witness
-        r1cs.check_relaxed_relation(&proof.W_i_prime, &U_i_prime)?;
+        r1cs.check_relation(&proof.W_i_prime, &U_i_prime)?;
 
         // 6. Check that the cyclefold instance-witness pair satisfies the cyclefold relaxed r1cs
-        cf_r1cs.check_relaxed_relation(&proof.cf_W_i, &proof.cf_U_i)?;
+        cf_r1cs.check_relation(&proof.cf_W_i, &proof.cf_U_i)?;
 
         Ok(())
     }
@@ -369,7 +362,7 @@ pub mod tests {
         );
         let (_, sampled_committed_instance) = nova
             .r1cs
-            .sample::<Pedersen<Projective, true>>(&nova.cs_pp, rng)
+            .sample_witness_instance::<Pedersen<Projective, true>>(&nova.cs_pp, rng)
             .unwrap();
 
         // proof verification fails with incorrect running instance
@@ -406,7 +399,7 @@ pub mod tests {
         );
         let (sampled_committed_witness, _) = nova
             .r1cs
-            .sample::<Pedersen<Projective, true>>(&nova.cs_pp, rng)
+            .sample_witness_instance::<Pedersen<Projective, true>>(&nova.cs_pp, rng)
             .unwrap();
 
         // proof generation fails with incorrect running witness

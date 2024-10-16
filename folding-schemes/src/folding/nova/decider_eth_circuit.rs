@@ -1,5 +1,7 @@
 /// This file implements the onchain (Ethereum's EVM) decider circuit. For non-ethereum use cases,
 /// other more efficient approaches can be used.
+/// More details can be found at the documentation page:
+/// https://privacy-scaling-explorations.github.io/sonobe-docs/design/nova-decider-onchain.html
 use ark_crypto_primitives::sponge::{
     constraints::CryptographicSpongeVar,
     poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig, PoseidonSponge},
@@ -25,9 +27,9 @@ use core::{borrow::Borrow, marker::PhantomData};
 use super::{
     circuits::{ChallengeGadget, CommittedInstanceVar},
     nifs::NIFS,
+    traits::NIFSTrait,
     CommittedInstance, Nova, Witness,
 };
-use crate::arith::r1cs::R1CS;
 use crate::commitment::{pedersen::Params as PedersenParams, CommitmentScheme};
 use crate::folding::circuits::{
     cyclefold::{CycleFoldCommittedInstance, CycleFoldWitness},
@@ -41,6 +43,10 @@ use crate::utils::{
     vec::poly_from_vec,
 };
 use crate::Error;
+use crate::{
+    arith::r1cs::R1CS,
+    folding::traits::{CommittedInstanceVarOps, Dummy, WitnessVarOps},
+};
 
 #[derive(Debug, Clone)]
 pub struct RelaxedR1CSGadget {}
@@ -135,7 +141,6 @@ pub struct WitnessVar<C: CurveGroup> {
 impl<C> AllocVar<Witness<C>, CF1<C>> for WitnessVar<C>
 where
     C: CurveGroup,
-    <C as ark_ec::CurveGroup>::BaseField: PrimeField,
 {
     fn new_variable<T: Borrow<Witness<C>>>(
         cs: impl Into<Namespace<CF1<C>>>,
@@ -157,6 +162,12 @@ where
 
             Ok(Self { E, rE, W, rW })
         })
+    }
+}
+
+impl<C: CurveGroup> WitnessVarOps<C::ScalarField> for WitnessVar<C> {
+    fn get_openings(&self) -> Vec<(&[FpVar<C::ScalarField>], FpVar<C::ScalarField>)> {
+        vec![(&self.E, self.rE.clone()), (&self.W, self.rW.clone())]
     }
 }
 
@@ -235,7 +246,7 @@ where
         let mut transcript = PoseidonSponge::<C1::ScalarField>::new(&nova.poseidon_config);
 
         // compute the U_{i+1}, W_{i+1}
-        let (T, cmT) = NIFS::<C1, CS1, H>::compute_cmT(
+        let (aux_p, aux_v) = NIFS::<C1, CS1, H>::compute_aux(
             &nova.cs_pp,
             &nova.r1cs.clone(),
             &nova.w_i.clone(),
@@ -243,17 +254,18 @@ where
             &nova.W_i.clone(),
             &nova.U_i.clone(),
         )?;
-        let r_bits = ChallengeGadget::<C1>::get_challenge_native(
+        let cmT = aux_v;
+        let r_bits = ChallengeGadget::<C1, CommittedInstance<C1>>::get_challenge_native(
             &mut transcript,
             nova.pp_hash,
-            nova.U_i.clone(),
-            nova.u_i.clone(),
-            cmT,
+            &nova.U_i,
+            &nova.u_i,
+            Some(&cmT),
         );
         let r_Fr = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
             .ok_or(Error::OutOfBounds)?;
-        let (W_i1, U_i1) = NIFS::<C1, CS1, H>::fold_instances(
-            r_Fr, &nova.W_i, &nova.U_i, &nova.w_i, &nova.u_i, &T, cmT,
+        let (W_i1, U_i1) = NIFS::<C1, CS1, H>::prove(
+            r_Fr, &nova.W_i, &nova.U_i, &nova.w_i, &nova.u_i, &aux_p, &aux_v,
         )?;
 
         // compute the KZG challenges used as inputs in the circuit
@@ -346,11 +358,8 @@ where
             Ok(self.z_i.unwrap_or(vec![CF1::<C1>::zero()]))
         })?;
 
-        let u_dummy_native = CommittedInstance::<C1>::dummy(2);
-        let w_dummy_native = Witness::<C1>::dummy(
-            self.r1cs.A.n_cols - 3, /* (3=2+1, since u_i.x.len=2) */
-            self.E_len,
-        );
+        let u_dummy_native = CommittedInstance::<C1>::dummy(&self.r1cs);
+        let w_dummy_native = Witness::<C1>::dummy(&self.r1cs);
 
         let u_i = CommittedInstanceVar::<C1>::new_witness(cs.clone(), || {
             Ok(self.u_i.unwrap_or(u_dummy_native.clone()))
@@ -366,17 +375,18 @@ where
             Ok(self.W_i1.unwrap_or(w_dummy_native.clone()))
         })?;
 
-        // allocate the inputs for the check 6
+        // allocate the inputs for the check 5.1
         let kzg_c_W = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
             Ok(self.kzg_c_W.unwrap_or_else(CF1::<C1>::zero))
         })?;
         let kzg_c_E = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
             Ok(self.kzg_c_E.unwrap_or_else(CF1::<C1>::zero))
         })?;
-        let _eval_W = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
+        // allocate the inputs for the check 5.2
+        let eval_W = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
             Ok(self.eval_W.unwrap_or_else(CF1::<C1>::zero))
         })?;
-        let _eval_E = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
+        let eval_E = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
             Ok(self.eval_E.unwrap_or_else(CF1::<C1>::zero))
         })?;
 
@@ -385,10 +395,8 @@ where
         // `transcript` is for challenge generation.
         let mut transcript = sponge.clone();
 
-        // 1. check RelaxedR1CS of U_{i+1}
-        let z_U1: Vec<FpVar<CF1<C1>>> =
-            [vec![U_i1.u.clone()], U_i1.x.to_vec(), W_i1.W.to_vec()].concat();
-        RelaxedR1CSGadget::check_native(r1cs, W_i1.E.clone(), U_i1.u.clone(), z_U1)?;
+        // The following enumeration of the steps matches the one used at the documentation page
+        // https://privacy-scaling-explorations.github.io/sonobe-docs/design/nova-decider-onchain.html
 
         // 2. u_i.cmE==cm(0), u_i.u==1
         // Here zero is the x & y coordinates of the zero point affine representation.
@@ -398,14 +406,13 @@ where
         (u_i.u.is_one()?).enforce_equal(&Boolean::TRUE)?;
 
         // 3.a u_i.x[0] == H(i, z_0, z_i, U_i)
-        let (u_i_x, U_i_vec) = U_i.clone().hash(
-            &sponge,
-            pp_hash.clone(),
-            i.clone(),
-            z_0.clone(),
-            z_i.clone(),
-        )?;
+        let (u_i_x, U_i_vec) = U_i.clone().hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
         (u_i.x[0]).enforce_equal(&u_i_x)?;
+
+        // 4. check RelaxedR1CS of U_{i+1}
+        let z_U1: Vec<FpVar<CF1<C1>>> =
+            [vec![U_i1.u.clone()], U_i1.x.to_vec(), W_i1.W.to_vec()].concat();
+        RelaxedR1CSGadget::check_native(r1cs, W_i1.E.clone(), U_i1.u.clone(), z_U1)?;
 
         #[cfg(feature = "light-test")]
         log::warn!("[WARNING]: Running with the 'light-test' feature, skipping the big part of the DeciderEthCircuit.\n           Only for testing purposes.");
@@ -429,10 +436,7 @@ where
 
             let cf_u_dummy_native =
                 CycleFoldCommittedInstance::<C2>::dummy(NovaCycleFoldConfig::<C1>::IO_LEN);
-            let w_dummy_native = CycleFoldWitness::<C2>::dummy(
-                self.cf_r1cs.A.n_cols - 1 - self.cf_r1cs.l,
-                self.cf_E_len,
-            );
+            let w_dummy_native = CycleFoldWitness::<C2>::dummy(&self.cf_r1cs);
             let cf_U_i = CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || {
                 Ok(self.cf_U_i.unwrap_or_else(|| cf_u_dummy_native.clone()))
             })?;
@@ -444,7 +448,7 @@ where
             let (cf_u_i_x, _) = cf_U_i.clone().hash(&sponge, pp_hash.clone())?;
             (u_i.x[1]).enforce_equal(&cf_u_i_x)?;
 
-            // 4. check Pedersen commitments of cf_U_i.{cmE, cmW}
+            // 7. check Pedersen commitments of cf_U_i.{cmE, cmW}
             let H = GC2::new_constant(cs.clone(), self.cf_pedersen_params.h)?;
             let G = Vec::<GC2>::new_constant(cs.clone(), self.cf_pedersen_params.generators)?;
             let cf_W_i_E_bits: Result<Vec<Vec<Boolean<CF1<C1>>>>, SynthesisError> =
@@ -469,43 +473,39 @@ where
                     || Ok(self.cf_r1cs.clone()),
                 )?;
 
-            // 5. check RelaxedR1CS of cf_U_i
+            // 6. check RelaxedR1CS of cf_U_i (CycleFold instance)
             let cf_z_U = [vec![cf_U_i.u.clone()], cf_U_i.x.to_vec(), cf_W_i.W.to_vec()].concat();
             RelaxedR1CSGadget::check_nonnative(cf_r1cs, cf_W_i.E, cf_U_i.u.clone(), cf_z_U)?;
         }
 
-        // 8.a, 6.a compute NIFS.V and KZG challenges.
+        // 1.1.a, 5.1. compute NIFS.V and KZG challenges.
         // We need to ensure the order of challenge generation is the same as
         // the native counterpart, so we first compute the challenges here and
         // do the actual checks later.
         let cmT =
             NonNativeAffineVar::new_input(cs.clone(), || Ok(self.cmT.unwrap_or_else(C1::zero)))?;
-        let r_bits = ChallengeGadget::<C1>::get_challenge_gadget(
+        // 1.1.a
+        let r_bits = ChallengeGadget::<C1, CommittedInstance<C1>>::get_challenge_gadget(
             &mut transcript,
             pp_hash,
             U_i_vec,
             u_i.clone(),
-            cmT.clone(),
+            Some(cmT),
         )?;
+        // 5.1.
         let (incircuit_c_W, incircuit_c_E) =
             KZGChallengesGadget::<C1>::get_challenges_gadget(&mut transcript, U_i1.clone())?;
-
-        // 6.b check KZG challenges
         incircuit_c_W.enforce_equal(&kzg_c_W)?;
         incircuit_c_E.enforce_equal(&kzg_c_E)?;
 
-        // Check 7 is temporary disabled due
-        // https://github.com/privacy-scaling-explorations/sonobe/issues/80
-        log::warn!("[WARNING]: issue #80 (https://github.com/privacy-scaling-explorations/sonobe/issues/80) is not resolved yet.");
-        //
-        // 7. check eval_W==p_W(c_W) and eval_E==p_E(c_E)
-        // let incircuit_eval_W = evaluate_gadget::<CF1<C1>>(W_i1.W, incircuit_c_W)?;
-        // let incircuit_eval_E = evaluate_gadget::<CF1<C1>>(W_i1.E, incircuit_c_E)?;
-        // incircuit_eval_W.enforce_equal(&eval_W)?;
-        // incircuit_eval_E.enforce_equal(&eval_E)?;
+        // 5.2. check eval_W==p_W(c_W) and eval_E==p_E(c_E)
+        let incircuit_eval_W = evaluate_gadget::<CF1<C1>>(W_i1.W, incircuit_c_W)?;
+        let incircuit_eval_E = evaluate_gadget::<CF1<C1>>(W_i1.E, incircuit_c_E)?;
+        incircuit_eval_W.enforce_equal(&eval_W)?;
+        incircuit_eval_E.enforce_equal(&eval_E)?;
 
-        // 8.b check the NIFS.V challenge matches the one from the public input (so we
-        // avoid the verifier computing it)
+        // 1.1.b check that the NIFS.V challenge matches the one from the public input (so we avoid
+        //   the verifier computing it)
         let r_Fr = Boolean::le_bits_to_fp_var(&r_bits)?;
         // check that the in-circuit computed r is equal to the inputted r
         let r =
@@ -519,13 +519,11 @@ where
 /// Interpolates the polynomial from the given vector, and then returns it's evaluation at the
 /// given point.
 #[allow(unused)] // unused while check 7 is disabled
-fn evaluate_gadget<F: PrimeField>(
-    v: Vec<FpVar<F>>,
+pub fn evaluate_gadget<F: PrimeField>(
+    mut v: Vec<FpVar<F>>,
     point: FpVar<F>,
 ) -> Result<FpVar<F>, SynthesisError> {
-    if !v.len().is_power_of_two() {
-        return Err(SynthesisError::Unsatisfiable);
-    }
+    v.resize(v.len().next_power_of_two(), FpVar::zero());
     let n = v.len() as u64;
     let gen = F::get_root_of_unity(n).unwrap();
     let domain = Radix2DomainVar::new(gen, log2(v.len()) as u64, FpVar::one()).unwrap();
@@ -591,7 +589,7 @@ pub mod tests {
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::{
         rand::{thread_rng, Rng},
-        One, UniformRand,
+        UniformRand,
     };
     use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
 
@@ -600,7 +598,6 @@ pub mod tests {
         r1cs::{
             extract_r1cs, extract_w_x,
             tests::{get_test_r1cs, get_test_z},
-            RelaxedR1CS,
         },
         Arith,
     };
@@ -610,20 +607,18 @@ pub mod tests {
     use crate::transcript::poseidon::poseidon_canonical_config;
     use crate::FoldingScheme;
 
-    fn prepare_instances<C: CurveGroup, CS: CommitmentScheme<C>, R: Rng>(
+    // Convert `z` to a witness-instance pair for the relaxed R1CS
+    fn prepare_relaxed_witness_instance<C: CurveGroup, CS: CommitmentScheme<C>, R: Rng>(
         mut rng: R,
         r1cs: &R1CS<C::ScalarField>,
         z: &[C::ScalarField],
-    ) -> (Witness<C>, CommittedInstance<C>)
-    where
-        C::ScalarField: Absorb,
-    {
+    ) -> (Witness<C>, CommittedInstance<C>) {
         let (w, x) = r1cs.split_z(z);
 
         let (cs_pp, _) = CS::setup(&mut rng, max(w.len(), r1cs.A.n_rows)).unwrap();
 
         let mut w = Witness::new::<false>(w, r1cs.A.n_rows, &mut rng);
-        w.E = r1cs.eval_relation(z).unwrap();
+        w.E = r1cs.eval_at_z(z).unwrap();
         let mut u = w.commit::<CS, false>(&cs_pp, x).unwrap();
         u.u = z[0];
 
@@ -635,9 +630,10 @@ pub mod tests {
         let rng = &mut thread_rng();
 
         let r1cs: R1CS<Fr> = get_test_r1cs();
+
         let mut z = get_test_z(3);
-        z[0] = Fr::rand(rng);
-        let (w, u) = prepare_instances::<_, Pedersen<Projective>, _>(rng, &r1cs, &z);
+        z[0] = Fr::rand(rng); // Randomize `z[0]` (i.e. `u.u`) to test the relaxed R1CS
+        let (w, u) = prepare_relaxed_witness_instance::<_, Pedersen<Projective>, _>(rng, &r1cs, &z);
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
@@ -665,12 +661,11 @@ pub mod tests {
 
         let r1cs = extract_r1cs::<Fr>(&cs);
         let (w, x) = extract_w_x::<Fr>(&cs);
-        let mut z = [vec![Fr::one()], x, w].concat();
-        r1cs.check_relation(&z).unwrap();
+        r1cs.check_relation(&w, &x).unwrap();
 
-        z[0] = Fr::rand(rng);
-        let (w, u) = prepare_instances::<_, Pedersen<Projective>, _>(rng, &r1cs, &z);
-        r1cs.check_relaxed_relation(&w, &u).unwrap();
+        let z = [vec![Fr::rand(rng)], x, w].concat();
+        let (w, u) = prepare_relaxed_witness_instance::<_, Pedersen<Projective>, _>(rng, &r1cs, &z);
+        r1cs.check_relation(&w, &u).unwrap();
 
         // set new CS for the circuit that checks the RelaxedR1CS of our original circuit
         let cs = ConstraintSystem::<Fr>::new_ref();
@@ -759,9 +754,10 @@ pub mod tests {
         let cs = cs.into_inner().unwrap();
         let r1cs = extract_r1cs::<Fq>(&cs);
         let (w, x) = extract_w_x::<Fq>(&cs);
-        let z = [vec![Fq::rand(rng)], x, w].concat();
 
-        let (w, u) = prepare_instances::<_, Pedersen<Projective2>, _>(rng, &r1cs, &z);
+        let z = [vec![Fq::rand(rng)], x, w].concat();
+        let (w, u) =
+            prepare_relaxed_witness_instance::<_, Pedersen<Projective2>, _>(rng, &r1cs, &z);
 
         // natively
         let cs = ConstraintSystem::<Fq>::new_ref();
@@ -783,7 +779,7 @@ pub mod tests {
     }
 
     #[test]
-    fn test_decider_circuit() {
+    fn test_decider_eth_circuit() {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
@@ -814,21 +810,11 @@ pub mod tests {
         // generate a Nova instance and do a step of it
         let mut nova = N::init(&nova_params, F_circuit, z_0.clone()).unwrap();
         nova.prove_step(&mut rng, vec![], None).unwrap();
-        let ivc_v = nova.clone();
-        let (running_instance, incoming_instance, cyclefold_instance) = ivc_v.instances();
-        N::verify(
-            nova_params.1, // verifier_params
-            z_0,
-            ivc_v.z_i,
-            Fr::one(),
-            running_instance,
-            incoming_instance,
-            cyclefold_instance,
-        )
-        .unwrap();
+        let ivc_proof = nova.ivc_proof();
+        N::verify(nova_params.1, ivc_proof).unwrap();
 
-        // load the DeciderEthCircuit from the generated Nova instance
-        let decider_circuit = DeciderEthCircuit::<
+        // load the DeciderEthCircuit from the Nova instance
+        let decider_eth_circuit = DeciderEthCircuit::<
             Projective,
             GVar,
             Projective2,
@@ -841,7 +827,9 @@ pub mod tests {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         // generate the constraints and check that are satisfied by the inputs
-        decider_circuit.generate_constraints(cs.clone()).unwrap();
+        decider_eth_circuit
+            .generate_constraints(cs.clone())
+            .unwrap();
         assert!(cs.is_satisfied().unwrap());
     }
 
@@ -880,10 +868,6 @@ pub mod tests {
         assert_eq!(challenge_E_Var.value().unwrap(), challenge_E);
     }
 
-    // The test test_polynomial_interpolation is temporary disabled due
-    // https://github.com/privacy-scaling-explorations/sonobe/issues/80
-    // for n<=11 it will work, but for n>11 it will fail with stack overflow.
-    #[ignore]
     #[test]
     fn test_polynomial_interpolation() {
         let mut rng = ark_std::test_rng();

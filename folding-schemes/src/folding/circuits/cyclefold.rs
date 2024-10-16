@@ -24,7 +24,7 @@ use super::{nonnative::uint::NonNativeUintVar, CF1, CF2};
 use crate::arith::r1cs::{extract_w_x, R1CS};
 use crate::commitment::CommitmentScheme;
 use crate::constants::NOVA_N_BITS_RO;
-use crate::folding::nova::nifs::NIFS;
+use crate::folding::nova::{nifs::NIFS, traits::NIFSTrait};
 use crate::transcript::{AbsorbNonNative, AbsorbNonNativeGadget, Transcript, TranscriptVar};
 use crate::Error;
 
@@ -61,10 +61,12 @@ where
         f().and_then(|val| {
             let cs = cs.into();
 
+            let u =
+                NonNativeUintVar::<CF2<C>>::new_variable(cs.clone(), || Ok(val.borrow().u), mode)?;
+            let x: Vec<NonNativeUintVar<CF2<C>>> =
+                Vec::new_variable(cs.clone(), || Ok(val.borrow().x.clone()), mode)?;
             let cmE = GC::new_variable(cs.clone(), || Ok(val.borrow().cmE), mode)?;
             let cmW = GC::new_variable(cs.clone(), || Ok(val.borrow().cmW), mode)?;
-            let u = NonNativeUintVar::new_variable(cs.clone(), || Ok(val.borrow().u), mode)?;
-            let x = Vec::new_variable(cs.clone(), || Ok(val.borrow().x.clone()), mode)?;
 
             Ok(Self { cmE, u, cmW, x })
         })
@@ -568,9 +570,8 @@ where
     let cf_r_Fq = C1::BaseField::from_bigint(BigInteger::from_bits_le(&cf_r_bits))
         .expect("cf_r_bits out of bounds");
 
-    let (cf_W_i1, cf_U_i1) = NIFS::<C2, CS2, H>::fold_instances(
-        cf_r_Fq, &cf_W_i, &cf_U_i, &cf_w_i, &cf_u_i, &cf_T, cf_cmT,
-    )?;
+    let (cf_W_i1, cf_U_i1) =
+        NIFS::<C2, CS2, H>::prove(cf_r_Fq, &cf_W_i, &cf_U_i, &cf_w_i, &cf_u_i, &cf_T, &cf_cmT)?;
     Ok((cf_w_i, cf_u_i, cf_W_i1, cf_U_i1, cf_cmT, cf_r_Fq))
 }
 
@@ -582,10 +583,11 @@ pub mod tests {
         poseidon::{constraints::PoseidonSpongeVar, PoseidonSponge},
     };
     use ark_r1cs_std::R1CSVar;
-    use ark_std::UniformRand;
+    use ark_std::{One, UniformRand};
 
     use super::*;
-    use crate::folding::nova::nifs::tests::prepare_simple_fold_inputs;
+    use crate::commitment::pedersen::Pedersen;
+    use crate::folding::nova::CommittedInstance;
     use crate::transcript::poseidon::poseidon_canonical_config;
     use crate::utils::get_cm_coordinates;
 
@@ -667,12 +669,30 @@ pub mod tests {
 
     #[test]
     fn test_nifs_full_gadget() {
-        let (_, _, _, _, ci1, _, ci2, _, ci3, _, cmT, r_bits, _) = prepare_simple_fold_inputs();
+        let mut rng = ark_std::test_rng();
+
+        // prepare the committed instances to test in-circuit
+        let ci: Vec<CommittedInstance<Projective>> = (0..2)
+            .into_iter()
+            .map(|_| CommittedInstance::<Projective> {
+                cmE: Projective::rand(&mut rng),
+                u: Fr::rand(&mut rng),
+                cmW: Projective::rand(&mut rng),
+                x: vec![Fr::rand(&mut rng); 1],
+            })
+            .collect();
+        let (ci1, mut ci2) = (ci[0].clone(), ci[1].clone());
+        // make the 2nd instance a 'fresh' instance (ie. cmE=0, u=1)
+        ci2.cmE = Projective::zero();
+        ci2.u = Fr::one();
+        let r_bits: Vec<bool> =
+            Fr::rand(&mut rng).into_bigint().to_bits_le()[..NOVA_N_BITS_RO].to_vec();
+        let r_Fr = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
+        let cmT = Projective::rand(&mut rng);
+        let ci3 = NIFS::<Projective, Pedersen<Projective>>::verify(r_Fr, &ci1, &ci2, &cmT);
 
         let cs = ConstraintSystem::<Fq>::new_ref();
-
         let r_bitsVar = Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(r_bits)).unwrap();
-
         let ci1Var =
             CycleFoldCommittedInstanceVar::<Projective, GVar>::new_witness(cs.clone(), || {
                 Ok(ci1.clone())

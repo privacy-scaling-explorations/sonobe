@@ -8,7 +8,7 @@ use ark_serialize::CanonicalSerialize;
 use ark_std::Zero;
 use sha3::{Digest, Sha3_256};
 
-use crate::arith::Arith;
+use crate::arith::ArithSerializer;
 use crate::commitment::CommitmentScheme;
 use crate::Error;
 
@@ -45,8 +45,8 @@ pub fn get_cm_coordinates<C: CurveGroup>(cm: &C) -> Vec<C::BaseField> {
 
 /// returns the hash of the given public parameters of the Folding Scheme
 pub fn pp_hash<C1, C2, CS1, CS2, const H: bool>(
-    arith: &impl Arith<C1::ScalarField>,
-    cf_arith: &impl Arith<C2::ScalarField>,
+    arith: &impl ArithSerializer,
+    cf_arith: &impl ArithSerializer,
     cs_vp: &CS1::VerifierParams,
     cf_cs_vp: &CS2::VerifierParams,
     poseidon_config: &PoseidonConfig<C1::ScalarField>,

@@ -154,17 +154,11 @@ fn main() {
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
 
-    let (running_instance, incoming_instance, cyclefold_instance) = folding_scheme.instances();
-
     println!("Run the Nova's IVC verifier");
+    let ivc_proof = folding_scheme.ivc_proof();
     N::verify(
-        nova_params.1,
-        initial_state.clone(),
-        folding_scheme.state(), // latest state
-        Fr::from(num_steps as u32),
-        running_instance,
-        incoming_instance,
-        cyclefold_instance,
+        nova_params.1, // Nova's verifier params
+        ivc_proof,
     )
     .unwrap();
 }

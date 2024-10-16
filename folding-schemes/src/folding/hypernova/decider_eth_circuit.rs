@@ -26,9 +26,6 @@ use super::{
     nimfs::{NIMFSProof, NIMFS},
     HyperNova, Witness, CCCS, LCCCS,
 };
-use crate::arith::ccs::CCS;
-use crate::arith::r1cs::R1CS;
-use crate::commitment::{pedersen::Params as PedersenParams, CommitmentScheme};
 use crate::folding::circuits::{
     cyclefold::{CycleFoldCommittedInstance, CycleFoldWitness},
     CF1, CF2,
@@ -40,6 +37,14 @@ use crate::utils::{
     vec::poly_from_vec,
 };
 use crate::Error;
+use crate::{
+    arith::{ccs::CCS, r1cs::R1CS},
+    folding::traits::{CommittedInstanceVarOps, Dummy, WitnessVarOps},
+};
+use crate::{
+    commitment::{pedersen::Params as PedersenParams, CommitmentScheme},
+    folding::nova::decider_eth_circuit::evaluate_gadget,
+};
 
 /// In-circuit representation of the Witness associated to the CommittedInstance.
 #[derive(Debug, Clone)]
@@ -63,6 +68,12 @@ impl<F: PrimeField> AllocVar<Witness<F>, F> for WitnessVar<F> {
 
             Ok(Self { w, r_w })
         })
+    }
+}
+
+impl<F: PrimeField> WitnessVarOps<F> for WitnessVar<F> {
+    fn get_openings(&self) -> Vec<(&[FpVar<F>], FpVar<F>)> {
+        vec![(&self.w, self.r_w.clone())]
     }
 }
 
@@ -286,8 +297,8 @@ where
             Ok(self.z_i.unwrap_or(vec![CF1::<C1>::zero()]))
         })?;
 
-        let U_dummy_native = LCCCS::<C1>::dummy(self.ccs.l, self.ccs.t, self.ccs.s);
-        let u_dummy_native = CCCS::<C1>::dummy(self.ccs.l);
+        let U_dummy_native = LCCCS::<C1>::dummy(&self.ccs);
+        let u_dummy_native = CCCS::<C1>::dummy(&self.ccs);
         let w_dummy_native = Witness::<C1::ScalarField>::new(
             vec![C1::ScalarField::zero(); self.ccs.n - 3 /* (3=2+1, since u_i.x.len=2) */],
         );
@@ -305,7 +316,7 @@ where
         let W_i1 = WitnessVar::<C1::ScalarField>::new_witness(cs.clone(), || {
             Ok(self.W_i1.unwrap_or(w_dummy_native.clone()))
         })?;
-        let nimfs_proof_dummy = NIMFSProof::<C1>::dummy(&self.ccs, 1, 1); // mu=1 & nu=1 because the last fold is 2-to-1
+        let nimfs_proof_dummy = NIMFSProof::<C1>::dummy((&self.ccs, 1, 1)); // mu=1 & nu=1 because the last fold is 2-to-1
         let nimfs_proof = NIMFSProofVar::<C1>::new_witness(cs.clone(), || {
             Ok(self.nimfs_proof.unwrap_or(nimfs_proof_dummy))
         })?;
@@ -314,7 +325,7 @@ where
         let kzg_challenge = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
             Ok(self.kzg_challenge.unwrap_or_else(CF1::<C1>::zero))
         })?;
-        let _eval_W = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
+        let eval_W = FpVar::<CF1<C1>>::new_input(cs.clone(), || {
             Ok(self.eval_W.unwrap_or_else(CF1::<C1>::zero))
         })?;
 
@@ -340,13 +351,7 @@ where
         )?;
 
         // 3.a u_i.x[0] == H(i, z_0, z_i, U_i)
-        let (u_i_x, _) = U_i.clone().hash(
-            &sponge,
-            pp_hash.clone(),
-            i.clone(),
-            z_0.clone(),
-            z_i.clone(),
-        )?;
+        let (u_i_x, _) = U_i.clone().hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
         (u_i.x[0]).enforce_equal(&u_i_x)?;
 
         #[cfg(feature = "light-test")]
@@ -373,10 +378,7 @@ where
 
             let cf_u_dummy_native =
                 CycleFoldCommittedInstance::<C2>::dummy(NovaCycleFoldConfig::<C1>::IO_LEN);
-            let cf_w_dummy_native = CycleFoldWitness::<C2>::dummy(
-                self.cf_r1cs.A.n_cols - 1 - self.cf_r1cs.l,
-                self.cf_E_len,
-            );
+            let cf_w_dummy_native = CycleFoldWitness::<C2>::dummy(&self.cf_r1cs);
             let cf_U_i = CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || {
                 Ok(self.cf_U_i.unwrap_or_else(|| cf_u_dummy_native.clone()))
             })?;
@@ -424,14 +426,6 @@ where
         // `rho_bits` computed along the way of computing `computed_U_i1` for the later `rho_powers`
         // check (6.b).
 
-        // Check 7 is temporary disabled due
-        // https://github.com/privacy-scaling-explorations/sonobe/issues/80
-        log::warn!("[WARNING]: issue #80 (https://github.com/privacy-scaling-explorations/sonobe/issues/80) is not resolved yet.");
-        //
-        // 7. check eval_W==p_W(c_W)
-        // let incircuit_eval_W = evaluate_gadget::<CF1<C1>>(W_i1.W, incircuit_c_W)?;
-        // incircuit_eval_W.enforce_equal(&eval_W)?;
-
         // 8.a verify the NIMFS.V of the final fold, and check that the obtained rho_powers from the
         // transcript match the one from the public input (so we avoid the onchain logic of the
         // verifier computing it).
@@ -462,6 +456,10 @@ where
         computed_U_i1.u.enforce_equal(&U_i1.u)?;
         computed_U_i1.r_x.enforce_equal(&U_i1.r_x)?;
         computed_U_i1.v.enforce_equal(&U_i1.v)?;
+
+        // 7. check eval_W==p_W(c_W)
+        let incircuit_eval_W = evaluate_gadget::<CF1<C1>>(W_i1.w, incircuit_challenge)?;
+        incircuit_eval_W.enforce_equal(&eval_W)?;
 
         // 8.b check that the in-circuit computed r is equal to the inputted r.
 
@@ -511,7 +509,6 @@ pub mod tests {
     use ark_bn254::{constraints::GVar, Fr, G1Projective as Projective};
     use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
     use ark_relations::r1cs::ConstraintSystem;
-    use ark_std::One;
     use ark_std::{test_rng, UniformRand};
 
     use super::*;
@@ -527,7 +524,7 @@ pub mod tests {
         let n_rows = 2_u32.pow(5) as usize;
         let n_cols = 2_u32.pow(5) as usize;
         let r1cs = R1CS::<Fr>::rand(&mut rng, n_rows, n_cols);
-        let ccs = CCS::from_r1cs(r1cs);
+        let ccs = CCS::from(r1cs);
         let z: Vec<Fr> = (0..n_cols).map(|_| Fr::rand(&mut rng)).collect();
 
         let (pedersen_params, _) =
@@ -585,22 +582,10 @@ pub mod tests {
 
         // generate a Nova instance and do a step of it
         let mut hypernova = HN::init(&hn_params, F_circuit, z_0.clone()).unwrap();
-        hypernova
-            .prove_step(&mut rng, vec![], Some((vec![], vec![])))
-            .unwrap();
+        hypernova.prove_step(&mut rng, vec![], None).unwrap();
 
-        let ivc_v = hypernova.clone();
-        let (running_instance, incoming_instance, cyclefold_instance) = ivc_v.instances();
-        HN::verify(
-            hn_params.1, // HN's verifier_params
-            z_0,
-            ivc_v.z_i,
-            Fr::one(),
-            running_instance,
-            incoming_instance,
-            cyclefold_instance,
-        )
-        .unwrap();
+        let ivc_proof = hypernova.ivc_proof();
+        HN::verify(hn_params.1, ivc_proof).unwrap();
 
         // load the DeciderEthCircuit from the generated Nova instance
         let decider_circuit = DeciderEthCircuit::<

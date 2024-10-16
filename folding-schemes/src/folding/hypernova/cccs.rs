@@ -3,23 +3,22 @@ use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
-use ark_std::One;
-use ark_std::Zero;
-use std::sync::Arc;
+use ark_std::{rand::Rng, sync::Arc, One, Zero};
 
-use ark_std::rand::Rng;
-
+use super::circuits::CCCSVar;
 use super::Witness;
 use crate::arith::{ccs::CCS, Arith};
 use crate::commitment::CommitmentScheme;
+use crate::folding::circuits::CF1;
+use crate::folding::traits::{CommittedInstanceOps, Dummy};
 use crate::transcript::AbsorbNonNative;
 use crate::utils::mle::dense_vec_to_dense_mle;
-use crate::utils::vec::mat_vec_mul;
+use crate::utils::vec::{is_zero_vec, mat_vec_mul};
 use crate::utils::virtual_polynomial::{build_eq_x_r_vec, VirtualPolynomial};
 use crate::Error;
 
 /// Committed CCS instance
-#[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct CCCS<C: CurveGroup> {
     // Commitment to witness
     pub C: C,
@@ -91,34 +90,34 @@ impl<F: PrimeField> CCS<F> {
     }
 }
 
-impl<C: CurveGroup> CCCS<C> {
-    pub fn dummy(l: usize) -> CCCS<C>
-    where
-        C::ScalarField: PrimeField,
-    {
-        CCCS::<C> {
+impl<C: CurveGroup> Dummy<&CCS<CF1<C>>> for CCCS<C> {
+    fn dummy(ccs: &CCS<CF1<C>>) -> Self {
+        Self {
             C: C::zero(),
-            x: vec![C::ScalarField::zero(); l],
+            x: vec![CF1::<C>::zero(); ccs.l],
         }
+    }
+}
+
+impl<C: CurveGroup> Arith<Witness<CF1<C>>, CCCS<C>> for CCS<CF1<C>> {
+    type Evaluation = Vec<CF1<C>>;
+
+    fn eval_relation(&self, w: &Witness<CF1<C>>, u: &CCCS<C>) -> Result<Self::Evaluation, Error> {
+        // evaluate CCCS relation
+        self.eval_at_z(&[&[CF1::<C>::one()][..], &u.x, &w.w].concat())
     }
 
     /// Perform the check of the CCCS instance described at section 4.1,
     /// notice that this method does not check the commitment correctness
-    pub fn check_relation(
-        &self,
-        ccs: &CCS<C::ScalarField>,
-        w: &Witness<C::ScalarField>,
+    fn check_evaluation(
+        _w: &Witness<CF1<C>>,
+        _u: &CCCS<C>,
+        e: Self::Evaluation,
     ) -> Result<(), Error> {
-        // check CCCS relation
-        let z: Vec<C::ScalarField> =
-            [vec![C::ScalarField::one()], self.x.clone(), w.w.to_vec()].concat();
-
         // A CCCS relation is satisfied if the q(x) multivariate polynomial evaluates to zero in
         // the hypercube, evaluating over the whole boolean hypercube for a normal-sized instance
         // would take too much, this checks the CCS relation of the CCCS.
-        ccs.check_relation(&z)?;
-
-        Ok(())
+        is_zero_vec(&e).then_some(()).ok_or(Error::NotSatisfied)
     }
 }
 
@@ -126,9 +125,8 @@ impl<C: CurveGroup> Absorb for CCCS<C>
 where
     C::ScalarField: Absorb,
 {
-    fn to_sponge_bytes(&self, _dest: &mut Vec<u8>) {
-        // This is never called
-        unimplemented!()
+    fn to_sponge_bytes(&self, dest: &mut Vec<u8>) {
+        C::ScalarField::batch_to_sponge_bytes(&self.to_sponge_field_elements_as_vec(), dest);
     }
 
     fn to_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
@@ -139,6 +137,18 @@ where
             .to_native_sponge_field_elements_as_vec()
             .to_sponge_field_elements(dest);
         self.x.to_sponge_field_elements(dest);
+    }
+}
+
+impl<C: CurveGroup> CommittedInstanceOps<C> for CCCS<C> {
+    type Var = CCCSVar<C>;
+
+    fn get_commitments(&self) -> Vec<C> {
+        vec![self.C]
+    }
+
+    fn is_incoming(&self) -> bool {
+        true
     }
 }
 
@@ -180,7 +190,8 @@ pub mod tests {
 
         let ccs: CCS<Fr> = get_test_ccs();
         let z = get_test_z(3);
-        ccs.check_relation(&z).unwrap();
+        let (w, x) = ccs.split_z(&z);
+        ccs.check_relation(&w, &x).unwrap();
 
         let beta: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
 
@@ -214,7 +225,8 @@ pub mod tests {
 
         let ccs: CCS<Fr> = get_test_ccs();
         let z = get_test_z(3);
-        ccs.check_relation(&z).unwrap();
+        let (w, x) = ccs.split_z(&z);
+        ccs.check_relation(&w, &x).unwrap();
 
         // Now test that if we create Q(x) with eq(d,y) where d is inside the hypercube, \sum Q(x) should be G(d) which
         // should be equal to q(d), since G(x) interpolates q(x) inside the hypercube

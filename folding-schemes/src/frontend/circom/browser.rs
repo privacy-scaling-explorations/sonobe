@@ -119,11 +119,9 @@ pub fn load_witness_from_bin_reader<R: Read, F: PrimeField>(mut reader: R) -> Ve
     let mut wtns_header = [0u8; 4];
     reader.read_exact(&mut wtns_header).expect("read_error");
     if wtns_header != [119, 116, 110, 115] {
-        // ruby -e 'p "wtns".bytes' => [119, 116, 110, 115]
         panic!("invalid file header");
     }
     let version = reader.read_u32::<LittleEndian>().expect("read_error");
-    // println!("wtns version {}", version);
     if version > 2 {
         panic!("unsupported file version");
     }
@@ -146,11 +144,7 @@ pub fn load_witness_from_bin_reader<R: Read, F: PrimeField>(mut reader: R) -> Ve
     }
     let mut prime = vec![0u8; field_size as usize];
     reader.read_exact(&mut prime).expect("read_error");
-    // if prime != hex!("010000f093f5e1439170b97948e833285d588181b64550b829a031e1724e6430") {
-    //     panic!("invalid curve prime {:?}", prime);
-    // }
     let witness_len: u32 = reader.read_u32::<LittleEndian>().expect("read_error");
-    // println!("witness len {}", witness_len);
     let sec_type = reader.read_u32::<LittleEndian>().expect("read_error");
     if sec_type != 2 {
         panic!("invalid section type");

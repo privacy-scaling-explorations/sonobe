@@ -647,25 +647,28 @@ where
         // Nova does not support multi-instances folding
         _other_instances: Option<Self::MultiCommittedInstanceWithWitness>,
     ) -> Result<(), Error> {
-        // Slice and separate between external inputs and frontend witness.
-        let (frontend_witness, external_inputs) =
-            if external_inputs.len() > self.F.external_inputs_len() {
-                (
-                    // Full circom witness trace
-                    Some(external_inputs[..].to_vec()),
-                    // Extracted external inputs from circom trace
-                    external_inputs[1 + self.F.state_len() * 2
-                        ..1 + self.F.state_len() * 2 + self.F.external_inputs_len()]
-                        .to_vec(),
-                )
-            } else {
-                (None, external_inputs)
-            };
+        #[cfg(feature = "browser")]
+        {
+            // Slice and separate between external inputs and frontend witness.
+            let (frontend_witness, external_inputs) =
+                if external_inputs.len() > self.F.external_inputs_len() {
+                    (
+                        // Full circom witness trace
+                        Some(external_inputs[..].to_vec()),
+                        // Extracted external inputs from circom trace
+                        external_inputs[1 + self.F.state_len() * 2
+                            ..1 + self.F.state_len() * 2 + self.F.external_inputs_len()]
+                            .to_vec(),
+                    )
+                } else {
+                    (None, external_inputs)
+                };
 
-        // If we are in the browser-case (frontend_witness = Some(witness)) then we load the witness into the FCircuit.
-        if let Some(witness) = frontend_witness {
-            self.F.load_witness(witness)
-        };
+            // If we are in the browser-case (frontend_witness = Some(witness)) then we load the witness into the FCircuit.
+            if let Some(witness) = frontend_witness {
+                self.F.load_witness(witness)
+            };
+        }
 
         // ensure that commitments are blinding if user has specified so.
         if H && self.i >= C1::ScalarField::one() {

@@ -74,8 +74,6 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuitBrowser<F> {
         cs: ConstraintSystemRef<F>,
         _i: usize,
         z_i: Vec<FpVar<F>>,
-        // This in reality contains the `witness` passed from the `prove_step` call from the
-        // browser.
         _external_inputs: Vec<FpVar<F>>,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         // Since public inputs are already allocated variables, we will tell `circom-compat` to not re-allocate those

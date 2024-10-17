@@ -4,7 +4,7 @@ use crate::commitment::CommitmentScheme;
 use crate::folding::mova::pointvsline::{
     PointVsLine, PointVsLineProof, PointvsLineEvaluationClaim,
 };
-use crate::folding::nova::nifs::NIFS as Nova;
+use crate::folding::nova::nifs::NIFS as NovaNIFS;
 use crate::transcript::Transcript;
 use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::utils::vec::{vec_add, vec_scalar_mul};
@@ -41,18 +41,8 @@ impl<C: CurveGroup, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, c
     NIFS<C, CS, T, H>
 where
     <C as Group>::ScalarField: Absorb,
+    <C as CurveGroup>::BaseField: PrimeField,
 {
-    // Just a wrapper for Nova compute_T (compute cross-terms T) since the process is the same
-    pub fn compute_T(
-        r1cs: &R1CS<C::ScalarField>,
-        u1: C::ScalarField,
-        u2: C::ScalarField,
-        z1: &[C::ScalarField],
-        z2: &[C::ScalarField],
-    ) -> Result<Vec<C::ScalarField>, Error> {
-        Nova::<C, CS, H>::compute_T(r1cs, u1, u2, z1, z2)
-    }
-
     // Protocol 7 - point 3 (16)
     pub fn fold_witness(
         a: C::ScalarField,
@@ -60,10 +50,10 @@ where
         w2: &Witness<C>,
         T: &[C::ScalarField],
     ) -> Result<Witness<C>, Error> {
-        let a2 = a * a;
+        let a_squared = a * a;
         let E: Vec<C::ScalarField> = vec_add(
             &vec_add(&w1.E, &vec_scalar_mul(T, &a))?,
-            &vec_scalar_mul(&w2.E, &a2),
+            &vec_scalar_mul(&w2.E, &a_squared),
         )?;
         let W: Vec<C::ScalarField> =
             w1.W.iter()
@@ -80,13 +70,13 @@ where
         a: C::ScalarField,
         ci1: &CommittedInstance<C>,
         ci2: &CommittedInstance<C>,
-        rE_prime: &[C::ScalarField],
+        rE_prime: Vec<C::ScalarField>,
         mleE1_prime: &C::ScalarField,
         mleE2_prime: &C::ScalarField,
         mleT: &C::ScalarField,
     ) -> Result<CommittedInstance<C>, Error> {
-        let a2 = a * a;
-        let mleE = *mleE1_prime + a * mleT + a2 * mleE2_prime;
+        let a_squared = a * a;
+        let mleE = *mleE1_prime + a * mleT + a_squared * mleE2_prime;
         let u = ci1.u + a * ci2.u;
         let cmW = ci1.cmW + ci2.cmW.mul(a);
         let x = ci1
@@ -132,7 +122,6 @@ where
         ) = PointVsLine::<C, T>::prove(transcript, ci1, ci2, w1, w2)?;
 
         // Protocol 7
-
         transcript.absorb(&mleE1_prime);
         transcript.absorb(&mleE2_prime);
 
@@ -140,7 +129,7 @@ where
         let z1: Vec<C::ScalarField> = [vec![ci1.u], ci1.x.to_vec(), w1.W.to_vec()].concat();
         let z2: Vec<C::ScalarField> = [vec![ci2.u], ci2.x.to_vec(), w2.W.to_vec()].concat();
 
-        let T = Self::compute_T(r1cs, ci1.u, ci2.u, &z1, &z2)?;
+        let T = NovaNIFS::<C, CS, H>::compute_T(r1cs, ci1.u, ci2.u, &z1, &z2)?;
 
         let n_vars: usize = log2(w1.E.len()) as usize;
         if log2(T.len()) as usize != n_vars {
@@ -152,8 +141,6 @@ where
 
         transcript.absorb(&mleT_evaluated);
 
-        let alpha_scalar = C::ScalarField::from_le_bytes_mod_order(b"alpha");
-        transcript.absorb(&alpha_scalar);
         let alpha: C::ScalarField = transcript.get_challenge();
 
         Ok((
@@ -168,7 +155,7 @@ where
                     alpha,
                     ci1,
                     ci2,
-                    &rE_prime,
+                    rE_prime,
                     &mleE1_prime,
                     &mleE2_prime,
                     &mleT_evaluated,
@@ -178,9 +165,9 @@ where
         ))
     }
 
-    /// [Mova](https://eprint.iacr.org/2024/1220.pdf)'s section 4. It verifies the results from the proof
-    /// Both the folding and the pt-vs-line proof
-    /// returns the folded committed instance
+    /// [Mova](https://eprint.iacr.org/2024/1220.pdf)'s section 4.
+    /// It verifies the results from both the folding and the pt-vs-line proofs.
+    /// Returns the folded committed instance.
     pub fn verify(
         transcript: &mut impl Transcript<C::ScalarField>,
         ci1: &CommittedInstance<C>,
@@ -202,15 +189,13 @@ where
         transcript.absorb(&proof.mleE2_prime);
         transcript.absorb(&proof.mleT);
 
-        let alpha_scalar = C::ScalarField::from_le_bytes_mod_order(b"alpha");
-        transcript.absorb(&alpha_scalar);
         let alpha: C::ScalarField = transcript.get_challenge();
 
         Self::fold_committed_instance(
             alpha,
             ci1,
             ci2,
-            &rE_prime,
+            rE_prime,
             &proof.mleE1_prime,
             &proof.mleE2_prime,
             &proof.mleT,
@@ -220,11 +205,10 @@ where
 
 #[cfg(test)]
 pub mod tests {
-    use crate::arith::r1cs::{
-        tests::{get_test_r1cs, get_test_z},
-        RelaxedR1CS,
-    };
+    use crate::arith::r1cs::tests::{get_test_r1cs, get_test_z};
+    use crate::arith::Arith;
     use crate::commitment::pedersen::{Params as PedersenParams, Pedersen};
+    use crate::folding::traits::Dummy;
     use crate::transcript::poseidon::poseidon_canonical_config;
     use ark_crypto_primitives::sponge::{
         poseidon::{PoseidonConfig, PoseidonSponge},
@@ -318,7 +302,7 @@ pub mod tests {
         let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, r1cs.A.n_cols).unwrap();
 
         // dummy instance, witness and public inputs zeroes
-        let w_dummy = Witness::<Projective>::dummy(w1.len(), r1cs.A.n_rows);
+        let w_dummy = Witness::<Projective>::dummy(&r1cs);
         let mut u_dummy = w_dummy
             .commit::<Pedersen<Projective>>(
                 &pedersen_params,
@@ -333,8 +317,8 @@ pub mod tests {
         let W_i = w_dummy.clone();
         let U_i = u_dummy.clone();
 
-        r1cs.check_relaxed_relation(&w_i, &u_i).unwrap();
-        r1cs.check_relaxed_relation(&W_i, &U_i).unwrap();
+        r1cs.check_relation(&w_i, &u_i).unwrap();
+        r1cs.check_relation(&W_i, &U_i).unwrap();
 
         let poseidon_config = poseidon_canonical_config::<ark_pallas::Fr>();
         let mut transcript_p: PoseidonSponge<Fr> = PoseidonSponge::<Fr>::new(&poseidon_config);
@@ -350,7 +334,7 @@ pub mod tests {
         .unwrap();
 
         let (_proof, instance_witness) = result;
-        r1cs.check_relaxed_relation(&instance_witness.w, &instance_witness.ci)
+        r1cs.check_relation(&instance_witness.w, &instance_witness.ci)
             .unwrap();
     }
 
@@ -372,10 +356,9 @@ pub mod tests {
         assert_eq!(ci3, instance.ci);
 
         // check that relations hold for the 2 inputted instances and the folded one
-        r1cs.check_relaxed_relation(&w1, &ci1).unwrap();
-        r1cs.check_relaxed_relation(&w2, &ci2).unwrap();
-        r1cs.check_relaxed_relation(&instance.w, &instance.ci)
-            .unwrap();
+        r1cs.check_relation(&w1, &ci1).unwrap();
+        r1cs.check_relation(&w2, &ci2).unwrap();
+        r1cs.check_relation(&instance.w, &instance.ci).unwrap();
 
         // check that folded commitments from folded instance (ci) are equal to folding the
         // use folded rE, rW to commit w3
@@ -403,7 +386,7 @@ pub mod tests {
             .commit::<Pedersen<Projective>>(&pedersen_params, x, rE)
             .unwrap();
 
-        r1cs.check_relaxed_relation(&running_instance_w, &running_committed_instance)
+        r1cs.check_relation(&running_instance_w, &running_committed_instance)
             .unwrap();
 
         let num_iters = 10;
@@ -417,7 +400,7 @@ pub mod tests {
             let incoming_committed_instance = incoming_instance_w
                 .commit::<Pedersen<Projective>>(&pedersen_params, x, rE)
                 .unwrap();
-            r1cs.check_relaxed_relation(&incoming_instance_w, &incoming_committed_instance)
+            r1cs.check_relation(&incoming_instance_w, &incoming_committed_instance)
                 .unwrap();
 
             // NIFS.P
@@ -446,7 +429,7 @@ pub mod tests {
             )
             .unwrap();
 
-            r1cs.check_relaxed_relation(&instance_witness.w, &instance_witness.ci)
+            r1cs.check_relation(&instance_witness.w, &instance_witness.ci)
                 .unwrap();
 
             // set running_instance for next loop iteration

@@ -11,6 +11,9 @@ use ark_poly::MultilinearExtension;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::rand::RngCore;
 
+use crate::arith::r1cs::R1CS;
+use crate::folding::circuits::CF1;
+use crate::folding::traits::Dummy;
 use ark_std::{log2, One, UniformRand, Zero};
 
 /// Implements the scheme described in [Mova](https://eprint.iacr.org/2024/1220.pdf)
@@ -22,12 +25,15 @@ mod traits;
 pub struct CommittedInstance<C: CurveGroup> {
     // Random evaluation point for the E
     pub rE: Vec<C::ScalarField>,
-    // MLE of E
+    // Evaluation of the MLE of E at r_E
     pub mleE: C::ScalarField,
     pub u: C::ScalarField,
     pub cmW: C,
     pub x: Vec<C::ScalarField>,
 }
+
+/// Witness for the R1CS containing the W vector, the r_w used as randomness for the commitment and the Error term E.
+/// The wi the prover receives in most protocols in the paper.
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Witness<C: CurveGroup> {
     pub E: Vec<C::ScalarField>,
@@ -35,6 +41,7 @@ pub struct Witness<C: CurveGroup> {
     pub rW: C::ScalarField,
 }
 
+/// A helper struct to group together the result of the folded witness and the folded committed instance
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct InstanceWitness<C: CurveGroup> {
     pub ci: CommittedInstance<C>,
@@ -48,17 +55,6 @@ impl<C: CurveGroup> Witness<C> {
         } else {
             C::ScalarField::zero()
         };
-
-        Self {
-            E: vec![C::ScalarField::zero(); e_len],
-            W: w,
-            rW,
-        }
-    }
-
-    pub fn dummy(w_len: usize, e_len: usize) -> Self {
-        let rW = C::ScalarField::zero();
-        let w = vec![C::ScalarField::zero(); w_len];
 
         Self {
             E: vec![C::ScalarField::zero(); e_len],
@@ -92,8 +88,18 @@ impl<C: CurveGroup> Witness<C> {
     }
 }
 
-impl<C: CurveGroup> CommittedInstance<C> {
-    pub fn dummy(io_len: usize) -> Self {
+impl<C: CurveGroup> Dummy<&R1CS<CF1<C>>> for Witness<C> {
+    fn dummy(r1cs: &R1CS<CF1<C>>) -> Self {
+        Self {
+            E: vec![C::ScalarField::zero(); r1cs.A.n_rows],
+            W: vec![C::ScalarField::zero(); r1cs.A.n_cols - 1 - r1cs.l],
+            rW: C::ScalarField::zero(),
+        }
+    }
+}
+
+impl<C: CurveGroup> Dummy<usize> for CommittedInstance<C> {
+    fn dummy(io_len: usize) -> Self {
         Self {
             rE: vec![C::ScalarField::zero(); io_len],
             mleE: C::ScalarField::zero(),

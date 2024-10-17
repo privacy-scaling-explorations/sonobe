@@ -18,6 +18,7 @@ pub struct PointvsLineEvaluationClaim<C: CurveGroup> {
     pub mleE2_prime: C::ScalarField,
     pub rE_prime: Vec<C::ScalarField>,
 }
+
 /// Proof from step 1 protocol 6
 #[derive(Clone, Debug)]
 pub struct PointVsLineProof<C: CurveGroup> {

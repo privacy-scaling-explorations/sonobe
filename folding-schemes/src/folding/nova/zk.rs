@@ -15,13 +15,13 @@
 ///     final proof generation to a server.
 /// * Use-case-2: at the end of all the IVC folding steps (after n iterations of nova.prove_step),
 ///   to 'blind' the IVC proof so then it can be sent to a server that will generate the final
-///   decider snark proof.
+///   decider SNARK proof.
 ///     --> In this one, the user could externalize the Decider final proof generation to a
 ///     server.
 /// * Use-case-3: the user does not care about the Decider (final compressed SNARK proof), and
 ///   wants to generate a zk-proof of the IVC state to an IVC verifier (without any SNARK proof
-///   involved). Note that this proof will be much bigger and expensive to verify than a Decider
-///   SNARK proof.
+///   involved). In this use-case, the zk is only added at the last IVCProof. Note that this proof
+///   will be much bigger and expensive to verify than a Decider SNARK proof.
 ///
 /// The current implementation covers the Use-case-3.
 /// Use-case-1 can be achieved directly by a simpler version of the zk IVC scheme skipping steps

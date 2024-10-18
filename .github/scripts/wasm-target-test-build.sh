@@ -15,7 +15,7 @@ cp "${GIT_ROOT}/rust-toolchain" .
 rustup target add wasm32-unknown-unknown wasm32-wasi 
 
 # add dependencies
-cargo add --path "${GIT_ROOT}/folding-schemes" --features wasm, parallel
+cargo add --path "${GIT_ROOT}/folding-schemes" --features circom-browser
 cargo add getrandom --features js --target wasm32-unknown-unknown
 
 # test build for wasm32-* targets

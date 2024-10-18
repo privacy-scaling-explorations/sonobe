@@ -102,14 +102,15 @@ impl<F: PrimeField> SumCheckProver<F> for IOPProverState<F> {
             self.challenges.push(*chal);
 
             let r = self.challenges[self.round - 1];
-            // #[cfg(feature = "parallel")]
+            #[cfg(feature = "parallel")]
             flattened_ml_extensions
                 .par_iter_mut()
                 .for_each(|mle| *mle = fix_variables(mle, &[r]));
-            // #[cfg(not(feature = "parallel"))]
-            // flattened_ml_extensions
-            //     .iter_mut()
-            //     .for_each(|mle| *mle = fix_variables(mle, &[r]));
+
+            #[cfg(not(feature = "parallel"))]
+            flattened_ml_extensions
+                .iter_mut()
+                .for_each(|mle| *mle = fix_variables(mle, &[r]));
         } else if self.round > 0 {
             return Err(PolyIOPErrors::InvalidProver(
                 "verifier message is empty".to_string(),

@@ -1,6 +1,5 @@
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{CurveGroup, Group};
-use ark_ff::PrimeField;
 use ark_std::rand::RngCore;
 use ark_std::Zero;
 use std::marker::PhantomData;
@@ -27,7 +26,6 @@ impl<C: CurveGroup, CS: CommitmentScheme<C, H>, const H: bool> NIFSTrait<C, CS, 
     for NIFS<C, CS, H>
 where
     <C as Group>::ScalarField: Absorb,
-    <C as CurveGroup>::BaseField: PrimeField,
 {
     type CommittedInstance = CommittedInstance<C>;
     type Witness = Witness<C>;
@@ -133,7 +131,6 @@ where
 impl<C: CurveGroup, CS: CommitmentScheme<C, H>, const H: bool> NIFS<C, CS, H>
 where
     <C as Group>::ScalarField: Absorb,
-    <C as CurveGroup>::BaseField: PrimeField,
 {
     /// compute_T: compute cross-terms T
     pub fn compute_T(

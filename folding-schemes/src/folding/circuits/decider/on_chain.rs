@@ -276,7 +276,7 @@ where
             let cf_W_i_W_bits = cf_W_i
                 .W
                 .iter()
-                .map(|W_i| W_i.to_bits_be())
+                .map(|W_i| W_i.to_bits_le())
                 .collect::<Result<Vec<_>, _>>()?;
             PedersenGadget::<C2, GC2>::commit(&H, &G, &cf_W_i_E_bits, &cf_W_i.rE.to_bits_le()?)?
                 .enforce_equal(&cf_U_i.cmE)?;

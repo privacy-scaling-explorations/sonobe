@@ -43,7 +43,7 @@ jobs:
         feature_set: [basic]
         include:
           - feature_set: basic
-            features: --features default, light-test
+            features: --features default,light-test
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
@@ -162,7 +162,7 @@ jobs:
             features: --features default,light-test
             # We only want to test `folding-schemes` package with `circom-browser` feature.
           - feature_set: circom-browser
-            features: -p folding-schemes --features circom-browser, parallel --target wasm32-unknown-unknown
+            features: -p folding-schemes --features circom-browser,parallel --target wasm32-unknown-unknown
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1

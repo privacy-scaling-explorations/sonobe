@@ -65,7 +65,7 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuitBrowser<F> {
         assert_eq!(external_inputs.len(), self.external_inputs_len());
 
         // Extracts the z_i1(next state) from the witness vector and external inputs.
-        let z_i1 = z_i[..self.state_len()].to_vec();
+        let z_i1 = z_i[1..1 + self.state_len()].to_vec();
         Ok(z_i1)
     }
 

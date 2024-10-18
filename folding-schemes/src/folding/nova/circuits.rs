@@ -411,7 +411,7 @@ where
         // get z_{i+1} from the F circuit
         let i_usize = self.i_usize.unwrap_or(0);
 
-        // If we are in the browser-frontend case. The witness is already loaded within
+        // If we are in the circom-browser-frontend case. The witness is already loaded within
         // self.F.witness. This was done at `self.prove_step()` fn.
         let z_i1 = self
             .F

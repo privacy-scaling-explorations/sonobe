@@ -13,11 +13,11 @@ use num_bigint::BigInt;
 use std::rc::Rc;
 use std::{fmt, usize};
 
-#[cfg(feature = "browser")]
+#[cfg(feature = "circom-browser")]
 pub mod browser;
 pub mod utils;
 
-#[cfg(feature = "browser")]
+#[cfg(feature = "circom-browser")]
 pub use browser::{load_witness_from_bin_reader, CircomFCircuitBrowser};
 use utils::CircomWrapper;
 
@@ -38,7 +38,7 @@ impl<F: PrimeField> fmt::Debug for CustomStepNative<F> {
     }
 }
 
-/// This circuit is the one we will use in order to fold circom circuits
+/// This circuit is the one we will use in order to fold Circom circuits
 /// from a non-browser environment.
 #[derive(Clone, Debug)]
 pub struct CircomFCircuit<F: PrimeField> {

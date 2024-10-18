@@ -81,8 +81,7 @@ getrandom = { version = "0.2", features = ["js"] }
 [features]
 default = ["ark-circom/default", "parallel"]
 parallel = []
-wasm = ["ark-circom/wasm"]
-browser = ["wasm", "byteorder"]
+circom-browser = ["ark-circom/wasm", "byteorder"]
 light-test = []
 
 

@@ -50,10 +50,10 @@ pub trait FCircuit<F: PrimeField>: Clone + Debug {
     ) -> Result<Vec<FpVar<F>>, SynthesisError>;
 
     /// Allows to load pre-generated witness into the FCircuit implementor.
-    /// This is only needed by the browser use cases where we have already computed our
+    /// This is only needed by the circom-browser use cases where we have already computed our
     /// witness there. And we need a way to load it into the FCircuit since it's already computed.
     ///
-    /// By default this method will simply do nothing. Only in the browser FCircuit implementors this will have usage.
+    /// By default this method will simply do nothing. Only in the circom-browser FCircuit implementors this will have usage.
     fn load_witness(&mut self, _witness: Vec<F>) {}
 }
 

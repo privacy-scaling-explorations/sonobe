@@ -43,7 +43,7 @@ jobs:
         feature_set: [basic]
         include:
           - feature_set: basic
-            features: --features default,light-test
+            features: --features default, light-test
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
@@ -99,7 +99,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: -p folding-schemes --no-default-features --target ${{ matrix.target }} --features "wasm, parallel"
+          args: -p folding-schemes --target ${{ matrix.target }} --features circom-frontend
       - name: Run wasm-compat script
         run: |
           chmod +x .github/scripts/wasm-target-test-build.sh
@@ -156,13 +156,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        feature_set: [basic, wasm]
+        feature_set: [basic, circom-browser]
         include:
           - feature_set: basic
             features: --features default,light-test
-            # We only want to test `folding-schemes` package with `wasm` feature.
-          - feature_set: wasm
-            features: -p folding-schemes --features wasm,parallel --target wasm32-unknown-unknown
+            # We only want to test `folding-schemes` package with `circom-browser` feature.
+          - feature_set: circom-browser
+            features: -p folding-schemes --features circom-browser, parallel --target wasm32-unknown-unknown
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1

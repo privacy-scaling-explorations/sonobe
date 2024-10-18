@@ -642,12 +642,12 @@ where
     fn prove_step(
         &mut self,
         mut rng: impl RngCore,
-        // This contains the full witness when we're in the browser-frontend case
+        // This contains the full witness when we're in the circom-browser-frontend case
         external_inputs: Vec<C1::ScalarField>,
         // Nova does not support multi-instances folding
         _other_instances: Option<Self::MultiCommittedInstanceWithWitness>,
     ) -> Result<(), Error> {
-        #[cfg(feature = "browser")]
+        #[cfg(feature = "circom-browser")]
         {
             // Slice and separate between external inputs and frontend witness.
             let (frontend_witness, external_inputs) =
@@ -664,7 +664,7 @@ where
                     (None, external_inputs)
                 };
 
-            // If we are in the browser-case (frontend_witness = Some(witness)) then we load the witness into the FCircuit.
+            // If we are in the circom-browser-case (frontend_witness = Some(witness)) then we load the witness into the FCircuit.
             if let Some(witness) = frontend_witness {
                 self.F.load_witness(witness)
             };

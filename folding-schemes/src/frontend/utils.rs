@@ -152,14 +152,12 @@ impl<F: PrimeField> FCircuit<F> for CustomFCircuit<F> {
 /// than the one done in the `AugmentedFCircuit`, but without adding all the extra constraints
 /// of the AugmentedF circuit logic, in order to run lighter tests when we're not interested in
 /// the the AugmentedF logic but in the wrapping of the circuits.
-#[cfg(test)]
 pub struct WrapperCircuit<F: PrimeField, FC: FCircuit<F>> {
     pub FC: FC, // F circuit
     pub z_i: Option<Vec<F>>,
     pub z_i1: Option<Vec<F>>,
 }
 
-#[cfg(test)]
 impl<F, FC> ark_relations::r1cs::ConstraintSynthesizer<F> for WrapperCircuit<F, FC>
 where
     F: PrimeField,

@@ -20,13 +20,11 @@ use folding_schemes::{
         decider_eth::{prepare_calldata, Decider as DeciderEth},
         Nova, PreprocessorParam,
     },
-    frontend::{
-        noir::{load_noir_circuit, NoirFCircuit},
-        FCircuit,
-    },
+    frontend::FCircuit,
     transcript::poseidon::poseidon_canonical_config,
     Decider, FoldingScheme,
 };
+use frontends::noir::{load_noir_circuit, NoirFCircuit};
 use std::{env, time::Instant};
 
 use solidity_verifiers::{
@@ -44,7 +42,7 @@ fn main() {
     let cur_path = env::current_dir().unwrap();
 
     let circuit_path = format!(
-        "{}/folding-schemes/src/frontend/noir/test_folder/test_mimc/target/test_mimc.json",
+        "{}/frontends/src/noir/test_folder/test_mimc/target/test_mimc.json",
         cur_path.to_str().unwrap()
     );
 

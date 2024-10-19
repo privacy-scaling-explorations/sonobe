@@ -23,10 +23,11 @@ use folding_schemes::{
         decider_eth::{prepare_calldata, Decider as DeciderEth},
         Nova, PreprocessorParam,
     },
-    frontend::{circom::CircomFCircuit, FCircuit},
+    frontend::FCircuit,
     transcript::poseidon::poseidon_canonical_config,
     Decider, FoldingScheme,
 };
+use frontends::circom::CircomFCircuit;
 use solidity_verifiers::{
     evm::{compile_solidity, Evm},
     utils::get_function_selector_for_nova_cyclefold_verifier,
@@ -54,11 +55,9 @@ fn main() {
     ];
 
     // initialize the Circom circuit
-    let r1cs_path = PathBuf::from(
-        "./folding-schemes/src/frontend/circom/test_folder/with_external_inputs.r1cs",
-    );
+    let r1cs_path = PathBuf::from("./frontends/src/circom/test_folder/with_external_inputs.r1cs");
     let wasm_path = PathBuf::from(
-        "./folding-schemes/src/frontend/circom/test_folder/with_external_inputs_js/with_external_inputs.wasm",
+        "./frontends/src/circom/test_folder/with_external_inputs_js/with_external_inputs.wasm",
     );
 
     let f_circuit_params = (r1cs_path.into(), wasm_path.into(), 1, 2);

@@ -28,8 +28,7 @@ use super::{
     decider_eth_circuit::{
         evaluate_gadget, KZGChallengesGadget, R1CSVar, RelaxedR1CSGadget, WitnessVar,
     },
-    nifs::NIFS,
-    traits::NIFSTrait,
+    nifs::{nova::NIFS, NIFSTrait},
     CommittedInstance, Nova, Witness,
 };
 use crate::arith::r1cs::R1CS;
@@ -114,28 +113,21 @@ where
         CS2: CommitmentScheme<C2, H>,
     {
         let mut transcript = PoseidonSponge::<C1::ScalarField>::new(&nova.poseidon_config);
-        // pp_hash is absorbed to transcript at the ChallengeGadget::get_challenge_native call
+        // pp_hash is absorbed to transcript at the NIFS::prove call
 
         // compute the U_{i+1}, W_{i+1}
-        let (T, cmT) = NIFS::<C1, CS1, H>::compute_cmT(
+        let (W_i1, U_i1, cmT, r_bits) = NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>, H>::prove(
             &nova.cs_pp,
             &nova.r1cs.clone(),
-            &nova.w_i.clone(),
-            &nova.u_i.clone(),
-            &nova.W_i.clone(),
-            &nova.U_i.clone(),
-        )?;
-        let r_bits = NIFS::<C1, CS1, H>::get_challenge(
             &mut transcript,
             nova.pp_hash,
+            &nova.W_i,
             &nova.U_i,
+            &nova.w_i,
             &nova.u_i,
-            &cmT,
-        );
+        )?;
         let r_Fr = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
             .ok_or(Error::OutOfBounds)?;
-        let (W_i1, U_i1) =
-            NIFS::<C1, CS1, H>::prove(r_Fr, &nova.W_i, &nova.U_i, &nova.w_i, &nova.u_i, &T, &cmT)?;
 
         // compute the commitment scheme challenges used as inputs in the circuit
         let (cs_challenge_W, cs_challenge_E) =

@@ -26,8 +26,7 @@ use core::{borrow::Borrow, marker::PhantomData};
 
 use super::{
     circuits::{ChallengeGadget, CommittedInstanceVar},
-    nifs::NIFS,
-    traits::NIFSTrait,
+    nifs::{nova::NIFS, NIFSTrait},
     CommittedInstance, Nova, Witness,
 };
 use crate::commitment::{pedersen::Params as PedersenParams, CommitmentScheme};
@@ -246,27 +245,18 @@ where
         let mut transcript = PoseidonSponge::<C1::ScalarField>::new(&nova.poseidon_config);
 
         // compute the U_{i+1}, W_{i+1}
-        let (aux_p, aux_v) = NIFS::<C1, CS1, H>::compute_aux(
+        let (W_i1, U_i1, cmT, r_bits) = NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>, H>::prove(
             &nova.cs_pp,
             &nova.r1cs.clone(),
-            &nova.w_i.clone(),
-            &nova.u_i.clone(),
-            &nova.W_i.clone(),
-            &nova.U_i.clone(),
-        )?;
-        let cmT = aux_v;
-        let r_bits = ChallengeGadget::<C1, CommittedInstance<C1>>::get_challenge_native(
             &mut transcript,
             nova.pp_hash,
+            &nova.W_i,
             &nova.U_i,
+            &nova.w_i,
             &nova.u_i,
-            Some(&cmT),
-        );
+        )?;
         let r_Fr = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
             .ok_or(Error::OutOfBounds)?;
-        let (W_i1, U_i1) = NIFS::<C1, CS1, H>::prove(
-            r_Fr, &nova.W_i, &nova.U_i, &nova.w_i, &nova.u_i, &aux_p, &aux_v,
-        )?;
 
         // compute the KZG challenges used as inputs in the circuit
         let (kzg_challenge_W, kzg_challenge_E) =

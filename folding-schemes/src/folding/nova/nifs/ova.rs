@@ -1,19 +1,18 @@
 /// This module contains the implementation the NIFSTrait for the
-/// [Ova](https://hackmd.io/V4838nnlRKal9ZiTHiGYzw) NIFS (Non-Interactive Folding Scheme) as
-/// outlined in the protocol description doc:
-/// <https://hackmd.io/V4838nnlRKal9ZiTHiGYzw#Construction> authored by Benedikt Bünz.
+/// [Ova](https://hackmd.io/V4838nnlRKal9ZiTHiGYzw) NIFS (Non-Interactive Folding Scheme).
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{CurveGroup, Group};
-use ark_ff::PrimeField;
+use ark_ff::{BigInteger, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::fmt::Debug;
 use ark_std::rand::RngCore;
 use ark_std::{One, UniformRand, Zero};
 use std::marker::PhantomData;
 
-use super::{circuits::ChallengeGadget, traits::NIFSTrait};
+use super::NIFSTrait;
 use crate::arith::r1cs::R1CS;
 use crate::commitment::CommitmentScheme;
+use crate::folding::nova::circuits::ChallengeGadget;
 use crate::folding::{circuits::CF1, traits::Dummy};
 use crate::transcript::{AbsorbNonNative, Transcript};
 use crate::utils::vec::{hadamard, mat_vec_mul, vec_scalar_mul, vec_sub};
@@ -51,7 +50,6 @@ where
     }
 }
 
-// #[allow(dead_code)] // Clippy flag needed for now.
 /// A Witness in Ova is represented by `w`. It also contains a blinder which can or not be used
 /// when committing to the witness itself.
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
@@ -103,13 +101,19 @@ impl<C: CurveGroup> Dummy<&R1CS<CF1<C>>> for Witness<C> {
 }
 
 /// Implements the NIFS (Non-Interactive Folding Scheme) trait for Ova.
-pub struct NIFS<C: CurveGroup, CS: CommitmentScheme<C, H>, const H: bool = false> {
+pub struct NIFS<
+    C: CurveGroup,
+    CS: CommitmentScheme<C, H>,
+    T: Transcript<C::ScalarField>,
+    const H: bool = false,
+> {
     _c: PhantomData<C>,
     _cp: PhantomData<CS>,
+    _t: PhantomData<T>,
 }
 
-impl<C: CurveGroup, CS: CommitmentScheme<C, H>, const H: bool> NIFSTrait<C, CS, H>
-    for NIFS<C, CS, H>
+impl<C: CurveGroup, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
+    NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
 where
     <C as Group>::ScalarField: Absorb,
     <C as CurveGroup>::BaseField: PrimeField,
@@ -117,15 +121,16 @@ where
     type CommittedInstance = CommittedInstance<C>;
     type Witness = Witness<C>;
     type ProverAux = ();
-    type VerifierAux = ();
+    type Proof = ();
 
     fn new_witness(w: Vec<C::ScalarField>, _e_len: usize, rng: impl RngCore) -> Self::Witness {
         Witness::new::<H>(w, rng)
     }
 
     fn new_instance(
-        W: &Self::Witness,
+        _rng: impl RngCore,
         params: &CS::ProverParams,
+        W: &Self::Witness,
         x: Vec<C::ScalarField>,
         aux: Vec<C::ScalarField>, // t_or_e
     ) -> Result<Self::CommittedInstance, Error> {
@@ -149,40 +154,55 @@ where
         Ok(Self::Witness { w, rW })
     }
 
-    fn compute_aux(
+    fn prove(
         _cs_prover_params: &CS::ProverParams,
         _r1cs: &R1CS<C::ScalarField>,
-        _W_i: &Self::Witness,
-        _U_i: &Self::CommittedInstance,
-        _w_i: &Self::Witness,
-        _u_i: &Self::CommittedInstance,
-    ) -> Result<(Self::ProverAux, Self::VerifierAux), Error> {
-        Ok(((), ()))
-    }
-
-    fn get_challenge<T: Transcript<C::ScalarField>>(
         transcript: &mut T,
-        pp_hash: C::ScalarField, // public params hash
+        pp_hash: C::ScalarField,
+        W_i: &Self::Witness,
         U_i: &Self::CommittedInstance,
+        w_i: &Self::Witness,
         u_i: &Self::CommittedInstance,
-        _aux: &Self::VerifierAux,
-    ) -> Vec<bool> {
-        // reuse Nova's get_challenge method
-        ChallengeGadget::<C, Self::CommittedInstance>::get_challenge_native(
-            transcript, pp_hash, U_i, u_i, None, // empty in Ova's case
-        )
-    }
+    ) -> Result<
+        (
+            Self::Witness,
+            Self::CommittedInstance,
+            Self::Proof,
+            Vec<bool>,
+        ),
+        Error,
+    > {
+        let mut transcript_v = transcript.clone();
 
-    // Notice: `prove` method is implemented at the trait level.
+        let r_bits = ChallengeGadget::<C, Self::CommittedInstance>::get_challenge_native(
+            transcript, pp_hash, U_i, u_i, None, // cmT not used in Ova
+        );
+        let r_Fr = C::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
+            .ok_or(Error::OutOfBounds)?;
+
+        let w = Self::fold_witness(r_Fr, W_i, w_i, &())?;
+
+        let (ci, _r_bits_v) = Self::verify(&mut transcript_v, pp_hash, U_i, u_i, &())?;
+        #[cfg(test)]
+        assert_eq!(_r_bits_v, r_bits);
+
+        Ok((w, ci, (), r_bits))
+    }
 
     fn verify(
-        // r comes from the transcript, and is a n-bit (N_BITS_CHALLENGE) element
-        r: C::ScalarField,
+        transcript: &mut T,
+        pp_hash: C::ScalarField,
         U_i: &Self::CommittedInstance,
         u_i: &Self::CommittedInstance,
-        _aux: &Self::VerifierAux,
-    ) -> Self::CommittedInstance {
-        // recall that r <==> alpha, and u <==> mu between Nova and Ova respectively
+        _proof: &Self::Proof, // unused in Ova
+    ) -> Result<(Self::CommittedInstance, Vec<bool>), Error> {
+        let r_bits = ChallengeGadget::<C, Self::CommittedInstance>::get_challenge_native(
+            transcript, pp_hash, U_i, u_i, None, // cmT not used in Ova
+        );
+        let r = C::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
+            .ok_or(Error::OutOfBounds)?;
+
+        // recall that r=alpha, and u=mu between Nova and Ova respectively
         let u = U_i.u + r; // u_i.u is always 1 IN ova as we just can do sequential IVC.
         let cmWE = U_i.cmWE + u_i.cmWE.mul(r);
         let x = U_i
@@ -192,7 +212,7 @@ where
             .map(|(a, b)| *a + (r * b))
             .collect::<Vec<C::ScalarField>>();
 
-        Self::CommittedInstance { cmWE, u, x }
+        Ok((Self::CommittedInstance { cmWE, u, x }, r_bits))
     }
 }
 
@@ -224,6 +244,7 @@ pub mod tests {
     use crate::arith::{r1cs::tests::get_test_r1cs, Arith};
     use crate::commitment::pedersen::Pedersen;
     use crate::folding::nova::nifs::tests::test_nifs_opt;
+    use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
 
     // Simple auxiliary structure mainly used to help pass a witness for which we can check
     // easily an R1CS relation.
@@ -257,7 +278,7 @@ pub mod tests {
 
     #[test]
     fn test_nifs_ova() {
-        let (W, U) = test_nifs_opt::<NIFS<Projective, Pedersen<Projective>>>();
+        let (W, U) = test_nifs_opt::<NIFS<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>>();
 
         // check the last folded instance relation
         let r1cs = get_test_r1cs();

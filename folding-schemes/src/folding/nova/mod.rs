@@ -648,7 +648,7 @@ where
         _other_instances: Option<Self::MultiCommittedInstanceWithWitness>,
     ) -> Result<(), Error> {
         #[cfg(feature = "circom-browser")]
-        {
+        let external_inputs = {
             // Slice and separate between external inputs and frontend witness.
             let (frontend_witness, external_inputs) =
                 if external_inputs.len() > self.F.external_inputs_len() {
@@ -668,7 +668,9 @@ where
             if let Some(witness) = frontend_witness {
                 self.F.load_witness(witness)
             };
-        }
+
+            external_inputs
+        };
 
         // ensure that commitments are blinding if user has specified so.
         if H && self.i >= C1::ScalarField::one() {

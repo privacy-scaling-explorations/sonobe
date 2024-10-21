@@ -1,4 +1,3 @@
-use crate::Error;
 use ark_noname::sonobe::NonameSonobeCircuit;
 use ark_r1cs_std::alloc::AllocVar;
 use ark_r1cs_std::fields::fp::FpVar;
@@ -8,9 +7,9 @@ use std::marker::PhantomData;
 
 use self::utils::NonameInputs;
 
-use super::FCircuit;
 use ark_ff::PrimeField;
 use ark_noname::utils::compile_source_code;
+use folding_schemes::{frontend::FCircuit, Error};
 use noname::backends::{r1cs::R1CS as R1CSNoname, BackendField};
 use noname::witness::CompiledCircuit;
 pub mod utils;
@@ -25,7 +24,7 @@ pub struct NonameFCircuit<F: PrimeField, BF: BackendField> {
 impl<F: PrimeField, BF: BackendField> FCircuit<F> for NonameFCircuit<F, BF> {
     type Params = (String, usize, usize);
 
-    fn new(params: Self::Params) -> Result<Self, crate::Error> {
+    fn new(params: Self::Params) -> Result<Self, Error> {
         let (code, state_len, external_inputs_len) = params;
         let compiled_circuit = compile_source_code::<BF>(&code).map_err(|_| {
             Error::Other("Encountered an error while compiling a noname circuit".to_owned())
@@ -51,7 +50,7 @@ impl<F: PrimeField, BF: BackendField> FCircuit<F> for NonameFCircuit<F, BF> {
         _i: usize,
         z_i: Vec<F>,
         external_inputs: Vec<F>,
-    ) -> Result<Vec<F>, crate::Error> {
+    ) -> Result<Vec<F>, Error> {
         let wtns_external_inputs =
             NonameInputs::from((&external_inputs, "external_inputs".to_string()));
         let wtns_ivc_inputs = NonameInputs::from((&z_i, "ivc_inputs".to_string()));
@@ -119,7 +118,7 @@ mod tests {
     use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, R1CSVar};
     use noname::backends::r1cs::R1csBn254Field;
 
-    use crate::frontend::FCircuit;
+    use folding_schemes::frontend::FCircuit;
 
     use super::NonameFCircuit;
     use ark_relations::r1cs::ConstraintSystem;

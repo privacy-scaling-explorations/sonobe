@@ -61,9 +61,9 @@ jobs:
           curl -sSfL https://github.com/ethereum/solidity/releases/download/v0.8.4/solc-static-linux -o /usr/local/bin/solc
           chmod +x /usr/local/bin/solc
       - name: Execute compile.sh to generate .r1cs and .wasm from .circom
-        run: ./folding-schemes/src/frontend/circom/test_folder/compile.sh
+        run: ./frontends/src/circom/test_folder/compile.sh
       - name: Execute compile.sh to generate .json from noir
-        run: ./folding-schemes/src/frontend/noir/test_folder/compile.sh
+        run: ./frontends/src/noir/test_folder/compile.sh
       - name: Run tests
         uses: actions-rs/cargo@v1
         with:
@@ -95,11 +95,11 @@ jobs:
           default: true
       - name: Add target
         run: rustup target add ${{ matrix.target }}
-      - name: Wasm-compat build
+      - name: Wasm-compat frontends build
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: -p folding-schemes --target ${{ matrix.target }} --features circom-browser 
+          args: -p folding-schemes --target ${{ matrix.target }} --features circom-browser
       - name: Run wasm-compat script
         run: |
           chmod +x .github/scripts/wasm-target-test-build.sh
@@ -127,9 +127,9 @@ jobs:
           curl -sSfL https://github.com/ethereum/solidity/releases/download/v0.8.4/solc-static-linux -o /usr/local/bin/solc
           chmod +x /usr/local/bin/solc
       - name: Execute compile.sh to generate .r1cs and .wasm from .circom
-        run: ./folding-schemes/src/frontend/circom/test_folder/compile.sh
+        run: ./frontends/src/circom/test_folder/compile.sh
       - name: Execute compile.sh to generate .json from noir
-        run: ./folding-schemes/src/frontend/noir/test_folder/compile.sh
+        run: ./frontends/src/noir/test_folder/compile.sh
       - name: Run examples tests
         run: cargo test --examples
       - name: Run examples

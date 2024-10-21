@@ -29,6 +29,7 @@ ark-bn254 = {version="0.4.0", features=["r1cs"]}
 ark-grumpkin = {version="0.4.0", features=["r1cs"]}
 rand = "0.8.5"
 folding-schemes = { path = "../folding-schemes/", features=["light-test"]}
+frontends = { path = "../frontends/"}
 noname = { git = "https://github.com/dmpierre/noname" }
 
 [features]

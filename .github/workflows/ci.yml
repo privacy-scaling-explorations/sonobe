@@ -99,7 +99,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: -p folding-schemes --target ${{ matrix.target }} --features circom-frontend
+          args: -p folding-schemes --target ${{ matrix.target }} --features circom-browser 
       - name: Run wasm-compat script
         run: |
           chmod +x .github/scripts/wasm-target-test-build.sh

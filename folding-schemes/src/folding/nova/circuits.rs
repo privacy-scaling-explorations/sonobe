@@ -529,8 +529,7 @@ pub mod tests {
     use ark_std::UniformRand;
 
     use crate::commitment::pedersen::Pedersen;
-    use crate::folding::nova::nifs::NIFS;
-    use crate::folding::nova::traits::NIFSTrait;
+    use crate::folding::nova::nifs::{nova::NIFS, NIFSTrait};
     use crate::folding::traits::CommittedInstanceOps;
     use crate::transcript::poseidon::poseidon_canonical_config;
 
@@ -570,9 +569,19 @@ pub mod tests {
             })
             .collect();
         let (ci1, ci2) = (ci[0].clone(), ci[1].clone());
-        let r_Fr = Fr::rand(&mut rng);
+        let pp_hash = Fr::rand(&mut rng);
         let cmT = Projective::rand(&mut rng);
-        let ci3 = NIFS::<Projective, Pedersen<Projective>>::verify(r_Fr, &ci1, &ci2, &cmT);
+        let poseidon_config = poseidon_canonical_config::<Fr>();
+        let mut transcript = PoseidonSponge::<Fr>::new(&poseidon_config);
+        let (ci3, r_bits) = NIFS::<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>::verify(
+            &mut transcript,
+            pp_hash,
+            &ci1,
+            &ci2,
+            &cmT,
+        )
+        .unwrap();
+        let r_Fr = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 

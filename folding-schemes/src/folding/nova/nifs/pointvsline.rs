@@ -1,13 +1,15 @@
-use crate::folding::mova::{CommittedInstance, Witness};
-use crate::transcript::Transcript;
-use crate::utils::mle::dense_vec_to_dense_mle;
-use crate::Error;
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{CurveGroup, Group};
 use ark_ff::{One, PrimeField};
 use ark_poly::univariate::DensePolynomial;
 use ark_poly::{DenseMultilinearExtension, DenseUVPolynomial, Polynomial};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{log2, Zero};
+
+use super::mova::{CommittedInstance, Witness};
+use crate::transcript::Transcript;
+use crate::utils::mle::dense_vec_to_dense_mle;
+use crate::Error;
 
 /// Implements the Points vs Line as described in
 /// [Mova](https://eprint.iacr.org/2024/1220.pdf) and Section 4.5.2 from Thaler’s book
@@ -18,9 +20,8 @@ pub struct PointvsLineEvaluationClaim<C: CurveGroup> {
     pub mleE2_prime: C::ScalarField,
     pub rE_prime: Vec<C::ScalarField>,
 }
-
 /// Proof from step 1 protocol 6
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct PointVsLineProof<C: CurveGroup> {
     pub h1: DensePolynomial<C::ScalarField>,
     pub h2: DensePolynomial<C::ScalarField>,
@@ -38,7 +39,7 @@ where
     <C as Group>::ScalarField: Absorb,
 {
     pub fn prove(
-        transcript: &mut impl Transcript<C::ScalarField>,
+        transcript: &mut T,
         ci1: &CommittedInstance<C>,
         ci2: &CommittedInstance<C>,
         w1: &Witness<C>,
@@ -83,7 +84,7 @@ where
     }
 
     pub fn verify(
-        transcript: &mut impl Transcript<C::ScalarField>,
+        transcript: &mut T,
         ci1: &CommittedInstance<C>,
         ci2: &CommittedInstance<C>,
         proof: &PointVsLineProof<C>,

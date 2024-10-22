@@ -24,9 +24,10 @@ use super::{nonnative::uint::NonNativeUintVar, CF1, CF2};
 use crate::arith::r1cs::{extract_w_x, R1CS};
 use crate::commitment::CommitmentScheme;
 use crate::constants::NOVA_N_BITS_RO;
-use crate::folding::nova::{nifs::NIFS, traits::NIFSTrait};
+use crate::folding::nova::nifs::{nova::NIFS, NIFSTrait};
 use crate::transcript::{AbsorbNonNative, AbsorbNonNativeGadget, Transcript, TranscriptVar};
 use crate::Error;
+use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
 
 /// Re-export the Nova committed instance as `CycleFoldCommittedInstance` and
 /// witness as `CycleFoldWitness`, for clarity and consistency
@@ -493,6 +494,72 @@ where
     }
 }
 
+/// CycleFoldNIFS is a wrapper on top of Nova's NIFS, which just replaces the `prove` and `verify`
+/// methods to use a different ChallengeGadget, but internally reuses the other Nova's NIFS
+/// methods.
+/// It is a custom implementation that does not follow the NIFSTrait because it needs to work over
+/// different fields than the main NIFS impls (Nova, Mova, Ova). Could be abstracted, but it's a
+/// tradeoff between overcomplexity at the NIFSTrait and the (not much) need of generalization at
+/// the CycleFoldNIFS.
+pub struct CycleFoldNIFS<
+    C1: CurveGroup,
+    C2: CurveGroup,
+    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+    CS2: CommitmentScheme<C2, H>,
+    const H: bool = false,
+> where
+    <C1 as CurveGroup>::BaseField: PrimeField,
+    <C2 as CurveGroup>::BaseField: PrimeField,
+    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
+{
+    _c1: PhantomData<C1>,
+    _c2: PhantomData<C2>,
+    _gc2: PhantomData<GC2>,
+    _cs: PhantomData<CS2>,
+}
+impl<C1: CurveGroup, C2: CurveGroup, GC2, CS2: CommitmentScheme<C2, H>, const H: bool>
+    CycleFoldNIFS<C1, C2, GC2, CS2, H>
+where
+    <C1 as CurveGroup>::BaseField: PrimeField,
+    <C2 as CurveGroup>::BaseField: PrimeField,
+    <C1 as Group>::ScalarField: Absorb,
+    <C2 as Group>::ScalarField: Absorb,
+    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
+{
+    fn prove(
+        cf_r_Fq: C2::ScalarField, // C2::Fr==C1::Fq
+        cf_W_i: &CycleFoldWitness<C2>,
+        cf_U_i: &CycleFoldCommittedInstance<C2>,
+        cf_w_i: &CycleFoldWitness<C2>,
+        cf_u_i: &CycleFoldCommittedInstance<C2>,
+        aux_p: &[C2::ScalarField], // = cf_T
+        aux_v: C2,                 // = cf_cmT
+    ) -> Result<(CycleFoldWitness<C2>, CycleFoldCommittedInstance<C2>), Error> {
+        let w = NIFS::<C2, CS2, PoseidonSponge<C2::ScalarField>, H>::fold_witness(
+            cf_r_Fq,
+            cf_W_i,
+            cf_w_i,
+            &aux_p.to_vec(),
+        )?;
+        let ci = Self::verify(cf_r_Fq, cf_U_i, cf_u_i, &aux_v)?;
+        Ok((w, ci))
+    }
+    fn verify(
+        r: C2::ScalarField,
+        U_i: &CycleFoldCommittedInstance<C2>,
+        u_i: &CycleFoldCommittedInstance<C2>,
+        cmT: &C2, // VerifierAux
+    ) -> Result<CycleFoldCommittedInstance<C2>, Error> {
+        Ok(
+            NIFS::<C2, CS2, PoseidonSponge<C2::ScalarField>, H>::fold_committed_instances(
+                r, U_i, u_i, cmT,
+            ),
+        )
+    }
+}
+
 /// Folds the given cyclefold circuit and its instances. This method is abstracted from any folding
 /// scheme struct because it is used both by Nova & HyperNova's CycleFold.
 #[allow(clippy::type_complexity)]
@@ -551,14 +618,15 @@ where
         cf_w_i.commit::<CS2, H>(&cf_cs_params, cf_x_i.clone())?;
 
     // compute T* and cmT* for CycleFoldCircuit
-    let (cf_T, cf_cmT) = NIFS::<C2, CS2, H>::compute_cyclefold_cmT(
-        &cf_cs_params,
-        &cf_r1cs,
-        &cf_w_i,
-        &cf_u_i,
-        &cf_W_i,
-        &cf_U_i,
-    )?;
+    let (cf_T, cf_cmT) =
+        NIFS::<C2, CS2, PoseidonSponge<C2::ScalarField>, H>::compute_cyclefold_cmT(
+            &cf_cs_params,
+            &cf_r1cs,
+            &cf_w_i,
+            &cf_u_i,
+            &cf_W_i,
+            &cf_U_i,
+        )?;
 
     let cf_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_native(
         transcript,
@@ -570,8 +638,11 @@ where
     let cf_r_Fq = C1::BaseField::from_bigint(BigInteger::from_bits_le(&cf_r_bits))
         .expect("cf_r_bits out of bounds");
 
-    let (cf_W_i1, cf_U_i1) =
-        NIFS::<C2, CS2, H>::prove(cf_r_Fq, &cf_W_i, &cf_U_i, &cf_w_i, &cf_u_i, &cf_T, &cf_cmT)?;
+    let (cf_W_i1, cf_U_i1) = CycleFoldNIFS::<C1, C2, GC2, CS2, H>::prove(
+        cf_r_Fq, &cf_W_i, &cf_U_i, &cf_w_i, &cf_u_i, &cf_T, cf_cmT,
+    )?;
+    let cf_r_Fq = C1::BaseField::from_bigint(BigInteger::from_bits_le(&cf_r_bits))
+        .expect("cf_r_bits out of bounds");
     Ok((cf_w_i, cf_u_i, cf_W_i1, cf_U_i1, cf_cmT, cf_r_Fq))
 }
 
@@ -671,6 +742,10 @@ pub mod tests {
     fn test_nifs_full_gadget() {
         let mut rng = ark_std::test_rng();
 
+        let poseidon_config = poseidon_canonical_config::<Fr>();
+        let mut transcript_v = PoseidonSponge::<Fr>::new(&poseidon_config);
+        let pp_hash = Fr::rand(&mut rng);
+
         // prepare the committed instances to test in-circuit
         let ci: Vec<CommittedInstance<Projective>> = (0..2)
             .into_iter()
@@ -685,11 +760,16 @@ pub mod tests {
         // make the 2nd instance a 'fresh' instance (ie. cmE=0, u=1)
         ci2.cmE = Projective::zero();
         ci2.u = Fr::one();
-        let r_bits: Vec<bool> =
-            Fr::rand(&mut rng).into_bigint().to_bits_le()[..NOVA_N_BITS_RO].to_vec();
-        let r_Fr = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
-        let cmT = Projective::rand(&mut rng);
-        let ci3 = NIFS::<Projective, Pedersen<Projective>>::verify(r_Fr, &ci1, &ci2, &cmT);
+
+        let cmT = Projective::rand(&mut rng); // random only for testing
+        let (ci3, r_bits) = NIFS::<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>::verify(
+            &mut transcript_v,
+            pp_hash,
+            &ci1,
+            &ci2,
+            &cmT,
+        )
+        .unwrap();
 
         let cs = ConstraintSystem::<Fq>::new_ref();
         let r_bitsVar = Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(r_bits)).unwrap();
@@ -737,7 +817,7 @@ pub mod tests {
                 .take(TestCycleFoldConfig::<Projective, 2>::IO_LEN)
                 .collect(),
         };
-        let cmT = Projective::rand(&mut rng);
+        let cmT = Projective::rand(&mut rng); // random only for testing
 
         // compute the challenge natively
         let pp_hash = Fq::from(42u32); // only for test

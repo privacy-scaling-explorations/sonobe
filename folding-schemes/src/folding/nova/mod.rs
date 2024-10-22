@@ -1,5 +1,9 @@
 /// Implements the scheme described in [Nova](https://eprint.iacr.org/2021/370.pdf) and
 /// [CycleFold](https://eprint.iacr.org/2023/1192.pdf).
+///
+/// The structure of the Nova code is the following:
+/// - NIFS implementation for Nova (nifs.rs), Mova (mova.rs), Ova (ova.rs)
+/// - IVC and the Decider (offchain Decider & onchain Decider) implementations for Nova
 use ark_crypto_primitives::sponge::{
     poseidon::{PoseidonConfig, PoseidonSponge},
     Absorb, CryptographicSponge,
@@ -36,14 +40,14 @@ use crate::{
 use crate::{arith::Arith, commitment::CommitmentScheme};
 
 pub mod circuits;
-pub mod nifs;
-pub mod ova;
 pub mod traits;
 pub mod zk;
 
-use circuits::{AugmentedFCircuit, ChallengeGadget, CommittedInstanceVar};
-use nifs::NIFS;
-use traits::NIFSTrait;
+// NIFS related:
+pub mod nifs;
+
+use circuits::{AugmentedFCircuit, CommittedInstanceVar};
+use nifs::{nova::NIFS, NIFSTrait};
 
 // offchain decider
 pub mod decider;
@@ -714,27 +718,20 @@ where
             .F
             .step_native(i_usize, self.z_i.clone(), external_inputs.clone())?;
 
-        // compute T and cmT for AugmentedFCircuit
-        let (aux_p, aux_v) = self.compute_cmT()?;
-        let cmT = aux_v;
-
-        // r_bits is the r used to the RLC of the F' instances
-        let r_bits = ChallengeGadget::<C1, CommittedInstance<C1>>::get_challenge_native(
-            &mut transcript,
-            self.pp_hash,
-            &self.U_i,
-            &self.u_i,
-            Some(&cmT),
-        );
-        let r_Fr = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
-            .ok_or(Error::OutOfBounds)?;
+        // fold Nova instances
+        let (W_i1, U_i1, cmT, r_bits): (Witness<C1>, CommittedInstance<C1>, C1, Vec<bool>) =
+            NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>, H>::prove(
+                &self.cs_pp,
+                &self.r1cs,
+                &mut transcript,
+                self.pp_hash,
+                &self.W_i,
+                &self.U_i,
+                &self.w_i,
+                &self.u_i,
+            )?;
         let r_Fq = C1::BaseField::from_bigint(BigInteger::from_bits_le(&r_bits))
             .ok_or(Error::OutOfBounds)?;
-
-        // fold Nova instances
-        let (W_i1, U_i1): (Witness<C1>, CommittedInstance<C1>) = NIFS::<C1, CS1, H>::prove(
-            r_Fr, &self.W_i, &self.U_i, &self.w_i, &self.u_i, &aux_p, &aux_v,
-        )?;
 
         // folded instance output (public input, x)
         // u_{i+1}.x[0] = H(i+1, z_0, z_{i+1}, U_{i+1})
@@ -776,7 +773,15 @@ where
             };
 
             #[cfg(test)]
-            NIFS::<C1, CS1, H>::verify_folded_instance(r_Fr, &self.U_i, &self.u_i, &U_i1, &cmT)?;
+            {
+                let r_Fr = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
+                    .ok_or(Error::OutOfBounds)?;
+                let expected =
+                    NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>, H>::fold_committed_instances(
+                        r_Fr, &self.U_i, &self.u_i, &cmT,
+                    );
+                assert_eq!(U_i1, expected);
+            }
         } else {
             // CycleFold part:
             // get the vector used as public inputs 'x' in the CycleFold circuit
@@ -1034,33 +1039,6 @@ where
         vp.cf_r1cs.check_relation(&cf_W_i, &cf_U_i)?;
 
         Ok(())
-    }
-}
-
-impl<C1, GC1, C2, GC2, FC, CS1, CS2, const H: bool> Nova<C1, GC1, C2, GC2, FC, CS1, CS2, H>
-where
-    C1: CurveGroup,
-    GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
-    C2: CurveGroup,
-    GC2: CurveVar<C2, CF2<C2>>,
-    FC: FCircuit<C1::ScalarField>,
-    CS1: CommitmentScheme<C1, H>,
-    CS2: CommitmentScheme<C2, H>,
-    <C2 as CurveGroup>::BaseField: PrimeField,
-    <C1 as Group>::ScalarField: Absorb,
-    <C2 as Group>::ScalarField: Absorb,
-    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-{
-    // computes T and cmT for the AugmentedFCircuit
-    fn compute_cmT(&self) -> Result<(Vec<C1::ScalarField>, C1), Error> {
-        NIFS::<C1, CS1, H>::compute_aux(
-            &self.cs_pp,
-            &self.r1cs,
-            &self.w_i,
-            &self.u_i,
-            &self.W_i,
-            &self.U_i,
-        )
     }
 }
 

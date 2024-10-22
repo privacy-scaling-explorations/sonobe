@@ -25,6 +25,7 @@ use crate::commitment::{
     CommitmentScheme,
 };
 use crate::folding::circuits::{nonnative::affine::NonNativeAffineVar, CF2};
+use crate::folding::nova::circuits::ChallengeGadget;
 use crate::frontend::FCircuit;
 use crate::transcript::poseidon::poseidon_canonical_config;
 use crate::Error;
@@ -277,14 +278,30 @@ where
 #[allow(clippy::too_many_arguments)]
 pub fn prepare_calldata(
     function_signature_check: [u8; 4],
+    pp_hash: ark_bn254::Fr,
     i: ark_bn254::Fr,
     z_0: Vec<ark_bn254::Fr>,
     z_i: Vec<ark_bn254::Fr>,
-    r: ark_bn254::Fr,
     running_instance: &CommittedInstance<ark_bn254::G1Projective>,
     incoming_instance: &CommittedInstance<ark_bn254::G1Projective>,
     proof: Proof<ark_bn254::G1Projective, KZG<'static, Bn254>, Groth16<Bn254>>,
 ) -> Result<Vec<u8>, Error> {
+    // compute the challenge r
+    let poseidon_config = poseidon_canonical_config::<ark_bn254::Fr>();
+    let mut transcript = PoseidonSponge::<ark_bn254::Fr>::new(&poseidon_config);
+    let r_bits = ChallengeGadget::<
+        ark_bn254::G1Projective,
+        CommittedInstance<ark_bn254::G1Projective>,
+    >::get_challenge_native(
+        &mut transcript,
+        pp_hash,
+        running_instance,
+        incoming_instance,
+        Some(&proof.cmT),
+    );
+    let r =
+        ark_bn254::Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).ok_or(Error::OutOfBounds)?;
+
     Ok(vec![
         function_signature_check.to_vec(),
         i.into_bigint().to_bytes_be(), // i

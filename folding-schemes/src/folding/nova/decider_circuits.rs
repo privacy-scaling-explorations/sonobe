@@ -9,8 +9,9 @@ use ark_r1cs_std::{fields::fp::FpVar, prelude::CurveVar, ToConstraintFieldGadget
 use core::marker::PhantomData;
 
 use super::{
-    decider_eth_circuit::DeciderNovaGadget, nifs::{nova::NIFS, NIFSTrait}, CommittedInstance, Nova,
-    Witness,
+    decider_eth_circuit::DeciderNovaGadget,
+    nifs::{nova::NIFS, NIFSTrait},
+    CommittedInstance, Nova, Witness,
 };
 use crate::folding::{
     circuits::{CF1, CF2},

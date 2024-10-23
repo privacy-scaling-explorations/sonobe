@@ -30,8 +30,7 @@
 /// paper).
 /// And the Use-case-2 would require a modified version of the Decider circuits.
 ///
-use ark_crypto_primitives::sponge::CryptographicSponge;
-use ark_ff::{BigInteger, PrimeField};
+use ark_ff::PrimeField;
 use ark_std::{One, Zero};
 
 use crate::{
@@ -41,7 +40,7 @@ use crate::{
 };
 use ark_crypto_primitives::sponge::{
     poseidon::{PoseidonConfig, PoseidonSponge},
-    Absorb,
+    Absorb, CryptographicSponge,
 };
 use ark_ec::{CurveGroup, Group};
 use ark_r1cs_std::{
@@ -52,21 +51,16 @@ use ark_r1cs_std::{
 use crate::{commitment::CommitmentScheme, folding::circuits::CF2, frontend::FCircuit, Error};
 
 use super::{
-    circuits::ChallengeGadget, nifs::NIFS, traits::NIFSTrait, CommittedInstance, Nova, Witness,
+    nifs::{nova::NIFS, NIFSTrait},
+    CommittedInstance, Nova, Witness,
 };
-
-// We use the same definition of a folding proof as in https://eprint.iacr.org/2023/969.pdf
-// It consists in the commitment to the T term
-pub struct FoldingProof<C: CurveGroup> {
-    cmT: C,
-}
 
 pub struct RandomizedIVCProof<C1: CurveGroup, C2: CurveGroup> {
     pub U_i: CommittedInstance<C1>,
     pub u_i: CommittedInstance<C1>,
     pub U_r: CommittedInstance<C1>,
-    pub pi: FoldingProof<C1>,
-    pub pi_prime: FoldingProof<C1>,
+    pub pi: C1,       // proof = cmT
+    pub pi_prime: C1, // proof' = cmT'
     pub W_i_prime: Witness<C1>,
     pub cf_U_i: CommittedInstance<C2>,
     pub cf_W_i: Witness<C2>,
@@ -77,24 +71,6 @@ where
     <C1 as Group>::ScalarField: Absorb,
     <C1 as CurveGroup>::BaseField: PrimeField,
 {
-    /// Computes challenge required before folding instances
-    fn get_folding_challenge(
-        sponge: &mut PoseidonSponge<C1::ScalarField>,
-        pp_hash: C1::ScalarField,
-        U_i: CommittedInstance<C1>,
-        u_i: CommittedInstance<C1>,
-        cmT: C1,
-    ) -> Result<C1::ScalarField, Error> {
-        let r_bits = ChallengeGadget::<C1, CommittedInstance<C1>>::get_challenge_native(
-            sponge,
-            pp_hash,
-            &U_i,
-            &u_i,
-            Some(&cmT),
-        );
-        C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits)).ok_or(Error::OutOfBounds)
-    }
-
     /// Compute a zero-knowledge proof of a Nova IVC proof
     /// It implements the prover of appendix D.4.in https://eprint.iacr.org/2023/573.pdf
     /// For further details on why folding is hiding, see lemma 9
@@ -118,35 +94,20 @@ where
         GC2: ToConstraintFieldGadget<<C2 as CurveGroup>::BaseField>,
         C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     {
-        let mut challenges_sponge = PoseidonSponge::<C1::ScalarField>::new(&nova.poseidon_config);
+        let mut transcript = PoseidonSponge::<C1::ScalarField>::new(&nova.poseidon_config);
 
         // I. Compute proof for 'regular' instances
         // 1. Fold the instance-witness pairs (U_i, W_i) with (u_i, w_i)
-        // a. Compute T
-        let (T, cmT) = NIFS::<C1, CS1, true>::compute_cmT(
+        let (W_f, U_f, cmT, _) = NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>, true>::prove(
             &nova.cs_pp,
             &nova.r1cs,
+            &mut transcript,
+            nova.pp_hash,
             &nova.w_i,
             &nova.u_i,
             &nova.W_i,
             &nova.U_i,
         )?;
-
-        // b. Compute folding challenge
-        let r = RandomizedIVCProof::<C1, C2>::get_folding_challenge(
-            &mut challenges_sponge,
-            nova.pp_hash,
-            nova.U_i.clone(),
-            nova.u_i.clone(),
-            cmT,
-        )?;
-
-        // c. Compute fold
-        let (W_f, U_f) =
-            NIFS::<C1, CS1, true>::prove(r, &nova.w_i, &nova.u_i, &nova.W_i, &nova.U_i, &T, &cmT)?;
-
-        // d. Store folding proof
-        let pi = FoldingProof { cmT };
 
         // 2. Sample a satisfying relaxed R1CS instance-witness pair (W_r, U_r)
         let (W_r, U_r) = nova
@@ -154,32 +115,24 @@ where
             .sample_witness_instance::<CS1>(&nova.cs_pp, &mut rng)?;
 
         // 3. Fold the instance-witness pair (U_f, W_f) with (U_r, W_r)
-        // a. Compute T
-        let (T_i_prime, cmT_i_prime) =
-            NIFS::<C1, CS1, true>::compute_cmT(&nova.cs_pp, &nova.r1cs, &W_f, &U_f, &W_r, &U_r)?;
-
-        // b. Compute folding challenge
-        let r_2 = RandomizedIVCProof::<C1, C2>::get_folding_challenge(
-            &mut challenges_sponge,
-            nova.pp_hash,
-            U_f.clone(),
-            U_r.clone(),
-            cmT_i_prime,
-        )?;
-
-        // c. Compute fold
-        let (W_i_prime, _) =
-            NIFS::<C1, CS1, true>::prove(r_2, &W_f, &U_f, &W_r, &U_r, &T_i_prime, &cmT_i_prime)?;
-
-        // d. Store folding proof
-        let pi_prime = FoldingProof { cmT: cmT_i_prime };
+        let (W_i_prime, _, cmT_i_prime, _) =
+            NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>, true>::prove(
+                &nova.cs_pp,
+                &nova.r1cs,
+                &mut transcript,
+                nova.pp_hash,
+                &W_f,
+                &U_f,
+                &W_r,
+                &U_r,
+            )?;
 
         Ok(RandomizedIVCProof {
             U_i: nova.U_i.clone(),
             u_i: nova.u_i.clone(),
             U_r,
-            pi,
-            pi_prime,
+            pi: cmT,
+            pi_prime: cmT_i_prime,
             W_i_prime,
             cf_U_i: nova.cf_U_i.clone(),
             cf_W_i: nova.cf_W_i.clone(),
@@ -228,7 +181,7 @@ where
         }
 
         // b. Check computed hashes are correct
-        let mut sponge = PoseidonSponge::<C1::ScalarField>::new(poseidon_config);
+        let sponge = PoseidonSponge::<C1::ScalarField>::new(poseidon_config);
         let expected_u_i_x = proof.U_i.hash(&sponge, pp_hash, i, &z_0, &z_i);
         if expected_u_i_x != proof.u_i.x[0] {
             return Err(Error::zkIVCVerificationFail);
@@ -244,31 +197,24 @@ where
             return Err(Error::zkIVCVerificationFail);
         }
 
+        let mut transcript = PoseidonSponge::<C1::ScalarField>::new(poseidon_config);
         // 3. Obtain the U_f folded instance
-        // a. Compute folding challenge
-        let r = RandomizedIVCProof::<C1, C2>::get_folding_challenge(
-            &mut sponge,
+        let (U_f, _) = NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>, true>::verify(
+            &mut transcript,
             pp_hash,
-            proof.U_i.clone(),
-            proof.u_i.clone(),
-            proof.pi.cmT,
+            &proof.u_i,
+            &proof.U_i,
+            &proof.pi,
         )?;
-
-        // b. Get the U_f instance
-        let U_f = NIFS::<C1, CS1, true>::verify(r, &proof.u_i, &proof.U_i, &proof.pi.cmT);
 
         // 4. Obtain the U^{\prime}_i folded instance
-        // a. Compute folding challenge
-        let r_2 = RandomizedIVCProof::<C1, C2>::get_folding_challenge(
-            &mut sponge,
+        let (U_i_prime, _) = NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>, true>::verify(
+            &mut transcript,
             pp_hash,
-            U_f.clone(),
-            proof.U_r.clone(),
-            proof.pi_prime.cmT,
+            &U_f,
+            &proof.U_r,
+            &proof.pi_prime,
         )?;
-
-        // b. Compute fold
-        let U_i_prime = NIFS::<C1, CS1, true>::verify(r_2, &U_f, &proof.U_r, &proof.pi_prime.cmT);
 
         // 5. Check that W^{\prime}_i is a satisfying witness
         r1cs.check_relation(&proof.W_i_prime, &U_i_prime)?;

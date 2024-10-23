@@ -3,7 +3,7 @@
 /// More details can be found at the documentation page:
 /// https://privacy-scaling-explorations.github.io/sonobe-docs/design/nova-decider-onchain.html
 use ark_bn254::Bn254;
-use ark_crypto_primitives::sponge::Absorb;
+use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, Absorb, CryptographicSponge};
 use ark_ec::{AffineRepr, CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
 use ark_groth16::Groth16;
@@ -15,15 +15,19 @@ use ark_std::{One, Zero};
 use core::marker::PhantomData;
 
 pub use super::decider_eth_circuit::DeciderEthCircuit;
-use super::traits::NIFSTrait;
-use super::{nifs::NIFS, CommittedInstance, Nova};
+use super::{
+    nifs::{nova::NIFS, NIFSTrait},
+    CommittedInstance, Nova,
+};
 use crate::commitment::{
     kzg::{Proof as KZGProof, KZG},
     pedersen::Params as PedersenParams,
     CommitmentScheme,
 };
 use crate::folding::circuits::{nonnative::affine::NonNativeAffineVar, CF2};
+use crate::folding::nova::circuits::ChallengeGadget;
 use crate::frontend::FCircuit;
+use crate::transcript::poseidon::poseidon_canonical_config;
 use crate::Error;
 use crate::{Decider as DeciderTrait, FoldingScheme};
 
@@ -39,7 +43,6 @@ where
     // cmT and r are values for the last fold, U_{i+1}=NIFS.V(r, U_i, u_i, cmT), and they are
     // checked in-circuit
     cmT: C1,
-    r: C1::ScalarField,
     // the KZG challenges are provided by the prover, but in-circuit they are checked to match
     // the in-circuit computed computed ones.
     kzg_challenges: [C1::ScalarField; 2],
@@ -161,7 +164,6 @@ where
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let cmT = circuit.cmT.unwrap();
-        let r_Fr = circuit.r.unwrap();
         let W_i1 = circuit.W_i1.unwrap();
 
         // get the challenges that have been already computed when preparing the circuit inputs in
@@ -193,7 +195,6 @@ where
             snark_proof,
             kzg_proofs: [U_cmW_proof, U_cmE_proof],
             cmT,
-            r: r_Fr,
             kzg_challenges: [challenge_W, challenge_E],
         })
     }
@@ -212,7 +213,17 @@ where
         }
 
         // compute U = U_{d+1}= NIFS.V(U_d, u_d, cmT)
-        let U = NIFS::<C1, CS1>::verify(proof.r, running_instance, incoming_instance, &proof.cmT);
+        let poseidon_config = poseidon_canonical_config::<C1::ScalarField>();
+        let mut transcript = PoseidonSponge::<C1::ScalarField>::new(&poseidon_config);
+        let (U, r_bits) = NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>>::verify(
+            &mut transcript,
+            vp.pp_hash,
+            running_instance,
+            incoming_instance,
+            &proof.cmT,
+        )?;
+        let r = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
+            .ok_or(Error::OutOfBounds)?;
 
         let (cmE_x, cmE_y) = NonNativeAffineVar::inputize(U.cmE)?;
         let (cmW_x, cmW_y) = NonNativeAffineVar::inputize(U.cmW)?;
@@ -235,7 +246,7 @@ where
             ],
             cmT_x,
             cmT_y,
-            vec![proof.r],
+            vec![r],
         ]
         .concat();
 
@@ -264,8 +275,10 @@ where
 }
 
 /// Prepares solidity calldata for calling the NovaDecider contract
+#[allow(clippy::too_many_arguments)]
 pub fn prepare_calldata(
     function_signature_check: [u8; 4],
+    pp_hash: ark_bn254::Fr,
     i: ark_bn254::Fr,
     z_0: Vec<ark_bn254::Fr>,
     z_i: Vec<ark_bn254::Fr>,
@@ -273,6 +286,22 @@ pub fn prepare_calldata(
     incoming_instance: &CommittedInstance<ark_bn254::G1Projective>,
     proof: Proof<ark_bn254::G1Projective, KZG<'static, Bn254>, Groth16<Bn254>>,
 ) -> Result<Vec<u8>, Error> {
+    // compute the challenge r
+    let poseidon_config = poseidon_canonical_config::<ark_bn254::Fr>();
+    let mut transcript = PoseidonSponge::<ark_bn254::Fr>::new(&poseidon_config);
+    let r_bits = ChallengeGadget::<
+        ark_bn254::G1Projective,
+        CommittedInstance<ark_bn254::G1Projective>,
+    >::get_challenge_native(
+        &mut transcript,
+        pp_hash,
+        running_instance,
+        incoming_instance,
+        Some(&proof.cmT),
+    );
+    let r =
+        ark_bn254::Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).ok_or(Error::OutOfBounds)?;
+
     Ok(vec![
         function_signature_check.to_vec(),
         i.into_bigint().to_bytes_be(), // i
@@ -286,7 +315,7 @@ pub fn prepare_calldata(
         point_to_eth_format(running_instance.cmE.into_affine())?, // U_i_cmE
         running_instance.u.into_bigint().to_bytes_be(), // U_i_u
         incoming_instance.u.into_bigint().to_bytes_be(), // u_i_u
-        proof.r.into_bigint().to_bytes_be(), // r
+        r.into_bigint().to_bytes_be(), // r
         running_instance
             .x
             .iter()

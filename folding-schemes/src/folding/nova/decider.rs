@@ -2,7 +2,7 @@
 /// DeciderEth from decider_eth.rs file.
 /// More details can be found at the documentation page:
 /// https://privacy-scaling-explorations.github.io/sonobe-docs/design/nova-decider-offchain.html
-use ark_crypto_primitives::sponge::Absorb;
+use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, Absorb, CryptographicSponge};
 use ark_ec::{AffineRepr, CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
@@ -13,7 +13,10 @@ use ark_std::{One, Zero};
 use core::marker::PhantomData;
 
 use super::decider_circuits::{DeciderCircuit1, DeciderCircuit2};
-use super::{nifs::NIFS, traits::NIFSTrait, CommittedInstance, Nova};
+use super::{
+    nifs::{nova::NIFS, NIFSTrait},
+    CommittedInstance, Nova,
+};
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::{
     cyclefold::CycleFoldCommittedInstance,
@@ -21,6 +24,7 @@ use crate::folding::circuits::{
     CF2,
 };
 use crate::frontend::FCircuit;
+use crate::transcript::poseidon::poseidon_canonical_config;
 use crate::Error;
 use crate::{Decider as DeciderTrait, FoldingScheme};
 
@@ -41,7 +45,6 @@ where
     // cmT and r are values for the last fold, U_{i+1}=NIFS.V(r, U_i, u_i, cmT), and they are
     // checked in-circuit
     cmT: C1,
-    r: C1::ScalarField,
     // cyclefold committed instance
     cf_U_i: CycleFoldCommittedInstance<C2>,
     // the CS challenges are provided by the prover, but in-circuit they are checked to match the
@@ -209,7 +212,6 @@ where
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let cmT = circuit1.cmT.unwrap();
-        let r_Fr = circuit1.r.unwrap();
         let W_i1 = circuit1.W_i1.unwrap();
         let cf_W_i = circuit2.cf_W_i.unwrap();
 
@@ -265,7 +267,6 @@ where
             cs1_proofs: [U_cmW_proof, U_cmE_proof],
             cs2_proofs: [cf_cmW_proof, cf_cmE_proof],
             cmT,
-            r: r_Fr,
             cf_U_i: circuit1.cf_U_i.unwrap(),
             cs1_challenges: [challenge_W, challenge_E],
             cs2_challenges: [c2_challenge_W, c2_challenge_E],
@@ -286,7 +287,17 @@ where
         }
 
         // compute U = U_{d+1}= NIFS.V(U_d, u_d, cmT)
-        let U = NIFS::<C1, CS1>::verify(proof.r, running_instance, incoming_instance, &proof.cmT);
+        let poseidon_config = poseidon_canonical_config::<C1::ScalarField>();
+        let mut transcript = PoseidonSponge::<C1::ScalarField>::new(&poseidon_config);
+        let (U, r_bits) = NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>>::verify(
+            &mut transcript,
+            vp.pp_hash,
+            running_instance,
+            incoming_instance,
+            &proof.cmT,
+        )?;
+        let r = C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
+            .ok_or(Error::OutOfBounds)?;
 
         let (cmE_x, cmE_y) = NonNativeAffineVar::inputize(U.cmE)?;
         let (cmW_x, cmW_y) = NonNativeAffineVar::inputize(U.cmW)?;
@@ -332,7 +343,7 @@ where
             // NIFS values:
             cmT_x,
             cmT_y,
-            vec![proof.r],
+            vec![r],
         ]
         .concat();
 

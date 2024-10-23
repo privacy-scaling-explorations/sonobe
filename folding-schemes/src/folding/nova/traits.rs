@@ -1,6 +1,4 @@
-use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::CurveGroup;
-use ark_std::fmt::Debug;
 use ark_std::{rand::RngCore, UniformRand};
 
 use super::{CommittedInstance, Witness};
@@ -8,78 +6,7 @@ use crate::arith::ArithSampler;
 use crate::arith::{r1cs::R1CS, Arith};
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::CF1;
-use crate::transcript::Transcript;
 use crate::Error;
-
-/// Defines the NIFS (Non-Interactive Folding Scheme) trait, initially defined in
-/// [Nova](https://eprint.iacr.org/2021/370.pdf), and it's variants
-/// [Ova](https://hackmd.io/V4838nnlRKal9ZiTHiGYzw) and
-/// [Mova](https://eprint.iacr.org/2024/1220.pdf).
-/// `H` specifies whether the NIFS will use a blinding factor.
-pub trait NIFSTrait<C: CurveGroup, CS: CommitmentScheme<C, H>, const H: bool = false> {
-    type CommittedInstance: Debug + Clone + Absorb;
-    type Witness: Debug + Clone;
-    type ProverAux: Debug + Clone; // Prover's aux params
-    type VerifierAux: Debug + Clone; // Verifier's aux params
-
-    fn new_witness(w: Vec<C::ScalarField>, e_len: usize, rng: impl RngCore) -> Self::Witness;
-    fn new_instance(
-        w: &Self::Witness,
-        params: &CS::ProverParams,
-        x: Vec<C::ScalarField>,
-        aux: Vec<C::ScalarField>, // t_or_e in Ova, empty for Nova
-    ) -> Result<Self::CommittedInstance, Error>;
-
-    fn fold_witness(
-        r: C::ScalarField,
-        W: &Self::Witness, // running witness
-        w: &Self::Witness, // incoming witness
-        aux: &Self::ProverAux,
-    ) -> Result<Self::Witness, Error>;
-
-    /// computes the auxiliary parameters, eg. in Nova: (T, cmT), in Ova: T
-    fn compute_aux(
-        cs_prover_params: &CS::ProverParams,
-        r1cs: &R1CS<C::ScalarField>,
-        W_i: &Self::Witness,
-        U_i: &Self::CommittedInstance,
-        w_i: &Self::Witness,
-        u_i: &Self::CommittedInstance,
-    ) -> Result<(Self::ProverAux, Self::VerifierAux), Error>;
-
-    fn get_challenge<T: Transcript<C::ScalarField>>(
-        transcript: &mut T,
-        pp_hash: C::ScalarField, // public params hash
-        U_i: &Self::CommittedInstance,
-        u_i: &Self::CommittedInstance,
-        aux: &Self::VerifierAux, // ie. in Nova wouild be cmT, in Ova it's empty
-    ) -> Vec<bool>;
-
-    /// NIFS.P. Notice that this method is implemented at the trait level, and depends on the other
-    /// two methods `fold_witness` and `verify`.
-    fn prove(
-        r: C::ScalarField,
-        W_i: &Self::Witness,           // running witness
-        U_i: &Self::CommittedInstance, // running committed instance
-        w_i: &Self::Witness,           // incoming witness
-        u_i: &Self::CommittedInstance, // incoming committed instance
-        aux_p: &Self::ProverAux,
-        aux_v: &Self::VerifierAux,
-    ) -> Result<(Self::Witness, Self::CommittedInstance), Error> {
-        let w = Self::fold_witness(r, W_i, w_i, aux_p)?;
-        let ci = Self::verify(r, U_i, u_i, aux_v);
-        Ok((w, ci))
-    }
-
-    /// NIFS.V
-    fn verify(
-        // r comes from the transcript, and is a n-bit (N_BITS_CHALLENGE) element
-        r: C::ScalarField,
-        U_i: &Self::CommittedInstance,
-        u_i: &Self::CommittedInstance,
-        aux: &Self::VerifierAux,
-    ) -> Self::CommittedInstance;
-}
 
 /// Implements `Arith` for R1CS, where the witness is of type [`Witness`], and
 /// the committed instance is of type [`CommittedInstance`].

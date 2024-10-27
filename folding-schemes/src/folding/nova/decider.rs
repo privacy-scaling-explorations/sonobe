@@ -288,7 +288,6 @@ where
             &proof.cs1_challenges,
             &proof.cs1_proofs.iter().map(|p| p.eval).collect::<Vec<_>>(),
             &proof.cmT.inputize(),
-            &[proof.r],
         ]
         .concat();
 

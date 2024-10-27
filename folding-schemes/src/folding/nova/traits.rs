@@ -3,8 +3,8 @@ use ark_r1cs_std::fields::fp::FpVar;
 use ark_relations::r1cs::SynthesisError;
 use ark_std::{rand::RngCore, UniformRand};
 
-use super::circuits::CommittedInstanceVar;
 use super::decider_eth_circuit::WitnessVar;
+use super::nifs::nova_circuits::CommittedInstanceVar;
 use super::{CommittedInstance, Witness};
 use crate::arith::{
     r1cs::{circuits::R1CSMatricesVar, R1CS},

@@ -55,6 +55,7 @@ impl<
     > TryFrom<Nova<C1, GC1, C2, GC2, FC, CS1, CS2, H>> for DeciderCircuit1<C1, C2, GC2>
 where
     CF1<C1>: Absorb,
+    <C1 as CurveGroup>::BaseField: PrimeField,
 {
     type Error = Error;
 

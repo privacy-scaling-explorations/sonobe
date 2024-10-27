@@ -1,8 +1,10 @@
 /// This module contains the implementation the NIFSTrait for the
 /// [Nova](https://eprint.iacr.org/2021/370.pdf) NIFS (Non-Interactive Folding Scheme).
-use ark_crypto_primitives::sponge::Absorb;
+use ark_crypto_primitives::sponge::{constraints::AbsorbGadget, Absorb, CryptographicSponge};
 use ark_ec::{CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
+use ark_r1cs_std::{boolean::Boolean, fields::fp::FpVar};
+use ark_relations::r1cs::SynthesisError;
 use ark_std::rand::RngCore;
 use ark_std::Zero;
 use std::marker::PhantomData;
@@ -10,12 +12,68 @@ use std::marker::PhantomData;
 use super::NIFSTrait;
 use crate::arith::r1cs::R1CS;
 use crate::commitment::CommitmentScheme;
-use crate::folding::circuits::cyclefold::{CycleFoldCommittedInstance, CycleFoldWitness};
-use crate::folding::nova::circuits::ChallengeGadget;
+use crate::constants::NOVA_N_BITS_RO;
+use crate::folding::circuits::{
+    cyclefold::{CycleFoldCommittedInstance, CycleFoldWitness},
+    nonnative::affine::NonNativeAffineVar,
+    CF1,
+};
 use crate::folding::nova::{CommittedInstance, Witness};
-use crate::transcript::Transcript;
+use crate::transcript::{Transcript, TranscriptVar};
 use crate::utils::vec::{hadamard, mat_vec_mul, vec_add, vec_scalar_mul, vec_sub};
 use crate::Error;
+
+/// ChallengeGadget computes the RO challenge used for the Nova instances NIFS, it contains a
+/// rust-native and a in-circuit compatible versions.
+pub struct ChallengeGadget<C: CurveGroup, CI: Absorb> {
+    _c: PhantomData<C>,
+    _ci: PhantomData<CI>,
+}
+impl<C: CurveGroup, CI: Absorb> ChallengeGadget<C, CI>
+where
+    C: CurveGroup,
+    // <C as CurveGroup>::BaseField: PrimeField,
+    <C as Group>::ScalarField: Absorb,
+{
+    pub fn get_challenge_native<T: Transcript<C::ScalarField>>(
+        transcript: &mut T,
+        pp_hash: C::ScalarField, // public params hash
+        U_i: &CI,
+        u_i: &CI,
+        cmT: Option<&C>,
+    ) -> Vec<bool> {
+        transcript.absorb(&pp_hash);
+        transcript.absorb(&U_i);
+        transcript.absorb(&u_i);
+        // in the Nova case we absorb the cmT, in Ova case we don't since it is not used.
+        if let Some(cmT_value) = cmT {
+            transcript.absorb_nonnative(cmT_value);
+        }
+        transcript.squeeze_bits(NOVA_N_BITS_RO)
+    }
+
+    // compatible with the native get_challenge_native
+    pub fn get_challenge_gadget<
+        S: CryptographicSponge,
+        T: TranscriptVar<CF1<C>, S>,
+        CIVar: AbsorbGadget<CF1<C>>,
+    >(
+        transcript: &mut T,
+        pp_hash: FpVar<CF1<C>>,      // public params hash
+        U_i_vec: Vec<FpVar<CF1<C>>>, // apready processed input, so we don't have to recompute these values
+        u_i: CIVar,
+        cmT: Option<NonNativeAffineVar<C>>,
+    ) -> Result<Vec<Boolean<C::ScalarField>>, SynthesisError> {
+        transcript.absorb(&pp_hash)?;
+        transcript.absorb(&U_i_vec)?;
+        transcript.absorb(&u_i)?;
+        // in the Nova case we absorb the cmT, in Ova case we don't since it is not used.
+        if let Some(cmT_value) = cmT {
+            transcript.absorb_nonnative(&cmT_value)?;
+        }
+        transcript.squeeze_bits(NOVA_N_BITS_RO)
+    }
+}
 
 /// Implements the Non-Interactive Folding Scheme described in section 4 of
 /// [Nova](https://eprint.iacr.org/2021/370.pdf).

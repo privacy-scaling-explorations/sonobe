@@ -137,9 +137,6 @@ contract NovaDecider is Groth16Verifier, KZG10Verifier {
                 public_inputs[{{ z_len * 2 + 2 + num_limbs * 4 }} + 4 + k] = cmT_x_limbs[k]; 
                 public_inputs[{{ z_len * 2 + 2 + num_limbs * 5 }} + 4 + k] = cmT_y_limbs[k];
             }
-        
-            // last element of the groth16 proof's public inputs is `r`
-            public_inputs[{{ public_inputs_len - 2 }}] = cmT_r[2];
 
             bool success_g16 = this.verifyProof(pA, pB, pC, public_inputs);
             require(success_g16 == true, "Groth16: verifying proof failed");

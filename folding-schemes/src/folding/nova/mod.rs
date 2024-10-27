@@ -17,7 +17,6 @@ use ark_std::fmt::Debug;
 use ark_std::rand::RngCore;
 use ark_std::{One, UniformRand, Zero};
 use core::marker::PhantomData;
-use decider_eth_circuit::WitnessVar;
 
 use crate::folding::circuits::cyclefold::{
     fold_cyclefold_circuit, CycleFoldCircuit, CycleFoldCommittedInstance, CycleFoldConfig,
@@ -38,6 +37,7 @@ use crate::{
     utils::{get_cm_coordinates, pp_hash},
 };
 use crate::{arith::Arith, commitment::CommitmentScheme};
+use decider_eth_circuit::WitnessVar;
 
 pub mod circuits;
 pub mod traits;
@@ -46,8 +46,8 @@ pub mod zk;
 // NIFS related:
 pub mod nifs;
 
-use circuits::{AugmentedFCircuit, CommittedInstanceVar};
-use nifs::{nova::NIFS, NIFSTrait};
+use circuits::AugmentedFCircuit;
+use nifs::{nova::NIFS, nova_circuits::CommittedInstanceVar, NIFSTrait};
 
 // offchain decider
 pub mod decider;

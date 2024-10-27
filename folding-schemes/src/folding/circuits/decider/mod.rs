@@ -150,7 +150,7 @@ pub mod tests {
     use ark_std::UniformRand;
 
     use super::*;
-    use crate::folding::nova::{circuits::CommittedInstanceVar, CommittedInstance};
+    use crate::folding::nova::{nifs::nova_circuits::CommittedInstanceVar, CommittedInstance};
     use crate::transcript::poseidon::poseidon_canonical_config;
 
     // checks that the gadget and native implementations of the challenge computation match

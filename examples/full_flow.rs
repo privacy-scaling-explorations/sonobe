@@ -78,7 +78,7 @@ impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
 }
 
 fn main() {
-    let n_steps = 10;
+    let n_steps = 5;
     // set the initial state
     let z_0 = vec![Fr::from(3_u32)];
 

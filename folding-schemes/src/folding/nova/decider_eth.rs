@@ -22,8 +22,7 @@ use crate::commitment::{
     pedersen::Params as PedersenParams,
     CommitmentScheme,
 };
-use crate::folding::circuits::decider::DeciderEnabledNIFS;
-use crate::folding::circuits::CF2;
+use crate::folding::circuits::{decider::DeciderEnabledNIFS, CF2};
 use crate::folding::traits::{Inputize, WitnessOps};
 use crate::frontend::FCircuit;
 use crate::Error;
@@ -228,7 +227,6 @@ where
             &proof.kzg_challenges,
             &proof.kzg_proofs.iter().map(|p| p.eval).collect::<Vec<_>>(),
             &proof.cmT.inputize(),
-            &[proof.r],
         ]
         .concat();
 

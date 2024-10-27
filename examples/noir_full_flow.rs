@@ -28,7 +28,7 @@ use folding_schemes::{
     Decider, FoldingScheme,
 };
 use frontends::noir::{load_noir_circuit, NoirFCircuit};
-use std::{env, time::Instant};
+use std::time::Instant;
 
 use solidity_verifiers::{
     evm::{compile_solidity, Evm},
@@ -42,12 +42,7 @@ fn main() {
     let z_0 = vec![Fr::from(1)];
 
     // initialize the noir fcircuit
-    let cur_path = env::current_dir().unwrap();
-
-    let circuit_path = format!(
-        "{}/frontends/src/noir/test_folder/test_mimc/target/test_mimc.json",
-        cur_path.to_str().unwrap()
-    );
+    let circuit_path = format!("./frontends/src/noir/test_folder/test_mimc/target/test_mimc.json",);
 
     let circuit = load_noir_circuit(circuit_path).unwrap();
     let f_circuit = NoirFCircuit {

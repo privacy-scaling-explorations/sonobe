@@ -37,6 +37,11 @@ pub struct LimbVar<F: PrimeField> {
 impl<F: PrimeField, B: AsRef<[Boolean<F>]>> From<B> for LimbVar<F> {
     fn from(bits: B) -> Self {
         Self {
+            // `Boolean::le_bits_to_fp_var` will return an error if the internal
+            // invocation of `Boolean::enforce_in_field_le` fails.
+            // However, this method is only called when the length of `bits` is
+            // greater than `F::MODULUS_BIT_SIZE`, which should not happen in
+            // our case where `bits` is guaranteed to be short.
             v: Boolean::le_bits_to_fp_var(bits.as_ref()).unwrap(),
             ub: (BigUint::one() << bits.as_ref().len()) - BigUint::one(),
         }
@@ -220,7 +225,7 @@ impl<F: PrimeField> AllocVar<BoundedBigUint, F> for NonNativeUintVar<F> {
             .collect::<Vec<_>>()
             .chunks(Self::bits_per_limb())
         {
-            let limb = F::from_bigint(F::BigInt::from_bits_le(chunk)).unwrap();
+            let limb = F::from(F::BigInt::from_bits_le(chunk));
             let limb = FpVar::new_variable(cs.clone(), || Ok(limb), mode)?;
             Self::enforce_bit_length(&limb, chunk.len())?;
             limbs.push(LimbVar {
@@ -242,12 +247,15 @@ impl<F: PrimeField, G: Field> AllocVar<G, F> for NonNativeUintVar<F> {
         let cs = cs.into().cs();
         let v = f()?;
         assert_eq!(G::extension_degree(), 1);
+        // `unwrap` is safe because `G` is a field with extension degree 1, and
+        // thus `G::to_base_prime_field_elements` should return an iterator with
+        // exactly one element.
         let v = v.borrow().to_base_prime_field_elements().next().unwrap();
 
         let mut limbs = vec![];
 
         for chunk in v.into_bigint().to_bits_le().chunks(Self::bits_per_limb()) {
-            let limb = F::from_bigint(F::BigInt::from_bits_le(chunk)).unwrap();
+            let limb = F::from(F::BigInt::from_bits_le(chunk));
             let limb = FpVar::new_variable(cs.clone(), || Ok(limb), mode)?;
             Self::enforce_bit_length(&limb, chunk.len())?;
             limbs.push(LimbVar {
@@ -263,13 +271,16 @@ impl<F: PrimeField, G: Field> AllocVar<G, F> for NonNativeUintVar<F> {
 impl<F: PrimeField, T: Field> Inputize<F, NonNativeUintVar<F>> for T {
     fn inputize(&self) -> Vec<F> {
         assert_eq!(T::extension_degree(), 1);
+        // `unwrap` is safe because `T` is a field with extension degree 1, and
+        // thus `T::to_base_prime_field_elements` should return an iterator with
+        // exactly one element.
         self.to_base_prime_field_elements()
             .next()
             .unwrap()
             .into_bigint()
             .to_bits_le()
             .chunks(NonNativeUintVar::<F>::bits_per_limb())
-            .map(|chunk| F::from_bigint(F::BigInt::from_bits_le(chunk)).unwrap())
+            .map(|chunk| F::from(F::BigInt::from_bits_le(chunk)))
             .collect()
     }
 }
@@ -451,7 +462,7 @@ impl<F: PrimeField> NonNativeUintVar<F> {
                 // (i.e., all of them are "non-negative"), implying that all
                 // limbs should be zero to make the sum zero.
                 LimbVar::add_many(&remaining_limbs[1..])
-                    .unwrap()
+                    .ok_or(SynthesisError::Unsatisfiable)?
                     .v
                     .enforce_equal(&FpVar::zero())?;
                 remaining_limbs[0].v.clone()
@@ -622,15 +633,15 @@ impl<F: PrimeField> NonNativeUintVar<F> {
     }
 
     /// Compute `self + other`, without aligning the limbs.
-    pub fn add_no_align(&self, other: &Self) -> Self {
+    pub fn add_no_align(&self, other: &Self) -> Result<Self, SynthesisError> {
         let mut z = vec![LimbVar::zero(); max(self.0.len(), other.0.len())];
         for (i, v) in self.0.iter().enumerate() {
-            z[i] = z[i].add(v).unwrap();
+            z[i] = z[i].add(v).ok_or(SynthesisError::Unsatisfiable)?;
         }
         for (i, v) in other.0.iter().enumerate() {
-            z[i] = z[i].add(v).unwrap();
+            z[i] = z[i].add(v).ok_or(SynthesisError::Unsatisfiable)?;
         }
-        Self(z)
+        Ok(Self(z))
     }
 
     /// Compute `self * other`, without aligning the limbs.
@@ -651,7 +662,7 @@ impl<F: PrimeField> NonNativeUintVar<F> {
                     )
                 })
                 .collect::<Option<Vec<_>>>()
-                .unwrap();
+                .ok_or(SynthesisError::Unsatisfiable)?;
             return Ok(Self(z));
         }
         let cs = self.cs().or(other.cs());
@@ -754,7 +765,7 @@ impl<F: PrimeField> NonNativeUintVar<F> {
         let m = Self::new_constant(cs.clone(), BoundedBigUint(m, M::MODULUS_BIT_SIZE as usize))?;
         // Enforce `self = q * m + r`
         q.mul_no_align(&m)?
-            .add_no_align(&r)
+            .add_no_align(&r)?
             .enforce_equal_unaligned(self)?;
         // Enforce `r < m` (and `r >= 0` already holds)
         r.enforce_lt(&m)?;
@@ -790,8 +801,8 @@ impl<F: PrimeField> NonNativeUintVar<F> {
 
         let zero = Self::new_constant(cs.clone(), BoundedBigUint(BigUint::zero(), bits))?;
         let m = Self::new_constant(cs.clone(), BoundedBigUint(m, M::MODULUS_BIT_SIZE as usize))?;
-        let l = self.add_no_align(&is_ge.select(&zero, &q)?.mul_no_align(&m)?);
-        let r = other.add_no_align(&is_ge.select(&q, &zero)?.mul_no_align(&m)?);
+        let l = self.add_no_align(&is_ge.select(&zero, &q)?.mul_no_align(&m)?)?;
+        let r = other.add_no_align(&is_ge.select(&q, &zero)?.mul_no_align(&m)?)?;
         // If `self >= other`, enforce `self = other + q * m`
         // Otherwise, enforce `self + q * m = other`
         // Soundness holds because if `self` and `other` are not congruent, then
@@ -841,6 +852,9 @@ pub(super) fn nonnative_field_to_field_elements<TargetField: Field, BaseField: P
     f: &TargetField,
 ) -> Vec<BaseField> {
     assert_eq!(TargetField::extension_degree(), 1);
+    // `unwrap` is safe because `TargetField` is a field with extension degree
+    // 1, and thus `TargetField::to_base_prime_field_elements` should return an
+    // iterator with exactly one element.
     let bits = f
         .to_base_prime_field_elements()
         .next()
@@ -871,11 +885,10 @@ pub(super) fn nonnative_field_to_field_elements<TargetField: Field, BaseField: P
 
 impl<F: PrimeField> VectorGadget<NonNativeUintVar<F>> for [NonNativeUintVar<F>] {
     fn add(&self, other: &Self) -> Result<Vec<NonNativeUintVar<F>>, SynthesisError> {
-        Ok(self
-            .iter()
+        self.iter()
             .zip(other.iter())
             .map(|(x, y)| x.add_no_align(y))
-            .collect())
+            .collect()
     }
 
     fn hadamard(&self, other: &Self) -> Result<Vec<NonNativeUintVar<F>>, SynthesisError> {
@@ -898,8 +911,7 @@ impl<CF: PrimeField> MatrixGadget<NonNativeUintVar<CF>> for SparseMatrixVar<NonN
         &self,
         v: &[NonNativeUintVar<CF>],
     ) -> Result<Vec<NonNativeUintVar<CF>>, SynthesisError> {
-        Ok(self
-            .coeffs
+        self.coeffs
             .iter()
             .map(|row| {
                 let len = row
@@ -911,7 +923,7 @@ impl<CF: PrimeField> MatrixGadget<NonNativeUintVar<CF>> for SparseMatrixVar<NonN
                 // that results in more flattened `LinearCombination`s.
                 // Consequently, `ConstraintSystem::inline_all_lcs` costs less
                 // time, thus making trusted setup and proof generation faster.
-                let limbs = (0..len)
+                (0..len)
                     .map(|i| {
                         LimbVar::add_many(
                             &row.iter()
@@ -924,10 +936,10 @@ impl<CF: PrimeField> MatrixGadget<NonNativeUintVar<CF>> for SparseMatrixVar<NonN
                         )
                     })
                     .collect::<Option<Vec<_>>>()
-                    .unwrap();
-                NonNativeUintVar(limbs)
+                    .ok_or(SynthesisError::Unsatisfiable)
+                    .map(NonNativeUintVar)
             })
-            .collect())
+            .collect::<Result<Vec<_>, _>>()
     }
 }
 
@@ -1046,7 +1058,7 @@ mod tests {
         let mut r_var =
             NonNativeUintVar::new_constant(cs.clone(), BoundedBigUint(BigUint::zero(), 0))?;
         for (a, b) in a_var.into_iter().zip(b_var.into_iter()) {
-            r_var = r_var.add_no_align(&a.mul_no_align(&b)?);
+            r_var = r_var.add_no_align(&a.mul_no_align(&b)?)?;
         }
         r_var.enforce_congruent::<Fq>(&c_var)?;
 

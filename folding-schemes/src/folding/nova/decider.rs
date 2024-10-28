@@ -157,8 +157,10 @@ where
         let circuit2 = DeciderCircuit2::<C2>::try_from(Nova::from(fs))?;
 
         // get the Groth16 specific setup for the circuits
-        let (c1_g16_pk, c1_g16_vk) = S1::circuit_specific_setup(circuit1, &mut rng).unwrap();
-        let (c2_g16_pk, c2_g16_vk) = S2::circuit_specific_setup(circuit2, &mut rng).unwrap();
+        let (c1_g16_pk, c1_g16_vk) = S1::circuit_specific_setup(circuit1, &mut rng)
+            .map_err(|e| Error::SNARKSetupFail(e.to_string()))?;
+        let (c2_g16_pk, c2_g16_vk) = S2::circuit_specific_setup(circuit2, &mut rng)
+            .map_err(|e| Error::SNARKSetupFail(e.to_string()))?;
 
         // get the FoldingScheme prover & verifier params from Nova
         #[allow(clippy::type_complexity)]
@@ -232,13 +234,21 @@ where
         Ok(Self::Proof {
             c1_snark_proof,
             c2_snark_proof,
-            cs1_proofs: c1_kzg_proofs.try_into().unwrap(),
-            cs2_proofs: c2_kzg_proofs.try_into().unwrap(),
+            cs1_proofs: c1_kzg_proofs
+                .try_into()
+                .map_err(|e: Vec<_>| Error::NotExpectedLength(e.len(), 2))?,
+            cs2_proofs: c2_kzg_proofs
+                .try_into()
+                .map_err(|e: Vec<_>| Error::NotExpectedLength(e.len(), 2))?,
             cmT,
             r,
             cf_U_final,
-            cs1_challenges: c1_kzg_challenges.try_into().unwrap(),
-            cs2_challenges: c2_kzg_challenges.try_into().unwrap(),
+            cs1_challenges: c1_kzg_challenges
+                .try_into()
+                .map_err(|e: Vec<_>| Error::NotExpectedLength(e.len(), 2))?,
+            cs2_challenges: c2_kzg_challenges
+                .try_into()
+                .map_err(|e: Vec<_>| Error::NotExpectedLength(e.len(), 2))?,
         })
     }
 

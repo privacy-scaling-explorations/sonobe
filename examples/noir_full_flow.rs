@@ -49,7 +49,7 @@ fn main() {
         cur_path.to_str().unwrap()
     );
 
-    let circuit = load_noir_circuit(circuit_path);
+    let circuit = load_noir_circuit(circuit_path).unwrap();
     let f_circuit = NoirFCircuit {
         circuit,
         state_len: 1,

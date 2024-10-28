@@ -551,7 +551,7 @@ where
         F: &FC,
         d: usize,
         k: usize,
-    ) -> Result<usize, SynthesisError> {
+    ) -> Result<usize, Error> {
         // In ProtoGalaxy, prover and verifier are parameterized by `t = log(n)`
         // where `n` is the number of constraints in the circuit (known as the
         // mapping `f` in the paper).
@@ -588,7 +588,7 @@ where
         // Create a dummy circuit with the same state length and external inputs
         // length as `F`, which replaces `F` in the augmented circuit `F'`.
         let dummy_circuit: DummyCircuit =
-            FCircuit::<C1::ScalarField>::new((state_len, external_inputs_len)).unwrap();
+            FCircuit::<C1::ScalarField>::new((state_len, external_inputs_len))?;
 
         // Compute `augmentation_constraints`, the size of `F'` without `F`.
         let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
@@ -697,7 +697,7 @@ where
         augmented_F_circuit.generate_constraints(cs.clone())?;
         cs.finalize();
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
-        let r1cs = extract_r1cs::<C1::ScalarField>(&cs);
+        let r1cs = extract_r1cs::<C1::ScalarField>(&cs)?;
 
         // CycleFold circuit R1CS
         let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
@@ -705,7 +705,7 @@ where
         cf_circuit.generate_constraints(cs2.clone())?;
         cs2.finalize();
         let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
-        let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2);
+        let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2)?;
 
         let cs_vp = CS1::VerifierParams::deserialize_with_mode(&mut reader, compress, validate)?;
         let cf_cs_vp = CS2::VerifierParams::deserialize_with_mode(&mut reader, compress, validate)?;
@@ -745,12 +745,12 @@ where
         augmented_F_circuit.generate_constraints(cs.clone())?;
         cs.finalize();
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
-        let r1cs = extract_r1cs::<C1::ScalarField>(&cs);
+        let r1cs = extract_r1cs::<C1::ScalarField>(&cs)?;
 
         cf_circuit.generate_constraints(cs2.clone())?;
         cs2.finalize();
         let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
-        let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2);
+        let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2)?;
 
         let (cs_pp, cs_vp) = CS1::setup(&mut rng, r1cs.A.n_rows)?;
         let (cf_cs_pp, cf_cs_vp) = CS2::setup(&mut rng, max(cf_r1cs.A.n_rows, cf_r1cs.A.n_cols))?;
@@ -924,10 +924,9 @@ where
             let cf1_u_i_x = [
                 r0_bits
                     .chunks(C1::BaseField::MODULUS_BIT_SIZE as usize - 1)
-                    .map(BigInteger::from_bits_le)
-                    .map(C1::BaseField::from_bigint)
-                    .collect::<Option<Vec<_>>>()
-                    .unwrap(),
+                    .map(<C1::BaseField as PrimeField>::BigInt::from_bits_le)
+                    .map(C1::BaseField::from)
+                    .collect::<Vec<_>>(),
                 get_cm_coordinates(&C1::zero()),
                 get_cm_coordinates(&self.U_i.phi),
                 get_cm_coordinates(&aux.phi_stars[0]),
@@ -946,10 +945,9 @@ where
             let cf2_u_i_x = [
                 r1_bits
                     .chunks(C1::BaseField::MODULUS_BIT_SIZE as usize - 1)
-                    .map(BigInteger::from_bits_le)
-                    .map(C1::BaseField::from_bigint)
-                    .collect::<Option<Vec<_>>>()
-                    .unwrap(),
+                    .map(<C1::BaseField as PrimeField>::BigInt::from_bits_le)
+                    .map(C1::BaseField::from)
+                    .collect::<Vec<_>>(),
                 get_cm_coordinates(&aux.phi_stars[0]),
                 get_cm_coordinates(&self.u_i.phi),
                 get_cm_coordinates(&U_i1.phi),
@@ -1112,7 +1110,7 @@ where
         } = ivc_proof;
         let (pp, vp) = params;
 
-        let f_circuit = FC::new(fcircuit_params).unwrap();
+        let f_circuit = FC::new(fcircuit_params)?;
 
         Ok(Self {
             _gc1: PhantomData,

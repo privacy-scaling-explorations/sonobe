@@ -16,6 +16,7 @@ use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 use folding_schemes::{frontend::FCircuit, utils::PathOrBin, Error};
 use noir_arkworks_backend::{
     read_program_from_binary, read_program_from_file, sonobe_bridge::AcirCircuitSonobe,
+    FilesystemError,
 };
 
 #[derive(Clone, Debug)]
@@ -216,10 +217,12 @@ impl<F: PrimeField> FCircuit<F> for NoirFCircuit<F> {
     }
 }
 
-pub fn load_noir_circuit<F: PrimeField>(path: String) -> Circuit<GenericFieldElement<F>> {
-    let program: Program<GenericFieldElement<F>> = read_program_from_file(path).unwrap();
+pub fn load_noir_circuit<F: PrimeField>(
+    path: String,
+) -> Result<Circuit<GenericFieldElement<F>>, FilesystemError> {
+    let program: Program<GenericFieldElement<F>> = read_program_from_file(path)?;
     let circuit: Circuit<GenericFieldElement<F>> = program.functions[0].clone();
-    circuit
+    Ok(circuit)
 }
 
 #[cfg(test)]
@@ -241,7 +244,7 @@ mod tests {
             "{}/src/noir/test_folder/test_circuit/target/test_circuit.json",
             cur_path.to_str().unwrap()
         );
-        let circuit = load_noir_circuit(circuit_path);
+        let circuit = load_noir_circuit(circuit_path).unwrap();
         let noirfcircuit = NoirFCircuit {
             circuit,
             state_len: 2,
@@ -261,7 +264,7 @@ mod tests {
             "{}/src/noir/test_folder/test_circuit/target/test_circuit.json",
             cur_path.to_str().unwrap()
         );
-        let circuit = load_noir_circuit(circuit_path);
+        let circuit = load_noir_circuit(circuit_path).unwrap();
         let noirfcircuit = NoirFCircuit {
             circuit,
             state_len: 2,
@@ -285,7 +288,7 @@ mod tests {
             "{}/src/noir/test_folder/test_no_external_inputs/target/test_no_external_inputs.json",
             cur_path.to_str().unwrap()
         );
-        let circuit = load_noir_circuit(circuit_path);
+        let circuit = load_noir_circuit(circuit_path).unwrap();
         let noirfcircuit = NoirFCircuit {
             circuit,
             state_len: 2,

@@ -528,7 +528,7 @@ where
         augmented_F_circuit.generate_constraints(cs.clone())?;
         cs.finalize();
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
-        let r1cs = extract_r1cs::<C1::ScalarField>(&cs);
+        let r1cs = extract_r1cs::<C1::ScalarField>(&cs)?;
 
         // CycleFold circuit R1CS
         let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
@@ -536,7 +536,7 @@ where
         cf_circuit.generate_constraints(cs2.clone())?;
         cs2.finalize();
         let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
-        let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2);
+        let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2)?;
 
         let cs_vp = CS1::VerifierParams::deserialize_with_mode(&mut reader, compress, validate)?;
         let cf_cs_vp = CS2::VerifierParams::deserialize_with_mode(&mut reader, compress, validate)?;
@@ -558,23 +558,14 @@ where
             get_r1cs::<C1, GC1, C2, GC2, FC>(&prep_param.poseidon_config, prep_param.F.clone())?;
 
         // if cs params exist, use them, if not, generate new ones
-        let cs_pp: CS1::ProverParams;
-        let cs_vp: CS1::VerifierParams;
-        let cf_cs_pp: CS2::ProverParams;
-        let cf_cs_vp: CS2::VerifierParams;
-        if prep_param.cs_pp.is_some()
-            && prep_param.cf_cs_pp.is_some()
-            && prep_param.cs_vp.is_some()
-            && prep_param.cf_cs_vp.is_some()
-        {
-            cs_pp = prep_param.clone().cs_pp.unwrap();
-            cs_vp = prep_param.clone().cs_vp.unwrap();
-            cf_cs_pp = prep_param.clone().cf_cs_pp.unwrap();
-            cf_cs_vp = prep_param.clone().cf_cs_vp.unwrap();
-        } else {
-            (cs_pp, cs_vp) = CS1::setup(&mut rng, r1cs.A.n_rows)?;
-            (cf_cs_pp, cf_cs_vp) = CS2::setup(&mut rng, cf_r1cs.A.n_rows)?;
-        }
+        let (cs_pp, cs_vp) = match (&prep_param.cs_pp, &prep_param.cs_vp) {
+            (Some(cs_pp), Some(cs_vp)) => (cs_pp.clone(), cs_vp.clone()),
+            _ => CS1::setup(&mut rng, r1cs.A.n_rows)?,
+        };
+        let (cf_cs_pp, cf_cs_vp) = match (&prep_param.cf_cs_pp, &prep_param.cf_cs_vp) {
+            (Some(cf_cs_pp), Some(cf_cs_vp)) => (cf_cs_pp.clone(), cf_cs_vp.clone()),
+            _ => CS2::setup(&mut rng, cf_r1cs.A.n_rows)?,
+        };
 
         let prover_params = ProverParams::<C1, C2, CS1, CS2, H> {
             poseidon_config: prep_param.poseidon_config.clone(),
@@ -611,12 +602,12 @@ where
         augmented_F_circuit.generate_constraints(cs.clone())?;
         cs.finalize();
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
-        let r1cs = extract_r1cs::<C1::ScalarField>(&cs);
+        let r1cs = extract_r1cs::<C1::ScalarField>(&cs)?;
 
         cf_circuit.generate_constraints(cs2.clone())?;
         cs2.finalize();
         let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
-        let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2);
+        let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2)?;
 
         // compute the public params hash
         let pp_hash = vp.pp_hash()?;
@@ -956,7 +947,7 @@ where
         } = ivc_proof;
         let (pp, vp) = params;
 
-        let f_circuit = FC::new(fcircuit_params).unwrap();
+        let f_circuit = FC::new(fcircuit_params)?;
         let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
         let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
         let augmented_F_circuit =
@@ -966,12 +957,12 @@ where
         augmented_F_circuit.generate_constraints(cs.clone())?;
         cs.finalize();
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
-        let r1cs = extract_r1cs::<C1::ScalarField>(&cs);
+        let r1cs = extract_r1cs::<C1::ScalarField>(&cs)?;
 
         cf_circuit.generate_constraints(cs2.clone())?;
         cs2.finalize();
         let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
-        let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2);
+        let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2)?;
 
         Ok(Self {
             _gc1: PhantomData,
@@ -1110,7 +1101,7 @@ pub fn get_r1cs_from_cs<F: PrimeField>(
     circuit.generate_constraints(cs.clone())?;
     cs.finalize();
     let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
-    let r1cs = extract_r1cs::<F>(&cs);
+    let r1cs = extract_r1cs::<F>(&cs)?;
     Ok(r1cs)
 }
 

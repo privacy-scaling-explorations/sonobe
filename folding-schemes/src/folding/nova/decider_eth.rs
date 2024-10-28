@@ -119,7 +119,8 @@ where
         let circuit = DeciderEthCircuit::<C1, C2, GC2>::try_from(Nova::from(fs))?;
 
         // get the Groth16 specific setup for the circuit
-        let (g16_pk, g16_vk) = S::circuit_specific_setup(circuit, &mut rng).unwrap();
+        let (g16_pk, g16_vk) = S::circuit_specific_setup(circuit, &mut rng)
+            .map_err(|e| Error::SNARKSetupFail(e.to_string()))?;
 
         // get the FoldingScheme prover & verifier params from Nova
         #[allow(clippy::type_complexity)]
@@ -179,8 +180,12 @@ where
             snark_proof,
             cmT,
             r,
-            kzg_proofs: kzg_proofs.try_into().unwrap(),
-            kzg_challenges: kzg_challenges.try_into().unwrap(),
+            kzg_proofs: kzg_proofs
+                .try_into()
+                .map_err(|e: Vec<_>| Error::NotExpectedLength(e.len(), 2))?,
+            kzg_challenges: kzg_challenges
+                .try_into()
+                .map_err(|e: Vec<_>| Error::NotExpectedLength(e.len(), 2))?,
         })
     }
 

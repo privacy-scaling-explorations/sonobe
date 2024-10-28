@@ -180,7 +180,7 @@ pub mod tests {
 
         let cs = cs.into_inner().unwrap();
 
-        let r1cs = extract_r1cs::<Fr>(&cs);
+        let r1cs = extract_r1cs::<Fr>(&cs).unwrap();
         let (w, x) = extract_w_x::<Fr>(&cs);
         r1cs.check_relation(&w, &x).unwrap();
         let mut z = [vec![Fr::one()], x, w].concat();
@@ -274,7 +274,7 @@ pub mod tests {
         circuit.generate_constraints(cs.clone()).unwrap();
         cs.finalize();
         let cs = cs.into_inner().unwrap();
-        let r1cs = extract_r1cs::<Fq>(&cs);
+        let r1cs = extract_r1cs::<Fq>(&cs).unwrap();
         let (w, x) = extract_w_x::<Fq>(&cs);
         let z = [vec![Fq::rand(rng)], x, w].concat();
 

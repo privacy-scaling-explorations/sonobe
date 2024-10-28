@@ -38,6 +38,8 @@ pub enum Error {
     // Relation errors
     #[error("Relation not satisfied")]
     NotSatisfied,
+    #[error("SNARK setup failed: {0}")]
+    SNARKSetupFail(String),
     #[error("SNARK verification failed")]
     SNARKVerificationFail,
     #[error("IVC verification failed")]
@@ -102,8 +104,8 @@ pub enum Error {
     MaxStep,
     #[error("Witness calculation error: {0}")]
     WitnessCalculationError(String),
-    #[error("BigInt to PrimeField conversion error: {0}")]
-    BigIntConversionError(String),
+    #[error("Failed to convert {0} into {1}: {2}")]
+    ConversionError(String, String, String),
     #[error("Failed to serde: {0}")]
     JSONSerdeError(String),
     #[error("Multi instances folding not supported in this scheme")]

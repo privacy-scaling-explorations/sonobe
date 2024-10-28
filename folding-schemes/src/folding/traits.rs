@@ -85,7 +85,11 @@ pub trait CommittedInstanceVarOps<C: CurveGroup> {
         sponge.absorb(&z_0)?;
         sponge.absorb(&z_i)?;
         sponge.absorb(&U_vec)?;
-        Ok((sponge.squeeze_field_elements(1)?.pop().unwrap(), U_vec))
+        Ok((
+            // `unwrap` is safe because the sponge is guaranteed to return a single element
+            sponge.squeeze_field_elements(1)?.pop().unwrap(),
+            U_vec,
+        ))
     }
 
     /// Returns the commitments contained in the committed instance.

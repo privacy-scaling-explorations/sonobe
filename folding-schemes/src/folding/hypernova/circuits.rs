@@ -580,11 +580,9 @@ where
             M: vec![],
         };
         let mut augmented_f_circuit = Self::default(poseidon_config, F, initial_ccs)?;
-        if ccs.is_some() {
-            augmented_f_circuit.ccs = ccs.unwrap();
-        } else {
-            augmented_f_circuit.ccs = augmented_f_circuit.upper_bound_ccs()?;
-        }
+        augmented_f_circuit.ccs = ccs
+            .ok_or(())
+            .or_else(|_| augmented_f_circuit.upper_bound_ccs())?;
         Ok(augmented_f_circuit)
     }
 
@@ -593,7 +591,7 @@ where
     /// For a stable FCircuit circuit, the CCS parameters can be computed in advance and can be
     /// feed in as parameter for the AugmentedFCircuit::empty method to avoid computing them there.
     pub fn upper_bound_ccs(&self) -> Result<CCS<C1::ScalarField>, Error> {
-        let r1cs = get_r1cs_from_cs::<CF1<C1>>(self.clone()).unwrap();
+        let r1cs = get_r1cs_from_cs::<CF1<C1>>(self.clone())?;
         let mut ccs = CCS::from(r1cs);
 
         let z_0 = vec![C1::ScalarField::zero(); self.F.state_len()];
@@ -682,7 +680,7 @@ where
         self.clone().generate_constraints(cs.clone())?;
         cs.finalize();
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
-        let r1cs = extract_r1cs::<C1::ScalarField>(&cs);
+        let r1cs = extract_r1cs::<C1::ScalarField>(&cs)?;
         let ccs = CCS::from(r1cs);
 
         Ok((cs, ccs))
@@ -1223,7 +1221,7 @@ mod tests {
             .into_inner()
             .ok_or(Error::NoInnerConstraintSystem)
             .unwrap();
-        let cf_r1cs = extract_r1cs::<Fq>(&cs2);
+        let cf_r1cs = extract_r1cs::<Fq>(&cs2).unwrap();
         println!("CF m x n: {} x {}", cf_r1cs.A.n_rows, cf_r1cs.A.n_cols);
 
         let (pedersen_params, _) =

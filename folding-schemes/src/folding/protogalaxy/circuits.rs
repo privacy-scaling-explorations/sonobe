@@ -77,7 +77,8 @@ impl FoldingGadget {
         let betas_star = betas_star_var(&instance.betas, &deltas, &alpha);
 
         let k = vec_instances.len();
-        let H = GeneralEvaluationDomain::new(k + 1).unwrap();
+        let H =
+            GeneralEvaluationDomain::new(k + 1).ok_or(SynthesisError::PolynomialDegreeTooLarge)?;
         let L_X = lagrange_polys(H)
             .into_iter()
             .map(|poly| {

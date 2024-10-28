@@ -96,10 +96,11 @@ where
         prep_param: Self::PreprocessorParam,
         fs: FS,
     ) -> Result<(Self::ProverParam, Self::VerifierParam), Error> {
-        let circuit = DeciderEthCircuit::<C1, C2, GC2>::try_from(HyperNova::from(fs)).unwrap();
+        let circuit = DeciderEthCircuit::<C1, C2, GC2>::try_from(HyperNova::from(fs))?;
 
         // get the Groth16 specific setup for the circuit
-        let (g16_pk, g16_vk) = S::circuit_specific_setup(circuit, &mut rng).unwrap();
+        let (g16_pk, g16_vk) = S::circuit_specific_setup(circuit, &mut rng)
+            .map_err(|e| Error::SNARKSetupFail(e.to_string()))?;
 
         // get the FoldingScheme prover & verifier params from HyperNova
         #[allow(clippy::type_complexity)]
@@ -133,8 +134,7 @@ where
     ) -> Result<Self::Proof, Error> {
         let (snark_pk, cs_pk): (S::ProvingKey, CS1::ProverParams) = pp;
 
-        let circuit =
-            DeciderEthCircuit::<C1, C2, GC2>::try_from(HyperNova::from(folding_scheme)).unwrap();
+        let circuit = DeciderEthCircuit::<C1, C2, GC2>::try_from(HyperNova::from(folding_scheme))?;
 
         let rho = circuit.randomness;
 

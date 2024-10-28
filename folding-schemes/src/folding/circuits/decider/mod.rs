@@ -80,7 +80,13 @@ impl EvalGadget {
         let mut v = v.to_vec();
         v.resize(v.len().next_power_of_two(), FpVar::zero());
         let n = v.len() as u64;
-        let gen = F::get_root_of_unity(n).unwrap();
+        let gen = F::get_root_of_unity(n).ok_or(SynthesisError::PolynomialDegreeTooLarge)?;
+        // `unwrap` below is safe because `Radix2DomainVar::new` only fails if
+        // `offset.enforce_not_equal(&FpVar::zero())` returns an error.
+        // But in our case, `offset` is `FpVar::one()`, i.e., both operands of
+        // `enforce_not_equal` are constants.
+        // Consequently, `FpVar`'s implementation of `enforce_not_equal` will
+        // always return `Ok(())`.
         let domain = Radix2DomainVar::new(gen, log2(v.len()) as u64, FpVar::one()).unwrap();
 
         let evaluations_var = EvaluationsVar::from_vec_and_domain(v, domain, true);

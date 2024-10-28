@@ -68,8 +68,15 @@ impl<C: CurveGroup> R1CSVar<C::ScalarField> for NonNativeAffineVar<C> {
         let y = <C::BaseField as Field>::BasePrimeField::from_le_bytes_mod_order(
             &self.y.value()?.to_bytes_le(),
         );
+        // Below is a workaround to convert the `x` and `y` coordinates to a
+        // point. This is because the `CurveGroup` trait does not provide a
+        // method to construct a point from `BaseField` elements.
         let mut bytes = vec![];
+        // `unwrap` below is safe because serialization of a `PrimeField` value
+        // only fails if the serialization flag has more than 8 bits, but here
+        // we call `serialize_uncompressed` which uses an empty flag.
         x.serialize_uncompressed(&mut bytes).unwrap();
+        // `unwrap` below is also safe, because the bit size of `SWFlags` is 2.
         y.serialize_with_flags(
             &mut bytes,
             if x.is_zero() && y.is_zero() {
@@ -81,6 +88,9 @@ impl<C: CurveGroup> R1CSVar<C::ScalarField> for NonNativeAffineVar<C> {
             },
         )
         .unwrap();
+        // `unwrap` below is safe because `bytes` is constructed from the `x`
+        // and `y` coordinates of a valid point, and these coordinates are
+        // serialized in the same way as the `CurveGroup` implementation.
         Ok(C::deserialize_uncompressed_unchecked(&bytes[..]).unwrap())
     }
 }
@@ -170,6 +180,8 @@ impl<C: CurveGroup> Inputize<C::ScalarField, NonNativeAffineVar<C>> for C {
 
 impl<C: CurveGroup> NonNativeAffineVar<C> {
     pub fn zero() -> Self {
+        // `unwrap` below is safe because we are allocating a constant value,
+        // which is guaranteed to succeed.
         Self::new_constant(ConstraintSystemRef::None, C::zero()).unwrap()
     }
 }

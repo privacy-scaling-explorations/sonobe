@@ -201,7 +201,11 @@ where
         let U_vec = self.to_native_sponge_field_elements()?;
         sponge.absorb(&pp_hash)?;
         sponge.absorb(&U_vec)?;
-        Ok((sponge.squeeze_field_elements(1)?.pop().unwrap(), U_vec))
+        Ok((
+            // `unwrap` is safe because the sponge is guaranteed to return a single element
+            sponge.squeeze_field_elements(1)?.pop().unwrap(),
+            U_vec,
+        ))
     }
 }
 
@@ -307,13 +311,13 @@ where
         Ok(CycleFoldCommittedInstanceVar {
             cmE: cmT.scalar_mul_le(r_bits.iter())? + ci1.cmE,
             cmW: ci1.cmW + ci2.cmW.scalar_mul_le(r_bits.iter())?,
-            u: ci1.u.add_no_align(&r_nonnat).modulo::<CF1<C>>()?,
+            u: ci1.u.add_no_align(&r_nonnat)?.modulo::<CF1<C>>()?,
             x: ci1
                 .x
                 .iter()
                 .zip(ci2.x)
                 .map(|(a, b)| {
-                    a.add_no_align(&r_nonnat.mul_no_align(&b)?)
+                    a.add_no_align(&r_nonnat.mul_no_align(&b)?)?
                         .modulo::<CF1<C>>()
                 })
                 .collect::<Result<Vec<_>, _>>()?,

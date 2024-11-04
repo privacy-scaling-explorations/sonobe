@@ -2,7 +2,9 @@ use ark_ec::{short_weierstrass::SWFlags, AffineRepr, CurveGroup};
 use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
+    eq::EqGadget,
     fields::fp::FpVar,
+    prelude::Boolean,
     R1CSVar, ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{ConstraintSystemRef, Namespace, SynthesisError};
@@ -10,7 +12,10 @@ use ark_serialize::{CanonicalSerialize, CanonicalSerializeWithFlags};
 use ark_std::Zero;
 use core::borrow::Borrow;
 
-use crate::transcript::{AbsorbNonNative, AbsorbNonNativeGadget};
+use crate::{
+    folding::traits::Inputize,
+    transcript::{AbsorbNonNative, AbsorbNonNativeGadget},
+};
 
 use super::uint::{nonnative_field_to_field_elements, NonNativeUintVar};
 
@@ -63,8 +68,15 @@ impl<C: CurveGroup> R1CSVar<C::ScalarField> for NonNativeAffineVar<C> {
         let y = <C::BaseField as Field>::BasePrimeField::from_le_bytes_mod_order(
             &self.y.value()?.to_bytes_le(),
         );
+        // Below is a workaround to convert the `x` and `y` coordinates to a
+        // point. This is because the `CurveGroup` trait does not provide a
+        // method to construct a point from `BaseField` elements.
         let mut bytes = vec![];
+        // `unwrap` below is safe because serialization of a `PrimeField` value
+        // only fails if the serialization flag has more than 8 bits, but here
+        // we call `serialize_uncompressed` which uses an empty flag.
         x.serialize_uncompressed(&mut bytes).unwrap();
+        // `unwrap` below is also safe, because the bit size of `SWFlags` is 2.
         y.serialize_with_flags(
             &mut bytes,
             if x.is_zero() && y.is_zero() {
@@ -76,6 +88,9 @@ impl<C: CurveGroup> R1CSVar<C::ScalarField> for NonNativeAffineVar<C> {
             },
         )
         .unwrap();
+        // `unwrap` below is safe because `bytes` is constructed from the `x`
+        // and `y` coordinates of a valid point, and these coordinates are
+        // serialized in the same way as the `CurveGroup` implementation.
         Ok(C::deserialize_uncompressed_unchecked(&bytes[..]).unwrap())
     }
 }
@@ -87,6 +102,53 @@ impl<C: CurveGroup> ToConstraintFieldGadget<C::ScalarField> for NonNativeAffineV
         let x = self.x.to_constraint_field()?;
         let y = self.y.to_constraint_field()?;
         Ok([x, y].concat())
+    }
+}
+
+impl<C: CurveGroup> EqGadget<C::ScalarField> for NonNativeAffineVar<C> {
+    fn is_eq(&self, other: &Self) -> Result<Boolean<C::ScalarField>, SynthesisError> {
+        let mut result = Boolean::TRUE;
+        if self.x.0.len() != other.x.0.len() {
+            return Err(SynthesisError::Unsatisfiable);
+        }
+        if self.y.0.len() != other.y.0.len() {
+            return Err(SynthesisError::Unsatisfiable);
+        }
+        for (l, r) in self
+            .x
+            .0
+            .iter()
+            .chain(&self.y.0)
+            .zip(other.x.0.iter().chain(&other.y.0))
+        {
+            if l.ub != r.ub {
+                return Err(SynthesisError::Unsatisfiable);
+            }
+            result = result.and(&l.v.is_eq(&r.v)?)?;
+        }
+        Ok(result)
+    }
+
+    fn enforce_equal(&self, other: &Self) -> Result<(), SynthesisError> {
+        if self.x.0.len() != other.x.0.len() {
+            return Err(SynthesisError::Unsatisfiable);
+        }
+        if self.y.0.len() != other.y.0.len() {
+            return Err(SynthesisError::Unsatisfiable);
+        }
+        for (l, r) in self
+            .x
+            .0
+            .iter()
+            .chain(&self.y.0)
+            .zip(other.x.0.iter().chain(&other.y.0))
+        {
+            if l.ub != r.ub {
+                return Err(SynthesisError::Unsatisfiable);
+            }
+            l.v.enforce_equal(&r.v)?;
+        }
+        Ok(())
     }
 }
 
@@ -104,22 +166,22 @@ pub(crate) fn nonnative_affine_to_field_elements<C: CurveGroup>(
     (x, y)
 }
 
-impl<C: CurveGroup> NonNativeAffineVar<C> {
-    // Extracts a list of field elements of type `C::ScalarField` from the public input
-    // `p`, in exactly the same way as how `NonNativeAffineVar` is represented as limbs of type
-    // `FpVar` in-circuit.
-    #[allow(clippy::type_complexity)]
-    pub fn inputize(p: C) -> Result<(Vec<C::ScalarField>, Vec<C::ScalarField>), SynthesisError> {
-        let affine = p.into_affine();
+impl<C: CurveGroup> Inputize<C::ScalarField, NonNativeAffineVar<C>> for C {
+    fn inputize(&self) -> Vec<C::ScalarField> {
+        let affine = self.into_affine();
         let zero = (&C::BaseField::zero(), &C::BaseField::zero());
         let (x, y) = affine.xy().unwrap_or(zero);
 
-        let x = NonNativeUintVar::inputize(*x);
-        let y = NonNativeUintVar::inputize(*y);
-        Ok((x, y))
+        let x = x.inputize();
+        let y = y.inputize();
+        [x, y].concat()
     }
+}
 
+impl<C: CurveGroup> NonNativeAffineVar<C> {
     pub fn zero() -> Self {
+        // `unwrap` below is safe because we are allocating a constant value,
+        // which is guaranteed to succeed.
         Self::new_constant(ConstraintSystemRef::None, C::zero()).unwrap()
     }
 }
@@ -179,9 +241,11 @@ mod tests {
         let mut rng = ark_std::test_rng();
         let p = Projective::rand(&mut rng);
         let pVar = NonNativeAffineVar::<Projective>::new_witness(cs.clone(), || Ok(p)).unwrap();
-        let (x, y) = NonNativeAffineVar::inputize(p).unwrap();
+        let xy = p.inputize();
 
-        assert_eq!(pVar.x.0.value().unwrap(), x);
-        assert_eq!(pVar.y.0.value().unwrap(), y);
+        assert_eq!(
+            [pVar.x.0.value().unwrap(), pVar.y.0.value().unwrap()].concat(),
+            xy
+        );
     }
 }

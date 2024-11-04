@@ -31,25 +31,31 @@ pub struct NIMFSProof<C: CurveGroup> {
     pub sigmas_thetas: SigmasThetas<C::ScalarField>,
 }
 
-impl<C: CurveGroup> Dummy<(&CCS<CF1<C>>, usize, usize)> for NIMFSProof<C> {
-    fn dummy((ccs, mu, nu): (&CCS<CF1<C>>, usize, usize)) -> Self {
+impl<C: CurveGroup> Dummy<(usize, usize, usize, usize)> for NIMFSProof<C> {
+    fn dummy((s, t, mu, nu): (usize, usize, usize, usize)) -> Self {
         // use 'C::ScalarField::one()' instead of 'zero()' to enforce the NIMFSProof to have the
         // same in-circuit representation to match the number of constraints of an actual proof.
         NIMFSProof::<C> {
             sc_proof: SumCheckProof::<C::ScalarField> {
-                point: vec![C::ScalarField::one(); ccs.s],
+                point: vec![C::ScalarField::one(); s],
                 proofs: vec![
                     IOPProverMessage {
-                        coeffs: vec![C::ScalarField::one(); ccs.t + 1]
+                        coeffs: vec![C::ScalarField::one(); t + 1]
                     };
-                    ccs.s
+                    s
                 ],
             },
             sigmas_thetas: SigmasThetas(
-                vec![vec![C::ScalarField::one(); ccs.t]; mu],
-                vec![vec![C::ScalarField::one(); ccs.t]; nu],
+                vec![vec![C::ScalarField::one(); t]; mu],
+                vec![vec![C::ScalarField::one(); t]; nu],
             ),
         }
+    }
+}
+
+impl<C: CurveGroup> Dummy<(&CCS<CF1<C>>, usize, usize)> for NIMFSProof<C> {
+    fn dummy((ccs, mu, nu): (&CCS<CF1<C>>, usize, usize)) -> Self {
+        NIMFSProof::dummy((ccs.s, ccs.t, mu, nu))
     }
 }
 
@@ -67,7 +73,6 @@ pub struct NIMFS<C: CurveGroup, T: Transcript<C::ScalarField>> {
 impl<C: CurveGroup, T: Transcript<C::ScalarField>> NIMFS<C, T>
 where
     <C as Group>::ScalarField: Absorb,
-    C::BaseField: PrimeField,
 {
     pub fn fold(
         lcccs: &[LCCCS<C>],
@@ -258,8 +263,9 @@ where
         let rho_scalar = C::ScalarField::from_le_bytes_mod_order(b"rho");
         transcript.absorb(&rho_scalar);
         let rho_bits: Vec<bool> = transcript.get_challenge_nbits(NOVA_N_BITS_RO);
-        let rho: C::ScalarField =
-            C::ScalarField::from_bigint(BigInteger::from_bits_le(&rho_bits)).unwrap();
+        let rho: C::ScalarField = C::ScalarField::from(
+            <C::ScalarField as PrimeField>::BigInt::from_bits_le(&rho_bits),
+        );
 
         // Step 7: Create the folded instance
         let folded_lcccs = Self::fold(
@@ -377,8 +383,9 @@ where
         let rho_scalar = C::ScalarField::from_le_bytes_mod_order(b"rho");
         transcript.absorb(&rho_scalar);
         let rho_bits: Vec<bool> = transcript.get_challenge_nbits(NOVA_N_BITS_RO);
-        let rho: C::ScalarField =
-            C::ScalarField::from_bigint(BigInteger::from_bits_le(&rho_bits)).unwrap();
+        let rho: C::ScalarField = C::ScalarField::from(
+            <C::ScalarField as PrimeField>::BigInt::from_bits_le(&rho_bits),
+        );
 
         // Step 7: Compute the folded instance
         Ok(Self::fold(

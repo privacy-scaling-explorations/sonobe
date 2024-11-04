@@ -108,11 +108,19 @@ impl<F: PrimeField> CircomWrapper<F> {
 
     // Converts a num_bigint::BigInt to a PrimeField::BigInt.
     pub fn num_bigint_to_ark_bigint(&self, value: &BigInt) -> Result<F::BigInt, Error> {
-        let big_uint = value
-            .to_biguint()
-            .ok_or_else(|| Error::BigIntConversionError("BigInt is negative".to_string()))?;
+        let big_uint = value.to_biguint().ok_or_else(|| {
+            Error::ConversionError(
+                "BigInt".into(),
+                "BigUint".into(),
+                "BigInt is negative".into(),
+            )
+        })?;
         F::BigInt::try_from(big_uint).map_err(|_| {
-            Error::BigIntConversionError("Failed to convert to PrimeField::BigInt".to_string())
+            Error::ConversionError(
+                "BigUint".into(),
+                "PrimeField::BigInt".into(),
+                "BigUint is too large to fit into PrimeField::BigInt".into(),
+            )
         })
     }
 

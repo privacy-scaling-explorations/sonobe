@@ -14,6 +14,7 @@ use crate::arith::ccs::CCS;
 use crate::arith::Arith;
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::CF1;
+use crate::folding::traits::Inputize;
 use crate::folding::traits::{CommittedInstanceOps, Dummy};
 use crate::transcript::AbsorbNonNative;
 use crate::utils::mle::dense_vec_to_dense_mle;
@@ -72,7 +73,7 @@ impl<F: PrimeField> CCS<F> {
         Ok((
             LCCCS::<C> {
                 C,
-                u: C::ScalarField::one(),
+                u: z[0],
                 x: z[1..(1 + self.l)].to_vec(),
                 r_x,
                 v,
@@ -151,6 +152,19 @@ impl<C: CurveGroup> CommittedInstanceOps<C> for LCCCS<C> {
 
     fn is_incoming(&self) -> bool {
         false
+    }
+}
+
+impl<C: CurveGroup> Inputize<C::ScalarField, LCCCSVar<C>> for LCCCS<C> {
+    fn inputize(&self) -> Vec<C::ScalarField> {
+        [
+            &self.C.inputize(),
+            &[self.u][..],
+            &self.x,
+            &self.r_x,
+            &self.v,
+        ]
+        .concat()
     }
 }
 

@@ -16,9 +16,12 @@ use ark_grumpkin::{constraints::GVar as GVar2, Projective as G2};
 
 use folding_schemes::{
     commitment::{kzg::KZG, pedersen::Pedersen},
-    folding::nova::{
-        decider_eth::{prepare_calldata, Decider as DeciderEth},
-        Nova, PreprocessorParam,
+    folding::{
+        nova::{
+            decider_eth::{prepare_calldata, Decider as DeciderEth},
+            Nova, PreprocessorParam,
+        },
+        traits::CommittedInstanceOps,
     },
     frontend::FCircuit,
     transcript::poseidon::poseidon_canonical_config,
@@ -46,7 +49,7 @@ fn main() {
         cur_path.to_str().unwrap()
     );
 
-    let circuit = load_noir_circuit(circuit_path);
+    let circuit = load_noir_circuit(circuit_path).unwrap();
     let f_circuit = NoirFCircuit {
         circuit,
         state_len: 1,
@@ -72,7 +75,6 @@ fn main() {
     // prepare the Nova prover & verifier params
     let nova_preprocess_params = PreprocessorParam::new(poseidon_config, f_circuit.clone());
     let nova_params = N::preprocess(&mut rng, &nova_preprocess_params).unwrap();
-    let pp_hash = nova_params.1.pp_hash().unwrap();
 
     // initialize the folding scheme engine, in our case we use Nova
     let mut nova = N::init(&nova_params, f_circuit.clone(), z_0).unwrap();
@@ -104,8 +106,8 @@ fn main() {
         nova.i,
         nova.z_0.clone(),
         nova.z_i.clone(),
-        &nova.U_i,
-        &nova.u_i,
+        &nova.U_i.get_commitments(),
+        &nova.u_i.get_commitments(),
         &proof,
     )
     .unwrap();
@@ -118,7 +120,6 @@ fn main() {
 
     let calldata: Vec<u8> = prepare_calldata(
         function_selector,
-        pp_hash,
         nova.i,
         nova.z_0,
         nova.z_i,

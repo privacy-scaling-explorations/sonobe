@@ -2,7 +2,7 @@
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{CurveGroup, Group};
 use ark_ff::PrimeField;
-use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
+use ark_r1cs_std::{prelude::CurveVar, ToConstraintFieldGadget};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_snark::SNARK;
 use ark_std::rand::{CryptoRng, RngCore};
@@ -10,12 +10,15 @@ use ark_std::{One, Zero};
 use core::marker::PhantomData;
 
 pub use super::decider_eth_circuit::DeciderEthCircuit;
-use super::{lcccs::LCCCS, HyperNova};
+use super::decider_eth_circuit::DeciderHyperNovaGadget;
+use super::HyperNova;
 use crate::commitment::{
     kzg::Proof as KZGProof, pedersen::Params as PedersenParams, CommitmentScheme,
 };
-use crate::folding::circuits::{nonnative::affine::NonNativeAffineVar, CF2};
+use crate::folding::circuits::decider::DeciderEnabledNIFS;
+use crate::folding::circuits::CF2;
 use crate::folding::nova::decider_eth::VerifierParam;
+use crate::folding::traits::{Inputize, WitnessOps};
 use crate::frontend::FCircuit;
 use crate::Error;
 use crate::{Decider as DeciderTrait, FoldingScheme};
@@ -31,7 +34,6 @@ where
     kzg_proof: CS1::Proof,
     // rho used at the last fold, U_{i+1}=NIMFS.V(rho, U_i, u_i), it is checked in-circuit
     rho: C1::ScalarField,
-    U_i1: LCCCS<C1>, // U_{i+1}, which is checked in-circuit
     // the KZG challenge is provided by the prover, but in-circuit it is checked to match
     // the in-circuit computed computed one.
     kzg_challenge: C1::ScalarField,
@@ -75,8 +77,6 @@ where
     <C1 as Group>::ScalarField: Absorb,
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    for<'b> &'b GC1: GroupOpsBounds<'b, C1, GC1>,
-    for<'b> &'b GC2: GroupOpsBounds<'b, C2, GC2>,
     // constrain FS into HyperNova, since this is a Decider specifically for HyperNova
     HyperNova<C1, GC1, C2, GC2, FC, CS1, CS2, MU, NU, false>: From<FS>,
     crate::folding::hypernova::ProverParams<C1, C2, CS1, CS2, false>:
@@ -89,21 +89,18 @@ where
     type Proof = Proof<C1, CS1, S>;
     type VerifierParam = VerifierParam<C1, CS1::VerifierParams, S::VerifyingKey>;
     type PublicInput = Vec<C1::ScalarField>;
-    type CommittedInstance = ();
+    type CommittedInstance = Vec<C1>;
 
     fn preprocess(
         mut rng: impl RngCore + CryptoRng,
         prep_param: Self::PreprocessorParam,
         fs: FS,
     ) -> Result<(Self::ProverParam, Self::VerifierParam), Error> {
-        let circuit =
-            DeciderEthCircuit::<C1, GC1, C2, GC2, CS1, CS2>::from_hypernova::<FC, MU, NU>(
-                fs.into(),
-            )
-            .unwrap();
+        let circuit = DeciderEthCircuit::<C1, C2, GC2>::try_from(HyperNova::from(fs))?;
 
         // get the Groth16 specific setup for the circuit
-        let (g16_pk, g16_vk) = S::circuit_specific_setup(circuit, &mut rng).unwrap();
+        let (g16_pk, g16_vk) = S::circuit_specific_setup(circuit, &mut rng)
+            .map_err(|e| Error::SNARKSetupFail(e.to_string()))?;
 
         // get the FoldingScheme prover & verifier params from HyperNova
         #[allow(clippy::type_complexity)]
@@ -122,7 +119,7 @@ where
 
         let pp = (g16_pk, hypernova_pp.cs_pp);
 
-        let vp = VerifierParam {
+        let vp = Self::VerifierParam {
             pp_hash,
             snark_vp: g16_vk,
             cs_vp: hypernova_vp.cs_vp,
@@ -137,40 +134,37 @@ where
     ) -> Result<Self::Proof, Error> {
         let (snark_pk, cs_pk): (S::ProvingKey, CS1::ProverParams) = pp;
 
-        let circuit = DeciderEthCircuit::<C1, GC1, C2, GC2, CS1, CS2>::from_hypernova::<FC, MU, NU>(
-            folding_scheme.into(),
-        )?;
+        let circuit = DeciderEthCircuit::<C1, C2, GC2>::try_from(HyperNova::from(folding_scheme))?;
 
-        let snark_proof = S::prove(&snark_pk, circuit.clone(), &mut rng)
-            .map_err(|e| Error::Other(e.to_string()))?;
-
-        // Notice that since the `circuit` has been constructed at the `from_hypernova` call, which
-        // in case of failure it would have returned an error there, the next two unwraps should
-        // never reach an error.
-        let rho_Fr = circuit.rho.ok_or(Error::Empty)?;
-        let W_i1 = circuit.W_i1.ok_or(Error::Empty)?;
+        let rho = circuit.randomness;
 
         // get the challenges that have been already computed when preparing the circuit inputs in
-        // the above `from_hypernova` call
-        let challenge_W = circuit
-            .kzg_challenge
-            .ok_or(Error::MissingValue("kzg_challenge".to_string()))?;
+        // the above `try_from` call
+        let kzg_challenges = circuit.kzg_challenges.clone();
 
         // generate KZG proofs
-        let U_cmW_proof = CS1::prove_with_challenge(
-            &cs_pk,
-            challenge_W,
-            &W_i1.w,
-            &C1::ScalarField::zero(),
-            None,
-        )?;
+        let kzg_proofs = circuit
+            .W_i1
+            .get_openings()
+            .iter()
+            .zip(&kzg_challenges)
+            .map(|((v, _), &c)| {
+                CS1::prove_with_challenge(&cs_pk, c, v, &C1::ScalarField::zero(), None)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let snark_proof =
+            S::prove(&snark_pk, circuit, &mut rng).map_err(|e| Error::Other(e.to_string()))?;
 
         Ok(Self::Proof {
             snark_proof,
-            kzg_proof: U_cmW_proof,
-            rho: rho_Fr,
-            U_i1: circuit.U_i1.ok_or(Error::Empty)?,
-            kzg_challenge: challenge_W,
+            rho,
+            kzg_proof: (kzg_proofs.len() == 1)
+                .then(|| kzg_proofs[0].clone())
+                .ok_or(Error::NotExpectedLength(kzg_proofs.len(), 1))?,
+            kzg_challenge: (kzg_challenges.len() == 1)
+                .then(|| kzg_challenges[0])
+                .ok_or(Error::NotExpectedLength(kzg_challenges.len(), 1))?,
         })
     }
 
@@ -180,45 +174,48 @@ where
         z_0: Vec<C1::ScalarField>,
         z_i: Vec<C1::ScalarField>,
         // we don't use the instances at the verifier level, since we check them in-circuit
-        _running_instance: &Self::CommittedInstance,
-        _incoming_instance: &Self::CommittedInstance,
+        running_commitments: &Self::CommittedInstance,
+        incoming_commitments: &Self::CommittedInstance,
         proof: &Self::Proof,
     ) -> Result<bool, Error> {
         if i <= C1::ScalarField::one() {
             return Err(Error::NotEnoughSteps);
         }
 
-        let (pp_hash, snark_vk, cs_vk): (C1::ScalarField, S::VerifyingKey, CS1::VerifierParams) =
-            (vp.pp_hash, vp.snark_vp, vp.cs_vp);
+        let Self::VerifierParam {
+            pp_hash,
+            snark_vp,
+            cs_vp,
+        } = vp;
+
+        // 6.2. Fold the commitments
+        let C = DeciderHyperNovaGadget::fold_group_elements_native(
+            running_commitments,
+            incoming_commitments,
+            None,
+            proof.rho,
+        )?[0];
 
         // Note: the NIMFS proof is checked inside the DeciderEthCircuit, which ensures that the
         // 'proof.U_i1' is correctly computed
-
-        let (cmC_x, cmC_y) = NonNativeAffineVar::inputize(proof.U_i1.C)?;
-
         let public_input: Vec<C1::ScalarField> = [
-            vec![pp_hash, i],
-            z_0,
-            z_i,
-            // U_i+1:
-            cmC_x,
-            cmC_y,
-            vec![proof.U_i1.u],
-            proof.U_i1.x.clone(),
-            proof.U_i1.r_x.clone(),
-            proof.U_i1.v.clone(),
-            vec![proof.kzg_challenge, proof.kzg_proof.eval, proof.rho],
+            &[pp_hash, i][..],
+            &z_0,
+            &z_i,
+            &C.inputize(),
+            &[proof.kzg_challenge, proof.kzg_proof.eval, proof.rho],
         ]
         .concat();
 
-        let snark_v = S::verify(&snark_vk, &public_input, &proof.snark_proof)
+        let snark_v = S::verify(&snark_vp, &public_input, &proof.snark_proof)
             .map_err(|e| Error::Other(e.to_string()))?;
         if !snark_v {
             return Err(Error::SNARKVerificationFail);
         }
 
+        // 7.3. Verify the KZG proof
         // we're at the Ethereum EVM case, so the CS1 is KZG commitments
-        CS1::verify_with_challenge(&cs_vk, proof.kzg_challenge, &proof.U_i1.C, &proof.kzg_proof)?;
+        CS1::verify_with_challenge(&cs_vp, proof.kzg_challenge, &C, &proof.kzg_proof)?;
 
         Ok(true)
     }
@@ -229,13 +226,14 @@ pub mod tests {
     use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as Projective};
     use ark_groth16::Groth16;
     use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
-    use ark_serialize::{Compress, Validate};
+    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress, Validate};
 
     use super::*;
     use crate::commitment::{kzg::KZG, pedersen::Pedersen};
     use crate::folding::hypernova::cccs::CCCS;
+    use crate::folding::hypernova::lcccs::LCCCS;
     use crate::folding::hypernova::PreprocessorParam;
-    use crate::folding::nova::decider_eth::VerifierParam;
+    use crate::folding::traits::CommittedInstanceOps;
     use crate::frontend::utils::CubicFCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
 
@@ -300,8 +298,8 @@ pub mod tests {
             hypernova.i,
             hypernova.z_0,
             hypernova.z_i,
-            &(),
-            &(),
+            &hypernova.U_i.get_commitments(),
+            &hypernova.u_i.get_commitments(),
             &proof,
         )
         .unwrap();
@@ -403,8 +401,8 @@ pub mod tests {
             hypernova.i,
             hypernova.z_0.clone(),
             hypernova.z_i.clone(),
-            &(),
-            &(),
+            &hypernova.U_i.get_commitments(),
+            &hypernova.u_i.get_commitments(),
             &proof,
         )
         .unwrap();
@@ -470,8 +468,8 @@ pub mod tests {
             i_deserialized,
             z_0_deserialized.clone(),
             z_i_deserialized.clone(),
-            &(),
-            &(),
+            &hypernova.U_i.get_commitments(),
+            &hypernova.u_i.get_commitments(),
             &proof_deserialized,
         )
         .unwrap();

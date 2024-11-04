@@ -35,8 +35,6 @@ impl<C: CurveGroup, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, c
     NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
 where
     <C as Group>::ScalarField: Absorb,
-    <C as CurveGroup>::BaseField: PrimeField,
-    <C as Group>::ScalarField: PrimeField,
 {
     type CommittedInstance = CommittedInstance<C>;
     type Witness = Witness<C>;
@@ -150,7 +148,6 @@ impl<C: CurveGroup, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, c
     NIFS<C, CS, T, H>
 where
     <C as Group>::ScalarField: Absorb,
-    <C as CurveGroup>::BaseField: PrimeField,
 {
     /// compute_T: compute cross-terms T
     pub fn compute_T(

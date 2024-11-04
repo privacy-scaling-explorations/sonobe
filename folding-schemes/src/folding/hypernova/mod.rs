@@ -5,7 +5,7 @@ use ark_crypto_primitives::sponge::{
 };
 use ark_ec::{CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
-use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
+use ark_r1cs_std::{prelude::CurveVar, ToConstraintFieldGadget};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress, SerializationError};
 use ark_std::{fmt::Debug, marker::PhantomData, rand::RngCore, One, Zero};
 
@@ -293,8 +293,6 @@ where
     <C1 as Group>::ScalarField: Absorb,
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    for<'a> &'a GC1: GroupOpsBounds<'a, C1, GC1>,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     type RunningInstance = (LCCCS<C1>, Witness<C1::ScalarField>);
     type IncomingInstance = (CCCS<C1>, Witness<C1::ScalarField>);
@@ -360,8 +358,6 @@ where
     <C1 as Group>::ScalarField: Absorb,
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    for<'a> &'a GC1: GroupOpsBounds<'a, C1, GC1>,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     /// internal helper for new_running_instance & new_incoming_instance methods, returns the R1CS
     /// z=[u,x,w] vector to be used to create the LCCCS & CCCS fresh instances.
@@ -467,8 +463,6 @@ where
     <C1 as Group>::ScalarField: Absorb,
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    for<'a> &'a GC1: GroupOpsBounds<'a, C1, GC1>,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     /// Reuse Nova's PreprocessorParam.
     type PreprocessorParam = PreprocessorParam<C1, C2, FC, CS1, CS2, H>;
@@ -567,23 +561,14 @@ where
         let cf_r1cs = get_r1cs_from_cs::<C2::ScalarField>(cf_circuit)?;
 
         // if cs params exist, use them, if not, generate new ones
-        let cs_pp: CS1::ProverParams;
-        let cs_vp: CS1::VerifierParams;
-        let cf_cs_pp: CS2::ProverParams;
-        let cf_cs_vp: CS2::VerifierParams;
-        if prep_param.cs_pp.is_some()
-            && prep_param.cf_cs_pp.is_some()
-            && prep_param.cs_vp.is_some()
-            && prep_param.cf_cs_vp.is_some()
-        {
-            cs_pp = prep_param.clone().cs_pp.unwrap();
-            cs_vp = prep_param.clone().cs_vp.unwrap();
-            cf_cs_pp = prep_param.clone().cf_cs_pp.unwrap();
-            cf_cs_vp = prep_param.clone().cf_cs_vp.unwrap();
-        } else {
-            (cs_pp, cs_vp) = CS1::setup(&mut rng, ccs.n - ccs.l - 1)?;
-            (cf_cs_pp, cf_cs_vp) = CS2::setup(&mut rng, cf_r1cs.A.n_cols - cf_r1cs.l - 1)?;
-        }
+        let (cs_pp, cs_vp) = match (&prep_param.cs_pp, &prep_param.cs_vp) {
+            (Some(cs_pp), Some(cs_vp)) => (cs_pp.clone(), cs_vp.clone()),
+            _ => CS1::setup(&mut rng, ccs.n - ccs.l - 1)?,
+        };
+        let (cf_cs_pp, cf_cs_vp) = match (&prep_param.cf_cs_pp, &prep_param.cf_cs_vp) {
+            (Some(cf_cs_pp), Some(cf_cs_vp)) => (cf_cs_pp.clone(), cf_cs_vp.clone()),
+            _ => CS2::setup(&mut rng, cf_r1cs.A.n_cols - cf_r1cs.l - 1)?,
+        };
 
         let pp = ProverParams::<C1, C2, CS1, CS2, H> {
             poseidon_config: prep_param.poseidon_config.clone(),
@@ -726,9 +711,9 @@ where
             let (Us, Ws): (Vec<LCCCS<C1>>, Vec<Witness<C1::ScalarField>>) =
                 lcccs.into_iter().unzip();
             let (us, ws): (Vec<CCCS<C1>>, Vec<Witness<C1::ScalarField>>) = cccs.into_iter().unzip();
-            (Some(Us), Some(Ws), Some(us), Some(ws))
+            (Us, Ws, us, ws)
         } else {
-            (None, None, None, None)
+            (vec![], vec![], vec![], vec![])
         };
 
         let augmented_f_circuit: AugmentedFCircuit<C1, C2, GC2, FC, MU, NU>;
@@ -807,9 +792,9 @@ where
                 z_i: Some(self.z_i.clone()),
                 external_inputs: Some(external_inputs.clone()),
                 U_i: Some(self.U_i.clone()),
-                Us: Us.clone(),
+                Us: Some(Us),
                 u_i_C: Some(self.u_i.C),
-                us: us.clone(),
+                us: Some(us),
                 U_i1_C: Some(U_i1.C),
                 F: self.F.clone(),
                 x: Some(u_i1_x),
@@ -826,21 +811,12 @@ where
                 PoseidonSponge::<C1::ScalarField>::new(&self.poseidon_config);
             transcript_p.absorb(&self.pp_hash);
 
-            let (all_Us, all_us, all_Ws, all_ws) = if MU > 1 || NU > 1 {
-                (
-                    [vec![self.U_i.clone()], Us.clone().unwrap()].concat(),
-                    [vec![self.u_i.clone()], us.clone().unwrap()].concat(),
-                    [vec![self.W_i.clone()], Ws.unwrap()].concat(),
-                    [vec![self.w_i.clone()], ws.unwrap()].concat(),
-                )
-            } else {
-                (
-                    vec![self.U_i.clone()],
-                    vec![self.u_i.clone()],
-                    vec![self.W_i.clone()],
-                    vec![self.w_i.clone()],
-                )
-            };
+            let (all_Us, all_us, all_Ws, all_ws) = (
+                [&[self.U_i.clone()][..], &Us].concat(),
+                [&[self.u_i.clone()][..], &us].concat(),
+                [vec![self.W_i.clone()], Ws].concat(),
+                [vec![self.w_i.clone()], ws].concat(),
+            );
 
             let (rho, nimfs_proof);
             (nimfs_proof, U_i1, W_i1, rho) = NIMFS::<C1, PoseidonSponge<C1::ScalarField>>::prove(
@@ -865,7 +841,9 @@ where
             );
 
             let rho_bits = rho.into_bigint().to_bits_le()[..NOVA_N_BITS_RO].to_vec();
-            let rho_Fq = C1::BaseField::from_bigint(BigInteger::from_bits_le(&rho_bits)).unwrap();
+            let rho_Fq = C1::BaseField::from(<C1::BaseField as PrimeField>::BigInt::from_bits_le(
+                &rho_bits,
+            ));
 
             // CycleFold part:
             // get the vector used as public inputs 'x' in the CycleFold circuit.
@@ -935,9 +913,9 @@ where
                 z_i: Some(self.z_i.clone()),
                 external_inputs: Some(external_inputs),
                 U_i: Some(self.U_i.clone()),
-                Us: Us.clone(),
+                Us: Some(Us),
                 u_i_C: Some(self.u_i.C),
-                us: us.clone(),
+                us: Some(us),
                 U_i1_C: Some(U_i1.C),
                 F: self.F.clone(),
                 x: Some(u_i1_x),
@@ -1030,7 +1008,7 @@ where
         } = ivc_proof;
         let (pp, vp) = params;
 
-        let f_circuit = FC::new(fcircuit_params).unwrap();
+        let f_circuit = FC::new(fcircuit_params)?;
         let augmented_f_circuit = AugmentedFCircuit::<C1, C2, GC2, FC, MU, NU>::empty(
             &pp.poseidon_config,
             f_circuit.clone(),

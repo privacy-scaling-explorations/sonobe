@@ -12,7 +12,6 @@ use ark_r1cs_std::{
     boolean::Boolean,
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
-    groups::GroupOpsBounds,
     prelude::CurveVar,
     uint8::UInt8,
     R1CSVar, ToConstraintFieldGadget,
@@ -195,7 +194,6 @@ pub struct ProofVar<C: CurveGroup> {
 impl<C> AllocVar<NIMFSProof<C>, CF1<C>> for ProofVar<C>
 where
     C: CurveGroup,
-    <C as ark_ec::CurveGroup>::BaseField: PrimeField,
     <C as Group>::ScalarField: Absorb,
 {
     fn new_variable<T: Borrow<NIMFSProof<C>>>(
@@ -237,10 +235,7 @@ where
 pub struct NIMFSGadget<C: CurveGroup> {
     _c: PhantomData<C>,
 }
-impl<C: CurveGroup> NIMFSGadget<C>
-where
-    <C as CurveGroup>::BaseField: PrimeField,
-{
+impl<C: CurveGroup> NIMFSGadget<C> {
     /// Runs (in-circuit) the NIMFS.V, which outputs the new folded LCCCS instance together with
     /// the rho_powers, which will be used in other parts of the AugmentedFCircuit
     #[allow(clippy::type_complexity)]
@@ -492,9 +487,7 @@ pub struct AugmentedFCircuit<
     FC: FCircuit<CF1<C1>>,
     const MU: usize,
     const NU: usize,
-> where
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
-{
+> {
     pub(super) _c2: PhantomData<C2>,
     pub(super) _gc2: PhantomData<GC2>,
     pub(super) poseidon_config: PoseidonConfig<CF1<C1>>,
@@ -532,7 +525,6 @@ where
     <C1 as Group>::ScalarField: Absorb,
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     pub fn default(
         poseidon_config: &PoseidonConfig<CF1<C1>>,
@@ -588,11 +580,9 @@ where
             M: vec![],
         };
         let mut augmented_f_circuit = Self::default(poseidon_config, F, initial_ccs)?;
-        if ccs.is_some() {
-            augmented_f_circuit.ccs = ccs.unwrap();
-        } else {
-            augmented_f_circuit.ccs = augmented_f_circuit.upper_bound_ccs()?;
-        }
+        augmented_f_circuit.ccs = ccs
+            .ok_or(())
+            .or_else(|_| augmented_f_circuit.upper_bound_ccs())?;
         Ok(augmented_f_circuit)
     }
 
@@ -601,7 +591,7 @@ where
     /// For a stable FCircuit circuit, the CCS parameters can be computed in advance and can be
     /// feed in as parameter for the AugmentedFCircuit::empty method to avoid computing them there.
     pub fn upper_bound_ccs(&self) -> Result<CCS<C1::ScalarField>, Error> {
-        let r1cs = get_r1cs_from_cs::<CF1<C1>>(self.clone()).unwrap();
+        let r1cs = get_r1cs_from_cs::<CF1<C1>>(self.clone())?;
         let mut ccs = CCS::from(r1cs);
 
         let z_0 = vec![C1::ScalarField::zero(); self.F.state_len()];
@@ -690,7 +680,7 @@ where
         self.clone().generate_constraints(cs.clone())?;
         cs.finalize();
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
-        let r1cs = extract_r1cs::<C1::ScalarField>(&cs);
+        let r1cs = extract_r1cs::<C1::ScalarField>(&cs)?;
         let ccs = CCS::from(r1cs);
 
         Ok((cs, ccs))
@@ -709,7 +699,6 @@ where
     <C1 as Group>::ScalarField: Absorb,
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
         let pp_hash = FpVar::<CF1<C1>>::new_witness(cs.clone(), || {
@@ -883,7 +872,7 @@ where
         // Non-base case: u_{i+1}.x[1] == H(cf_U_{i+1})
         let (cf_u_i1_x, _) = cf_U_i1.clone().hash(&sponge, pp_hash.clone())?;
         let (cf_u_i1_x_base, _) =
-            CycleFoldCommittedInstanceVar::new_constant(cs.clone(), cf_u_dummy)?
+            CycleFoldCommittedInstanceVar::<C2, GC2>::new_constant(cs.clone(), cf_u_dummy)?
                 .hash(&sponge, pp_hash)?;
         let cf_x = FpVar::new_input(cs.clone(), || {
             Ok(self.cf_x.unwrap_or(cf_u_i1_x_base.value()?))
@@ -1232,7 +1221,7 @@ mod tests {
             .into_inner()
             .ok_or(Error::NoInnerConstraintSystem)
             .unwrap();
-        let cf_r1cs = extract_r1cs::<Fq>(&cs2);
+        let cf_r1cs = extract_r1cs::<Fq>(&cs2).unwrap();
         println!("CF m x n: {} x {}", cf_r1cs.A.n_rows, cf_r1cs.A.n_cols);
 
         let (pedersen_params, _) =

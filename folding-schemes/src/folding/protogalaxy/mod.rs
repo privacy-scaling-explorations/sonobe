@@ -9,7 +9,7 @@ use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
-    groups::{CurveVar, GroupOpsBounds},
+    groups::CurveVar,
     R1CSVar, ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{
@@ -44,6 +44,7 @@ use crate::{
 
 pub mod circuits;
 pub mod constants;
+pub mod decider_eth_circuit;
 pub mod folding;
 pub mod traits;
 pub(crate) mod utils;
@@ -52,7 +53,7 @@ use circuits::AugmentedFCircuit;
 use folding::Folding;
 
 use super::traits::{
-    CommittedInstanceOps, CommittedInstanceVarOps, Dummy, WitnessOps, WitnessVarOps,
+    CommittedInstanceOps, CommittedInstanceVarOps, Dummy, Inputize, WitnessOps, WitnessVarOps,
 };
 
 /// Configuration for ProtoGalaxy's CycleFold circuit
@@ -118,6 +119,14 @@ impl<C: CurveGroup, const TYPE: bool> CommittedInstanceOps<C> for CommittedInsta
 
     fn is_incoming(&self) -> bool {
         TYPE == INCOMING
+    }
+}
+
+impl<C: CurveGroup, const TYPE: bool> Inputize<C::ScalarField, CommittedInstanceVar<C, TYPE>>
+    for CommittedInstance<C, TYPE>
+{
+    fn inputize(&self) -> Vec<C::ScalarField> {
+        [&self.phi.inputize(), &self.betas, &[self.e][..], &self.x].concat()
     }
 }
 
@@ -534,8 +543,6 @@ where
     C1::ScalarField: Absorb,
     C2::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    for<'a> &'a GC1: GroupOpsBounds<'a, C1, GC1>,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     /// This method computes the parameter `t` in ProtoGalaxy for folding `F'`,
     /// the augmented circuit of `F`
@@ -544,7 +551,7 @@ where
         F: &FC,
         d: usize,
         k: usize,
-    ) -> Result<usize, SynthesisError> {
+    ) -> Result<usize, Error> {
         // In ProtoGalaxy, prover and verifier are parameterized by `t = log(n)`
         // where `n` is the number of constraints in the circuit (known as the
         // mapping `f` in the paper).
@@ -581,7 +588,7 @@ where
         // Create a dummy circuit with the same state length and external inputs
         // length as `F`, which replaces `F` in the augmented circuit `F'`.
         let dummy_circuit: DummyCircuit =
-            FCircuit::<C1::ScalarField>::new((state_len, external_inputs_len)).unwrap();
+            FCircuit::<C1::ScalarField>::new((state_len, external_inputs_len))?;
 
         // Compute `augmentation_constraints`, the size of `F'` without `F`.
         let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
@@ -640,8 +647,6 @@ where
     C1::ScalarField: Absorb,
     C2::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    for<'a> &'a GC1: GroupOpsBounds<'a, C1, GC1>,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     type PreprocessorParam = (PoseidonConfig<CF1<C1>>, FC);
     type ProverParam = ProverParams<C1, C2, CS1, CS2>;
@@ -692,7 +697,7 @@ where
         augmented_F_circuit.generate_constraints(cs.clone())?;
         cs.finalize();
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
-        let r1cs = extract_r1cs::<C1::ScalarField>(&cs);
+        let r1cs = extract_r1cs::<C1::ScalarField>(&cs)?;
 
         // CycleFold circuit R1CS
         let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
@@ -700,7 +705,7 @@ where
         cf_circuit.generate_constraints(cs2.clone())?;
         cs2.finalize();
         let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
-        let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2);
+        let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2)?;
 
         let cs_vp = CS1::VerifierParams::deserialize_with_mode(&mut reader, compress, validate)?;
         let cf_cs_vp = CS2::VerifierParams::deserialize_with_mode(&mut reader, compress, validate)?;
@@ -740,12 +745,12 @@ where
         augmented_F_circuit.generate_constraints(cs.clone())?;
         cs.finalize();
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
-        let r1cs = extract_r1cs::<C1::ScalarField>(&cs);
+        let r1cs = extract_r1cs::<C1::ScalarField>(&cs)?;
 
         cf_circuit.generate_constraints(cs2.clone())?;
         cs2.finalize();
         let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
-        let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2);
+        let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2)?;
 
         let (cs_pp, cs_vp) = CS1::setup(&mut rng, r1cs.A.n_rows)?;
         let (cf_cs_pp, cf_cs_vp) = CS2::setup(&mut rng, max(cf_r1cs.A.n_rows, cf_r1cs.A.n_cols))?;
@@ -898,7 +903,7 @@ where
         } else {
             // Primary part:
             // Compute `U_{i+1}` by folding `u_i` into `U_i`.
-            let (U_i1, W_i1, F_coeffs, K_coeffs, L_evals, phi_stars) = Folding::prove(
+            let (U_i1, W_i1, proof, aux) = Folding::prove(
                 &mut transcript_prover,
                 &self.r1cs,
                 &self.U_i,
@@ -909,8 +914,8 @@ where
 
             // CycleFold part:
             // get the vector used as public inputs 'x' in the CycleFold circuit
-            let mut r0_bits = L_evals[0].into_bigint().to_bits_le();
-            let mut r1_bits = L_evals[1].into_bigint().to_bits_le();
+            let mut r0_bits = aux.L_X_evals[0].into_bigint().to_bits_le();
+            let mut r1_bits = aux.L_X_evals[1].into_bigint().to_bits_le();
             r0_bits.resize(C1::ScalarField::MODULUS_BIT_SIZE as usize, false);
             r1_bits.resize(C1::ScalarField::MODULUS_BIT_SIZE as usize, false);
 
@@ -919,13 +924,12 @@ where
             let cf1_u_i_x = [
                 r0_bits
                     .chunks(C1::BaseField::MODULUS_BIT_SIZE as usize - 1)
-                    .map(BigInteger::from_bits_le)
-                    .map(C1::BaseField::from_bigint)
-                    .collect::<Option<Vec<_>>>()
-                    .unwrap(),
+                    .map(<C1::BaseField as PrimeField>::BigInt::from_bits_le)
+                    .map(C1::BaseField::from)
+                    .collect::<Vec<_>>(),
                 get_cm_coordinates(&C1::zero()),
                 get_cm_coordinates(&self.U_i.phi),
-                get_cm_coordinates(&phi_stars[0]),
+                get_cm_coordinates(&aux.phi_stars[0]),
             ]
             .concat();
             let cf1_circuit = ProtoGalaxyCycleFoldCircuit::<C1, GC1> {
@@ -941,11 +945,10 @@ where
             let cf2_u_i_x = [
                 r1_bits
                     .chunks(C1::BaseField::MODULUS_BIT_SIZE as usize - 1)
-                    .map(BigInteger::from_bits_le)
-                    .map(C1::BaseField::from_bigint)
-                    .collect::<Option<Vec<_>>>()
-                    .unwrap(),
-                get_cm_coordinates(&phi_stars[0]),
+                    .map(<C1::BaseField as PrimeField>::BigInt::from_bits_le)
+                    .map(C1::BaseField::from)
+                    .collect::<Vec<_>>(),
+                get_cm_coordinates(&aux.phi_stars[0]),
                 get_cm_coordinates(&self.u_i.phi),
                 get_cm_coordinates(&U_i1.phi),
             ]
@@ -953,7 +956,7 @@ where
             let cf2_circuit = ProtoGalaxyCycleFoldCircuit::<C1, GC1> {
                 _gc: PhantomData,
                 r_bits: Some(r1_bits),
-                points: Some(vec![phi_stars[0], self.u_i.phi]),
+                points: Some(vec![aux.phi_stars[0], self.u_i.phi]),
                 x: Some(cf2_u_i_x.clone()),
             };
 
@@ -998,9 +1001,9 @@ where
                 u_i_phi: self.u_i.phi,
                 U_i: self.U_i.clone(),
                 U_i1_phi: U_i1.phi,
-                F_coeffs: F_coeffs.clone(),
-                K_coeffs: K_coeffs.clone(),
-                phi_stars,
+                F_coeffs: proof.F_coeffs.clone(),
+                K_coeffs: proof.K_coeffs.clone(),
+                phi_stars: aux.phi_stars,
                 F: self.F.clone(),
                 x: Some(u_i1_x),
                 // cyclefold values
@@ -1020,8 +1023,7 @@ where
                         &mut transcript_verifier,
                         &self.U_i,
                         &[self.u_i.clone()],
-                        F_coeffs,
-                        K_coeffs
+                        proof
                     )?,
                     U_i1
                 );
@@ -1108,7 +1110,7 @@ where
         } = ivc_proof;
         let (pp, vp) = params;
 
-        let f_circuit = FC::new(fcircuit_params).unwrap();
+        let f_circuit = FC::new(fcircuit_params)?;
 
         Ok(Self {
             _gc1: PhantomData,
@@ -1195,8 +1197,6 @@ where
     <C1 as Group>::ScalarField: Absorb,
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    for<'a> &'a GC1: GroupOpsBounds<'a, C1, GC1>,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     // folds the given cyclefold circuit and its instances
     #[allow(clippy::type_complexity)]

@@ -11,7 +11,7 @@ use ark_r1cs_std::{
     boolean::Boolean,
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
-    groups::{CurveVar, GroupOpsBounds},
+    groups::CurveVar,
     poly::polynomial::univariate::dense::DensePolynomialVar,
     R1CSVar, ToBitsGadget, ToConstraintFieldGadget,
 };
@@ -77,7 +77,8 @@ impl FoldingGadget {
         let betas_star = betas_star_var(&instance.betas, &deltas, &alpha);
 
         let k = vec_instances.len();
-        let H = GeneralEvaluationDomain::new(k + 1).unwrap();
+        let H =
+            GeneralEvaluationDomain::new(k + 1).ok_or(SynthesisError::PolynomialDegreeTooLarge)?;
         let L_X = lagrange_polys(H)
             .into_iter()
             .map(|poly| {
@@ -183,7 +184,6 @@ impl AugmentationGadget {
     ) -> Result<CycleFoldCommittedInstanceVar<C2, GC2>, SynthesisError>
     where
         C2::BaseField: PrimeField + Absorb,
-        for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
     {
         assert_eq!(cf_u_cmWs.len(), cf_u_xs.len());
         assert_eq!(cf_u_xs.len(), cf_cmTs.len());
@@ -268,8 +268,6 @@ pub struct AugmentedFCircuit<
 
 impl<C1: CurveGroup, C2: CurveGroup, GC2: CurveVar<C2, CF2<C2>>, FC: FCircuit<CF1<C1>>>
     AugmentedFCircuit<C1, C2, GC2, FC>
-where
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     pub fn empty(
         poseidon_config: &PoseidonConfig<CF1<C1>>,
@@ -317,7 +315,6 @@ where
     GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
     FC: FCircuit<CF1<C1>>,
     C2::BaseField: PrimeField + Absorb,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
         let pp_hash = FpVar::<CF1<C1>>::new_witness(cs.clone(), || Ok(self.pp_hash))?;
@@ -498,7 +495,7 @@ mod tests {
         let mut transcript_p = PoseidonSponge::new(&poseidon_config);
         let mut transcript_v = PoseidonSponge::new(&poseidon_config);
 
-        let (_, _, F_coeffs, K_coeffs, _, _) = Folding::<Projective>::prove(
+        let (_, _, proof, _) = Folding::<Projective>::prove(
             &mut transcript_p,
             &r1cs,
             &instance,
@@ -507,20 +504,15 @@ mod tests {
             &witnesses,
         )?;
 
-        let folded_instance = Folding::<Projective>::verify(
-            &mut transcript_v,
-            &instance,
-            &instances,
-            F_coeffs.clone(),
-            K_coeffs.clone(),
-        )?;
+        let folded_instance =
+            Folding::<Projective>::verify(&mut transcript_v, &instance, &instances, proof.clone())?;
 
         let cs = ConstraintSystem::new_ref();
         let mut transcript_var = PoseidonSpongeVar::new(cs.clone(), &poseidon_config);
         let instance_var = CommittedInstanceVar::new_witness(cs.clone(), || Ok(instance))?;
         let instances_var = Vec::new_witness(cs.clone(), || Ok(instances))?;
-        let F_coeffs_var = Vec::new_witness(cs.clone(), || Ok(F_coeffs))?;
-        let K_coeffs_var = Vec::new_witness(cs.clone(), || Ok(K_coeffs))?;
+        let F_coeffs_var = Vec::new_witness(cs.clone(), || Ok(proof.F_coeffs))?;
+        let K_coeffs_var = Vec::new_witness(cs.clone(), || Ok(proof.K_coeffs))?;
 
         let (folded_instance_var, _) = FoldingGadget::fold_committed_instance(
             &mut transcript_var,

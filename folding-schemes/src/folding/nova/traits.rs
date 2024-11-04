@@ -1,11 +1,18 @@
 use ark_ec::CurveGroup;
+use ark_r1cs_std::fields::fp::FpVar;
+use ark_relations::r1cs::SynthesisError;
 use ark_std::{rand::RngCore, UniformRand};
 
+use super::circuits::CommittedInstanceVar;
+use super::decider_eth_circuit::WitnessVar;
 use super::{CommittedInstance, Witness};
-use crate::arith::ArithSampler;
-use crate::arith::{r1cs::R1CS, Arith};
+use crate::arith::{
+    r1cs::{circuits::R1CSMatricesVar, R1CS},
+    Arith, ArithGadget, ArithSampler,
+};
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::CF1;
+use crate::utils::gadgets::{EquivalenceGadget, VectorGadget};
 use crate::Error;
 
 /// Implements `Arith` for R1CS, where the witness is of type [`Witness`], and
@@ -93,5 +100,27 @@ impl<C: CurveGroup> ArithSampler<C, Witness<C>, CommittedInstance<C>> for R1CS<C
         );
 
         Ok((witness, cm_witness))
+    }
+}
+
+impl<C: CurveGroup> ArithGadget<WitnessVar<C>, CommittedInstanceVar<C>>
+    for R1CSMatricesVar<C::ScalarField, FpVar<C::ScalarField>>
+{
+    type Evaluation = (Vec<FpVar<C::ScalarField>>, Vec<FpVar<C::ScalarField>>);
+
+    fn eval_relation(
+        &self,
+        w: &WitnessVar<C>,
+        u: &CommittedInstanceVar<C>,
+    ) -> Result<Self::Evaluation, SynthesisError> {
+        self.eval_at_z(&[&[u.u.clone()][..], &u.x, &w.W].concat())
+    }
+
+    fn enforce_evaluation(
+        w: &WitnessVar<C>,
+        _u: &CommittedInstanceVar<C>,
+        (AzBz, uCz): Self::Evaluation,
+    ) -> Result<(), SynthesisError> {
+        EquivalenceGadget::<C::ScalarField>::enforce_equivalent(&AzBz[..], &uCz.add(&w.E)?[..])
     }
 }

@@ -10,6 +10,8 @@ use crate::utils::vec::{
 };
 use crate::Error;
 
+pub mod circuits;
+
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct R1CS<F: PrimeField> {
     pub l: usize, // io len
@@ -121,8 +123,14 @@ impl<F: PrimeField> From<CCS<F>> for R1CS<F> {
 
 /// extracts arkworks ConstraintSystem matrices into crate::utils::vec::SparseMatrix format as R1CS
 /// struct.
-pub fn extract_r1cs<F: PrimeField>(cs: &ConstraintSystem<F>) -> R1CS<F> {
-    let m = cs.to_matrices().unwrap();
+pub fn extract_r1cs<F: PrimeField>(cs: &ConstraintSystem<F>) -> Result<R1CS<F>, Error> {
+    let m = cs.to_matrices().ok_or_else(|| {
+        Error::ConversionError(
+            "ConstraintSystem".into(),
+            "ConstraintMatrices".into(),
+            "The matrices have not been generated yet".into(),
+        )
+    })?;
 
     let n_rows = cs.num_constraints;
     let n_cols = cs.num_instance_variables + cs.num_witness_variables; // cs.num_instance_variables already counts the 1
@@ -143,12 +151,12 @@ pub fn extract_r1cs<F: PrimeField>(cs: &ConstraintSystem<F>) -> R1CS<F> {
         coeffs: m.c,
     };
 
-    R1CS::<F> {
+    Ok(R1CS::<F> {
         l: cs.num_instance_variables - 1, // -1 to subtract the first '1'
         A,
         B,
         C,
-    }
+    })
 }
 
 /// extracts the witness and the public inputs from arkworks ConstraintSystem.

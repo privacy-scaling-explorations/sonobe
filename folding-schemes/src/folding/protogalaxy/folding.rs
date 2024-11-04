@@ -15,9 +15,31 @@ use super::ProtoGalaxyError;
 use super::{CommittedInstance, Witness};
 
 use crate::arith::r1cs::R1CS;
+use crate::folding::traits::Dummy;
 use crate::transcript::Transcript;
 use crate::utils::vec::*;
 use crate::Error;
+
+#[derive(Debug, Clone)]
+pub struct ProtoGalaxyProof<F: PrimeField> {
+    pub F_coeffs: Vec<F>,
+    pub K_coeffs: Vec<F>,
+}
+
+impl<F: PrimeField> Dummy<(usize, usize, usize)> for ProtoGalaxyProof<F> {
+    fn dummy((t, d, k): (usize, usize, usize)) -> Self {
+        Self {
+            F_coeffs: vec![F::zero(); t],
+            K_coeffs: vec![F::zero(); d * k + 1],
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ProtoGalaxyAux<C: CurveGroup> {
+    pub L_X_evals: Vec<C::ScalarField>,
+    pub phi_stars: Vec<C>,
+}
 
 #[derive(Clone, Debug)]
 /// Implements the protocol described in section 4 of
@@ -28,7 +50,6 @@ pub struct Folding<C: CurveGroup> {
 impl<C: CurveGroup> Folding<C>
 where
     <C as Group>::ScalarField: Absorb,
-    <C as CurveGroup>::BaseField: Absorb,
 {
     #![allow(clippy::type_complexity)]
     /// implements the non-interactive Prover from the folding scheme described in section 4
@@ -45,10 +66,8 @@ where
         (
             CommittedInstance<C, true>,
             Witness<C::ScalarField>,
-            Vec<C::ScalarField>, // F_X coeffs
-            Vec<C::ScalarField>, // K_X coeffs
-            Vec<C::ScalarField>, // L_X evals
-            Vec<C>,              // phi_stars
+            ProtoGalaxyProof<C::ScalarField>,
+            ProtoGalaxyAux<C>,
         ),
         Error,
     > {
@@ -243,10 +262,11 @@ where
                 w: w_star,
                 r_w: r_w_star,
             },
-            F_coeffs,
-            K_coeffs,
-            L_X_evals,
-            phi_stars,
+            ProtoGalaxyProof { F_coeffs, K_coeffs },
+            ProtoGalaxyAux {
+                L_X_evals,
+                phi_stars,
+            },
         ))
     }
 
@@ -258,8 +278,7 @@ where
         // incoming instances
         vec_instances: &[CommittedInstance<C, false>],
         // polys from P
-        F_coeffs: Vec<C::ScalarField>,
-        K_coeffs: Vec<C::ScalarField>,
+        proof: ProtoGalaxyProof<C::ScalarField>,
     ) -> Result<CommittedInstance<C, true>, Error> {
         let t = instance.betas.len();
 
@@ -270,20 +289,20 @@ where
         let delta = transcript.get_challenge();
         let deltas = exponential_powers(delta, t);
 
-        transcript.absorb(&F_coeffs);
+        transcript.absorb(&proof.F_coeffs);
 
         let alpha = transcript.get_challenge();
         let alphas = all_powers(alpha, t);
 
         // F(alpha) = e + \sum_t F_i * alpha^i
         let mut F_alpha = instance.e;
-        for (i, F_i) in F_coeffs.iter().skip(1).enumerate() {
+        for (i, F_i) in proof.F_coeffs.iter().skip(1).enumerate() {
             F_alpha += *F_i * alphas[i + 1];
         }
 
         let betas_star = betas_star(&instance.betas, &deltas, alpha);
 
-        transcript.absorb(&K_coeffs);
+        transcript.absorb(&proof.K_coeffs);
 
         let k = vec_instances.len();
         let H =
@@ -291,7 +310,7 @@ where
         let L_X: Vec<DensePolynomial<C::ScalarField>> = lagrange_polys(H);
         let Z_X: DensePolynomial<C::ScalarField> = H.vanishing_polynomial().into();
         let K_X: DensePolynomial<C::ScalarField> =
-            DensePolynomial::<C::ScalarField>::from_coefficients_vec(K_coeffs);
+            DensePolynomial::<C::ScalarField>::from_coefficients_vec(proof.K_coeffs);
 
         let gamma = transcript.get_challenge();
 
@@ -483,26 +502,19 @@ pub mod tests {
         let mut transcript_p = PoseidonSponge::<Fr>::new(&poseidon_config);
         let mut transcript_v = PoseidonSponge::<Fr>::new(&poseidon_config);
 
-        let (folded_instance, folded_witness, F_coeffs, K_coeffs, _, _) =
-            Folding::<Projective>::prove(
-                &mut transcript_p,
-                &r1cs,
-                &instance,
-                &witness,
-                &instances,
-                &witnesses,
-            )
-            .unwrap();
-
-        // verifier
-        let folded_instance_v = Folding::<Projective>::verify(
-            &mut transcript_v,
+        let (folded_instance, folded_witness, proof, _) = Folding::<Projective>::prove(
+            &mut transcript_p,
+            &r1cs,
             &instance,
+            &witness,
             &instances,
-            F_coeffs,
-            K_coeffs,
+            &witnesses,
         )
         .unwrap();
+
+        // verifier
+        let folded_instance_v =
+            Folding::<Projective>::verify(&mut transcript_v, &instance, &instances, proof).unwrap();
 
         // check that prover & verifier folded instances are the same values
         assert_eq!(folded_instance.phi, folded_instance_v.phi);
@@ -533,24 +545,22 @@ pub mod tests {
             // generate the instances to be fold
             let (_, _, witnesses, instances) = prepare_inputs(k);
 
-            let (folded_instance, folded_witness, F_coeffs, K_coeffs, _, _) =
-                Folding::<Projective>::prove(
-                    &mut transcript_p,
-                    &r1cs,
-                    &running_instance,
-                    &running_witness,
-                    &instances,
-                    &witnesses,
-                )
-                .unwrap();
+            let (folded_instance, folded_witness, proof, _) = Folding::<Projective>::prove(
+                &mut transcript_p,
+                &r1cs,
+                &running_instance,
+                &running_witness,
+                &instances,
+                &witnesses,
+            )
+            .unwrap();
 
             // verifier
             let folded_instance_v = Folding::<Projective>::verify(
                 &mut transcript_v,
                 &running_instance,
                 &instances,
-                F_coeffs,
-                K_coeffs,
+                proof,
             )
             .unwrap();
 

@@ -12,7 +12,7 @@ use crate::{transcript::Transcript, Error};
 
 use super::circuits::CF1;
 
-pub trait CommittedInstanceOps<C: CurveGroup> {
+pub trait CommittedInstanceOps<C: CurveGroup>: Inputize<CF1<C>, Self::Var> {
     /// The in-circuit representation of the committed instance.
     type Var: AllocVar<Self, CF1<C>> + CommittedInstanceVarOps<C>;
     /// `hash` implements the committed instance hash compatible with the
@@ -85,7 +85,11 @@ pub trait CommittedInstanceVarOps<C: CurveGroup> {
         sponge.absorb(&z_0)?;
         sponge.absorb(&z_i)?;
         sponge.absorb(&U_vec)?;
-        Ok((sponge.squeeze_field_elements(1)?.pop().unwrap(), U_vec))
+        Ok((
+            // `unwrap` is safe because the sponge is guaranteed to return a single element
+            sponge.squeeze_field_elements(1)?.pop().unwrap(),
+            U_vec,
+        ))
     }
 
     /// Returns the commitments contained in the committed instance.
@@ -128,4 +132,17 @@ impl<T: Default + Clone> Dummy<usize> for Vec<T> {
     fn dummy(cfg: usize) -> Self {
         vec![Default::default(); cfg]
     }
+}
+
+impl<T: Default> Dummy<()> for T {
+    fn dummy(_: ()) -> Self {
+        Default::default()
+    }
+}
+
+/// Converts a value `self` into a vector of field elements, ordered in the same
+/// way as how a variable of type `Var` would be represented in the circuit.
+/// This is useful for the verifier to compute the public inputs.
+pub trait Inputize<F, Var> {
+    fn inputize(&self) -> Vec<F>;
 }

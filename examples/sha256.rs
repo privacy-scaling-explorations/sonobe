@@ -140,6 +140,18 @@ fn main() {
 
     println!("Run the Nova's IVC verifier");
     let ivc_proof = folding_scheme.ivc_proof();
+
+    use ark_serialize::CanonicalSerialize;
+    use folding_schemes::Compressible;
+
+    let mut ivc_proof_serialized = vec![];
+    assert!(ivc_proof
+        .serialize_compressed(&mut ivc_proof_serialized)
+        .is_ok());
+
+    dbg!(ivc_proof_serialized.len());
+    dbg!(ivc_proof.compress().unwrap().len());
+
     N::verify(
         nova_params.1, // Nova's verifier params
         ivc_proof,

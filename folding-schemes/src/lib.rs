@@ -34,6 +34,10 @@ pub enum Error {
     ProtoGalaxy(folding::protogalaxy::ProtoGalaxyError),
     #[error("std::io::Error")]
     IOError(#[from] std::io::Error),
+    #[error("lz4_flex::block::CompressError")]
+    CompressError(#[from] lz4_flex::block::CompressError),
+    #[error("lz4_flex::block::DecompressError")]
+    DecompressError(#[from] lz4_flex::block::DecompressError),
 
     // Relation errors
     #[error("Relation not satisfied")]
@@ -133,7 +137,13 @@ where
     type IncomingInstance: Debug; // contains the CommittedInstance + Witness
     type MultiCommittedInstanceWithWitness: Debug; // type used for the extra instances in the multi-instance folding setting
     type CFInstance: Debug; // CycleFold CommittedInstance & Witness
-    type IVCProof: PartialEq + Eq + Clone + Debug + CanonicalSerialize + CanonicalDeserialize;
+    type IVCProof: PartialEq
+        + Eq
+        + Clone
+        + Debug
+        + CanonicalSerialize
+        + CanonicalDeserialize
+        + Compressible;
 
     /// deserialize Self::ProverParam and recover the not serialized data that is recomputed on the
     /// fly to save serialized bytes.
@@ -283,4 +293,27 @@ where
         incoming_instance: &Self::CommittedInstance,
         proof: Self::Proof,
     ) -> Result<Vec<u8>, Error>;
+}
+
+/// Compressible defines if a type can be compressed & decompressed. This is useful for those data
+/// structures that need to be sent over the network and that require a considerable byte size. For
+/// example it's useful for types like the IVCProof, where for example for a FCircuit of
+/// -  60k R1CS constraints, it reduces  3x the IVCProof bytes representation size
+/// - 420k R1CS constraints, it reduces 10x the IVCProof bytes representation size
+/// - 810k R1CS constraints, it reduces 14x the IVCProof bytes representation size
+///
+/// As can be seen in the trait, by default it implements the methods at the trait level by calling
+/// internally to the CanonicalSerialize and CanonicalDeserialize methods combined with the
+/// compression methods. Hence, the Compressible trait implementation by default depends on the
+/// CanonicalSerialize and CanonicalDeserialize traits of arkworks.
+pub trait Compressible: Debug + Clone + CanonicalSerialize + CanonicalDeserialize {
+    fn compress(&self) -> Result<Vec<u8>, Error> {
+        let mut bytes = vec![];
+        self.serialize_compressed(&mut bytes)?;
+        Ok(lz4_flex::block::compress_prepend_size(&bytes))
+    }
+    fn decompress(b: Vec<u8>) -> Result<Self, Error> {
+        let bytes = lz4_flex::block::decompress_size_prepended(&b)?;
+        Ok(Self::deserialize_compressed(bytes.as_slice())?)
+    }
 }

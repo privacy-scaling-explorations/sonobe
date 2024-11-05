@@ -39,7 +39,7 @@ use crate::{
     frontend::{utils::DummyCircuit, FCircuit},
     transcript::poseidon::poseidon_canonical_config,
     utils::{get_cm_coordinates, pp_hash},
-    Error, FoldingScheme,
+    Compressible, Error, FoldingScheme,
 };
 
 pub mod circuits;
@@ -324,6 +324,17 @@ where
     /// Proving parameters of the underlying commitment scheme over C2
     pub cf_cs_params: CS2::ProverParams,
 }
+
+impl<C1, C2, CS1, CS2> Compressible for ProverParams<C1, C2, CS1, CS2>
+where
+    C1: CurveGroup,
+    C2: CurveGroup,
+    CS1: CommitmentScheme<C1>,
+    CS2: CommitmentScheme<C2>,
+{
+    // implemented at trait level
+}
+
 impl<C1, C2, CS1, CS2> CanonicalSerialize for ProverParams<C1, C2, CS1, CS2>
 where
     C1: CurveGroup,
@@ -479,6 +490,13 @@ where
     pub u_i: CommittedInstance<C1, false>,
     pub cf_W_i: CycleFoldWitness<C2>,
     pub cf_U_i: CycleFoldCommittedInstance<C2>,
+}
+
+/// Implements (at trait level) the methods `.compress()` and `.decompress(b)`, which internally
+/// will serialize and deserialize respectively, together with compressing and decompressing
+/// respectively the serialized bytes.
+impl<C1: CurveGroup, C2: CurveGroup> Compressible for IVCProof<C1, C2> {
+    // implemented at trait level
 }
 
 /// Implements ProtoGalaxy+CycleFold's IVC, described in [ProtoGalaxy] and

@@ -23,7 +23,7 @@ pub mod tests {
     use crate::frontend::FCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
     use crate::Error;
-    use crate::FoldingScheme;
+    use crate::{Compressible, FoldingScheme};
 
     /// tests the IVC proofs and its serializers for the 3 implemented IVCs: Nova, HyperNova and
     /// ProtoGalaxy.
@@ -154,18 +154,23 @@ pub mod tests {
 
         // get the IVCProof
         let ivc_proof: FS::IVCProof = new_fs.ivc_proof();
+        // compress IVCProof to bytes
+        let ivc_proof_compressed = ivc_proof.compress().unwrap();
+        // decompress IVCProof
+        let ivc_proof_decompressed = FS::IVCProof::decompress(ivc_proof_compressed).unwrap();
 
         // serialize IVCProof
-        let mut ivc_proof_serialized = vec![];
-        assert!(ivc_proof
-            .serialize_compressed(&mut ivc_proof_serialized)
-            .is_ok());
+        // let mut ivc_proof_serialized = vec![];
+        // assert!(ivc_proof
+        //     .serialize_compressed(&mut ivc_proof_serialized)
+        //     .is_ok());
+
         // deserialize IVCProof
-        let ivc_proof_deserialized =
-            FS::IVCProof::deserialize_compressed(ivc_proof_serialized.as_slice()).unwrap();
+        // let ivc_proof_deserialized =
+        //     FS::IVCProof::deserialize_compressed(ivc_proof_serialized.as_slice()).unwrap();
 
         // verify the last IVCProof from the recovered from serialization FS
-        FS::verify(fs_vp_deserialized.clone(), ivc_proof_deserialized).unwrap();
+        FS::verify(fs_vp_deserialized.clone(), ivc_proof_decompressed).unwrap();
 
         Ok(())
     }

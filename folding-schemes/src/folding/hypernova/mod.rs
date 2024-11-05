@@ -5,8 +5,10 @@ use ark_crypto_primitives::sponge::{
 };
 use ark_ec::{CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
-use ark_r1cs_std::{prelude::CurveVar, ToConstraintFieldGadget};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress, SerializationError};
+use ark_r1cs_std::{groups::GroupOpsBounds, prelude::CurveVar, ToConstraintFieldGadget};
+use ark_serialize::{
+    CanonicalDeserialize, CanonicalSerialize, Compress, SerializationError, Valid,
+};
 use ark_std::{fmt::Debug, marker::PhantomData, rand::RngCore, One, Zero};
 
 pub mod cccs;
@@ -15,6 +17,7 @@ pub mod decider_eth;
 pub mod decider_eth_circuit;
 pub mod lcccs;
 pub mod nimfs;
+pub mod serializers;
 pub mod utils;
 
 use cccs::CCCS;
@@ -46,7 +49,7 @@ use crate::{
         r1cs::{extract_w_x, R1CS},
         Arith,
     },
-    FoldingScheme, MultiFolding,
+    Compressible, FoldingScheme, MultiFolding,
 };
 
 /// Configuration for HyperNova's CycleFold circuit
@@ -117,26 +120,17 @@ where
     pub ccs: Option<CCS<C1::ScalarField>>,
 }
 
-impl<
-        C1: CurveGroup,
-        C2: CurveGroup,
-        CS1: CommitmentScheme<C1, H>,
-        CS2: CommitmentScheme<C2, H>,
-        const H: bool,
-    > CanonicalSerialize for ProverParams<C1, C2, CS1, CS2, H>
+/// Implements (at trait level) the methods `.compress()` and `.decompress(b)`, which internally
+/// will serialize and deserialize respectively, together with compressing and decompressing
+/// respectively the serialized bytes.
+impl<C1, C2, CS1, CS2, const H: bool> Compressible for ProverParams<C1, C2, CS1, CS2, H>
+where
+    C1: CurveGroup,
+    C2: CurveGroup,
+    CS1: CommitmentScheme<C1, H>,
+    CS2: CommitmentScheme<C2, H>,
 {
-    fn serialize_with_mode<W: std::io::prelude::Write>(
-        &self,
-        mut writer: W,
-        compress: Compress,
-    ) -> Result<(), SerializationError> {
-        self.cs_pp.serialize_with_mode(&mut writer, compress)?;
-        self.cf_cs_pp.serialize_with_mode(&mut writer, compress)
-    }
-
-    fn serialized_size(&self, compress: Compress) -> usize {
-        self.cs_pp.serialized_size(compress) + self.cf_cs_pp.serialized_size(compress)
-    }
+    // implemented at trait level
 }
 
 /// Verification parameters for HyperNova-based IVC
@@ -158,27 +152,6 @@ pub struct VerifierParams<
     pub cs_vp: CS1::VerifierParams,
     /// Verification parameters of the underlying commitment scheme over C2
     pub cf_cs_vp: CS2::VerifierParams,
-}
-
-impl<C1, C2, CS1, CS2, const H: bool> CanonicalSerialize for VerifierParams<C1, C2, CS1, CS2, H>
-where
-    C1: CurveGroup,
-    C2: CurveGroup,
-    CS1: CommitmentScheme<C1, H>,
-    CS2: CommitmentScheme<C2, H>,
-{
-    fn serialize_with_mode<W: std::io::prelude::Write>(
-        &self,
-        mut writer: W,
-        compress: ark_serialize::Compress,
-    ) -> Result<(), ark_serialize::SerializationError> {
-        self.cs_vp.serialize_with_mode(&mut writer, compress)?;
-        self.cf_cs_vp.serialize_with_mode(&mut writer, compress)
-    }
-
-    fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
-        self.cs_vp.serialized_size(compress) + self.cf_cs_vp.serialized_size(compress)
-    }
 }
 
 impl<C1, C2, CS1, CS2, const H: bool> VerifierParams<C1, C2, CS1, CS2, H>
@@ -215,6 +188,13 @@ where
     pub u_i: CCCS<C1>,
     pub cf_W_i: CycleFoldWitness<C2>,
     pub cf_U_i: CycleFoldCommittedInstance<C2>,
+}
+
+/// Implements (at trait level) the methods `.compress()` and `.decompress(b)`, which internally
+/// will serialize and deserialize respectively, together with compressing and decompressing
+/// respectively the serialized bytes.
+impl<C1: CurveGroup, C2: CurveGroup> Compressible for IVCProof<C1, C2> {
+    // implemented at trait level
 }
 
 /// Implements HyperNova+CycleFold's IVC, described in

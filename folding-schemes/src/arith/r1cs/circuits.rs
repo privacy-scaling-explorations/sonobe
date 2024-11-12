@@ -121,8 +121,8 @@ pub mod tests {
             nonnative::uint::NonNativeUintVar,
         },
         nova::{
-            circuits::CommittedInstanceVar, decider_eth_circuit::WitnessVar, CommittedInstance,
-            Witness,
+            decider_eth_circuit::WitnessVar, nifs::nova_circuits::CommittedInstanceVar,
+            CommittedInstance, Witness,
         },
     };
     use crate::frontend::{

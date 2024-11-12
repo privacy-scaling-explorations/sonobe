@@ -28,7 +28,7 @@ use crate::{
             nonnative::affine::NonNativeAffineVar,
             CF1, CF2,
         },
-        nova::{circuits::CommittedInstanceVar, decider_eth_circuit::WitnessVar},
+        nova::{decider_eth_circuit::WitnessVar, nifs::nova_circuits::CommittedInstanceVar},
         traits::{CommittedInstanceOps, CommittedInstanceVarOps, Dummy, WitnessOps, WitnessVarOps},
     },
 };

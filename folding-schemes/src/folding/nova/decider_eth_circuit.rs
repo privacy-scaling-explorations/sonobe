@@ -11,8 +11,6 @@ use ark_ec::CurveGroup;
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
-    boolean::Boolean,
-    eq::EqGadget,
     fields::fp::FpVar,
     prelude::CurveVar,
     ToConstraintFieldGadget,
@@ -21,8 +19,8 @@ use ark_relations::r1cs::{Namespace, SynthesisError};
 use ark_std::{borrow::Borrow, marker::PhantomData};
 
 use super::{
-    circuits::{ChallengeGadget, CommittedInstanceVar, NIFSGadget},
-    nifs::{nova::NIFS, NIFSTrait},
+    nifs::nova_circuits::{CommittedInstanceVar, NIFSGadget},
+    nifs::{nova::NIFS, NIFSGadgetTrait, NIFSTrait},
     CommittedInstance, Nova, Witness,
 };
 use crate::commitment::{pedersen::Params as PedersenParams, CommitmentScheme};
@@ -108,6 +106,7 @@ impl<
     > TryFrom<Nova<C1, GC1, C2, GC2, FC, CS1, CS2, H>> for DeciderEthCircuit<C1, C2, GC2>
 where
     CF1<C1>: Absorb,
+    <C1 as CurveGroup>::BaseField: PrimeField,
 {
     type Error = Error;
 
@@ -187,21 +186,12 @@ where
         U_vec: Vec<FpVar<CF1<C>>>,
         u: CommittedInstanceVar<C>,
         proof: C,
-        randomness: CF1<C>,
+        _randomness: CF1<C>,
     ) -> Result<CommittedInstanceVar<C>, SynthesisError> {
         let cs = transcript.cs();
         let cmT = NonNativeAffineVar::new_input(cs.clone(), || Ok(proof))?;
-        let r = FpVar::new_input(cs.clone(), || Ok(randomness))?;
-        let r_bits = ChallengeGadget::<C, CommittedInstance<C>>::get_challenge_gadget(
-            transcript,
-            pp_hash,
-            U_vec,
-            u.clone(),
-            Some(cmT),
-        )?;
-        Boolean::le_bits_to_fp_var(&r_bits)?.enforce_equal(&r)?;
-
-        NIFSGadget::<C>::fold_committed_instance(r, U, u)
+        let (new_U, _) = NIFSGadget::verify(transcript, pp_hash, U, U_vec, u, Some(cmT))?;
+        Ok(new_U)
     }
 
     fn fold_group_elements_native(

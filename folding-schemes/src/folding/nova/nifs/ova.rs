@@ -9,10 +9,12 @@ use ark_std::rand::RngCore;
 use ark_std::{One, UniformRand, Zero};
 use std::marker::PhantomData;
 
+use super::nova::ChallengeGadget;
+use super::ova_circuits::CommittedInstanceVar;
 use super::NIFSTrait;
 use crate::arith::r1cs::R1CS;
 use crate::commitment::CommitmentScheme;
-use crate::folding::nova::circuits::ChallengeGadget;
+use crate::folding::traits::{CommittedInstanceOps, Inputize};
 use crate::folding::{circuits::CF1, traits::Dummy};
 use crate::transcript::{AbsorbNonNative, Transcript};
 use crate::utils::vec::{hadamard, mat_vec_mul, vec_scalar_mul, vec_sub};
@@ -47,6 +49,24 @@ where
         self.cmWE
             .to_native_sponge_field_elements_as_vec()
             .to_sponge_field_elements(dest);
+    }
+}
+
+impl<C: CurveGroup> CommittedInstanceOps<C> for CommittedInstance<C> {
+    type Var = CommittedInstanceVar<C>;
+
+    fn get_commitments(&self) -> Vec<C> {
+        vec![self.cmWE]
+    }
+
+    fn is_incoming(&self) -> bool {
+        self.u == One::one()
+    }
+}
+
+impl<C: CurveGroup> Inputize<C::ScalarField, CommittedInstanceVar<C>> for CommittedInstance<C> {
+    fn inputize(&self) -> Vec<C::ScalarField> {
+        [&[self.u][..], &self.x, &self.cmWE.inputize()].concat()
     }
 }
 
@@ -121,7 +141,9 @@ where
     type CommittedInstance = CommittedInstance<C>;
     type Witness = Witness<C>;
     type ProverAux = ();
-    type Proof = ();
+    // Proof is unused, but set to C::ScalarField so that the NIFSGadgetTrait abstraction can
+    // define the ProofsVar implementing the AllocVar from Proof
+    type Proof = C::ScalarField;
 
     fn new_witness(w: Vec<C::ScalarField>, _e_len: usize, rng: impl RngCore) -> Self::Witness {
         Witness::new::<H>(w, rng)
@@ -182,11 +204,12 @@ where
 
         let w = Self::fold_witness(r_Fr, W_i, w_i, &())?;
 
-        let (ci, _r_bits_v) = Self::verify(&mut transcript_v, pp_hash, U_i, u_i, &())?;
+        let proof = C::ScalarField::zero();
+        let (ci, _r_bits_v) = Self::verify(&mut transcript_v, pp_hash, U_i, u_i, &proof)?;
         #[cfg(test)]
         assert_eq!(_r_bits_v, r_bits);
 
-        Ok((w, ci, (), r_bits))
+        Ok((w, ci, proof, r_bits))
     }
 
     fn verify(
@@ -203,7 +226,7 @@ where
             .ok_or(Error::OutOfBounds)?;
 
         // recall that r=alpha, and u=mu between Nova and Ova respectively
-        let u = U_i.u + r; // u_i.u is always 1 IN ova as we just can do sequential IVC.
+        let u = U_i.u + r; // u_i.u is always 1 in Ova as we just can do IVC (not PCD).
         let cmWE = U_i.cmWE + u_i.cmWE.mul(r);
         let x = U_i
             .x

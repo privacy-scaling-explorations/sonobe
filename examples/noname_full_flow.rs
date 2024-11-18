@@ -15,6 +15,7 @@ use noname::backends::r1cs::R1csBn254Field;
 use ark_groth16::Groth16;
 use ark_grumpkin::{constraints::GVar as GVar2, Projective as G2};
 
+use experimental_frontends::noname::NonameFCircuit;
 use folding_schemes::{
     commitment::{kzg::KZG, pedersen::Pedersen},
     folding::{
@@ -28,7 +29,6 @@ use folding_schemes::{
     transcript::poseidon::poseidon_canonical_config,
     Decider, FoldingScheme,
 };
-use frontends::noname::NonameFCircuit;
 use std::time::Instant;
 
 use solidity_verifiers::{

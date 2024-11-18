@@ -14,6 +14,7 @@ use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as G1};
 use ark_groth16::Groth16;
 use ark_grumpkin::{constraints::GVar as GVar2, Projective as G2};
 
+use experimental_frontends::noir::NoirFCircuit;
 use folding_schemes::{
     commitment::{kzg::KZG, pedersen::Pedersen},
     folding::{
@@ -27,7 +28,6 @@ use folding_schemes::{
     transcript::poseidon::poseidon_canonical_config,
     Decider, FoldingScheme,
 };
-use frontends::noir::NoirFCircuit;
 use std::{path::Path, time::Instant};
 
 use solidity_verifiers::{
@@ -43,7 +43,8 @@ fn main() {
 
     // initialize the noir fcircuit
     let f_circuit = NoirFCircuit::new((
-        Path::new("./frontends/src/noir/test_folder/test_mimc/target/test_mimc.json").into(),
+        Path::new("./experimental-frontends/src/noir/test_folder/test_mimc/target/test_mimc.json")
+            .into(),
         1,
         0,
     ))

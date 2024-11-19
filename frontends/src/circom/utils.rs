@@ -4,11 +4,10 @@ use ark_circom::{
 };
 use ark_ff::{BigInteger, PrimeField};
 use ark_serialize::Read;
-use color_eyre::Result;
 use num_bigint::{BigInt, Sign};
 use std::{fs::File, io::Cursor, marker::PhantomData, path::PathBuf};
 
-use crate::{utils::PathOrBin, Error};
+use folding_schemes::{utils::PathOrBin, Error};
 
 // A struct that wraps Circom functionalities, allowing for extraction of R1CS and witnesses
 // based on file paths to Circom's .r1cs and .wasm.
@@ -109,11 +108,19 @@ impl<F: PrimeField> CircomWrapper<F> {
 
     // Converts a num_bigint::BigInt to a PrimeField::BigInt.
     pub fn num_bigint_to_ark_bigint(&self, value: &BigInt) -> Result<F::BigInt, Error> {
-        let big_uint = value
-            .to_biguint()
-            .ok_or_else(|| Error::BigIntConversionError("BigInt is negative".to_string()))?;
+        let big_uint = value.to_biguint().ok_or_else(|| {
+            Error::ConversionError(
+                "BigInt".into(),
+                "BigUint".into(),
+                "BigInt is negative".into(),
+            )
+        })?;
         F::BigInt::try_from(big_uint).map_err(|_| {
-            Error::BigIntConversionError("Failed to convert to PrimeField::BigInt".to_string())
+            Error::ConversionError(
+                "BigUint".into(),
+                "PrimeField::BigInt".into(),
+                "BigUint is too large to fit into PrimeField::BigInt".into(),
+            )
         })
     }
 
@@ -134,14 +141,14 @@ mod tests {
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 
     //To generate .r1cs and .wasm files, run the below command in the terminal.
-    //bash ./folding-schemes/src/frontend/circom/test_folder/compile.sh
+    //bash ./frontends/src/circom/test_folder/compile.sh
 
     // Test the satisfication by using the CircomBuilder of circom-compat
     #[test]
     fn test_circombuilder_satisfied() {
         let cfg = CircomConfig::<Fr>::new(
-            "./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm",
-            "./src/frontend/circom/test_folder/cubic_circuit.r1cs",
+            "./src/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm",
+            "./src/circom/test_folder/cubic_circuit.r1cs",
         )
         .unwrap();
         let mut builder = CircomBuilder::new(cfg);
@@ -156,9 +163,9 @@ mod tests {
     // Test the satisfication by using the CircomWrapper
     #[test]
     fn test_extract_r1cs_and_witness() {
-        let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit.r1cs");
+        let r1cs_path = PathBuf::from("./src/circom/test_folder/cubic_circuit.r1cs");
         let wasm_path =
-            PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
+            PathBuf::from("./src/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
         let inputs = vec![("ivc_input".to_string(), vec![BigInt::from(3)])];
         let wrapper = CircomWrapper::<Fr>::new(r1cs_path.into(), wasm_path.into()).unwrap();

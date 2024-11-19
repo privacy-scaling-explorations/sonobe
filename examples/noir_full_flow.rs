@@ -16,18 +16,19 @@ use ark_grumpkin::{constraints::GVar as GVar2, Projective as G2};
 
 use folding_schemes::{
     commitment::{kzg::KZG, pedersen::Pedersen},
-    folding::nova::{
-        decider_eth::{prepare_calldata, Decider as DeciderEth},
-        Nova, PreprocessorParam,
+    folding::{
+        nova::{
+            decider_eth::{prepare_calldata, Decider as DeciderEth},
+            Nova, PreprocessorParam,
+        },
+        traits::CommittedInstanceOps,
     },
-    frontend::{
-        noir::{load_noir_circuit, NoirFCircuit},
-        FCircuit,
-    },
+    frontend::FCircuit,
     transcript::poseidon::poseidon_canonical_config,
     Decider, FoldingScheme,
 };
-use std::{env, time::Instant};
+use frontends::noir::{load_noir_circuit, NoirFCircuit};
+use std::time::Instant;
 
 use solidity_verifiers::{
     evm::{compile_solidity, Evm},
@@ -41,14 +42,9 @@ fn main() {
     let z_0 = vec![Fr::from(1)];
 
     // initialize the noir fcircuit
-    let cur_path = env::current_dir().unwrap();
+    let circuit_path = format!("./frontends/src/noir/test_folder/test_mimc/target/test_mimc.json",);
 
-    let circuit_path = format!(
-        "{}/folding-schemes/src/frontend/noir/test_folder/test_mimc/target/test_mimc.json",
-        cur_path.to_str().unwrap()
-    );
-
-    let circuit = load_noir_circuit(circuit_path);
+    let circuit = load_noir_circuit(circuit_path).unwrap();
     let f_circuit = NoirFCircuit {
         circuit,
         state_len: 1,
@@ -79,7 +75,8 @@ fn main() {
     let mut nova = N::init(&nova_params, f_circuit.clone(), z_0).unwrap();
 
     // prepare the Decider prover & verifier params
-    let (decider_pp, decider_vp) = D::preprocess(&mut rng, &nova_params, nova.clone()).unwrap();
+    let (decider_pp, decider_vp) =
+        D::preprocess(&mut rng, nova_params.clone(), nova.clone()).unwrap();
 
     // run n steps of the folding iteration
     for i in 0..5 {
@@ -87,6 +84,13 @@ fn main() {
         nova.prove_step(rng, vec![], None).unwrap();
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
+    // verify the last IVC proof
+    let ivc_proof = nova.ivc_proof();
+    N::verify(
+        nova_params.1, // Nova's verifier params
+        ivc_proof,
+    )
+    .unwrap();
 
     let start = Instant::now();
     let proof = D::prove(rng, decider_pp, nova.clone()).unwrap();
@@ -97,8 +101,8 @@ fn main() {
         nova.i,
         nova.z_0.clone(),
         nova.z_i.clone(),
-        &nova.U_i,
-        &nova.u_i,
+        &nova.U_i.get_commitments(),
+        &nova.u_i.get_commitments(),
         &proof,
     )
     .unwrap();

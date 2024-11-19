@@ -13,11 +13,11 @@ use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
     fields::{nonnative::NonNativeFieldVar, FieldVar},
-    groups::GroupOpsBounds,
     prelude::CurveVar,
     ToBitsGadget,
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_iter, rand::RngCore, UniformRand, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
@@ -30,7 +30,7 @@ use crate::utils::{
 };
 use crate::Error;
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<C: CurveGroup> {
     a: C::ScalarField,
     l: Vec<C::ScalarField>,
@@ -491,9 +491,6 @@ impl<C, GC, const H: bool> IPAGadget<C, GC, H>
 where
     C: CurveGroup,
     GC: CurveVar<C, CF<C>>,
-
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
 {
     /// Verify the IPA opening proof, K=log2(d), where d is the degree of the committed polynomial,
     /// and H indicates if the commitment is in hiding mode and thus uses blinding factors, if not,
@@ -514,7 +511,7 @@ where
             return Err(SynthesisError::Unsatisfiable);
         }
 
-        let P_ = P + U.scalar_mul_le(v.to_bits_le()?.iter())?;
+        let P_ = U.scalar_mul_le(v.to_bits_le()?.iter())? + P;
         let mut q_0 = P_;
         let mut r = r.clone();
 

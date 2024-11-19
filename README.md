@@ -13,7 +13,8 @@ Sonobe is conceived as an exploratory effort with the aim to push forward the pr
 <br>
 
 > **Warning**: experimental code, do not use in production.<br>
-> The code has not been audited. Several optimizations are also pending. Our focus so far has been on implementing the Nova and CycleFold schemes and achieving onchain (EVM) verification.
+> The code has not been audited. Several optimizations are also pending. Our focus so far has been on implementing the Nova, HyperNova and ProtoGalaxy schemes, all with the CycleFold approach; and achieving the onchain (in EVM) verification of the folding proofs.
+
 
 ## Schemes implemented
 
@@ -27,52 +28,42 @@ Work in progress:
 
 - [ProtoGalaxy: Efficient ProtoStar-style folding of multiple instances](https://eprint.iacr.org/2023/1106.pdf), Liam Eagen, Ariel Gabizon. 2023
 
-## Available frontends
 
-Available frontends to define the folded circuit:
+## Frontends
 
-- [arkworks](https://github.com/arkworks-rs), arkworks contributors
-- [Circom](https://github.com/iden3/circom), iden3, 0Kims Association
-- [Noname](https://github.com/zksecurity/noname), zkSecurity
+Frontends allow to define the circuit to be folded (ie. `FCircuit`).
+The recommended frontend is directly implementing the [`FCircuit` trait](https://github.com/privacy-scaling-explorations/sonobe/blob/main/folding-schemes/src/frontend/mod.rs#L16) with the Arkworks constraint system.
+
+Alternatively, experimental frontends for [Circom](https://github.com/iden3/circom), [Noir](https://github.com/noir-lang/noir) and [Noname](https://github.com/zksecurity/noname) can be found at the [sonobe/frontends](https://github.com/privacy-scaling-explorations/sonobe/tree/main/frontends) directory, which have some computational (and time) overhead.
+
+More details about the frontend interface and the experimental frontends can be found at the [sonobe-docs/frontend](https://privacy-scaling-explorations.github.io/sonobe-docs/usage/frontend.html) page.
+
 
 ## Usage
-
-### Build & test
-You can test the library for both, WASM-targets and regular ones.
-#### Regular targets
-Tier-S targets allow the user to simply run `cargo test` or `cargo build` without needing to worry about anything.
-**We strongly recommend to test using the `light-test` feature.** Which will omit the computationally intensive parts of the tests such as
-generating a SNARK of 4~5M constraints to then verify it.
-
-#### WASM targets
-In order to build the lib for WASM-targets, use the following command:
-`cargo build -p folding-schemes --no-default-features --target wasm32-unknown-unknown --features "wasm, parallel"`.
-Where the target can be any WASM one and the `parallel` feature is optional.
-
-**Trying to build for a WASM-target without the `wasm` feature or viceversa will end up in a compilation error.**
-
-### Docs
-
-Detailed usage and design documentation can be found at [Sonobe docs](https://privacy-scaling-explorations.github.io/sonobe-docs/).
-
-### WASM-compatibility & features
-
-The `sonobe/folding-schemes` crate is the only workspace member that supports WASM-target compilation. But, to have it working, `getrandom/js` needs
-to be imported in the `Cargo.toml` of the crate that uses it as dependency.
+Import the library:
 ```toml
 [dependencies]
-folding-schemes = { version = "0.1.0", default-features = false, features = ["parallel", "wasm"] }
-getrandom = { version = "0.2", features = ["js"] }
+folding-schemes = { git = "https://github.com/privacy-scaling-explorations/sonobe", package = "folding-schemes"}
 ```
-See more details about `getrandom` here: https://docs.rs/getrandom/latest/getrandom/#webassembly-support.
 
-Also, notice that:
-- `wasm` feature **IS MANDATORY** if compilation to WASM targets is desired.
-- `parallel` feature enables some parallelization optimizations available in the crate.
-- `light-test` feature runs the computationally-intensive parts of the testing such as the full proof generation for the Eth-decider circuit
-of Nova which is approximately 4-5M constraints. **This feature only matters when it comes to running Sonobe's tests.**
+Available packages:
+- `folding-schemes`: main crate, contains the different scheme implementations, together with commitment schemes, frontend trait, arithmetization, transcript, etc.
+- `solidity-verifiers`: contains the templating logic to output the verifier contracts for the DeciderEth proofs. Currently only supports Nova+CycleFold DeciderEth proofs.
+- `frontends`: contains the experimental frontends other than the arkworks frontend. More details at the [sonobe/frontends](https://github.com/privacy-scaling-explorations/sonobe/tree/main/frontends) directory.
 
-### Folding Schemes introduction
+Available features:
+- `parallel` enables some parallelization optimizations available in the crate. It is enabled by default.
+- `light-test` disables part of the DeciderEthCircuit various circuits (which accounts for ~9M constraints) so that the tests involving those circuits can run faster. Do not use it outside tests. This feature is disabled by default.
+
+Examples of usage can be found at the [examples](https://github.com/privacy-scaling-explorations/sonobe/tree/main/examples) directory.
+
+For WASM (in browser usage), details can be found at [sonobe-docs/usage/wasm](https://privacy-scaling-explorations.github.io/sonobe-docs/usage/wasm.html).
+
+
+### Docs
+Details on usage of the library, together with design documentation, can be found at the [Sonobe docs](https://privacy-scaling-explorations.github.io/sonobe-docs/).
+
+## Folding Schemes introduction
 
 Folding schemes efficiently achieve incrementally verifiable computation (IVC), where the prover recursively proves the correct execution of the incremental computations.
 Once the IVC iterations are completed, the IVC proof is compressed into the Decider proof, a zkSNARK proof which proves that applying $n$ times the $F$ function (the circuit being folded) to the initial state ($z_0$) results in the final state ($z_n$).
@@ -118,4 +109,4 @@ This project builds on top of multiple [arkworks](https://github.com/arkworks-rs
 
 The Solidity templates used in `nova_cyclefold_verifier.sol`, use [iden3](https://github.com/iden3/snarkjs/blob/master/templates/verifier_groth16.sol.ejs)'s Groth16 implementation and a KZG10 Solidity template adapted from [weijiekoh/libkzg](https://github.com/weijiekoh/libkzg).
 
-In addition to the direct code contributors who make this repository possible, this project has been made possible by many conversations with [Srinath Setty](https://github.com/srinathsetty), [Lev Soukhanov](https://github.com/levs57), [Matej Penciak](https://github.com/mpenciak), [Adrian Hamelink](https://github.com/adr1anh), [François Garillot](https://github.com/huitseeker), [Daniel Marin](https://github.com/danielmarinq), [Han Jian](https://github.com/han0110), [Wyatt Benno](https://github.com/wyattbenno777), [Nikkolas Gailly](https://github.com/nikkolasg) and [Nalin Bhardwaj](https://github.com/nalinbhardwaj), to whom we are grateful.
+In addition to the direct code contributors who make this repository possible, this project has been made possible by many conversations with [Srinath Setty](https://github.com/srinathsetty), [Lev Soukhanov](https://github.com/levs57), [Matej Penciak](https://github.com/mpenciak), [Adrian Hamelink](https://github.com/adr1anh), [François Garillot](https://github.com/huitseeker), [Daniel Marin](https://github.com/danielmarinq), [Han Jian](https://github.com/han0110), [Wyatt Benno](https://github.com/wyattbenno777), [Niсolas Gailly](https://github.com/nikkolasg) and [Nalin Bhardwaj](https://github.com/nalinbhardwaj), to whom we are grateful.

@@ -1,14 +1,12 @@
-use crate::frontend::FCircuit;
-use crate::frontend::FpVar::Var;
-use crate::utils::PathOrBin;
-use crate::Error;
 use ark_circom::circom::{CircomCircuit, R1CS as CircomR1CS};
 use ark_ff::PrimeField;
 use ark_r1cs_std::alloc::AllocVar;
 use ark_r1cs_std::fields::fp::FpVar;
+use ark_r1cs_std::fields::fp::FpVar::Var;
 use ark_r1cs_std::R1CSVar;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use ark_std::fmt::Debug;
+use folding_schemes::{frontend::FCircuit, utils::PathOrBin, Error};
 use num_bigint::BigInt;
 use std::rc::Rc;
 use std::{fmt, usize};
@@ -187,10 +185,10 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
 }
 
 impl<F: PrimeField> CircomFCircuit<F> {
-    fn fpvars_to_bigints(&self, fpVars: &[FpVar<F>]) -> Result<Vec<BigInt>, SynthesisError> {
+    fn fpvars_to_bigints(&self, fpvars: &[FpVar<F>]) -> Result<Vec<BigInt>, SynthesisError> {
         let mut input_values = Vec::new();
         // converts each FpVar to PrimeField value, then to num_bigint::BigInt.
-        for fp_var in fpVars.iter() {
+        for fp_var in fpvars.iter() {
             // extracts the PrimeField value from FpVar.
             let primefield_value = fp_var.value()?;
             // converts the PrimeField value to num_bigint::BigInt.
@@ -213,9 +211,9 @@ pub mod tests {
     // Tests the step_native function of CircomFCircuit.
     #[test]
     fn test_circom_step_native() {
-        let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit.r1cs");
+        let r1cs_path = PathBuf::from("./src/circom/test_folder/cubic_circuit.r1cs");
         let wasm_path =
-            PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
+            PathBuf::from("./src/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
         let circom_fcircuit =
             CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 1, 0)).unwrap(); // state_len:1, external_inputs_len:0
@@ -228,9 +226,9 @@ pub mod tests {
     // Tests the generate_step_constraints function of CircomFCircuit.
     #[test]
     fn test_circom_step_constraints() {
-        let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit.r1cs");
+        let r1cs_path = PathBuf::from("./src/circom/test_folder/cubic_circuit.r1cs");
         let wasm_path =
-            PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
+            PathBuf::from("./src/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
         let circom_fcircuit =
             CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 1, 0)).unwrap(); // state_len:1, external_inputs_len:0
@@ -249,16 +247,16 @@ pub mod tests {
     // Tests the WrapperCircuit with CircomFCircuit.
     #[test]
     fn test_wrapper_circomtofcircuit() {
-        let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit.r1cs");
+        let r1cs_path = PathBuf::from("./src/circom/test_folder/cubic_circuit.r1cs");
         let wasm_path =
-            PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
+            PathBuf::from("./src/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
         let circom_fcircuit =
             CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 1, 0)).unwrap(); // state_len:1, external_inputs_len:0
 
         // Allocates z_i1 by using step_native function.
         let z_i = vec![Fr::from(3_u32)];
-        let wrapper_circuit = crate::frontend::tests::WrapperCircuit {
+        let wrapper_circuit = folding_schemes::frontend::utils::WrapperCircuit {
             FC: circom_fcircuit.clone(),
             z_i: Some(z_i.clone()),
             z_i1: Some(circom_fcircuit.step_native(0, z_i.clone(), vec![]).unwrap()),
@@ -275,10 +273,9 @@ pub mod tests {
 
     #[test]
     fn test_circom_external_inputs() {
-        let r1cs_path =
-            PathBuf::from("./src/frontend/circom/test_folder/with_external_inputs.r1cs");
+        let r1cs_path = PathBuf::from("./src/circom/test_folder/with_external_inputs.r1cs");
         let wasm_path = PathBuf::from(
-            "./src/frontend/circom/test_folder/with_external_inputs_js/with_external_inputs.wasm",
+            "./src/circom/test_folder/with_external_inputs_js/with_external_inputs.wasm",
         );
         let circom_fcircuit =
             CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 1, 2)).unwrap(); // state_len:1, external_inputs_len:2
@@ -320,10 +317,9 @@ pub mod tests {
 
     #[test]
     fn test_circom_no_external_inputs() {
-        let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/no_external_inputs.r1cs");
-        let wasm_path = PathBuf::from(
-            "./src/frontend/circom/test_folder/no_external_inputs_js/no_external_inputs.wasm",
-        );
+        let r1cs_path = PathBuf::from("./src/circom/test_folder/no_external_inputs.r1cs");
+        let wasm_path =
+            PathBuf::from("./src/circom/test_folder/no_external_inputs_js/no_external_inputs.wasm");
         let circom_fcircuit =
             CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 3, 0)).unwrap();
         let cs = ConstraintSystem::<Fr>::new_ref();
@@ -353,9 +349,9 @@ pub mod tests {
 
     #[test]
     fn test_custom_code() {
-        let r1cs_path = PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit.r1cs");
+        let r1cs_path = PathBuf::from("./src/circom/test_folder/cubic_circuit.r1cs");
         let wasm_path =
-            PathBuf::from("./src/frontend/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
+            PathBuf::from("./src/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
         let mut circom_fcircuit =
             CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 1, 0)).unwrap(); // state_len:1, external_inputs_len:0
@@ -367,7 +363,7 @@ pub mod tests {
 
         // Allocates z_i1 by using step_native function.
         let z_i = vec![Fr::from(3_u32)];
-        let wrapper_circuit = crate::frontend::tests::WrapperCircuit {
+        let wrapper_circuit = folding_schemes::frontend::utils::WrapperCircuit {
             FC: circom_fcircuit.clone(),
             z_i: Some(z_i.clone()),
             z_i1: Some(circom_fcircuit.step_native(0, z_i.clone(), vec![]).unwrap()),

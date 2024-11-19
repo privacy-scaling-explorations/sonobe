@@ -21,9 +21,12 @@ use std::time::Instant;
 
 use folding_schemes::{
     commitment::{kzg::KZG, pedersen::Pedersen},
-    folding::nova::{
-        decider_eth::{prepare_calldata, Decider as DeciderEth},
-        Nova, PreprocessorParam,
+    folding::{
+        nova::{
+            decider_eth::{prepare_calldata, Decider as DeciderEth},
+            Nova, PreprocessorParam,
+        },
+        traits::CommittedInstanceOps,
     },
     frontend::FCircuit,
     transcript::poseidon::poseidon_canonical_config,
@@ -75,7 +78,7 @@ impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
 }
 
 fn main() {
-    let n_steps = 10;
+    let n_steps = 5;
     // set the initial state
     let z_0 = vec![Fr::from(3_u32)];
 
@@ -106,7 +109,7 @@ fn main() {
     let mut nova = N::init(&nova_params, f_circuit, z_0).unwrap();
 
     // prepare the Decider prover & verifier params
-    let (decider_pp, decider_vp) = D::preprocess(&mut rng, &nova_params, nova.clone()).unwrap();
+    let (decider_pp, decider_vp) = D::preprocess(&mut rng, nova_params, nova.clone()).unwrap();
 
     // run n steps of the folding iteration
     for i in 0..n_steps {
@@ -124,8 +127,8 @@ fn main() {
         nova.i,
         nova.z_0.clone(),
         nova.z_i.clone(),
-        &nova.U_i,
-        &nova.u_i,
+        &nova.U_i.get_commitments(),
+        &nova.u_i.get_commitments(),
         &proof,
     )
     .unwrap();

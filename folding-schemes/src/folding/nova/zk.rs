@@ -1,39 +1,63 @@
-// Implements nova's zero-knowledge layer, as described in https://eprint.iacr.org/2023/573.pdf
-use crate::folding::nova::traits::NovaR1CS;
-use ark_crypto_primitives::sponge::CryptographicSponge;
-use ark_ff::{BigInteger, PrimeField};
+/// Implements Nova's zero-knowledge layer, as described in https://eprint.iacr.org/2023/573.pdf.
+///
+/// Remark: this zk layer implementation only covers a subset of the use cases:
+///
+/// We identify 3 interesting places to use the nova zk-layer: one before all the folding pipeline
+/// (Use-case-1), one at the end of the folding pipeline right before the final Decider SNARK
+/// proof (Use-case-2), and a third one for cases where compressed SNARK proofs are not needed, and
+/// just IVC proofs (bigger than SNARK proofs) suffice (Use-case-3):
+///
+/// * Use-case-1: at the beginning of the folding pipeline, right when the user has their original
+///   instance prior to be folded into the running instance, the user can fold it with the
+///   random-satisfying-instance to then have a blinded instance that can be sent to a server that
+///   will fold it with the running instance.
+///     --> In this one, the user could externalize all the IVC folding and also the Decider
+///     final proof generation to a server.
+/// * Use-case-2: at the end of all the IVC folding steps (after n iterations of nova.prove_step),
+///   to 'blind' the IVC proof so then it can be sent to a server that will generate the final
+///   decider SNARK proof.
+///     --> In this one, the user could externalize the Decider final proof generation to a
+///     server.
+/// * Use-case-3: the user does not care about the Decider (final compressed SNARK proof), and
+///   wants to generate a zk-proof of the IVC state to an IVC verifier (without any SNARK proof
+///   involved). In this use-case, the zk is only added at the last IVCProof. Note that this proof
+///   will be much bigger and expensive to verify than a Decider SNARK proof.
+///
+/// The current implementation covers the Use-case-3.
+/// Use-case-1 can be achieved directly by a simpler version of the zk IVC scheme skipping steps
+/// and implemented directly at the app level by folding the original instance with a randomized
+/// instance (steps 2,3,4 from section D.4 of the [HyperNova](https://eprint.iacr.org/2023/573.pdf)
+/// paper).
+/// And the Use-case-2 would require a modified version of the Decider circuits.
+///
+use ark_ff::PrimeField;
 use ark_std::{One, Zero};
 
 use crate::{
-    arith::r1cs::{RelaxedR1CS, R1CS},
+    arith::{r1cs::R1CS, Arith, ArithSampler},
+    folding::traits::CommittedInstanceOps,
     RngCore,
 };
 use ark_crypto_primitives::sponge::{
     poseidon::{PoseidonConfig, PoseidonSponge},
-    Absorb,
+    Absorb, CryptographicSponge,
 };
 use ark_ec::{CurveGroup, Group};
-use ark_r1cs_std::{
-    groups::{CurveVar, GroupOpsBounds},
-    ToConstraintFieldGadget,
-};
+use ark_r1cs_std::{groups::CurveVar, ToConstraintFieldGadget};
 
 use crate::{commitment::CommitmentScheme, folding::circuits::CF2, frontend::FCircuit, Error};
 
-use super::{circuits::ChallengeGadget, nifs::NIFS, CommittedInstance, Nova, Witness};
-
-// We use the same definition of a folding proof as in https://eprint.iacr.org/2023/969.pdf
-// It consists in the commitment to the T term
-pub struct FoldingProof<C: CurveGroup> {
-    cmT: C,
-}
+use super::{
+    nifs::{nova::NIFS, NIFSTrait},
+    CommittedInstance, Nova, Witness,
+};
 
 pub struct RandomizedIVCProof<C1: CurveGroup, C2: CurveGroup> {
     pub U_i: CommittedInstance<C1>,
     pub u_i: CommittedInstance<C1>,
     pub U_r: CommittedInstance<C1>,
-    pub pi: FoldingProof<C1>,
-    pub pi_prime: FoldingProof<C1>,
+    pub pi: C1,       // proof = cmT
+    pub pi_prime: C1, // proof' = cmT'
     pub W_i_prime: Witness<C1>,
     pub cf_U_i: CommittedInstance<C2>,
     pub cf_W_i: Witness<C2>,
@@ -44,18 +68,6 @@ where
     <C1 as Group>::ScalarField: Absorb,
     <C1 as CurveGroup>::BaseField: PrimeField,
 {
-    /// Computes challenge required before folding instances
-    fn get_folding_challenge(
-        sponge: &mut PoseidonSponge<C1::ScalarField>,
-        pp_hash: C1::ScalarField,
-        U_i: CommittedInstance<C1>,
-        u_i: CommittedInstance<C1>,
-        cmT: C1,
-    ) -> Result<C1::ScalarField, Error> {
-        let r_bits = ChallengeGadget::<C1>::get_challenge_native(sponge, pp_hash, U_i, u_i, cmT);
-        C1::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits)).ok_or(Error::OutOfBounds)
-    }
-
     /// Compute a zero-knowledge proof of a Nova IVC proof
     /// It implements the prover of appendix D.4.in https://eprint.iacr.org/2023/573.pdf
     /// For further details on why folding is hiding, see lemma 9
@@ -75,79 +87,48 @@ where
         <C2 as Group>::ScalarField: PrimeField,
         <C2 as CurveGroup>::BaseField: PrimeField,
         <C2 as CurveGroup>::BaseField: Absorb,
-        for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
         GC2: ToConstraintFieldGadget<<C2 as CurveGroup>::BaseField>,
         C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     {
-        let mut challenges_sponge = PoseidonSponge::<C1::ScalarField>::new(&nova.poseidon_config);
+        let mut transcript = PoseidonSponge::<C1::ScalarField>::new(&nova.poseidon_config);
 
         // I. Compute proof for 'regular' instances
         // 1. Fold the instance-witness pairs (U_i, W_i) with (u_i, w_i)
-        // a. Compute T
-        let (T, cmT) = NIFS::<C1, CS1, true>::compute_cmT(
+        let (W_f, U_f, cmT, _) = NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>, true>::prove(
             &nova.cs_pp,
             &nova.r1cs,
+            &mut transcript,
+            nova.pp_hash,
             &nova.w_i,
             &nova.u_i,
             &nova.W_i,
             &nova.U_i,
         )?;
 
-        // b. Compute folding challenge
-        let r = RandomizedIVCProof::<C1, C2>::get_folding_challenge(
-            &mut challenges_sponge,
-            nova.pp_hash,
-            nova.U_i.clone(),
-            nova.u_i.clone(),
-            cmT,
-        )?;
-
-        // c. Compute fold
-        let (W_f, U_f) = NIFS::<C1, CS1, true>::fold_instances(
-            r, &nova.w_i, &nova.u_i, &nova.W_i, &nova.U_i, &T, cmT,
-        )?;
-
-        // d. Store folding proof
-        let pi = FoldingProof { cmT };
-
-        // 2. Sample a satisfying relaxed R1CS instance-witness pair (U_r, W_r)
-        let relaxed_instance = nova.r1cs.clone().relax();
-        let (U_r, W_r) = relaxed_instance.sample::<C1, CS1>(&nova.cs_pp, &mut rng)?;
+        // 2. Sample a satisfying relaxed R1CS instance-witness pair (W_r, U_r)
+        let (W_r, U_r) = nova
+            .r1cs
+            .sample_witness_instance::<CS1>(&nova.cs_pp, &mut rng)?;
 
         // 3. Fold the instance-witness pair (U_f, W_f) with (U_r, W_r)
-        // a. Compute T
-        let (T_i_prime, cmT_i_prime) =
-            NIFS::<C1, CS1, true>::compute_cmT(&nova.cs_pp, &nova.r1cs, &W_f, &U_f, &W_r, &U_r)?;
-
-        // b. Compute folding challenge
-        let r_2 = RandomizedIVCProof::<C1, C2>::get_folding_challenge(
-            &mut challenges_sponge,
-            nova.pp_hash,
-            U_f.clone(),
-            U_r.clone(),
-            cmT_i_prime,
-        )?;
-
-        // c. Compute fold
-        let (W_i_prime, _) = NIFS::<C1, CS1, true>::fold_instances(
-            r_2,
-            &W_f,
-            &U_f,
-            &W_r,
-            &U_r,
-            &T_i_prime,
-            cmT_i_prime,
-        )?;
-
-        // d. Store folding proof
-        let pi_prime = FoldingProof { cmT: cmT_i_prime };
+        let (W_i_prime, _, cmT_i_prime, _) =
+            NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>, true>::prove(
+                &nova.cs_pp,
+                &nova.r1cs,
+                &mut transcript,
+                nova.pp_hash,
+                &W_f,
+                &U_f,
+                &W_r,
+                &U_r,
+            )?;
 
         Ok(RandomizedIVCProof {
             U_i: nova.U_i.clone(),
             u_i: nova.u_i.clone(),
             U_r,
-            pi,
-            pi_prime,
+            pi: cmT,
+            pi_prime: cmT_i_prime,
             W_i_prime,
             cf_U_i: nova.cf_U_i.clone(),
             cf_W_i: nova.cf_W_i.clone(),
@@ -176,7 +157,6 @@ where
         <C2 as Group>::ScalarField: Absorb,
         <C2 as CurveGroup>::BaseField: PrimeField,
         <C2 as CurveGroup>::BaseField: Absorb,
-        for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
         GC2: ToConstraintFieldGadget<<C2 as CurveGroup>::BaseField>,
         C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     {
@@ -196,8 +176,8 @@ where
         }
 
         // b. Check computed hashes are correct
-        let mut sponge = PoseidonSponge::<C1::ScalarField>::new(poseidon_config);
-        let expected_u_i_x = proof.U_i.hash(&sponge, pp_hash, i, z_0, z_i);
+        let sponge = PoseidonSponge::<C1::ScalarField>::new(poseidon_config);
+        let expected_u_i_x = proof.U_i.hash(&sponge, pp_hash, i, &z_0, &z_i);
         if expected_u_i_x != proof.u_i.x[0] {
             return Err(Error::zkIVCVerificationFail);
         }
@@ -212,58 +192,30 @@ where
             return Err(Error::zkIVCVerificationFail);
         }
 
+        let mut transcript = PoseidonSponge::<C1::ScalarField>::new(poseidon_config);
         // 3. Obtain the U_f folded instance
-        // a. Compute folding challenge
-        let r = RandomizedIVCProof::<C1, C2>::get_folding_challenge(
-            &mut sponge,
+        let (U_f, _) = NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>, true>::verify(
+            &mut transcript,
             pp_hash,
-            proof.U_i.clone(),
-            proof.u_i.clone(),
-            proof.pi.cmT,
-        )?;
-
-        // b. Get the U_f instance
-        let U_f = NIFS::<C1, CS1, true>::fold_committed_instance(
-            r,
             &proof.u_i,
             &proof.U_i,
-            &proof.pi.cmT,
-        );
-
-        // 4. Obtain the U^{\prime}_i folded instance
-        // a. Compute folding challenge
-        let r_2 = RandomizedIVCProof::<C1, C2>::get_folding_challenge(
-            &mut sponge,
-            pp_hash,
-            U_f.clone(),
-            proof.U_r.clone(),
-            proof.pi_prime.cmT,
+            &proof.pi,
         )?;
 
-        // b. Compute fold
-        let U_i_prime = NIFS::<C1, CS1, true>::fold_committed_instance(
-            r_2,
+        // 4. Obtain the U^{\prime}_i folded instance
+        let (U_i_prime, _) = NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>, true>::verify(
+            &mut transcript,
+            pp_hash,
             &U_f,
             &proof.U_r,
-            &proof.pi_prime.cmT,
-        );
+            &proof.pi_prime,
+        )?;
 
         // 5. Check that W^{\prime}_i is a satisfying witness
-        let mut z = vec![U_i_prime.u];
-        z.extend(&U_i_prime.x);
-        z.extend(&proof.W_i_prime.W);
-        let relaxed_r1cs = RelaxedR1CS {
-            l: r1cs.l,
-            A: r1cs.A.clone(),
-            B: r1cs.B.clone(),
-            C: r1cs.C.clone(),
-            u: U_i_prime.u,
-            E: proof.W_i_prime.E.clone(),
-        };
-        relaxed_r1cs.check_relation(&z)?;
+        r1cs.check_relation(&proof.W_i_prime, &U_i_prime)?;
 
         // 6. Check that the cyclefold instance-witness pair satisfies the cyclefold relaxed r1cs
-        cf_r1cs.check_relaxed_instance_relation(&proof.cf_W_i, &proof.cf_U_i)?;
+        cf_r1cs.check_relation(&proof.cf_W_i, &proof.cf_U_i)?;
 
         Ok(())
     }
@@ -274,7 +226,7 @@ pub mod tests {
     use super::*;
     use crate::commitment::pedersen::Pedersen;
     use crate::folding::nova::tests::test_ivc_opt;
-    use crate::frontend::tests::CubicFCircuit;
+    use crate::frontend::utils::CubicFCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
     use ark_bn254::{Fr, G1Projective as Projective};
     use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
@@ -349,11 +301,9 @@ pub mod tests {
             F_circuit,
             3,
         );
-        let (sampled_committed_instance, _) = nova
+        let (_, sampled_committed_instance) = nova
             .r1cs
-            .clone()
-            .relax()
-            .sample::<Projective, Pedersen<Projective, true>>(&nova.cs_pp, rng)
+            .sample_witness_instance::<Pedersen<Projective, true>>(&nova.cs_pp, rng)
             .unwrap();
 
         // proof verification fails with incorrect running instance
@@ -388,11 +338,9 @@ pub mod tests {
             F_circuit,
             3,
         );
-        let (_, sampled_committed_witness) = nova
+        let (sampled_committed_witness, _) = nova
             .r1cs
-            .clone()
-            .relax()
-            .sample::<Projective, Pedersen<Projective, true>>(&nova.cs_pp, rng)
+            .sample_witness_instance::<Pedersen<Projective, true>>(&nova.cs_pp, rng)
             .unwrap();
 
         // proof generation fails with incorrect running witness

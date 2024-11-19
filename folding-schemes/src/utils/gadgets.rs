@@ -1,13 +1,35 @@
 use ark_ff::PrimeField;
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
+    eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
     R1CSVar,
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
-use core::{borrow::Borrow, marker::PhantomData};
+use core::borrow::Borrow;
 
 use crate::utils::vec::SparseMatrix;
+
+/// `EquivalenceGadget` enforces that two in-circuit variables are equivalent,
+/// where the equivalence relation is parameterized by `M`:
+/// - For `FpVar`, it is simply a equality relation, and `M` is unused.
+/// - For `NonNativeUintVar`, we consider equivalence as a congruence relation,
+///   in terms of modular arithmetic, so `M` specifies the modulus.
+pub trait EquivalenceGadget<M> {
+    fn enforce_equivalent(&self, other: &Self) -> Result<(), SynthesisError>;
+}
+impl<M, F: PrimeField> EquivalenceGadget<M> for FpVar<F> {
+    fn enforce_equivalent(&self, other: &Self) -> Result<(), SynthesisError> {
+        self.enforce_equal(other)
+    }
+}
+impl<M, T: EquivalenceGadget<M>> EquivalenceGadget<M> for [T] {
+    fn enforce_equivalent(&self, other: &Self) -> Result<(), SynthesisError> {
+        self.iter()
+            .zip(other)
+            .try_for_each(|(a, b)| a.enforce_equivalent(b))
+    }
+}
 
 pub trait MatrixGadget<FV> {
     fn mul_vector(&self, v: &[FV]) -> Result<Vec<FV>, SynthesisError>;
@@ -42,17 +64,14 @@ impl<F: PrimeField> VectorGadget<FpVar<F>> for [FpVar<F>] {
 }
 
 #[derive(Debug, Clone)]
-pub struct SparseMatrixVar<F: PrimeField, CF: PrimeField, FV: AllocVar<F, CF>> {
-    _f: PhantomData<F>,
-    _cf: PhantomData<CF>,
-    _fv: PhantomData<FV>,
+pub struct SparseMatrixVar<FV> {
     pub n_rows: usize,
     pub n_cols: usize,
     // same format as the native SparseMatrix (which follows ark_relations::r1cs::Matrix format
     pub coeffs: Vec<Vec<(FV, usize)>>,
 }
 
-impl<F, CF, FV> AllocVar<SparseMatrix<F>, CF> for SparseMatrixVar<F, CF, FV>
+impl<F, CF, FV> AllocVar<SparseMatrix<F>, CF> for SparseMatrixVar<FV>
 where
     F: PrimeField,
     CF: PrimeField,
@@ -77,9 +96,6 @@ where
             }
 
             Ok(Self {
-                _f: PhantomData,
-                _cf: PhantomData,
-                _fv: PhantomData,
                 n_rows: val.borrow().n_rows,
                 n_cols: val.borrow().n_cols,
                 coeffs,
@@ -88,7 +104,7 @@ where
     }
 }
 
-impl<F: PrimeField> MatrixGadget<FpVar<F>> for SparseMatrixVar<F, F, FpVar<F>> {
+impl<F: PrimeField> MatrixGadget<FpVar<F>> for SparseMatrixVar<FpVar<F>> {
     fn mul_vector(&self, v: &[FpVar<F>]) -> Result<Vec<FpVar<F>>, SynthesisError> {
         Ok(self
             .coeffs

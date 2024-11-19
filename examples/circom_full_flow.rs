@@ -19,14 +19,18 @@ use std::time::Instant;
 
 use folding_schemes::{
     commitment::{kzg::KZG, pedersen::Pedersen},
-    folding::nova::{
-        decider_eth::{prepare_calldata, Decider as DeciderEth},
-        Nova, PreprocessorParam,
+    folding::{
+        nova::{
+            decider_eth::{prepare_calldata, Decider as DeciderEth},
+            Nova, PreprocessorParam,
+        },
+        traits::CommittedInstanceOps,
     },
-    frontend::{circom::CircomFCircuit, FCircuit},
+    frontend::FCircuit,
     transcript::poseidon::poseidon_canonical_config,
     Decider, FoldingScheme,
 };
+use frontends::circom::CircomFCircuit;
 use solidity_verifiers::{
     evm::{compile_solidity, Evm},
     utils::get_function_selector_for_nova_cyclefold_verifier,
@@ -54,11 +58,9 @@ fn main() {
     ];
 
     // initialize the Circom circuit
-    let r1cs_path = PathBuf::from(
-        "./folding-schemes/src/frontend/circom/test_folder/with_external_inputs.r1cs",
-    );
+    let r1cs_path = PathBuf::from("./frontends/src/circom/test_folder/with_external_inputs.r1cs");
     let wasm_path = PathBuf::from(
-        "./folding-schemes/src/frontend/circom/test_folder/with_external_inputs_js/with_external_inputs.wasm",
+        "./frontends/src/circom/test_folder/with_external_inputs_js/with_external_inputs.wasm",
     );
 
     let f_circuit_params = (r1cs_path.into(), wasm_path.into(), 1, 2);
@@ -89,7 +91,8 @@ fn main() {
     let mut nova = N::init(&nova_params, f_circuit.clone(), z_0).unwrap();
 
     // prepare the Decider prover & verifier params
-    let (decider_pp, decider_vp) = D::preprocess(&mut rng, &nova_params, nova.clone()).unwrap();
+    let (decider_pp, decider_vp) =
+        D::preprocess(&mut rng, nova_params.clone(), nova.clone()).unwrap();
 
     // run n steps of the folding iteration
     for (i, external_inputs_at_step) in external_inputs.iter().enumerate() {
@@ -98,6 +101,14 @@ fn main() {
             .unwrap();
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
+
+    // verify the last IVC proof
+    let ivc_proof = nova.ivc_proof();
+    N::verify(
+        nova_params.1, // Nova's verifier params
+        ivc_proof,
+    )
+    .unwrap();
 
     let start = Instant::now();
     let proof = D::prove(rng, decider_pp, nova.clone()).unwrap();
@@ -108,8 +119,8 @@ fn main() {
         nova.i,
         nova.z_0.clone(),
         nova.z_i.clone(),
-        &nova.U_i,
-        &nova.u_i,
+        &nova.U_i.get_commitments(),
+        &nova.u_i.get_commitments(),
         &proof,
     )
     .unwrap();

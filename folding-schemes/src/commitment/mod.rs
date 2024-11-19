@@ -13,9 +13,9 @@ pub mod pedersen;
 /// CommitmentScheme defines the vector commitment scheme trait. Where `H` indicates if to use the
 /// commitment in hiding mode or not.
 pub trait CommitmentScheme<C: CurveGroup, const H: bool = false>: Clone + Debug {
-    type ProverParams: Clone + Debug;
+    type ProverParams: Clone + Debug + CanonicalSerialize + CanonicalDeserialize;
     type VerifierParams: Clone + Debug + CanonicalSerialize + CanonicalDeserialize;
-    type Proof: Clone + Debug;
+    type Proof: Clone + Debug + CanonicalSerialize + CanonicalDeserialize;
     type ProverChallenge: Clone + Debug;
     type Challenge: Clone + Debug;
 

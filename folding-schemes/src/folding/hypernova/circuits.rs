@@ -1,6 +1,6 @@
 /// Implementation of [HyperNova](https://eprint.iacr.org/2023/573.pdf) circuits
 use ark_crypto_primitives::sponge::{
-    constraints::CryptographicSpongeVar,
+    constraints::{AbsorbGadget, CryptographicSpongeVar},
     poseidon::{constraints::PoseidonSpongeVar, PoseidonSponge},
     CryptographicSponge,
 };
@@ -12,8 +12,8 @@ use ark_r1cs_std::{
     boolean::Boolean,
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
-    groups::GroupOpsBounds,
     prelude::CurveVar,
+    uint8::UInt8,
     R1CSVar, ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{
@@ -41,6 +41,7 @@ use crate::folding::{
         CF1, CF2,
     },
     nova::get_r1cs_from_cs,
+    traits::{CommittedInstanceVarOps, Dummy},
 };
 use crate::frontend::FCircuit;
 use crate::utils::virtual_polynomial::VPAuxInfo;
@@ -52,19 +53,16 @@ use crate::{
 
 /// Committed CCS instance
 #[derive(Debug, Clone)]
-pub struct CCCSVar<C: CurveGroup>
-where
-    <C as CurveGroup>::BaseField: PrimeField,
-{
+pub struct CCCSVar<C: CurveGroup> {
     // Commitment to witness
     pub C: NonNativeAffineVar<C>,
     // Public io
     pub x: Vec<FpVar<CF1<C>>>,
 }
+
 impl<C> AllocVar<CCCS<C>, CF1<C>> for CCCSVar<C>
 where
     C: CurveGroup,
-    <C as ark_ec::CurveGroup>::BaseField: PrimeField,
 {
     fn new_variable<T: Borrow<CCCS<C>>>(
         cs: impl Into<Namespace<CF1<C>>>,
@@ -83,12 +81,30 @@ where
     }
 }
 
+impl<C: CurveGroup> CommittedInstanceVarOps<C> for CCCSVar<C> {
+    type PointVar = NonNativeAffineVar<C>;
+
+    fn get_commitments(&self) -> Vec<Self::PointVar> {
+        vec![self.C.clone()]
+    }
+
+    fn get_public_inputs(&self) -> &[FpVar<CF1<C>>] {
+        &self.x
+    }
+
+    fn enforce_incoming(&self) -> Result<(), SynthesisError> {
+        // `CCCSVar` is always the incoming instance
+        Ok(())
+    }
+
+    fn enforce_partial_equal(&self, other: &Self) -> Result<(), SynthesisError> {
+        self.x.enforce_equal(&other.x)
+    }
+}
+
 /// Linearized Committed CCS instance
 #[derive(Debug, Clone)]
-pub struct LCCCSVar<C: CurveGroup>
-where
-    <C as CurveGroup>::BaseField: PrimeField,
-{
+pub struct LCCCSVar<C: CurveGroup> {
     // Commitment to witness
     pub C: NonNativeAffineVar<C>,
     // Relaxation factor of z for folded LCCCS
@@ -100,10 +116,10 @@ where
     // Vector of v_i
     pub v: Vec<FpVar<CF1<C>>>,
 }
+
 impl<C> AllocVar<LCCCS<C>, CF1<C>> for LCCCSVar<C>
 where
     C: CurveGroup,
-    <C as ark_ec::CurveGroup>::BaseField: PrimeField,
 {
     fn new_variable<T: Borrow<LCCCS<C>>>(
         cs: impl Into<Namespace<CF1<C>>>,
@@ -127,41 +143,44 @@ where
     }
 }
 
-impl<C> LCCCSVar<C>
-where
-    C: CurveGroup,
-    <C as Group>::ScalarField: Absorb,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-{
-    /// [`LCCCSVar`].hash implements the LCCCS instance hash compatible with the native
-    /// implementation from LCCCS.hash.
-    /// Returns `H(i, z_0, z_i, U_i)`, where `i` can be `i` but also `i+1`, and `U` is the LCCCS.
-    /// Additionally it returns the vector of the field elements from the self parameters, so they
-    /// can be reused in other gadgets avoiding recalculating (reconstraining) them.
-    #[allow(clippy::type_complexity)]
-    pub fn hash(
-        self,
-        sponge: &PoseidonSpongeVar<CF1<C>>,
-        pp_hash: FpVar<CF1<C>>,
-        i: FpVar<CF1<C>>,
-        z_0: Vec<FpVar<CF1<C>>>,
-        z_i: Vec<FpVar<CF1<C>>>,
-    ) -> Result<(FpVar<CF1<C>>, Vec<FpVar<CF1<C>>>), SynthesisError> {
-        let mut sponge = sponge.clone();
-        let U_vec = [
-            self.C.to_constraint_field()?,
-            vec![self.u],
-            self.x,
-            self.r_x,
-            self.v,
+impl<C: CurveGroup> AbsorbGadget<C::ScalarField> for LCCCSVar<C> {
+    fn to_sponge_bytes(&self) -> Result<Vec<UInt8<C::ScalarField>>, SynthesisError> {
+        FpVar::batch_to_sponge_bytes(&self.to_sponge_field_elements()?)
+    }
+
+    fn to_sponge_field_elements(&self) -> Result<Vec<FpVar<C::ScalarField>>, SynthesisError> {
+        Ok([
+            &self.C.to_constraint_field()?,
+            &[self.u.clone()][..],
+            &self.x,
+            &self.r_x,
+            &self.v,
         ]
-        .concat();
-        sponge.absorb(&pp_hash)?;
-        sponge.absorb(&i)?;
-        sponge.absorb(&z_0)?;
-        sponge.absorb(&z_i)?;
-        sponge.absorb(&U_vec)?;
-        Ok((sponge.squeeze_field_elements(1)?.pop().unwrap(), U_vec))
+        .concat())
+    }
+}
+
+impl<C: CurveGroup> CommittedInstanceVarOps<C> for LCCCSVar<C> {
+    type PointVar = NonNativeAffineVar<C>;
+
+    fn get_commitments(&self) -> Vec<Self::PointVar> {
+        vec![self.C.clone()]
+    }
+
+    fn get_public_inputs(&self) -> &[FpVar<CF1<C>>] {
+        &self.x
+    }
+
+    fn enforce_incoming(&self) -> Result<(), SynthesisError> {
+        // `LCCCSVar` is always the running instance
+        Err(SynthesisError::Unsatisfiable)
+    }
+
+    fn enforce_partial_equal(&self, other: &Self) -> Result<(), SynthesisError> {
+        self.u.enforce_equal(&other.u)?;
+        self.x.enforce_equal(&other.x)?;
+        self.r_x.enforce_equal(&other.r_x)?;
+        self.v.enforce_equal(&other.v)
     }
 }
 
@@ -175,7 +194,6 @@ pub struct ProofVar<C: CurveGroup> {
 impl<C> AllocVar<NIMFSProof<C>, CF1<C>> for ProofVar<C>
 where
     C: CurveGroup,
-    <C as ark_ec::CurveGroup>::BaseField: PrimeField,
     <C as Group>::ScalarField: Absorb,
 {
     fn new_variable<T: Borrow<NIMFSProof<C>>>(
@@ -217,10 +235,7 @@ where
 pub struct NIMFSGadget<C: CurveGroup> {
     _c: PhantomData<C>,
 }
-impl<C: CurveGroup> NIMFSGadget<C>
-where
-    <C as CurveGroup>::BaseField: PrimeField,
-{
+impl<C: CurveGroup> NIMFSGadget<C> {
     /// Runs (in-circuit) the NIMFS.V, which outputs the new folded LCCCS instance together with
     /// the rho_powers, which will be used in other parts of the AugmentedFCircuit
     #[allow(clippy::type_complexity)]
@@ -472,33 +487,31 @@ pub struct AugmentedFCircuit<
     FC: FCircuit<CF1<C1>>,
     const MU: usize,
     const NU: usize,
-> where
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
-{
-    pub _c2: PhantomData<C2>,
-    pub _gc2: PhantomData<GC2>,
-    pub poseidon_config: PoseidonConfig<CF1<C1>>,
-    pub ccs: CCS<C1::ScalarField>, // CCS of the AugmentedFCircuit
-    pub pp_hash: Option<CF1<C1>>,
-    pub i: Option<CF1<C1>>,
-    pub i_usize: Option<usize>,
-    pub z_0: Option<Vec<C1::ScalarField>>,
-    pub z_i: Option<Vec<C1::ScalarField>>,
-    pub external_inputs: Option<Vec<C1::ScalarField>>,
-    pub U_i: Option<LCCCS<C1>>,
-    pub Us: Option<Vec<LCCCS<C1>>>, // other U_i's to be folded that are not the main running instance
-    pub u_i_C: Option<C1>,          // u_i.C
-    pub us: Option<Vec<CCCS<C1>>>, // other u_i's to be folded that are not the main incoming instance
-    pub U_i1_C: Option<C1>,        // U_{i+1}.C
-    pub F: FC,                     // F circuit
-    pub x: Option<CF1<C1>>,        // public input (u_{i+1}.x[0])
-    pub nimfs_proof: Option<NIMFSProof<C1>>,
+> {
+    pub(super) _c2: PhantomData<C2>,
+    pub(super) _gc2: PhantomData<GC2>,
+    pub(super) poseidon_config: PoseidonConfig<CF1<C1>>,
+    pub(super) ccs: CCS<C1::ScalarField>, // CCS of the AugmentedFCircuit
+    pub(super) pp_hash: Option<CF1<C1>>,
+    pub(super) i: Option<CF1<C1>>,
+    pub(super) i_usize: Option<usize>,
+    pub(super) z_0: Option<Vec<C1::ScalarField>>,
+    pub(super) z_i: Option<Vec<C1::ScalarField>>,
+    pub(super) external_inputs: Option<Vec<C1::ScalarField>>,
+    pub(super) U_i: Option<LCCCS<C1>>,
+    pub(super) Us: Option<Vec<LCCCS<C1>>>, // other U_i's to be folded that are not the main running instance
+    pub(super) u_i_C: Option<C1>,          // u_i.C
+    pub(super) us: Option<Vec<CCCS<C1>>>, // other u_i's to be folded that are not the main incoming instance
+    pub(super) U_i1_C: Option<C1>,        // U_{i+1}.C
+    pub(super) F: FC,                     // F circuit
+    pub(super) x: Option<CF1<C1>>,        // public input (u_{i+1}.x[0])
+    pub(super) nimfs_proof: Option<NIMFSProof<C1>>,
 
     // cyclefold verifier on C1
-    pub cf_u_i_cmW: Option<C2>, // input, cf_u_i.cmW
-    pub cf_U_i: Option<CycleFoldCommittedInstance<C2>>, // input, RelaxedR1CS CycleFold instance
-    pub cf_x: Option<CF1<C1>>,  // public input (cf_u_{i+1}.x[1])
-    pub cf_cmT: Option<C2>,
+    pub(super) cf_u_i_cmW: Option<C2>, // input, cf_u_i.cmW
+    pub(super) cf_U_i: Option<CycleFoldCommittedInstance<C2>>, // input, RelaxedR1CS CycleFold instance
+    pub(super) cf_x: Option<CF1<C1>>,                          // public input (cf_u_{i+1}.x[1])
+    pub(super) cf_cmT: Option<C2>,
 }
 
 impl<C1, C2, GC2, FC, const MU: usize, const NU: usize> AugmentedFCircuit<C1, C2, GC2, FC, MU, NU>
@@ -512,7 +525,6 @@ where
     <C1 as Group>::ScalarField: Absorb,
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     pub fn default(
         poseidon_config: &PoseidonConfig<CF1<C1>>,
@@ -568,11 +580,9 @@ where
             M: vec![],
         };
         let mut augmented_f_circuit = Self::default(poseidon_config, F, initial_ccs)?;
-        if ccs.is_some() {
-            augmented_f_circuit.ccs = ccs.unwrap();
-        } else {
-            augmented_f_circuit.ccs = augmented_f_circuit.upper_bound_ccs()?;
-        }
+        augmented_f_circuit.ccs = ccs
+            .ok_or(())
+            .or_else(|_| augmented_f_circuit.upper_bound_ccs())?;
         Ok(augmented_f_circuit)
     }
 
@@ -581,14 +591,14 @@ where
     /// For a stable FCircuit circuit, the CCS parameters can be computed in advance and can be
     /// feed in as parameter for the AugmentedFCircuit::empty method to avoid computing them there.
     pub fn upper_bound_ccs(&self) -> Result<CCS<C1::ScalarField>, Error> {
-        let r1cs = get_r1cs_from_cs::<CF1<C1>>(self.clone()).unwrap();
-        let mut ccs = CCS::from_r1cs(r1cs.clone());
+        let r1cs = get_r1cs_from_cs::<CF1<C1>>(self.clone())?;
+        let mut ccs = CCS::from(r1cs);
 
         let z_0 = vec![C1::ScalarField::zero(); self.F.state_len()];
         let mut W_i = Witness::<C1::ScalarField>::dummy(&ccs);
-        let mut U_i = LCCCS::<C1>::dummy(ccs.l, ccs.t, ccs.s);
+        let mut U_i = LCCCS::<C1>::dummy(&ccs);
         let mut w_i = W_i.clone();
-        let mut u_i = CCCS::<C1>::dummy(ccs.l);
+        let mut u_i = CCCS::<C1>::dummy(&ccs);
 
         let n_iters = 2;
         for _ in 0..n_iters {
@@ -654,7 +664,7 @@ where
                 r_w: C1::ScalarField::one(),
             };
             W_i = Witness::<C1::ScalarField>::dummy(&ccs);
-            U_i = LCCCS::<C1>::dummy(ccs.l, ccs.t, ccs.s);
+            U_i = LCCCS::<C1>::dummy(&ccs);
         }
         Ok(ccs)
 
@@ -670,8 +680,8 @@ where
         self.clone().generate_constraints(cs.clone())?;
         cs.finalize();
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
-        let r1cs = extract_r1cs::<C1::ScalarField>(&cs);
-        let ccs = CCS::from_r1cs(r1cs.clone());
+        let r1cs = extract_r1cs::<C1::ScalarField>(&cs)?;
+        let ccs = CCS::from(r1cs);
 
         Ok((cs, ccs))
     }
@@ -689,7 +699,6 @@ where
     <C1 as Group>::ScalarField: Absorb,
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
         let pp_hash = FpVar::<CF1<C1>>::new_witness(cs.clone(), || {
@@ -714,8 +723,8 @@ where
                 .unwrap_or(vec![CF1::<C1>::zero(); self.F.external_inputs_len()]))
         })?;
 
-        let U_dummy = LCCCS::<C1>::dummy(self.ccs.l, self.ccs.t, self.ccs.s);
-        let u_dummy = CCCS::<C1>::dummy(self.ccs.l);
+        let U_dummy = LCCCS::<C1>::dummy(&self.ccs);
+        let u_dummy = CCCS::<C1>::dummy(&self.ccs);
 
         let U_i =
             LCCCSVar::<C1>::new_witness(cs.clone(), || Ok(self.U_i.unwrap_or(U_dummy.clone())))?;
@@ -728,7 +737,7 @@ where
         let U_i1_C = NonNativeAffineVar::new_witness(cs.clone(), || {
             Ok(self.U_i1_C.unwrap_or_else(C1::zero))
         })?;
-        let nimfs_proof_dummy = NIMFSProof::<C1>::dummy(&self.ccs, MU, NU);
+        let nimfs_proof_dummy = NIMFSProof::<C1>::dummy((&self.ccs, MU, NU));
         let nimfs_proof = ProofVar::<C1>::new_witness(cs.clone(), || {
             Ok(self.nimfs_proof.unwrap_or(nimfs_proof_dummy))
         })?;
@@ -742,25 +751,13 @@ where
 
         let sponge = PoseidonSpongeVar::<C1::ScalarField>::new(cs.clone(), &self.poseidon_config);
 
-        // get z_{i+1} from the F circuit
-        let i_usize = self.i_usize.unwrap_or(0);
-        let z_i1 =
-            self.F
-                .generate_step_constraints(cs.clone(), i_usize, z_i.clone(), external_inputs)?;
-
         let is_basecase = i.is_zero()?;
         let is_not_basecase = is_basecase.not();
 
         // Primary Part
         // P.1. Compute u_i.x
         // u_i.x[0] = H(i, z_0, z_i, U_i)
-        let (u_i_x, _) = U_i.clone().hash(
-            &sponge,
-            pp_hash.clone(),
-            i.clone(),
-            z_0.clone(),
-            z_i.clone(),
-        )?;
+        let (u_i_x, _) = U_i.clone().hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
         // u_i.x[1] = H(cf_U_i)
         let (cf_u_i_x, cf_U_i_vec) = cf_U_i.clone().hash(&sponge, pp_hash.clone())?;
 
@@ -795,19 +792,26 @@ where
         U_i1.C = U_i1_C;
 
         // P.4.a compute and check the first output of F'
+
+        // get z_{i+1} from the F circuit
+        let i_usize = self.i_usize.unwrap_or(0);
+        let z_i1 = self
+            .F
+            .generate_step_constraints(cs.clone(), i_usize, z_i, external_inputs)?;
+
         let (u_i1_x, _) = U_i1.clone().hash(
             &sponge,
-            pp_hash.clone(),
-            i + FpVar::<CF1<C1>>::one(),
-            z_0.clone(),
-            z_i1.clone(),
+            &pp_hash,
+            &(i + FpVar::<CF1<C1>>::one()),
+            &z_0,
+            &z_i1,
         )?;
         let (u_i1_x_base, _) = LCCCSVar::new_constant(cs.clone(), U_dummy)?.hash(
             &sponge,
-            pp_hash.clone(),
-            FpVar::<CF1<C1>>::one(),
-            z_0.clone(),
-            z_i1.clone(),
+            &pp_hash,
+            &FpVar::<CF1<C1>>::one(),
+            &z_0,
+            &z_i1,
         )?;
         let x = FpVar::new_input(cs.clone(), || Ok(self.x.unwrap_or(u_i1_x_base.value()?)))?;
         x.enforce_equal(&is_basecase.select(&u_i1_x_base, &u_i1_x)?)?;
@@ -868,7 +872,7 @@ where
         // Non-base case: u_{i+1}.x[1] == H(cf_U_{i+1})
         let (cf_u_i1_x, _) = cf_U_i1.clone().hash(&sponge, pp_hash.clone())?;
         let (cf_u_i1_x_base, _) =
-            CycleFoldCommittedInstanceVar::new_constant(cs.clone(), cf_u_dummy)?
+            CycleFoldCommittedInstanceVar::<C2, GC2>::new_constant(cs.clone(), cf_u_dummy)?
                 .hash(&sponge, pp_hash)?;
         let cf_x = FpVar::new_input(cs.clone(), || {
             Ok(self.cf_x.unwrap_or(cf_u_i1_x_base.value()?))
@@ -892,6 +896,7 @@ mod tests {
         arith::{
             ccs::tests::{get_test_ccs, get_test_z},
             r1cs::extract_w_x,
+            Arith,
         },
         commitment::{pedersen::Pedersen, CommitmentScheme},
         folding::{
@@ -900,9 +905,9 @@ mod tests {
                 utils::{compute_c, compute_sigmas_thetas},
                 HyperNovaCycleFoldCircuit,
             },
-            nova::traits::NovaR1CS,
+            traits::CommittedInstanceOps,
         },
-        frontend::tests::CubicFCircuit,
+        frontend::utils::CubicFCircuit,
         transcript::poseidon::poseidon_canonical_config,
         utils::get_cm_coordinates,
     };
@@ -1085,7 +1090,7 @@ mod tests {
         assert_eq!(folded_lcccs, folded_lcccs_v);
 
         // Check that the folded LCCCS instance is a valid instance with respect to the folded witness
-        folded_lcccs.check_relation(&ccs, &folded_witness).unwrap();
+        ccs.check_relation(&folded_witness, &folded_lcccs).unwrap();
 
         // allocate circuit inputs
         let cs = ConstraintSystem::<Fr>::new_ref();
@@ -1114,6 +1119,37 @@ mod tests {
         assert_eq!(folded_lcccsVar.u.value().unwrap(), folded_lcccs.u);
     }
 
+    /// test that checks the native LCCCS.to_sponge_{bytes,field_elements} vs
+    /// the R1CS constraints version
+    #[test]
+    pub fn test_lcccs_to_sponge_preimage() {
+        let mut rng = test_rng();
+
+        let ccs = get_test_ccs();
+        let z1 = get_test_z::<Fr>(3);
+
+        let (pedersen_params, _) =
+            Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
+
+        let (lcccs, _) = ccs
+            .to_lcccs::<_, _, Pedersen<Projective, true>, true>(&mut rng, &pedersen_params, &z1)
+            .unwrap();
+        let bytes = lcccs.to_sponge_bytes_as_vec();
+        let field_elements = lcccs.to_sponge_field_elements_as_vec();
+
+        let cs = ConstraintSystem::<Fr>::new_ref();
+
+        let lcccsVar = LCCCSVar::<Projective>::new_witness(cs.clone(), || Ok(lcccs)).unwrap();
+        let bytes_var = lcccsVar.to_sponge_bytes().unwrap();
+        let field_elements_var = lcccsVar.to_sponge_field_elements().unwrap();
+
+        assert!(cs.is_satisfied().unwrap());
+
+        // check that the natively computed and in-circuit computed hashes match
+        assert_eq!(bytes_var.value().unwrap(), bytes);
+        assert_eq!(field_elements_var.value().unwrap(), field_elements);
+    }
+
     /// test that checks the native LCCCS.hash vs the R1CS constraints version
     #[test]
     pub fn test_lcccs_hash() {
@@ -1134,9 +1170,7 @@ mod tests {
         let (lcccs, _) = ccs
             .to_lcccs::<_, _, Pedersen<Projective, true>, true>(&mut rng, &pedersen_params, &z1)
             .unwrap();
-        let h = lcccs
-            .clone()
-            .hash(&sponge, pp_hash, i, z_0.clone(), z_i.clone());
+        let h = lcccs.clone().hash(&sponge, pp_hash, i, &z_0, &z_i);
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
@@ -1148,13 +1182,7 @@ mod tests {
         let lcccsVar = LCCCSVar::<Projective>::new_witness(cs.clone(), || Ok(lcccs)).unwrap();
         let (hVar, _) = lcccsVar
             .clone()
-            .hash(
-                &spongeVar,
-                pp_hashVar,
-                iVar.clone(),
-                z_0Var.clone(),
-                z_iVar.clone(),
-            )
+            .hash(&spongeVar, &pp_hashVar, &iVar, &z_0Var, &z_iVar)
             .unwrap();
         assert!(cs.is_satisfied().unwrap());
 
@@ -1193,7 +1221,7 @@ mod tests {
             .into_inner()
             .ok_or(Error::NoInnerConstraintSystem)
             .unwrap();
-        let cf_r1cs = extract_r1cs::<Fq>(&cs2);
+        let cf_r1cs = extract_r1cs::<Fq>(&cs2).unwrap();
         println!("CF m x n: {} x {}", cf_r1cs.A.n_rows, cf_r1cs.A.n_cols);
 
         let (pedersen_params, _) =
@@ -1210,13 +1238,13 @@ mod tests {
 
         // prepare the dummy instances
         let W_dummy = Witness::<Fr>::dummy(&ccs);
-        let U_dummy = LCCCS::<Projective>::dummy(ccs.l, ccs.t, ccs.s);
+        let U_dummy = LCCCS::<Projective>::dummy(&ccs);
         let w_dummy = W_dummy.clone();
-        let u_dummy = CCCS::<Projective>::dummy(ccs.l);
+        let u_dummy = CCCS::<Projective>::dummy(&ccs);
         let (cf_W_dummy, cf_U_dummy): (
             CycleFoldWitness<Projective2>,
             CycleFoldCommittedInstance<Projective2>,
-        ) = cf_r1cs.dummy_instance();
+        ) = cf_r1cs.dummy_witness_instance();
 
         // set the initial dummy instances
         let mut W_i = W_dummy.clone();
@@ -1226,7 +1254,7 @@ mod tests {
         let mut cf_W_i = cf_W_dummy.clone();
         let mut cf_U_i = cf_U_dummy.clone();
         u_i.x = vec![
-            U_i.hash(&sponge, pp_hash, Fr::zero(), z_0.clone(), z_i.clone()),
+            U_i.hash(&sponge, pp_hash, Fr::zero(), &z_0, &z_i),
             cf_U_i.hash_cyclefold(&sponge, pp_hash),
         ];
 
@@ -1251,9 +1279,9 @@ mod tests {
 
             if i == 0 {
                 W_i1 = Witness::<Fr>::dummy(&ccs);
-                U_i1 = LCCCS::dummy(ccs.l, ccs.t, ccs.s);
+                U_i1 = LCCCS::dummy(&ccs);
 
-                let u_i1_x = U_i1.hash(&sponge, pp_hash, Fr::one(), z_0.clone(), z_i1.clone());
+                let u_i1_x = U_i1.hash(&sponge, pp_hash, Fr::one(), &z_0, &z_i1);
 
                 // hash the initial (dummy) CycleFold instance, which is used as the 2nd public
                 // input in the AugmentedFCircuit
@@ -1308,10 +1336,9 @@ mod tests {
                 .unwrap();
 
                 // sanity check: check the folded instance relation
-                U_i1.check_relation(&ccs, &W_i1).unwrap();
+                ccs.check_relation(&W_i1, &U_i1).unwrap();
 
-                let u_i1_x =
-                    U_i1.hash(&sponge, pp_hash, iFr + Fr::one(), z_0.clone(), z_i1.clone());
+                let u_i1_x = U_i1.hash(&sponge, pp_hash, iFr + Fr::one(), &z_0, &z_i1);
 
                 let rho_bits = rho.into_bigint().to_bits_le()[..NOVA_N_BITS_RO].to_vec();
                 let rho_Fq = Fq::from_bigint(BigInteger::from_bits_le(&rho_bits)).unwrap();
@@ -1428,15 +1455,14 @@ mod tests {
             (u_i, w_i) = ccs
                 .to_cccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &r1cs_z)
                 .unwrap();
-            u_i.check_relation(&ccs, &w_i).unwrap();
+            ccs.check_relation(&w_i, &u_i).unwrap();
 
             // sanity checks
             assert_eq!(w_i.w, r1cs_w_i1);
             assert_eq!(u_i.x, r1cs_x_i1);
             assert_eq!(u_i.x[0], augmented_f_circuit.x.unwrap());
             assert_eq!(u_i.x[1], augmented_f_circuit.cf_x.unwrap());
-            let expected_u_i1_x =
-                U_i1.hash(&sponge, pp_hash, iFr + Fr::one(), z_0.clone(), z_i1.clone());
+            let expected_u_i1_x = U_i1.hash(&sponge, pp_hash, iFr + Fr::one(), &z_0, &z_i1);
             let expected_cf_U_i1_x = cf_U_i.hash_cyclefold(&sponge, pp_hash);
             // u_i is already u_i1 at this point, check that has the expected value at x[0]
             assert_eq!(u_i.x[0], expected_u_i1_x);
@@ -1450,14 +1476,12 @@ mod tests {
             W_i = W_i1.clone();
 
             // check the new LCCCS instance relation
-            U_i.check_relation(&ccs, &W_i).unwrap();
+            ccs.check_relation(&W_i, &U_i).unwrap();
             // check the new CCCS instance relation
-            u_i.check_relation(&ccs, &w_i).unwrap();
+            ccs.check_relation(&w_i, &u_i).unwrap();
 
             // check the CycleFold instance relation
-            cf_r1cs
-                .check_relaxed_instance_relation(&cf_W_i, &cf_U_i)
-                .unwrap();
+            cf_r1cs.check_relation(&cf_W_i, &cf_U_i).unwrap();
 
             println!("augmented_f_circuit step {}: {:?}", i, start.elapsed());
         }

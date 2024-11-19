@@ -1,6 +1,6 @@
 use ark_ec::CurveGroup;
 use ark_ff::Field;
-use ark_r1cs_std::{boolean::Boolean, groups::GroupOpsBounds, prelude::CurveVar};
+use ark_r1cs_std::{boolean::Boolean, prelude::CurveVar};
 use ark_relations::r1cs::SynthesisError;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::Zero;
@@ -12,7 +12,7 @@ use crate::transcript::Transcript;
 use crate::utils::vec::{vec_add, vec_scalar_mul};
 use crate::Error;
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<C: CurveGroup> {
     pub R: C,
     pub u: Vec<C::ScalarField>,
@@ -194,15 +194,12 @@ impl<C, GC, const H: bool> PedersenGadget<C, GC, H>
 where
     C: CurveGroup,
     GC: CurveVar<C, CF<C>>,
-
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
 {
     pub fn commit(
-        h: GC,
-        g: Vec<GC>,
-        v: Vec<Vec<Boolean<CF<C>>>>,
-        r: Vec<Boolean<CF<C>>>,
+        h: &GC,
+        g: &[GC],
+        v: &[Vec<Boolean<CF<C>>>],
+        r: &[Boolean<CF<C>>],
     ) -> Result<GC, SynthesisError> {
         let mut res = GC::zero();
         if H {
@@ -303,7 +300,7 @@ mod tests {
 
         // use the gadget
         let cmVar =
-            PedersenGadget::<Projective, GVar, hiding>::commit(hVar, gVar, vVar, rVar).unwrap();
+            PedersenGadget::<Projective, GVar, hiding>::commit(&hVar, &gVar, &vVar, &rVar).unwrap();
         cmVar.enforce_equal(&expected_cmVar).unwrap();
     }
 }

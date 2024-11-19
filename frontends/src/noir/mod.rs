@@ -1,8 +1,5 @@
 use std::collections::HashMap;
 
-use crate::{utils::PathOrBin, Error};
-
-use super::FCircuit;
 use acvm::{
     acir::{
         acir_field::GenericFieldElement,
@@ -16,8 +13,10 @@ use ark_ff::PrimeField;
 use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, R1CSVar};
 use ark_relations::r1cs::ConstraintSynthesizer;
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
-use arkworks_backend::{
+use folding_schemes::{frontend::FCircuit, utils::PathOrBin, Error};
+use noir_arkworks_backend::{
     read_program_from_binary, read_program_from_file, sonobe_bridge::AcirCircuitSonobe,
+    FilesystemError,
 };
 
 #[derive(Clone, Debug)]
@@ -30,7 +29,7 @@ pub struct NoirFCircuit<F: PrimeField> {
 impl<F: PrimeField> FCircuit<F> for NoirFCircuit<F> {
     type Params = (PathOrBin, usize, usize);
 
-    fn new(params: Self::Params) -> Result<Self, crate::Error> {
+    fn new(params: Self::Params) -> Result<Self, Error> {
         let (source, state_len, external_inputs_len) = params;
         let program = match source {
             PathOrBin::Path(path) => read_program_from_file(path),
@@ -70,7 +69,7 @@ impl<F: PrimeField> FCircuit<F> for NoirFCircuit<F> {
         _i: usize,
         z_i: Vec<F>,
         external_inputs: Vec<F>, // inputs that are not part of the state
-    ) -> Result<Vec<F>, crate::Error> {
+    ) -> Result<Vec<F>, Error> {
         let mut acvm = ACVM::new(
             &StubbedBlackBoxSolver,
             &self.circuit.opcodes,
@@ -218,31 +217,34 @@ impl<F: PrimeField> FCircuit<F> for NoirFCircuit<F> {
     }
 }
 
-pub fn load_noir_circuit<F: PrimeField>(path: String) -> Circuit<GenericFieldElement<F>> {
-    let program: Program<GenericFieldElement<F>> = read_program_from_file(path).unwrap();
+pub fn load_noir_circuit<F: PrimeField>(
+    path: String,
+) -> Result<Circuit<GenericFieldElement<F>>, FilesystemError> {
+    let program: Program<GenericFieldElement<F>> = read_program_from_file(path)?;
     let circuit: Circuit<GenericFieldElement<F>> = program.functions[0].clone();
-    circuit
+    Ok(circuit)
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::frontend::{noir::load_noir_circuit, FCircuit};
+    use crate::noir::load_noir_circuit;
     use ark_bn254::Fr;
     use ark_r1cs_std::R1CSVar;
     use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar};
     use ark_relations::r1cs::ConstraintSystem;
+    use folding_schemes::frontend::FCircuit;
     use std::env;
 
-    use crate::frontend::noir::NoirFCircuit;
+    use crate::noir::NoirFCircuit;
 
     #[test]
     fn test_step_native() {
         let cur_path = env::current_dir().unwrap();
         let circuit_path = format!(
-            "{}/src/frontend/noir/test_folder/test_circuit/target/test_circuit.json",
+            "{}/src/noir/test_folder/test_circuit/target/test_circuit.json",
             cur_path.to_str().unwrap()
         );
-        let circuit = load_noir_circuit(circuit_path);
+        let circuit = load_noir_circuit(circuit_path).unwrap();
         let noirfcircuit = NoirFCircuit {
             circuit,
             state_len: 2,
@@ -259,10 +261,10 @@ mod tests {
         let cs = ConstraintSystem::<Fr>::new_ref();
         let cur_path = env::current_dir().unwrap();
         let circuit_path = format!(
-            "{}/src/frontend/noir/test_folder/test_circuit/target/test_circuit.json",
+            "{}/src/noir/test_folder/test_circuit/target/test_circuit.json",
             cur_path.to_str().unwrap()
         );
-        let circuit = load_noir_circuit(circuit_path);
+        let circuit = load_noir_circuit(circuit_path).unwrap();
         let noirfcircuit = NoirFCircuit {
             circuit,
             state_len: 2,
@@ -283,10 +285,10 @@ mod tests {
         let cs = ConstraintSystem::<Fr>::new_ref();
         let cur_path = env::current_dir().unwrap();
         let circuit_path = format!(
-            "{}/src/frontend/noir/test_folder/test_no_external_inputs/target/test_no_external_inputs.json",
+            "{}/src/noir/test_folder/test_no_external_inputs/target/test_no_external_inputs.json",
             cur_path.to_str().unwrap()
         );
-        let circuit = load_noir_circuit(circuit_path);
+        let circuit = load_noir_circuit(circuit_path).unwrap();
         let noirfcircuit = NoirFCircuit {
             circuit,
             state_len: 2,

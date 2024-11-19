@@ -13,6 +13,8 @@ use super::{
 };
 use crate::arith::ccs::CCS;
 use crate::constants::NOVA_N_BITS_RO;
+use crate::folding::circuits::CF1;
+use crate::folding::traits::Dummy;
 use crate::transcript::Transcript;
 use crate::utils::sum_check::structs::{IOPProof as SumCheckProof, IOPProverMessage};
 use crate::utils::sum_check::{IOPSumCheck, SumCheck};
@@ -23,35 +25,41 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 
 /// NIMFSProof defines a multifolding proof
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NIMFSProof<C: CurveGroup> {
     pub sc_proof: SumCheckProof<C::ScalarField>,
     pub sigmas_thetas: SigmasThetas<C::ScalarField>,
 }
 
-impl<C: CurveGroup> NIMFSProof<C> {
-    pub fn dummy(ccs: &CCS<C::ScalarField>, mu: usize, nu: usize) -> Self {
+impl<C: CurveGroup> Dummy<(usize, usize, usize, usize)> for NIMFSProof<C> {
+    fn dummy((s, t, mu, nu): (usize, usize, usize, usize)) -> Self {
         // use 'C::ScalarField::one()' instead of 'zero()' to enforce the NIMFSProof to have the
         // same in-circuit representation to match the number of constraints of an actual proof.
         NIMFSProof::<C> {
             sc_proof: SumCheckProof::<C::ScalarField> {
-                point: vec![C::ScalarField::one(); ccs.s],
+                point: vec![C::ScalarField::one(); s],
                 proofs: vec![
                     IOPProverMessage {
-                        coeffs: vec![C::ScalarField::one(); ccs.t + 1]
+                        coeffs: vec![C::ScalarField::one(); t + 1]
                     };
-                    ccs.s
+                    s
                 ],
             },
             sigmas_thetas: SigmasThetas(
-                vec![vec![C::ScalarField::one(); ccs.t]; mu],
-                vec![vec![C::ScalarField::one(); ccs.t]; nu],
+                vec![vec![C::ScalarField::one(); t]; mu],
+                vec![vec![C::ScalarField::one(); t]; nu],
             ),
         }
     }
 }
 
-#[derive(Clone, Debug)]
+impl<C: CurveGroup> Dummy<(&CCS<CF1<C>>, usize, usize)> for NIMFSProof<C> {
+    fn dummy((ccs, mu, nu): (&CCS<CF1<C>>, usize, usize)) -> Self {
+        NIMFSProof::dummy((ccs.s, ccs.t, mu, nu))
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SigmasThetas<F: PrimeField>(pub Vec<Vec<F>>, pub Vec<Vec<F>>);
 
 #[derive(Debug)]
@@ -65,7 +73,6 @@ pub struct NIMFS<C: CurveGroup, T: Transcript<C::ScalarField>> {
 impl<C: CurveGroup, T: Transcript<C::ScalarField>> NIMFS<C, T>
 where
     <C as Group>::ScalarField: Absorb,
-    C::BaseField: PrimeField,
 {
     pub fn fold(
         lcccs: &[LCCCS<C>],
@@ -256,8 +263,9 @@ where
         let rho_scalar = C::ScalarField::from_le_bytes_mod_order(b"rho");
         transcript.absorb(&rho_scalar);
         let rho_bits: Vec<bool> = transcript.get_challenge_nbits(NOVA_N_BITS_RO);
-        let rho: C::ScalarField =
-            C::ScalarField::from_bigint(BigInteger::from_bits_le(&rho_bits)).unwrap();
+        let rho: C::ScalarField = C::ScalarField::from(
+            <C::ScalarField as PrimeField>::BigInt::from_bits_le(&rho_bits),
+        );
 
         // Step 7: Create the folded instance
         let folded_lcccs = Self::fold(
@@ -375,8 +383,9 @@ where
         let rho_scalar = C::ScalarField::from_le_bytes_mod_order(b"rho");
         transcript.absorb(&rho_scalar);
         let rho_bits: Vec<bool> = transcript.get_challenge_nbits(NOVA_N_BITS_RO);
-        let rho: C::ScalarField =
-            C::ScalarField::from_bigint(BigInteger::from_bits_le(&rho_bits)).unwrap();
+        let rho: C::ScalarField = C::ScalarField::from(
+            <C::ScalarField as PrimeField>::BigInt::from_bits_le(&rho_bits),
+        );
 
         // Step 7: Compute the folded instance
         Ok(Self::fold(
@@ -410,8 +419,10 @@ pub mod tests {
         let ccs = get_test_ccs();
         let z1 = get_test_z::<Fr>(3);
         let z2 = get_test_z::<Fr>(4);
-        ccs.check_relation(&z1).unwrap();
-        ccs.check_relation(&z2).unwrap();
+        let (w1, x1) = ccs.split_z(&z1);
+        let (w2, x2) = ccs.split_z(&z2);
+        ccs.check_relation(&w1, &x1).unwrap();
+        ccs.check_relation(&w2, &x2).unwrap();
 
         let mut rng = test_rng();
         let r_x_prime: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
@@ -429,8 +440,8 @@ pub mod tests {
             .to_cccs::<_, Projective, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &z2)
             .unwrap();
 
-        lcccs.check_relation(&ccs, &w1).unwrap();
-        cccs.check_relation(&ccs, &w2).unwrap();
+        ccs.check_relation(&w1, &lcccs).unwrap();
+        ccs.check_relation(&w2, &cccs).unwrap();
 
         let mut rng = test_rng();
         let rho = Fr::rand(&mut rng);
@@ -446,7 +457,7 @@ pub mod tests {
         let w_folded = NIMFS::<Projective, PoseidonSponge<Fr>>::fold_witness(&[w1], &[w2], rho);
 
         // check lcccs relation
-        folded.check_relation(&ccs, &w_folded).unwrap();
+        ccs.check_relation(&w_folded, &folded).unwrap();
     }
 
     /// Perform multifolding of an LCCCS instance with a CCCS instance (as described in the paper)
@@ -506,7 +517,7 @@ pub mod tests {
         assert_eq!(folded_lcccs, folded_lcccs_v);
 
         // Check that the folded LCCCS instance is a valid instance with respect to the folded witness
-        folded_lcccs.check_relation(&ccs, &folded_witness).unwrap();
+        ccs.check_relation(&folded_witness, &folded_lcccs).unwrap();
     }
 
     /// Perform multiple steps of multifolding of an LCCCS instance with a CCCS instance
@@ -566,7 +577,7 @@ pub mod tests {
             assert_eq!(folded_lcccs, folded_lcccs_v);
 
             // check that the folded instance with the folded witness holds the LCCCS relation
-            folded_lcccs.check_relation(&ccs, &folded_witness).unwrap();
+            ccs.check_relation(&folded_witness, &folded_lcccs).unwrap();
 
             running_instance = folded_lcccs;
             w1 = folded_witness;
@@ -652,7 +663,7 @@ pub mod tests {
         assert_eq!(folded_lcccs, folded_lcccs_v);
 
         // Check that the folded LCCCS instance is a valid instance with respect to the folded witness
-        folded_lcccs.check_relation(&ccs, &folded_witness).unwrap();
+        ccs.check_relation(&folded_witness, &folded_lcccs).unwrap();
     }
 
     /// Test that generates mu>1 and nu>1 instances, and folds them in a single multifolding step
@@ -740,7 +751,7 @@ pub mod tests {
             assert_eq!(folded_lcccs, folded_lcccs_v);
 
             // Check that the folded LCCCS instance is a valid instance with respect to the folded witness
-            folded_lcccs.check_relation(&ccs, &folded_witness).unwrap();
+            ccs.check_relation(&folded_witness, &folded_lcccs).unwrap();
         }
     }
 }

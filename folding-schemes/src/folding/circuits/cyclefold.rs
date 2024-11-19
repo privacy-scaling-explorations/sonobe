@@ -8,7 +8,6 @@ use ark_r1cs_std::{
     boolean::Boolean,
     eq::EqGadget,
     fields::fp::FpVar,
-    groups::GroupOpsBounds,
     prelude::CurveVar,
     ToConstraintFieldGadget,
 };
@@ -17,16 +16,24 @@ use ark_relations::r1cs::{
 };
 use ark_std::fmt::Debug;
 use ark_std::rand::RngCore;
-use ark_std::Zero;
+use ark_std::{One, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::{nonnative::uint::NonNativeUintVar, CF1, CF2};
-use crate::arith::r1cs::{extract_w_x, R1CS};
 use crate::commitment::CommitmentScheme;
 use crate::constants::NOVA_N_BITS_RO;
-use crate::folding::nova::nifs::NIFS;
+use crate::folding::nova::nifs::{nova::NIFS, NIFSTrait};
 use crate::transcript::{AbsorbNonNative, AbsorbNonNativeGadget, Transcript, TranscriptVar};
+use crate::utils::gadgets::{EquivalenceGadget, VectorGadget};
 use crate::Error;
+use crate::{
+    arith::{
+        r1cs::{circuits::R1CSMatricesVar, extract_w_x, R1CS},
+        ArithGadget,
+    },
+    folding::traits::Inputize,
+};
+use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
 
 /// Re-export the Nova committed instance as `CycleFoldCommittedInstance` and
 /// witness as `CycleFoldWitness`, for clarity and consistency
@@ -34,13 +41,39 @@ pub use crate::folding::nova::{
     CommittedInstance as CycleFoldCommittedInstance, Witness as CycleFoldWitness,
 };
 
+impl<C: CurveGroup, GC: CurveVar<C, CF2<C>>> Inputize<CF2<C>, CycleFoldCommittedInstanceVar<C, GC>>
+    for CycleFoldCommittedInstance<C>
+{
+    fn inputize(&self) -> Vec<CF2<C>> {
+        let zero = (&C::BaseField::zero(), &C::BaseField::zero());
+        let cmE = self.cmE.into_affine();
+        let cmW = self.cmW.into_affine();
+        let (cmE_x, cmE_y) = cmE.xy().unwrap_or(zero);
+        let (cmW_x, cmW_y) = cmW.xy().unwrap_or(zero);
+        self.u
+            .inputize()
+            .into_iter()
+            .chain(self.x.iter().flat_map(|x| x.inputize()))
+            .chain(
+                [
+                    *cmE_x,
+                    *cmE_y,
+                    C::BaseField::one(),
+                    *cmW_x,
+                    *cmW_y,
+                    C::BaseField::one(),
+                ]
+                .into_iter()
+                .flat_map(|x| x.to_base_prime_field_elements()),
+            )
+            .collect()
+    }
+}
+
 /// CycleFoldCommittedInstanceVar is the CycleFold CommittedInstance represented
 /// in folding verifier circuit
 #[derive(Debug, Clone)]
-pub struct CycleFoldCommittedInstanceVar<C: CurveGroup, GC: CurveVar<C, CF2<C>>>
-where
-    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
-{
+pub struct CycleFoldCommittedInstanceVar<C: CurveGroup, GC: CurveVar<C, CF2<C>>> {
     pub cmE: GC,
     pub u: NonNativeUintVar<CF2<C>>,
     pub cmW: GC,
@@ -50,8 +83,6 @@ impl<C, GC> AllocVar<CycleFoldCommittedInstance<C>, CF2<C>> for CycleFoldCommitt
 where
     C: CurveGroup,
     GC: CurveVar<C, CF2<C>>,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
 {
     fn new_variable<T: Borrow<CycleFoldCommittedInstance<C>>>(
         cs: impl Into<Namespace<CF2<C>>>,
@@ -61,10 +92,12 @@ where
         f().and_then(|val| {
             let cs = cs.into();
 
+            let u =
+                NonNativeUintVar::<CF2<C>>::new_variable(cs.clone(), || Ok(val.borrow().u), mode)?;
+            let x: Vec<NonNativeUintVar<CF2<C>>> =
+                Vec::new_variable(cs.clone(), || Ok(val.borrow().x.clone()), mode)?;
             let cmE = GC::new_variable(cs.clone(), || Ok(val.borrow().cmE), mode)?;
             let cmW = GC::new_variable(cs.clone(), || Ok(val.borrow().cmW), mode)?;
-            let u = NonNativeUintVar::new_variable(cs.clone(), || Ok(val.borrow().u), mode)?;
-            let x = Vec::new_variable(cs.clone(), || Ok(val.borrow().x.clone()), mode)?;
 
             Ok(Self { cmE, u, cmW, x })
         })
@@ -98,8 +131,7 @@ impl<C, GC> AbsorbNonNativeGadget<C::BaseField> for CycleFoldCommittedInstanceVa
 where
     C: CurveGroup,
     GC: CurveVar<C, CF2<C>> + ToConstraintFieldGadget<CF2<C>>,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField + Absorb,
-    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
+    C::BaseField: PrimeField + Absorb,
 {
     /// Extracts the underlying field elements from `CycleFoldCommittedInstanceVar`, in the order
     /// of `u`, `x`, `cmE.x`, `cmE.y`, `cmW.x`, `cmW.y`, `cmE.is_inf || cmW.is_inf` (|| is for
@@ -129,7 +161,7 @@ where
 
 impl<C: CurveGroup> CycleFoldCommittedInstance<C>
 where
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField + Absorb,
+    C::BaseField: PrimeField + Absorb,
 {
     /// hash_cyclefold implements the committed instance hash compatible with the
     /// in-circuit implementation `CycleFoldCommittedInstanceVar::hash`.
@@ -150,8 +182,7 @@ impl<C, GC> CycleFoldCommittedInstanceVar<C, GC>
 where
     C: CurveGroup,
     GC: CurveVar<C, CF2<C>> + ToConstraintFieldGadget<CF2<C>>,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField + Absorb,
-    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
+    C::BaseField: PrimeField + Absorb,
 {
     /// hash implements the committed instance hash compatible with the native
     /// implementation `CycleFoldCommittedInstance::hash_cyclefold`.
@@ -162,7 +193,7 @@ where
     /// (reconstraining) them.
     #[allow(clippy::type_complexity)]
     pub fn hash<S: CryptographicSponge, T: TranscriptVar<CF2<C>, S>>(
-        self,
+        &self,
         sponge: &T,
         pp_hash: FpVar<CF2<C>>, // public params hash
     ) -> Result<(FpVar<CF2<C>>, Vec<FpVar<CF2<C>>>), SynthesisError> {
@@ -170,7 +201,11 @@ where
         let U_vec = self.to_native_sponge_field_elements()?;
         sponge.absorb(&pp_hash)?;
         sponge.absorb(&U_vec)?;
-        Ok((sponge.squeeze_field_elements(1)?.pop().unwrap(), U_vec))
+        Ok((
+            // `unwrap` is safe because the sponge is guaranteed to return a single element
+            sponge.squeeze_field_elements(1)?.pop().unwrap(),
+            U_vec,
+        ))
     }
 }
 
@@ -179,10 +214,7 @@ where
 /// represented as native points, which are folded on the auxiliary curve constraints field (E2::Fr
 /// = E1::Fq).
 #[derive(Debug, Clone)]
-pub struct CommittedInstanceInCycleFoldVar<C: CurveGroup, GC: CurveVar<C, CF2<C>>>
-where
-    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
-{
+pub struct CommittedInstanceInCycleFoldVar<C: CurveGroup, GC: CurveVar<C, CF2<C>>> {
     _c: PhantomData<C>,
     pub cmE: GC,
     pub cmW: GC,
@@ -193,7 +225,6 @@ impl<C, GC> AllocVar<CycleFoldCommittedInstance<C>, CF2<C>>
 where
     C: CurveGroup,
     GC: CurveVar<C, CF2<C>>,
-    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
 {
     fn new_variable<T: Borrow<CycleFoldCommittedInstance<C>>>(
         cs: impl Into<Namespace<CF2<C>>>,
@@ -229,7 +260,7 @@ pub struct CycleFoldWitnessVar<C: CurveGroup> {
 impl<C> AllocVar<CycleFoldWitness<C>, CF2<C>> for CycleFoldWitnessVar<C>
 where
     C: CurveGroup,
-    <C as ark_ec::CurveGroup>::BaseField: PrimeField,
+    C::BaseField: PrimeField,
 {
     fn new_variable<T: Borrow<CycleFoldWitness<C>>>(
         cs: impl Into<Namespace<CF2<C>>>,
@@ -262,8 +293,7 @@ impl<C: CurveGroup, GC: CurveVar<C, CF2<C>>> NIFSFullGadget<C, GC>
 where
     C: CurveGroup,
     GC: CurveVar<C, CF2<C>>,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
+    C::BaseField: PrimeField,
 {
     pub fn fold_committed_instance(
         r_bits: Vec<Boolean<CF2<C>>>,
@@ -281,13 +311,13 @@ where
         Ok(CycleFoldCommittedInstanceVar {
             cmE: cmT.scalar_mul_le(r_bits.iter())? + ci1.cmE,
             cmW: ci1.cmW + ci2.cmW.scalar_mul_le(r_bits.iter())?,
-            u: ci1.u.add_no_align(&r_nonnat).modulo::<CF1<C>>()?,
+            u: ci1.u.add_no_align(&r_nonnat)?.modulo::<CF1<C>>()?,
             x: ci1
                 .x
                 .iter()
                 .zip(ci2.x)
                 .map(|(a, b)| {
-                    a.add_no_align(&r_nonnat.mul_no_align(&b)?)
+                    a.add_no_align(&r_nonnat.mul_no_align(&b)?)?
                         .modulo::<CF1<C>>()
                 })
                 .collect::<Result<Vec<_>, _>>()?,
@@ -316,6 +346,29 @@ where
     }
 }
 
+impl<C: CurveGroup, GC: CurveVar<C, CF2<C>>>
+    ArithGadget<CycleFoldWitnessVar<C>, CycleFoldCommittedInstanceVar<C, GC>>
+    for R1CSMatricesVar<CF1<C>, NonNativeUintVar<CF2<C>>>
+{
+    type Evaluation = (Vec<NonNativeUintVar<CF2<C>>>, Vec<NonNativeUintVar<CF2<C>>>);
+
+    fn eval_relation(
+        &self,
+        w: &CycleFoldWitnessVar<C>,
+        u: &CycleFoldCommittedInstanceVar<C, GC>,
+    ) -> Result<Self::Evaluation, SynthesisError> {
+        self.eval_at_z(&[&[u.u.clone()][..], &u.x, &w.W].concat())
+    }
+
+    fn enforce_evaluation(
+        w: &CycleFoldWitnessVar<C>,
+        _u: &CycleFoldCommittedInstanceVar<C, GC>,
+        (AzBz, uCz): Self::Evaluation,
+    ) -> Result<(), SynthesisError> {
+        EquivalenceGadget::<CF1<C>>::enforce_equivalent(&AzBz[..], &uCz.add(&w.E)?[..])
+    }
+}
+
 /// CycleFoldChallengeGadget computes the RO challenge used for the CycleFold instances NIFS, it contains a
 /// rust-native and a in-circuit compatible versions.
 pub struct CycleFoldChallengeGadget<C: CurveGroup, GC: CurveVar<C, CF2<C>>> {
@@ -326,9 +379,7 @@ impl<C, GC> CycleFoldChallengeGadget<C, GC>
 where
     C: CurveGroup,
     GC: CurveVar<C, CF2<C>> + ToConstraintFieldGadget<CF2<C>>,
-    <C as CurveGroup>::BaseField: PrimeField,
-    <C as CurveGroup>::BaseField: Absorb,
-    for<'a> &'a GC: GroupOpsBounds<'a, C, GC>,
+    C::BaseField: PrimeField + Absorb,
 {
     pub fn get_challenge_native<T: Transcript<C::BaseField>>(
         transcript: &mut T,
@@ -360,6 +411,8 @@ where
     }
 }
 
+/// `CycleFoldConfig` allows us to customize the behavior of CycleFold circuit
+/// according to the folding scheme we are working with.
 pub trait CycleFoldConfig {
     /// `N_INPUT_POINTS` specifies the number of input points that are folded in
     /// [`CycleFoldCircuit`] via random linear combinations.
@@ -420,7 +473,6 @@ impl<CFG: CycleFoldConfig, GC: CurveVar<CFG::C, CFG::F>> ConstraintSynthesizer<C
 where
     GC: ToConstraintFieldGadget<CFG::F>,
     CFG::F: PrimeField,
-    for<'a> &'a GC: GroupOpsBounds<'a, CFG::C, GC>,
 {
     fn generate_constraints(self, cs: ConstraintSystemRef<CFG::F>) -> Result<(), SynthesisError> {
         let r_bits = Vec::<Boolean<CFG::F>>::new_witness(cs.clone(), || {
@@ -465,7 +517,10 @@ where
         // In multifolding schemes such as HyperNova, this is:
         // computed_x = [r, p_0, p_1, p_2, ..., p_n, p_folded],
         // where each p_i is in fact p_i.to_constraint_field()
-        let r_fp = Boolean::le_bits_to_fp_var(&r_bits)?;
+        let r_fp = r_bits
+            .chunks(CFG::F::MODULUS_BIT_SIZE as usize - 1)
+            .map(Boolean::le_bits_to_fp_var)
+            .collect::<Result<Vec<_>, _>>()?;
         let points_aux: Vec<FpVar<CFG::F>> = points
             .iter()
             .map(|p_i| Ok(p_i.to_constraint_field()?[..2].to_vec()))
@@ -475,7 +530,7 @@ where
             .collect();
 
         let computed_x: Vec<FpVar<CFG::F>> = [
-            vec![r_fp],
+            r_fp,
             points_aux,
             p_folded.to_constraint_field()?[..2].to_vec(),
         ]
@@ -483,6 +538,70 @@ where
         computed_x.enforce_equal(&x)?;
 
         Ok(())
+    }
+}
+
+/// CycleFoldNIFS is a wrapper on top of Nova's NIFS, which just replaces the `prove` and `verify`
+/// methods to use a different ChallengeGadget, but internally reuses the other Nova's NIFS
+/// methods.
+/// It is a custom implementation that does not follow the NIFSTrait because it needs to work over
+/// different fields than the main NIFS impls (Nova, Mova, Ova). Could be abstracted, but it's a
+/// tradeoff between overcomplexity at the NIFSTrait and the (not much) need of generalization at
+/// the CycleFoldNIFS.
+pub struct CycleFoldNIFS<
+    C1: CurveGroup,
+    C2: CurveGroup,
+    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+    CS2: CommitmentScheme<C2, H>,
+    const H: bool = false,
+> where
+    <C1 as CurveGroup>::BaseField: PrimeField,
+    <C2 as CurveGroup>::BaseField: PrimeField,
+{
+    _c1: PhantomData<C1>,
+    _c2: PhantomData<C2>,
+    _gc2: PhantomData<GC2>,
+    _cs: PhantomData<CS2>,
+}
+impl<C1: CurveGroup, C2: CurveGroup, GC2, CS2: CommitmentScheme<C2, H>, const H: bool>
+    CycleFoldNIFS<C1, C2, GC2, CS2, H>
+where
+    <C1 as CurveGroup>::BaseField: PrimeField,
+    <C2 as CurveGroup>::BaseField: PrimeField,
+    <C1 as Group>::ScalarField: Absorb,
+    <C2 as Group>::ScalarField: Absorb,
+    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+{
+    fn prove(
+        cf_r_Fq: C2::ScalarField, // C2::Fr==C1::Fq
+        cf_W_i: &CycleFoldWitness<C2>,
+        cf_U_i: &CycleFoldCommittedInstance<C2>,
+        cf_w_i: &CycleFoldWitness<C2>,
+        cf_u_i: &CycleFoldCommittedInstance<C2>,
+        aux_p: &[C2::ScalarField], // = cf_T
+        aux_v: C2,                 // = cf_cmT
+    ) -> Result<(CycleFoldWitness<C2>, CycleFoldCommittedInstance<C2>), Error> {
+        let w = NIFS::<C2, CS2, PoseidonSponge<C2::ScalarField>, H>::fold_witness(
+            cf_r_Fq,
+            cf_W_i,
+            cf_w_i,
+            &aux_p.to_vec(),
+        )?;
+        let ci = Self::verify(cf_r_Fq, cf_U_i, cf_u_i, &aux_v)?;
+        Ok((w, ci))
+    }
+    fn verify(
+        r: C2::ScalarField,
+        U_i: &CycleFoldCommittedInstance<C2>,
+        u_i: &CycleFoldCommittedInstance<C2>,
+        cmT: &C2, // VerifierAux
+    ) -> Result<CycleFoldCommittedInstance<C2>, Error> {
+        Ok(
+            NIFS::<C2, CS2, PoseidonSponge<C2::ScalarField>, H>::fold_committed_instances(
+                r, U_i, u_i, cmT,
+            ),
+        )
     }
 }
 
@@ -523,8 +642,6 @@ where
     <C1 as Group>::ScalarField: Absorb,
     <C2 as Group>::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    for<'a> &'a GC1: GroupOpsBounds<'a, C1, GC1>,
-    for<'a> &'a GC2: GroupOpsBounds<'a, C2, GC2>,
 {
     let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
     cf_circuit.generate_constraints(cs2.clone())?;
@@ -544,14 +661,15 @@ where
         cf_w_i.commit::<CS2, H>(&cf_cs_params, cf_x_i.clone())?;
 
     // compute T* and cmT* for CycleFoldCircuit
-    let (cf_T, cf_cmT) = NIFS::<C2, CS2, H>::compute_cyclefold_cmT(
-        &cf_cs_params,
-        &cf_r1cs,
-        &cf_w_i,
-        &cf_u_i,
-        &cf_W_i,
-        &cf_U_i,
-    )?;
+    let (cf_T, cf_cmT) =
+        NIFS::<C2, CS2, PoseidonSponge<C2::ScalarField>, H>::compute_cyclefold_cmT(
+            &cf_cs_params,
+            &cf_r1cs,
+            &cf_w_i,
+            &cf_u_i,
+            &cf_W_i,
+            &cf_U_i,
+        )?;
 
     let cf_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_native(
         transcript,
@@ -563,9 +681,11 @@ where
     let cf_r_Fq = C1::BaseField::from_bigint(BigInteger::from_bits_le(&cf_r_bits))
         .expect("cf_r_bits out of bounds");
 
-    let (cf_W_i1, cf_U_i1) = NIFS::<C2, CS2, H>::fold_instances(
+    let (cf_W_i1, cf_U_i1) = CycleFoldNIFS::<C1, C2, GC2, CS2, H>::prove(
         cf_r_Fq, &cf_W_i, &cf_U_i, &cf_w_i, &cf_u_i, &cf_T, cf_cmT,
     )?;
+    let cf_r_Fq = C1::BaseField::from_bigint(BigInteger::from_bits_le(&cf_r_bits))
+        .expect("cf_r_bits out of bounds");
     Ok((cf_w_i, cf_u_i, cf_W_i1, cf_U_i1, cf_cmT, cf_r_Fq))
 }
 
@@ -577,10 +697,11 @@ pub mod tests {
         poseidon::{constraints::PoseidonSpongeVar, PoseidonSponge},
     };
     use ark_r1cs_std::R1CSVar;
-    use ark_std::UniformRand;
+    use ark_std::{One, UniformRand};
 
     use super::*;
-    use crate::folding::nova::nifs::tests::prepare_simple_fold_inputs;
+    use crate::commitment::pedersen::Pedersen;
+    use crate::folding::nova::CommittedInstance;
     use crate::transcript::poseidon::poseidon_canonical_config;
     use crate::utils::get_cm_coordinates;
 
@@ -662,12 +783,39 @@ pub mod tests {
 
     #[test]
     fn test_nifs_full_gadget() {
-        let (_, _, _, _, ci1, _, ci2, _, ci3, _, cmT, r_bits, _) = prepare_simple_fold_inputs();
+        let mut rng = ark_std::test_rng();
+
+        let poseidon_config = poseidon_canonical_config::<Fr>();
+        let mut transcript_v = PoseidonSponge::<Fr>::new(&poseidon_config);
+        let pp_hash = Fr::rand(&mut rng);
+
+        // prepare the committed instances to test in-circuit
+        let ci: Vec<CommittedInstance<Projective>> = (0..2)
+            .into_iter()
+            .map(|_| CommittedInstance::<Projective> {
+                cmE: Projective::rand(&mut rng),
+                u: Fr::rand(&mut rng),
+                cmW: Projective::rand(&mut rng),
+                x: vec![Fr::rand(&mut rng); 1],
+            })
+            .collect();
+        let (ci1, mut ci2) = (ci[0].clone(), ci[1].clone());
+        // make the 2nd instance a 'fresh' instance (ie. cmE=0, u=1)
+        ci2.cmE = Projective::zero();
+        ci2.u = Fr::one();
+
+        let cmT = Projective::rand(&mut rng); // random only for testing
+        let (ci3, r_bits) = NIFS::<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>::verify(
+            &mut transcript_v,
+            pp_hash,
+            &ci1,
+            &ci2,
+            &cmT,
+        )
+        .unwrap();
 
         let cs = ConstraintSystem::<Fq>::new_ref();
-
         let r_bitsVar = Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(r_bits)).unwrap();
-
         let ci1Var =
             CycleFoldCommittedInstanceVar::<Projective, GVar>::new_witness(cs.clone(), || {
                 Ok(ci1.clone())
@@ -712,7 +860,7 @@ pub mod tests {
                 .take(TestCycleFoldConfig::<Projective, 2>::IO_LEN)
                 .collect(),
         };
-        let cmT = Projective::rand(&mut rng);
+        let cmT = Projective::rand(&mut rng); // random only for testing
 
         // compute the challenge natively
         let pp_hash = Fq::from(42u32); // only for test

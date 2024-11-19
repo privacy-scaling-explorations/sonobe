@@ -2,15 +2,17 @@
 Cargo.lock
 
 # Circom generated files
-folding-schemes/src/frontend/circom/test_folder/*_js/
+frontends/src/circom/test_folder/*_js/
 *.r1cs
 *.sym
 
 # Noir generated files
-folding-schemes/src/frontend/noir/test_folder/*/target/*
+frontends/src/noir/test_folder/*/target/*
 
-# generated contracts at test time
+# generated contracts data
 solidity-verifiers/generated
 examples/*.sol
 examples/*.calldata
 examples/*.inputs
+*.serialized
+*/*.serialized

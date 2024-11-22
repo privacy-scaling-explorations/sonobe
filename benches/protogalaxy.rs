@@ -7,7 +7,7 @@ use ark_vesta::{constraints::GVar as vesta_GVar, Projective as vesta_G};
 
 use folding_schemes::{
     commitment::pedersen::Pedersen,
-    folding::nova::{Nova, PreprocessorParam},
+    folding::protogalaxy::ProtoGalaxy,
     frontend::{utils::CustomFCircuit, FCircuit},
     transcript::poseidon::poseidon_canonical_config,
 };
@@ -15,19 +15,19 @@ use folding_schemes::{
 mod common;
 use common::bench_ivc_opt;
 
-fn bench_nova_ivc(c: &mut Criterion) {
+fn bench_protogalaxy_ivc(c: &mut Criterion) {
     let poseidon_config = poseidon_canonical_config::<pallas_Fr>();
 
     // iterate over the powers of n
     for n in [0_usize, 14, 16, 18, 19, 20, 21, 22].iter() {
         let fcircuit_size = 1 << n; // 2^n
         let fcircuit = CustomFCircuit::<pallas_Fr>::new(fcircuit_size).unwrap();
-        let prep_param = PreprocessorParam::new(poseidon_config.clone(), fcircuit);
+        let prep_param = (poseidon_config.clone(), fcircuit);
 
         bench_ivc_opt::<
             pallas_G,
             vesta_G,
-            Nova<
+            ProtoGalaxy<
                 pallas_G,
                 pallas_GVar,
                 vesta_G,
@@ -35,9 +35,13 @@ fn bench_nova_ivc(c: &mut Criterion) {
                 CustomFCircuit<pallas_Fr>,
                 Pedersen<pallas_G>,
                 Pedersen<vesta_G>,
-                false,
             >,
-        >(c, "Nova - Pallas-Vesta curves".to_string(), *n, prep_param)
+        >(
+            c,
+            "ProtoGalaxy - Pallas-Vesta curves".to_string(),
+            *n,
+            prep_param,
+        )
         .unwrap();
     }
 
@@ -45,12 +49,12 @@ fn bench_nova_ivc(c: &mut Criterion) {
     for n in [0_usize, 14, 16, 18, 19, 20, 21, 22].iter() {
         let fcircuit_size = 1 << n; // 2^n
         let fcircuit = CustomFCircuit::<bn_Fr>::new(fcircuit_size).unwrap();
-        let prep_param = PreprocessorParam::new(poseidon_config.clone(), fcircuit);
+        let prep_param = (poseidon_config.clone(), fcircuit);
 
         bench_ivc_opt::<
             bn_G,
             grumpkin_G,
-            Nova<
+            ProtoGalaxy<
                 bn_G,
                 bn_GVar,
                 grumpkin_G,
@@ -58,11 +62,10 @@ fn bench_nova_ivc(c: &mut Criterion) {
                 CustomFCircuit<bn_Fr>,
                 Pedersen<bn_G>,
                 Pedersen<grumpkin_G>,
-                false,
             >,
         >(
             c,
-            "Nova - BN254-Grumpkin curves".to_string(),
+            "ProtoGalaxy - BN254-Grumpkin curves".to_string(),
             *n,
             prep_param,
         )
@@ -70,5 +73,5 @@ fn bench_nova_ivc(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, bench_nova_ivc);
+criterion_group!(benches, bench_protogalaxy_ivc);
 criterion_main!(benches);

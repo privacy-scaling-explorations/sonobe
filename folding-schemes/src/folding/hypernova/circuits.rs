@@ -567,7 +567,7 @@ where
         ccs: Option<CCS<C1::ScalarField>>,
     ) -> Result<Self, Error> {
         let initial_ccs = CCS {
-            // m, n, s, s_prime and M will be overwritten by the `upper_bound_ccs' method
+            // m, n, s, s_prime and M will be overwritten by the `compute_concrete_ccs' method
             m: 0,
             n: 0,
             l: 2, // io_len
@@ -583,7 +583,7 @@ where
         let mut augmented_f_circuit = Self::default(poseidon_config, F, initial_ccs)?;
         augmented_f_circuit.ccs = ccs
             .ok_or(())
-            .or_else(|_| augmented_f_circuit.upper_bound_ccs())?;
+            .or_else(|_| augmented_f_circuit.compute_concrete_ccs())?;
         Ok(augmented_f_circuit)
     }
 
@@ -591,7 +591,7 @@ where
     /// dependency between the AugmentedFCircuit CCS and the CCS parameters m & n & s & s'.
     /// For a stable FCircuit circuit, the CCS parameters can be computed in advance and can be
     /// feed in as parameter for the AugmentedFCircuit::empty method to avoid computing them there.
-    pub fn upper_bound_ccs(&self) -> Result<CCS<C1::ScalarField>, Error> {
+    pub fn compute_concrete_ccs(&self) -> Result<CCS<C1::ScalarField>, Error> {
         let r1cs = get_r1cs_from_cs::<CF1<C1>>(self.clone())?;
         let mut ccs = CCS::from(r1cs);
 
@@ -668,8 +668,6 @@ where
             U_i = LCCCS::<C1>::dummy(&ccs);
         }
         Ok(ccs)
-
-        // Ok(augmented_f_circuit.compute_cs_ccs()?.1)
     }
 
     /// Returns the cs (ConstraintSystem) and the CCS out of the AugmentedFCircuit

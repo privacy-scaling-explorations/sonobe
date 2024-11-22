@@ -7,7 +7,7 @@ use ark_vesta::{constraints::GVar as vesta_GVar, Projective as vesta_G};
 
 use folding_schemes::{
     commitment::pedersen::Pedersen,
-    folding::nova::{Nova, PreprocessorParam},
+    folding::{hypernova::HyperNova, nova::PreprocessorParam},
     frontend::{utils::CustomFCircuit, FCircuit},
     transcript::poseidon::poseidon_canonical_config,
 };
@@ -15,7 +15,7 @@ use folding_schemes::{
 mod common;
 use common::bench_ivc_opt;
 
-fn bench_nova_ivc(c: &mut Criterion) {
+fn bench_hypernova_ivc(c: &mut Criterion) {
     let poseidon_config = poseidon_canonical_config::<pallas_Fr>();
 
     // iterate over the powers of n
@@ -27,7 +27,7 @@ fn bench_nova_ivc(c: &mut Criterion) {
         bench_ivc_opt::<
             pallas_G,
             vesta_G,
-            Nova<
+            HyperNova<
                 pallas_G,
                 pallas_GVar,
                 vesta_G,
@@ -35,9 +35,16 @@ fn bench_nova_ivc(c: &mut Criterion) {
                 CustomFCircuit<pallas_Fr>,
                 Pedersen<pallas_G>,
                 Pedersen<vesta_G>,
+                1,
+                1,
                 false,
             >,
-        >(c, "Nova - Pallas-Vesta curves".to_string(), *n, prep_param)
+        >(
+            c,
+            "HyperNova - Pallas-Vesta curves".to_string(),
+            *n,
+            prep_param,
+        )
         .unwrap();
     }
 
@@ -50,7 +57,7 @@ fn bench_nova_ivc(c: &mut Criterion) {
         bench_ivc_opt::<
             bn_G,
             grumpkin_G,
-            Nova<
+            HyperNova<
                 bn_G,
                 bn_GVar,
                 grumpkin_G,
@@ -58,11 +65,13 @@ fn bench_nova_ivc(c: &mut Criterion) {
                 CustomFCircuit<bn_Fr>,
                 Pedersen<bn_G>,
                 Pedersen<grumpkin_G>,
+                1,
+                1,
                 false,
             >,
         >(
             c,
-            "Nova - BN254-Grumpkin curves".to_string(),
+            "HyperNova - BN254-Grumpkin curves".to_string(),
             *n,
             prep_param,
         )
@@ -70,5 +79,5 @@ fn bench_nova_ivc(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, bench_nova_ivc);
+criterion_group!(benches, bench_hypernova_ivc);
 criterion_main!(benches);

@@ -73,7 +73,7 @@ where
     /// For further details on why folding is hiding, see lemma 9
     pub fn new<
         GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
-        GC2: CurveVar<C2, CF2<C2>>,
+        GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
         FC: FCircuit<C1::ScalarField>,
         CS1: CommitmentScheme<C1, true>,
         CS2: CommitmentScheme<C2, true>,
@@ -87,7 +87,6 @@ where
         <C2 as Group>::ScalarField: PrimeField,
         <C2 as CurveGroup>::BaseField: PrimeField,
         <C2 as CurveGroup>::BaseField: Absorb,
-        GC2: ToConstraintFieldGadget<<C2 as CurveGroup>::BaseField>,
         C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     {
         let mut transcript = PoseidonSponge::<C1::ScalarField>::new(&nova.poseidon_config);
@@ -140,7 +139,7 @@ where
     #[allow(clippy::too_many_arguments)]
     pub fn verify<
         CS1: CommitmentScheme<C1, true>,
-        GC2: CurveVar<C2, CF2<C2>>,
+        GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
         CS2: CommitmentScheme<C2, true>,
     >(
         r1cs: &R1CS<C1::ScalarField>,
@@ -157,7 +156,6 @@ where
         <C2 as Group>::ScalarField: Absorb,
         <C2 as CurveGroup>::BaseField: PrimeField,
         <C2 as CurveGroup>::BaseField: Absorb,
-        GC2: ToConstraintFieldGadget<<C2 as CurveGroup>::BaseField>,
         C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     {
         // Handles case where i=0

@@ -118,7 +118,8 @@ pub enum Error {
 /// over a cycle of curves (C1, C2), where:
 /// - C1 is the main curve, which ScalarField we use as our F for all the field operations
 /// - C2 is the auxiliary curve, which we use for the commitments, whose BaseField (for point
-/// coordinates) are in the C1::ScalarField.
+///   coordinates) are in the C1::ScalarField.
+///
 /// In other words, C1.Fq == C2.Fr, and C1.Fr == C2.Fq.
 pub trait FoldingScheme<C1: CurveGroup, C2: CurveGroup, FC>: Clone + Debug
 where

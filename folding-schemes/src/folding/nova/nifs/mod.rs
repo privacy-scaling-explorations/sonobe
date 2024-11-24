@@ -1,9 +1,11 @@
 /// This module defines the traits related to the NIFS (Non-Interactive Folding Scheme).
 /// - NIFSTrait, which implements the NIFS interface
 /// - NIFSGadget, which implements the NIFS in-circuit
-/// both traits implemented by the various Nova variants schemes; ie.
-/// [Nova](https://eprint.iacr.org/2021/370.pdf), [Ova](https://hackmd.io/V4838nnlRKal9ZiTHiGYzw),
-/// [Mova](https://eprint.iacr.org/2024/1220.pdf).
+///
+/// Both traits implemented by the various Nova variants schemes; ie.
+/// - [Nova](https://eprint.iacr.org/2021/370.pdf)
+/// - [Ova](https://hackmd.io/V4838nnlRKal9ZiTHiGYzw)
+/// - [Mova](https://eprint.iacr.org/2024/1220.pdf)
 use ark_crypto_primitives::sponge::{constraints::AbsorbGadget, Absorb, CryptographicSponge};
 use ark_ec::CurveGroup;
 use ark_r1cs_std::{alloc::AllocVar, boolean::Boolean, fields::fp::FpVar};

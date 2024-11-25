@@ -140,6 +140,22 @@ jobs:
       - name: Run examples
         run: cargo run --release --example 2>&1 | grep -E '^ ' | xargs -n1 cargo run --release --example
 
+  # run the benchmarks with the flag `--no-run` to ensure that they compile,
+  # but without executing them.
+  bench:
+    if: github.event.pull_request.draft == false
+    name: Bench compile
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions-rs/cargo@v1
+        with:
+          command: bench
+          args: --no-run
+
   fmt:
     if: github.event.pull_request.draft == false
     name: Rustfmt

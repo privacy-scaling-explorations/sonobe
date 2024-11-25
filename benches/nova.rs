@@ -1,8 +1,5 @@
 use criterion::*;
-use pprof::{
-    criterion::{Output, PProfProfiler},
-    flamegraph::Options,
-};
+use pprof::criterion::{Output, PProfProfiler};
 
 use ark_bn254::{constraints::GVar as bn_GVar, Fr as bn_Fr, G1Projective as bn_G};
 use ark_grumpkin::{constraints::GVar as grumpkin_GVar, Projective as grumpkin_G};

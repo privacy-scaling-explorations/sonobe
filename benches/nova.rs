@@ -1,4 +1,8 @@
 use criterion::*;
+use pprof::{
+    criterion::{Output, PProfProfiler},
+    flamegraph::Options,
+};
 
 use ark_bn254::{constraints::GVar as bn_GVar, Fr as bn_Fr, G1Projective as bn_G};
 use ark_grumpkin::{constraints::GVar as grumpkin_GVar, Projective as grumpkin_G};
@@ -70,5 +74,9 @@ fn bench_nova_ivc(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, bench_nova_ivc);
+criterion_group! {
+    name = benches;
+    config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
+    targets = bench_nova_ivc
+}
 criterion_main!(benches);

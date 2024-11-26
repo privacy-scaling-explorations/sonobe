@@ -159,7 +159,7 @@ where
         // compute the cross terms
         let z1: Vec<C::ScalarField> = [vec![U_i.u], U_i.x.to_vec(), W_i.W.to_vec()].concat();
         let z2: Vec<C::ScalarField> = [vec![u_i.u], u_i.x.to_vec(), w_i.W.to_vec()].concat();
-        let T = Self::compute_T(r1cs, U_i.u, u_i.u, &z1, &z2)?;
+        let T = Self::compute_T(r1cs, U_i.u, u_i.u, &z1, &z2, &W_i.E, &w_i.E)?;
 
         // use r_T=0 since we don't need hiding property for cm(T)
         let cmT = CS::commit(cs_prover_params, &T, &C::ScalarField::zero())?;
@@ -207,30 +207,28 @@ impl<C: CurveGroup, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, c
 where
     <C as Group>::ScalarField: Absorb,
 {
-    /// compute_T: compute cross-terms T
+    /// compute_T: compute cross-terms T. We use the approach described in
+    /// [Mova](https://eprint.iacr.org/2024/1220.pdf)'s section 5.2.
     pub fn compute_T(
         r1cs: &R1CS<C::ScalarField>,
         u1: C::ScalarField,
         u2: C::ScalarField,
         z1: &[C::ScalarField],
         z2: &[C::ScalarField],
+        E1: &[C::ScalarField],
+        E2: &[C::ScalarField],
     ) -> Result<Vec<C::ScalarField>, Error> {
-        let (A, B, C) = (r1cs.A.clone(), r1cs.B.clone(), r1cs.C.clone());
+        let z = vec_add(&z1, &z2)?;
 
         // this is parallelizable (for the future)
-        let Az1 = mat_vec_mul(&A, z1)?;
-        let Bz1 = mat_vec_mul(&B, z1)?;
-        let Cz1 = mat_vec_mul(&C, z1)?;
-        let Az2 = mat_vec_mul(&A, z2)?;
-        let Bz2 = mat_vec_mul(&B, z2)?;
-        let Cz2 = mat_vec_mul(&C, z2)?;
-
-        let Az1_Bz2 = hadamard(&Az1, &Bz2)?;
-        let Az2_Bz1 = hadamard(&Az2, &Bz1)?;
-        let u1Cz2 = vec_scalar_mul(&Cz2, &u1);
-        let u2Cz1 = vec_scalar_mul(&Cz1, &u2);
-
-        vec_sub(&vec_sub(&vec_add(&Az1_Bz2, &Az2_Bz1)?, &u1Cz2)?, &u2Cz1)
+        let Az = mat_vec_mul(&r1cs.A, &z)?;
+        let Bz = mat_vec_mul(&r1cs.B, &z)?;
+        let Cz = mat_vec_mul(&r1cs.C, &z)?;
+        let u = u1 + u2;
+        let uCz = vec_scalar_mul(&Cz, &u);
+        let AzBz = hadamard(&Az, &Bz)?;
+        let lhs = vec_sub(&AzBz, &uCz)?;
+        vec_sub(&vec_sub(&lhs, &E1)?, &E2)
     }
 
     pub fn compute_cyclefold_cmT(
@@ -248,7 +246,7 @@ where
         let z2: Vec<C::ScalarField> = [vec![ci2.u], ci2.x.to_vec(), w2.W.to_vec()].concat();
 
         // compute cross terms
-        let T = Self::compute_T(r1cs, ci1.u, ci2.u, &z1, &z2)?;
+        let T = Self::compute_T(r1cs, ci1.u, ci2.u, &z1, &z2, &w1.E, &w2.E)?;
         // use r_T=0 since we don't need hiding property for cm(T)
         let cmT = CS::commit(cs_prover_params, &T, &C::ScalarField::zero())?;
         Ok((T, cmT))

@@ -253,7 +253,7 @@ where
         // compute the cross terms
         let z1: Vec<C::ScalarField> = [vec![U_i.u], U_i.x.to_vec(), W_i.W.to_vec()].concat();
         let z2: Vec<C::ScalarField> = [vec![u_i.u], u_i.x.to_vec(), w_i.W.to_vec()].concat();
-        let T = NovaNIFS::<C, CS, T, H>::compute_T(r1cs, U_i.u, u_i.u, &z1, &z2)?;
+        let T = NovaNIFS::<C, CS, T, H>::compute_T(r1cs, U_i.u, u_i.u, &z1, &z2, &W_i.E, &w_i.E)?;
 
         let n_vars: usize = log2(W_i.E.len()) as usize;
         if log2(T.len()) as usize != n_vars {

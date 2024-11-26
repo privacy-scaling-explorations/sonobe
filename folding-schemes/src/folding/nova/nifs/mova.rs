@@ -216,7 +216,7 @@ where
         _cs_prover_params: &CS::ProverParams, // not used in Mova since we don't commit to T
         r1cs: &R1CS<C::ScalarField>,
         transcript: &mut T,
-        pp_hash: C::ScalarField,
+        pp_hash: &C::ScalarField,
         W_i: &Witness<C>,
         U_i: &CommittedInstance<C>,
         w_i: &Witness<C>,
@@ -298,12 +298,12 @@ where
     /// returns the folded committed instance
     fn verify(
         transcript: &mut T,
-        pp_hash: C::ScalarField,
+        pp_hash: &C::ScalarField,
         U_i: &CommittedInstance<C>,
         u_i: &CommittedInstance<C>,
         proof: &Proof<C>,
     ) -> Result<(Self::CommittedInstance, Vec<bool>), Error> {
-        transcript.absorb(&pp_hash);
+        transcript.absorb(pp_hash);
         transcript.absorb(U_i);
         transcript.absorb(u_i);
         let rE_prime = PointVsLine::<C, T>::verify(

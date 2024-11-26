@@ -67,7 +67,7 @@ pub trait NIFSTrait<
         cs_prover_params: &CS::ProverParams,
         r1cs: &R1CS<C::ScalarField>,
         transcript: &mut T,
-        pp_hash: C::ScalarField,
+        pp_hash: &C::ScalarField,
         W_i: &Self::Witness,           // running witness
         U_i: &Self::CommittedInstance, // running committed instance
         w_i: &Self::Witness,           // incoming witness
@@ -86,7 +86,7 @@ pub trait NIFSTrait<
     /// bits, so that it can be reused in other methods.
     fn verify(
         transcript: &mut T,
-        pp_hash: C::ScalarField,
+        pp_hash: &C::ScalarField,
         U_i: &Self::CommittedInstance,
         u_i: &Self::CommittedInstance,
         proof: &Self::Proof,
@@ -112,12 +112,12 @@ pub trait NIFSGadgetTrait<C: CurveGroup, S: CryptographicSponge, T: TranscriptVa
     #[allow(clippy::type_complexity)]
     fn verify(
         transcript: &mut T,
-        pp_hash: FpVar<CF1<C>>,
-        U_i: Self::CommittedInstanceVar,
+        pp_hash: &FpVar<CF1<C>>,
+        U_i: &Self::CommittedInstanceVar,
         // U_i_vec is passed to reuse the already computed U_i_vec from previous methods
-        U_i_vec: Vec<FpVar<CF1<C>>>,
-        u_i: Self::CommittedInstanceVar,
-        proof: Option<Self::ProofVar>,
+        U_i_vec: &[FpVar<CF1<C>>],
+        u_i: &Self::CommittedInstanceVar,
+        proof: Option<&Self::ProofVar>,
     ) -> Result<(Self::CommittedInstanceVar, Vec<Boolean<CF1<C>>>), SynthesisError>;
 }
 
@@ -179,7 +179,7 @@ pub mod tests {
                 &pedersen_params,
                 &r1cs,
                 &mut transcript_p,
-                pp_hash,
+                &pp_hash,
                 &W_i,
                 &U_i,
                 &w_i,
@@ -189,7 +189,7 @@ pub mod tests {
 
             // NIFS.V
             let (folded_committed_instance, _) =
-                N::verify(&mut transcript_v, pp_hash, &U_i, &u_i, &proof).unwrap();
+                N::verify(&mut transcript_v, &pp_hash, &U_i, &u_i, &proof).unwrap();
 
             // set running_instance for next loop iteration
             W_i = folded_witness;
@@ -222,7 +222,7 @@ pub mod tests {
         let pp_hash = Fr::rand(&mut rng);
         let poseidon_config = poseidon_canonical_config::<Fr>();
         let mut transcript = PoseidonSponge::<Fr>::new(&poseidon_config);
-        let (ci3, _) = N::verify(&mut transcript, pp_hash, &U_i, &u_i, &proof)?;
+        let (ci3, _) = N::verify(&mut transcript, &pp_hash, &U_i, &u_i, &proof)?;
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
@@ -235,11 +235,11 @@ pub mod tests {
         let ci1Var_vec = ci1Var.to_sponge_field_elements()?;
         let (out, _) = NG::verify(
             &mut transcriptVar,
-            pp_hashVar,
-            ci1Var.clone(),
-            ci1Var_vec,
-            ci2Var.clone(),
-            Some(proofVar.clone()),
+            &pp_hashVar,
+            &ci1Var,
+            &ci1Var_vec,
+            &ci2Var,
+            Some(&proofVar),
         )?;
         assert!(cs.is_satisfied()?);
 

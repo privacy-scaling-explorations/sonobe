@@ -715,9 +715,7 @@ where
             i_usize = usize::from_le_bytes(i_bytes);
         }
 
-        let z_i1 = self
-            .F
-            .step_native(i_usize, self.z_i.clone(), external_inputs.clone())?;
+        let z_i1 = self.F.step_native(i_usize, &self.z_i, &external_inputs)?;
 
         // fold Nova instances
         let (W_i1, U_i1, cmT, r_bits): (Witness<C1>, CommittedInstance<C1>, C1, Vec<bool>) =
@@ -725,7 +723,7 @@ where
                 &self.cs_pp,
                 &self.r1cs,
                 &mut transcript,
-                self.pp_hash,
+                &self.pp_hash,
                 &self.W_i,
                 &self.U_i,
                 &self.w_i,
@@ -747,7 +745,7 @@ where
         let cf_u_i1_x: C1::ScalarField;
 
         if self.i == C1::ScalarField::zero() {
-            cf_u_i1_x = self.cf_U_i.hash_cyclefold(&sponge, self.pp_hash);
+            cf_u_i1_x = self.cf_U_i.hash_cyclefold(&sponge, &self.pp_hash);
             // base case
             augmented_F_circuit = AugmentedFCircuit::<C1, C2, GC2, FC> {
                 _gc2: PhantomData,
@@ -835,7 +833,7 @@ where
                 &mut rng,
             )?;
 
-            cf_u_i1_x = cf_U_i1.hash_cyclefold(&sponge, self.pp_hash);
+            cf_u_i1_x = cf_U_i1.hash_cyclefold(&sponge, &self.pp_hash);
 
             augmented_F_circuit = AugmentedFCircuit::<C1, C2, GC2, FC> {
                 _gc2: PhantomData,
@@ -1024,7 +1022,7 @@ where
             return Err(Error::IVCVerificationFail);
         }
         // u_i.X[1] == H(cf_U_i)
-        let expected_cf_u_i_x = cf_U_i.hash_cyclefold(&sponge, pp_hash);
+        let expected_cf_u_i_x = cf_U_i.hash_cyclefold(&sponge, &pp_hash);
         if expected_cf_u_i_x != u_i.x[1] {
             return Err(Error::IVCVerificationFail);
         }
@@ -1081,12 +1079,12 @@ where
     > {
         fold_cyclefold_circuit::<NovaCycleFoldConfig<C1>, C1, GC1, C2, GC2, CS2, H>(
             transcript,
-            self.cf_r1cs.clone(),
-            self.cf_cs_pp.clone(),
-            self.pp_hash,
-            cf_W_i,
-            cf_U_i,
-            cf_u_i_x,
+            &self.cf_r1cs,
+            &self.cf_cs_pp,
+            &self.pp_hash,
+            &cf_W_i,
+            &cf_U_i,
+            &cf_u_i_x,
             cf_circuit,
             rng,
         )

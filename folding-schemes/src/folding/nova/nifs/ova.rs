@@ -180,7 +180,7 @@ where
         _cs_prover_params: &CS::ProverParams,
         _r1cs: &R1CS<C::ScalarField>,
         transcript: &mut T,
-        pp_hash: C::ScalarField,
+        pp_hash: &C::ScalarField,
         W_i: &Self::Witness,
         U_i: &Self::CommittedInstance,
         w_i: &Self::Witness,
@@ -214,7 +214,7 @@ where
 
     fn verify(
         transcript: &mut T,
-        pp_hash: C::ScalarField,
+        pp_hash: &C::ScalarField,
         U_i: &Self::CommittedInstance,
         u_i: &Self::CommittedInstance,
         _proof: &Self::Proof, // unused in Ova

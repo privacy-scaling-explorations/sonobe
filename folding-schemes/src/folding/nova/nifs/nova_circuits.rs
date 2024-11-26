@@ -127,19 +127,15 @@ where
 
     fn verify(
         transcript: &mut T,
-        pp_hash: FpVar<CF1<C>>,
-        U_i: Self::CommittedInstanceVar,
+        pp_hash: &FpVar<CF1<C>>,
+        U_i: &Self::CommittedInstanceVar,
         // U_i_vec is passed to reuse the already computed U_i_vec from previous methods
-        U_i_vec: Vec<FpVar<CF1<C>>>,
-        u_i: Self::CommittedInstanceVar,
-        cmT: Option<Self::ProofVar>,
+        U_i_vec: &[FpVar<CF1<C>>],
+        u_i: &Self::CommittedInstanceVar,
+        cmT: Option<&Self::ProofVar>,
     ) -> Result<(Self::CommittedInstanceVar, Vec<Boolean<CF1<C>>>), SynthesisError> {
         let r_bits = ChallengeGadget::<C, CommittedInstance<C>>::get_challenge_gadget(
-            transcript,
-            pp_hash.clone(),
-            U_i_vec,
-            u_i.clone(),
-            cmT.clone(),
+            transcript, &pp_hash, &U_i_vec, &u_i, cmT,
         )?;
         let r = Boolean::le_bits_to_fp_var(&r_bits)?;
 
@@ -148,13 +144,13 @@ where
                 cmE: NonNativeAffineVar::new_constant(ConstraintSystemRef::None, C::zero())?,
                 cmW: NonNativeAffineVar::new_constant(ConstraintSystemRef::None, C::zero())?,
                 // ci3.u = U_i.u + r * u_i.u
-                u: U_i.u + &r * u_i.u,
+                u: &U_i.u + &r * &u_i.u,
                 // ci3.x = U_i.x + r * u_i.x
                 x: U_i
                     .x
                     .iter()
-                    .zip(u_i.x)
-                    .map(|(a, b)| a + &r * &b)
+                    .zip(&u_i.x)
+                    .map(|(a, b)| a + &r * b)
                     .collect::<Vec<FpVar<CF1<C>>>>(),
             },
             r_bits,

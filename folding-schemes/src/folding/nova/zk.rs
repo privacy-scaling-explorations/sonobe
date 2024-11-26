@@ -98,7 +98,7 @@ where
             &nova.cs_pp,
             &nova.r1cs,
             &mut transcript,
-            nova.pp_hash,
+            &nova.pp_hash,
             &nova.w_i,
             &nova.u_i,
             &nova.W_i,
@@ -116,7 +116,7 @@ where
                 &nova.cs_pp,
                 &nova.r1cs,
                 &mut transcript,
-                nova.pp_hash,
+                &nova.pp_hash,
                 &W_f,
                 &U_f,
                 &W_r,
@@ -182,7 +182,7 @@ where
             return Err(Error::zkIVCVerificationFail);
         }
 
-        let expected_cf_u_i_x = proof.cf_U_i.hash_cyclefold(&sponge, pp_hash);
+        let expected_cf_u_i_x = proof.cf_U_i.hash_cyclefold(&sponge, &pp_hash);
         if expected_cf_u_i_x != proof.u_i.x[1] {
             return Err(Error::IVCVerificationFail);
         }
@@ -196,7 +196,7 @@ where
         // 3. Obtain the U_f folded instance
         let (U_f, _) = NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>, true>::verify(
             &mut transcript,
-            pp_hash,
+            &pp_hash,
             &proof.u_i,
             &proof.U_i,
             &proof.pi,
@@ -205,7 +205,7 @@ where
         // 4. Obtain the U^{\prime}_i folded instance
         let (U_i_prime, _) = NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>, true>::verify(
             &mut transcript,
-            pp_hash,
+            &pp_hash,
             &U_f,
             &proof.U_r,
             &proof.pi_prime,

@@ -37,14 +37,14 @@ where
 {
     pub fn get_challenge_native<T: Transcript<C::ScalarField>>(
         transcript: &mut T,
-        pp_hash: C::ScalarField, // public params hash
+        pp_hash: &C::ScalarField, // public params hash
         U_i: &CI,
         u_i: &CI,
         cmT: Option<&C>,
     ) -> Vec<bool> {
-        transcript.absorb(&pp_hash);
-        transcript.absorb(&U_i);
-        transcript.absorb(&u_i);
+        transcript.absorb(pp_hash);
+        transcript.absorb(U_i);
+        transcript.absorb(u_i);
         // in the Nova case we absorb the cmT, in Ova case we don't since it is not used.
         if let Some(cmT_value) = cmT {
             transcript.absorb_nonnative(cmT_value);
@@ -59,17 +59,17 @@ where
         CIVar: AbsorbGadget<CF1<C>>,
     >(
         transcript: &mut T,
-        pp_hash: FpVar<CF1<C>>,      // public params hash
-        U_i_vec: Vec<FpVar<CF1<C>>>, // apready processed input, so we don't have to recompute these values
-        u_i: CIVar,
-        cmT: Option<NonNativeAffineVar<C>>,
+        pp_hash: &FpVar<CF1<C>>,   // public params hash
+        U_i_vec: &[FpVar<CF1<C>>], // apready processed input, so we don't have to recompute these values
+        u_i: &CIVar,
+        cmT: Option<&NonNativeAffineVar<C>>,
     ) -> Result<Vec<Boolean<C::ScalarField>>, SynthesisError> {
-        transcript.absorb(&pp_hash)?;
+        transcript.absorb(pp_hash)?;
         transcript.absorb(&U_i_vec)?;
-        transcript.absorb(&u_i)?;
+        transcript.absorb(u_i)?;
         // in the Nova case we absorb the cmT, in Ova case we don't since it is not used.
         if let Some(cmT_value) = cmT {
-            transcript.absorb_nonnative(&cmT_value)?;
+            transcript.absorb_nonnative(cmT_value)?;
         }
         transcript.squeeze_bits(NOVA_N_BITS_RO)
     }
@@ -142,7 +142,7 @@ where
         cs_prover_params: &CS::ProverParams,
         r1cs: &R1CS<C::ScalarField>,
         transcript: &mut T,
-        pp_hash: C::ScalarField,
+        pp_hash: &C::ScalarField,
         W_i: &Self::Witness,
         U_i: &Self::CommittedInstance,
         w_i: &Self::Witness,
@@ -166,9 +166,9 @@ where
 
         let r_bits = ChallengeGadget::<C, Self::CommittedInstance>::get_challenge_native(
             transcript,
-            pp_hash,
-            U_i,
-            u_i,
+            &pp_hash,
+            &U_i,
+            &u_i,
             Some(&cmT),
         );
         let r_Fr = C::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
@@ -183,7 +183,7 @@ where
 
     fn verify(
         transcript: &mut T,
-        pp_hash: C::ScalarField,
+        pp_hash: &C::ScalarField,
         U_i: &Self::CommittedInstance,
         u_i: &Self::CommittedInstance,
         cmT: &C, // Proof

@@ -580,8 +580,8 @@ where
         F.generate_step_constraints(
             cs.clone(),
             0,
-            Vec::new_witness(cs.clone(), || Ok(vec![Zero::zero(); state_len]))?,
-            Vec::new_witness(cs.clone(), || Ok(vec![Zero::zero(); external_inputs_len]))?,
+            &Vec::new_witness(cs.clone(), || Ok(vec![Zero::zero(); state_len]))?,
+            &Vec::new_witness(cs.clone(), || Ok(vec![Zero::zero(); external_inputs_len]))?,
         )?;
         let step_constraints = cs.num_constraints();
 
@@ -860,9 +860,7 @@ where
         let i_bn: BigUint = self.i.into();
         let i_usize: usize = i_bn.try_into().map_err(|_| Error::MaxStep)?;
 
-        let z_i1 = self
-            .F
-            .step_native(i_usize, self.z_i.clone(), external_inputs.clone())?;
+        let z_i1 = self.F.step_native(i_usize, &self.z_i, &external_inputs)?;
 
         // folded instance output (public input, x)
         // u_{i+1}.x[0] = H(i+1, z_0, z_{i+1}, U_{i+1})
@@ -883,7 +881,7 @@ where
             );
             // `cf_U_{i+1}` (i.e., `cf_U_1`) is fixed to `cf_U_dummy`, so we
             // just use `self.cf_U_i = cf_U_0 = cf_U_dummy`.
-            cf_u_i1_x = self.cf_U_i.hash_cyclefold(&sponge, self.pp_hash);
+            cf_u_i1_x = self.cf_U_i.hash_cyclefold(&sponge, &self.pp_hash);
 
             augmented_F_circuit = AugmentedFCircuit::empty(
                 &self.poseidon_config,
@@ -987,7 +985,7 @@ where
                 &self.z_0,
                 &z_i1,
             );
-            cf_u_i1_x = cf_U_i1.hash_cyclefold(&sponge, self.pp_hash);
+            cf_u_i1_x = cf_U_i1.hash_cyclefold(&sponge, &self.pp_hash);
 
             augmented_F_circuit = AugmentedFCircuit {
                 _gc2: PhantomData,
@@ -1164,7 +1162,7 @@ where
             return Err(Error::IVCVerificationFail);
         }
         // u_i.X[1] == H(cf_U_i)
-        let expected_cf_u_i_x = cf_U_i.hash_cyclefold(&sponge, pp_hash);
+        let expected_cf_u_i_x = cf_U_i.hash_cyclefold(&sponge, &pp_hash);
         if expected_cf_u_i_x != u_i.x[1] {
             return Err(Error::IVCVerificationFail);
         }
@@ -1221,12 +1219,12 @@ where
     > {
         fold_cyclefold_circuit::<ProtoGalaxyCycleFoldConfig<C1>, C1, GC1, C2, GC2, CS2, false>(
             transcript,
-            self.cf_r1cs.clone(),
-            self.cf_cs_params.clone(),
-            self.pp_hash,
-            cf_W_i,
-            cf_U_i,
-            cf_u_i_x,
+            &self.cf_r1cs,
+            &self.cf_cs_params,
+            &self.pp_hash,
+            &cf_W_i,
+            &cf_U_i,
+            &cf_u_i_x,
             cf_circuit,
             rng,
         )

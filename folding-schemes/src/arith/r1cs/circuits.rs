@@ -208,7 +208,7 @@ pub mod tests {
         let circuit = WrapperCircuit::<Fr, CubicFCircuit<Fr>> {
             FC: cubic_circuit,
             z_i: Some(z_i.clone()),
-            z_i1: Some(cubic_circuit.step_native(0, z_i, vec![]).unwrap()),
+            z_i1: Some(cubic_circuit.step_native(0, &z_i, &[]).unwrap()),
         };
 
         test_relaxed_r1cs_gadget(circuit);
@@ -251,7 +251,7 @@ pub mod tests {
         let circuit = WrapperCircuit::<Fr, CustomFCircuit<Fr>> {
             FC: custom_circuit,
             z_i: Some(z_i.clone()),
-            z_i1: Some(custom_circuit.step_native(0, z_i, vec![]).unwrap()),
+            z_i1: Some(custom_circuit.step_native(0, &z_i, &[]).unwrap()),
         };
         test_relaxed_r1cs_gadget(circuit);
     }
@@ -269,7 +269,7 @@ pub mod tests {
         let circuit = WrapperCircuit::<Fq, CustomFCircuit<Fq>> {
             FC: custom_circuit,
             z_i: Some(z_i.clone()),
-            z_i1: Some(custom_circuit.step_native(0, z_i, vec![]).unwrap()),
+            z_i1: Some(custom_circuit.step_native(0, &z_i, &[]).unwrap()),
         };
         circuit.generate_constraints(cs.clone()).unwrap();
         cs.finalize();

@@ -33,20 +33,15 @@ impl<F: PrimeField> FCircuit<F> for DummyCircuit {
     fn external_inputs_len(&self) -> usize {
         self.external_inputs_len
     }
-    fn step_native(
-        &self,
-        _i: usize,
-        _z_i: Vec<F>,
-        _external_inputs: Vec<F>,
-    ) -> Result<Vec<F>, Error> {
+    fn step_native(&self, _i: usize, _z_i: &[F], _external_inputs: &[F]) -> Result<Vec<F>, Error> {
         Ok(vec![F::zero(); self.state_len])
     }
     fn generate_step_constraints(
         &self,
         cs: ConstraintSystemRef<F>,
         _i: usize,
-        _z_i: Vec<FpVar<F>>,
-        _external_inputs: Vec<FpVar<F>>,
+        _z_i: &[FpVar<F>],
+        _external_inputs: &[FpVar<F>],
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         Vec::new_witness(cs.clone(), || Ok(vec![Zero::zero(); self.state_len]))
     }
@@ -74,20 +69,15 @@ impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
     fn external_inputs_len(&self) -> usize {
         0
     }
-    fn step_native(
-        &self,
-        _i: usize,
-        z_i: Vec<F>,
-        _external_inputs: Vec<F>,
-    ) -> Result<Vec<F>, Error> {
+    fn step_native(&self, _i: usize, z_i: &[F], _external_inputs: &[F]) -> Result<Vec<F>, Error> {
         Ok(vec![z_i[0] * z_i[0] * z_i[0] + z_i[0] + F::from(5_u32)])
     }
     fn generate_step_constraints(
         &self,
         cs: ConstraintSystemRef<F>,
         _i: usize,
-        z_i: Vec<FpVar<F>>,
-        _external_inputs: Vec<FpVar<F>>,
+        z_i: &[FpVar<F>],
+        _external_inputs: &[FpVar<F>],
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let five = FpVar::<F>::new_constant(cs.clone(), F::from(5u32))?;
         let z_i = z_i[0].clone();
@@ -119,12 +109,7 @@ impl<F: PrimeField> FCircuit<F> for CustomFCircuit<F> {
     fn external_inputs_len(&self) -> usize {
         0
     }
-    fn step_native(
-        &self,
-        _i: usize,
-        z_i: Vec<F>,
-        _external_inputs: Vec<F>,
-    ) -> Result<Vec<F>, Error> {
+    fn step_native(&self, _i: usize, z_i: &[F], _external_inputs: &[F]) -> Result<Vec<F>, Error> {
         let mut z_i1 = z_i[0];
         for _ in 0..self.n_constraints - 1 {
             z_i1 = z_i1.square();
@@ -135,8 +120,8 @@ impl<F: PrimeField> FCircuit<F> for CustomFCircuit<F> {
         &self,
         _cs: ConstraintSystemRef<F>,
         _i: usize,
-        z_i: Vec<FpVar<F>>,
-        _external_inputs: Vec<FpVar<F>>,
+        z_i: &[FpVar<F>],
+        _external_inputs: &[FpVar<F>],
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let mut z_i1 = z_i[0].clone();
         for _ in 0..self.n_constraints - 1 {
@@ -168,9 +153,9 @@ where
             Vec::<FpVar<F>>::new_witness(cs.clone(), || Ok(self.z_i.unwrap_or(vec![F::zero()])))?;
         let z_i1 =
             Vec::<FpVar<F>>::new_input(cs.clone(), || Ok(self.z_i1.unwrap_or(vec![F::zero()])))?;
-        let computed_z_i1 =
-            self.FC
-                .generate_step_constraints(cs.clone(), 0, z_i.clone(), vec![])?;
+        let computed_z_i1 = self
+            .FC
+            .generate_step_constraints(cs.clone(), 0, &z_i, &[])?;
 
         use ark_r1cs_std::eq::EqGadget;
         computed_z_i1.enforce_equal(&z_i1)?;

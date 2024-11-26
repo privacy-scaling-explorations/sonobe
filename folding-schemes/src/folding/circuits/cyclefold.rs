@@ -169,10 +169,10 @@ where
     pub fn hash_cyclefold<T: Transcript<C::BaseField>>(
         &self,
         sponge: &T,
-        pp_hash: C::BaseField, // public params hash
+        pp_hash: &C::BaseField, // public params hash
     ) -> C::BaseField {
         let mut sponge = sponge.clone();
-        sponge.absorb(&pp_hash);
+        sponge.absorb(pp_hash);
         sponge.absorb_nonnative(self);
         sponge.squeeze_field_elements(1)[0]
     }
@@ -195,11 +195,11 @@ where
     pub fn hash<S: CryptographicSponge, T: TranscriptVar<CF2<C>, S>>(
         &self,
         sponge: &T,
-        pp_hash: FpVar<CF2<C>>, // public params hash
+        pp_hash: &FpVar<CF2<C>>, // public params hash
     ) -> Result<(FpVar<CF2<C>>, Vec<FpVar<CF2<C>>>), SynthesisError> {
         let mut sponge = sponge.clone();
         let U_vec = self.to_native_sponge_field_elements()?;
-        sponge.absorb(&pp_hash)?;
+        sponge.absorb(pp_hash)?;
         sponge.absorb(&U_vec)?;
         Ok((
             // `unwrap` is safe because the sponge is guaranteed to return a single element
@@ -383,30 +383,30 @@ where
 {
     pub fn get_challenge_native<T: Transcript<C::BaseField>>(
         transcript: &mut T,
-        pp_hash: C::BaseField, // public params hash
-        U_i: CycleFoldCommittedInstance<C>,
-        u_i: CycleFoldCommittedInstance<C>,
-        cmT: C,
+        pp_hash: &C::BaseField, // public params hash
+        U_i: &CycleFoldCommittedInstance<C>,
+        u_i: &CycleFoldCommittedInstance<C>,
+        cmT: &C,
     ) -> Vec<bool> {
-        transcript.absorb(&pp_hash);
-        transcript.absorb_nonnative(&U_i);
-        transcript.absorb_nonnative(&u_i);
-        transcript.absorb_point(&cmT);
+        transcript.absorb(pp_hash);
+        transcript.absorb_nonnative(U_i);
+        transcript.absorb_nonnative(u_i);
+        transcript.absorb_point(cmT);
         transcript.squeeze_bits(NOVA_N_BITS_RO)
     }
 
     // compatible with the native get_challenge_native
     pub fn get_challenge_gadget<S: CryptographicSponge, T: TranscriptVar<C::BaseField, S>>(
         transcript: &mut T,
-        pp_hash: FpVar<C::BaseField>, // public params hash
-        U_i_vec: Vec<FpVar<C::BaseField>>,
-        u_i: CycleFoldCommittedInstanceVar<C, GC>,
-        cmT: GC,
+        pp_hash: &FpVar<C::BaseField>, // public params hash
+        U_i_vec: &[FpVar<C::BaseField>],
+        u_i: &CycleFoldCommittedInstanceVar<C, GC>,
+        cmT: &GC,
     ) -> Result<Vec<Boolean<C::BaseField>>, SynthesisError> {
-        transcript.absorb(&pp_hash)?;
+        transcript.absorb(pp_hash)?;
         transcript.absorb(&U_i_vec)?;
-        transcript.absorb_nonnative(&u_i)?;
-        transcript.absorb_point(&cmT)?;
+        transcript.absorb_nonnative(u_i)?;
+        transcript.absorb_point(cmT)?;
         transcript.squeeze_bits(NOVA_N_BITS_RO)
     }
 }
@@ -611,12 +611,12 @@ where
 #[allow(clippy::too_many_arguments)]
 pub fn fold_cyclefold_circuit<CFG, C1, GC1, C2, GC2, CS2, const H: bool>(
     transcript: &mut impl Transcript<C1::ScalarField>,
-    cf_r1cs: R1CS<C2::ScalarField>,
-    cf_cs_params: CS2::ProverParams,
-    pp_hash: C1::ScalarField,               // public params hash
-    cf_W_i: CycleFoldWitness<C2>,           // witness of the running instance
-    cf_U_i: CycleFoldCommittedInstance<C2>, // running instance
-    cf_u_i_x: Vec<C2::ScalarField>,
+    cf_r1cs: &R1CS<C2::ScalarField>,
+    cf_cs_params: &CS2::ProverParams,
+    pp_hash: &C1::ScalarField,               // public params hash
+    cf_W_i: &CycleFoldWitness<C2>,           // witness of the running instance
+    cf_U_i: &CycleFoldCommittedInstance<C2>, // running instance
+    cf_u_i_x: &[C2::ScalarField],
     cf_circuit: CycleFoldCircuit<CFG, GC1>,
     mut rng: impl RngCore,
 ) -> Result<
@@ -657,32 +657,27 @@ where
 
     // fold cyclefold instances
     let cf_w_i = CycleFoldWitness::<C2>::new::<H>(cf_w_i.clone(), cf_r1cs.A.n_rows, &mut rng);
-    let cf_u_i: CycleFoldCommittedInstance<C2> =
-        cf_w_i.commit::<CS2, H>(&cf_cs_params, cf_x_i.clone())?;
+    let cf_u_i: CycleFoldCommittedInstance<C2> = cf_w_i.commit::<CS2, H>(cf_cs_params, cf_x_i)?;
 
     // compute T* and cmT* for CycleFoldCircuit
     let (cf_T, cf_cmT) =
         NIFS::<C2, CS2, PoseidonSponge<C2::ScalarField>, H>::compute_cyclefold_cmT(
-            &cf_cs_params,
-            &cf_r1cs,
+            cf_cs_params,
+            cf_r1cs,
             &cf_w_i,
             &cf_u_i,
-            &cf_W_i,
-            &cf_U_i,
+            cf_W_i,
+            cf_U_i,
         )?;
 
     let cf_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_native(
-        transcript,
-        pp_hash,
-        cf_U_i.clone(),
-        cf_u_i.clone(),
-        cf_cmT,
+        transcript, pp_hash, cf_U_i, &cf_u_i, &cf_cmT,
     );
     let cf_r_Fq = C1::BaseField::from_bigint(BigInteger::from_bits_le(&cf_r_bits))
         .expect("cf_r_bits out of bounds");
 
     let (cf_W_i1, cf_U_i1) = CycleFoldNIFS::<C1, C2, GC2, CS2, H>::prove(
-        cf_r_Fq, &cf_W_i, &cf_U_i, &cf_w_i, &cf_u_i, &cf_T, cf_cmT,
+        cf_r_Fq, cf_W_i, cf_U_i, &cf_w_i, &cf_u_i, &cf_T, cf_cmT,
     )?;
     let cf_r_Fq = C1::BaseField::from_bigint(BigInteger::from_bits_le(&cf_r_bits))
         .expect("cf_r_bits out of bounds");
@@ -775,7 +770,7 @@ pub mod tests {
             _gc: PhantomData,
             r_bits: Some(rho_bits),
             points: Some(points),
-            x: Some(x.clone()),
+            x: Some(x),
         };
         cf_circuit.generate_constraints(cs.clone()).unwrap();
         assert!(cs.is_satisfied().unwrap());
@@ -807,7 +802,7 @@ pub mod tests {
         let cmT = Projective::rand(&mut rng); // random only for testing
         let (ci3, r_bits) = NIFS::<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>::verify(
             &mut transcript_v,
-            pp_hash,
+            &pp_hash,
             &ci1,
             &ci2,
             &cmT,
@@ -866,10 +861,10 @@ pub mod tests {
         let pp_hash = Fq::from(42u32); // only for test
         let r_bits = CycleFoldChallengeGadget::<Projective, GVar>::get_challenge_native(
             &mut transcript,
-            pp_hash,
-            U_i.clone(),
-            u_i.clone(),
-            cmT,
+            &pp_hash,
+            &U_i,
+            &u_i,
+            &cmT,
         );
 
         let cs = ConstraintSystem::<Fq>::new_ref();
@@ -890,10 +885,10 @@ pub mod tests {
         let pp_hashVar = FpVar::<Fq>::new_witness(cs.clone(), || Ok(pp_hash)).unwrap();
         let r_bitsVar = CycleFoldChallengeGadget::<Projective, GVar>::get_challenge_gadget(
             &mut transcript_var,
-            pp_hashVar,
-            U_iVar.to_native_sponge_field_elements().unwrap(),
-            u_iVar,
-            cmTVar,
+            &pp_hashVar,
+            &U_iVar.to_native_sponge_field_elements().unwrap(),
+            &u_iVar,
+            &cmTVar,
         )
         .unwrap();
         assert!(cs.is_satisfied().unwrap());
@@ -920,19 +915,17 @@ pub mod tests {
                 .collect(),
         };
         let pp_hash = Fq::from(42u32); // only for test
-        let h = U_i.hash_cyclefold(&sponge, pp_hash);
+        let h = U_i.hash_cyclefold(&sponge, &pp_hash);
 
         let cs = ConstraintSystem::<Fq>::new_ref();
         let U_iVar =
-            CycleFoldCommittedInstanceVar::<Projective, GVar>::new_witness(cs.clone(), || {
-                Ok(U_i.clone())
-            })
-            .unwrap();
+            CycleFoldCommittedInstanceVar::<Projective, GVar>::new_witness(cs.clone(), || Ok(U_i))
+                .unwrap();
         let pp_hashVar = FpVar::<Fq>::new_witness(cs.clone(), || Ok(pp_hash)).unwrap();
         let (hVar, _) = U_iVar
             .hash(
                 &PoseidonSpongeVar::new(cs.clone(), &poseidon_config),
-                pp_hashVar,
+                &pp_hashVar,
             )
             .unwrap();
         hVar.enforce_equal(&FpVar::new_witness(cs.clone(), || Ok(h)).unwrap())

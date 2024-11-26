@@ -180,9 +180,9 @@ where
         // Primary Part
         // P.1. Compute u_i.x
         // u_i.x[0] = H(i, z_0, z_i, U_i)
-        let (u_i_x, U_i_vec) = U_i.clone().hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
+        let (u_i_x, U_i_vec) = U_i.hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
         // u_i.x[1] = H(cf_U_i)
-        let (cf_u_i_x, cf_U_i_vec) = cf_U_i.clone().hash(&sponge, pp_hash.clone())?;
+        let (cf_u_i_x, cf_U_i_vec) = cf_U_i.hash(&sponge, &pp_hash)?;
 
         // P.2. Construct u_i
         let u_i = CommittedInstanceVar {
@@ -208,12 +208,7 @@ where
             PoseidonSponge<C1::ScalarField>,
             PoseidonSpongeVar<C1::ScalarField>,
         >::verify(
-            &mut transcript,
-            pp_hash.clone(),
-            U_i.clone(),
-            U_i_vec,
-            u_i.clone(),
-            Some(cmT.clone()),
+            &mut transcript, &pp_hash, &U_i, &U_i_vec, &u_i, Some(&cmT)
         )?;
         U_i1.cmE = U_i1_cmE;
         U_i1.cmW = U_i1_cmW;
@@ -231,11 +226,11 @@ where
         let i_usize = self.i_usize.unwrap_or(0);
         let z_i1 = self
             .F
-            .generate_step_constraints(cs.clone(), i_usize, z_i, external_inputs)?;
+            .generate_step_constraints(cs.clone(), i_usize, &z_i, &external_inputs)?;
 
         // Base case: u_{i+1}.x[0] == H((i+1, z_0, z_{i+1}, U_{\bot})
         // Non-base case: u_{i+1}.x[0] == H((i+1, z_0, z_{i+1}, U_{i+1})
-        let (u_i1_x, _) = U_i1.clone().hash(
+        let (u_i1_x, _) = U_i1.hash(
             &sponge,
             &pp_hash,
             &(i + FpVar::<CF1<C1>>::one()),
@@ -298,10 +293,10 @@ where
         // cf_r_bits is denoted by rho* in the paper.
         let cf1_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_gadget(
             &mut transcript,
-            pp_hash.clone(),
-            cf_U_i_vec,
-            cf1_u_i.clone(),
-            cf1_cmT.clone(),
+            &pp_hash,
+            &cf_U_i_vec,
+            &cf1_u_i,
+            &cf1_cmT,
         )?;
         // Fold cf1_u_i & cf_U_i into cf1_U_{i+1}
         let cf1_U_i1 = NIFSFullGadget::<C2, GC2>::fold_committed_instance(
@@ -311,10 +306,10 @@ where
         // same for cf2_r:
         let cf2_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_gadget(
             &mut transcript,
-            pp_hash.clone(),
-            cf1_U_i1.to_native_sponge_field_elements()?,
-            cf2_u_i.clone(),
-            cf2_cmT.clone(),
+            &pp_hash,
+            &cf1_U_i1.to_native_sponge_field_elements()?,
+            &cf2_u_i,
+            &cf2_cmT,
         )?;
         let cf_U_i1 = NIFSFullGadget::<C2, GC2>::fold_committed_instance(
             cf2_r_bits, cf2_cmT, cf1_U_i1, // the output from NIFS.V(cf1_r, cf_U, cfE_u)
@@ -325,10 +320,10 @@ where
         // P.4.b compute and check the second output of F'
         // Base case: u_{i+1}.x[1] == H(cf_U_{\bot})
         // Non-base case: u_{i+1}.x[1] == H(cf_U_{i+1})
-        let (cf_u_i1_x, _) = cf_U_i1.clone().hash(&sponge, pp_hash.clone())?;
+        let (cf_u_i1_x, _) = cf_U_i1.hash(&sponge, &pp_hash)?;
         let (cf_u_i1_x_base, _) =
             CycleFoldCommittedInstanceVar::<C2, GC2>::new_constant(cs.clone(), cf_u_dummy)?
-                .hash(&sponge, pp_hash)?;
+                .hash(&sponge, &pp_hash)?;
         let cf_x = FpVar::new_input(cs.clone(), || {
             Ok(self.cf_x.unwrap_or(cf_u_i1_x_base.value()?))
         })?;
@@ -377,7 +372,7 @@ pub mod tests {
         let r_bits =
             ChallengeGadget::<Projective, CommittedInstance<Projective>>::get_challenge_native(
                 &mut transcript,
-                pp_hash,
+                &pp_hash,
                 &U_i,
                 &u_i,
                 Some(&cmT),
@@ -406,10 +401,10 @@ pub mod tests {
         let r_bitsVar =
             ChallengeGadget::<Projective, CommittedInstance<Projective>>::get_challenge_gadget(
                 &mut transcriptVar,
-                pp_hashVar,
-                U_iVar_vec,
-                u_iVar,
-                Some(cmTVar),
+                &pp_hashVar,
+                &U_iVar_vec,
+                &u_iVar,
+                Some(&cmTVar),
             )
             .unwrap();
         assert!(cs.is_satisfied().unwrap());

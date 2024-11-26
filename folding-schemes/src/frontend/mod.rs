@@ -31,8 +31,8 @@ pub trait FCircuit<F: PrimeField>: Clone + Debug {
         // can hold a state if needed to store data to compute the next state.
         &self,
         i: usize,
-        z_i: Vec<F>,
-        external_inputs: Vec<F>, // inputs that are not part of the state
+        z_i: &[F],
+        external_inputs: &[F], // inputs that are not part of the state
     ) -> Result<Vec<F>, Error>;
 
     /// generates the constraints for the step of F for the given z_i
@@ -42,8 +42,8 @@ pub trait FCircuit<F: PrimeField>: Clone + Debug {
         &self,
         cs: ConstraintSystemRef<F>,
         i: usize,
-        z_i: Vec<FpVar<F>>,
-        external_inputs: Vec<FpVar<F>>, // inputs that are not part of the state
+        z_i: &[FpVar<F>],
+        external_inputs: &[FpVar<F>], // inputs that are not part of the state
     ) -> Result<Vec<FpVar<F>>, SynthesisError>;
 }
 
@@ -78,7 +78,7 @@ pub mod tests {
         let wrapper_circuit = WrapperCircuit::<Fr, CustomFCircuit<Fr>> {
             FC: custom_circuit,
             z_i: Some(z_i.clone()),
-            z_i1: Some(custom_circuit.step_native(0, z_i, vec![]).unwrap()),
+            z_i1: Some(custom_circuit.step_native(0, &z_i, &[]).unwrap()),
         };
         wrapper_circuit.generate_constraints(cs.clone()).unwrap();
         assert_eq!(cs.num_constraints(), n_constraints);

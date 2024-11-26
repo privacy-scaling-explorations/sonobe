@@ -116,9 +116,9 @@ where
         // compute the U_{i+1}, W_{i+1}
         let (W_i1, U_i1, cmT, r_bits) = NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>, H>::prove(
             &nova.cs_pp,
-            &nova.r1cs.clone(),
+            &nova.r1cs,
             &mut transcript,
-            nova.pp_hash,
+            &nova.pp_hash,
             &nova.W_i,
             &nova.U_i,
             &nova.w_i,
@@ -190,7 +190,7 @@ where
     ) -> Result<CommittedInstanceVar<C>, SynthesisError> {
         let cs = transcript.cs();
         let cmT = NonNativeAffineVar::new_input(cs.clone(), || Ok(proof))?;
-        let (new_U, _) = NIFSGadget::verify(transcript, pp_hash, U, U_vec, u, Some(cmT))?;
+        let (new_U, _) = NIFSGadget::verify(transcript, &pp_hash, &U, &U_vec, &u, Some(&cmT))?;
         Ok(new_U)
     }
 

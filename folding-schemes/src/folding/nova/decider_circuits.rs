@@ -66,9 +66,9 @@ where
         // compute the U_{i+1}, W_{i+1}
         let (W_i1, U_i1, cmT, r_bits) = NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>, H>::prove(
             &nova.cs_pp,
-            &nova.r1cs.clone(),
+            &nova.r1cs,
             &mut transcript,
-            nova.pp_hash,
+            &nova.pp_hash,
             &nova.W_i,
             &nova.U_i,
             &nova.w_i,

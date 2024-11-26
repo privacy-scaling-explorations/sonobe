@@ -757,9 +757,9 @@ where
         // Primary Part
         // P.1. Compute u_i.x
         // u_i.x[0] = H(i, z_0, z_i, U_i)
-        let (u_i_x, _) = U_i.clone().hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
+        let (u_i_x, _) = U_i.hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
         // u_i.x[1] = H(cf_U_i)
-        let (cf_u_i_x, cf_U_i_vec) = cf_U_i.clone().hash(&sponge, pp_hash.clone())?;
+        let (cf_u_i_x, cf_U_i_vec) = cf_U_i.hash(&sponge, &pp_hash)?;
 
         // P.2. Construct u_i
         let u_i = CCCSVar::<C1> {
@@ -797,9 +797,9 @@ where
         let i_usize = self.i_usize.unwrap_or(0);
         let z_i1 = self
             .F
-            .generate_step_constraints(cs.clone(), i_usize, z_i, external_inputs)?;
+            .generate_step_constraints(cs.clone(), i_usize, &z_i, &external_inputs)?;
 
-        let (u_i1_x, _) = U_i1.clone().hash(
+        let (u_i1_x, _) = U_i1.hash(
             &sponge,
             &pp_hash,
             &(i + FpVar::<CF1<C1>>::one()),
@@ -857,10 +857,10 @@ where
         // cf_r_bits is denoted by rho* in the paper.
         let cf_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_gadget(
             &mut transcript,
-            pp_hash.clone(),
-            cf_U_i_vec,
-            cf_u_i.clone(),
-            cf_cmT.clone(),
+            &pp_hash,
+            &cf_U_i_vec,
+            &cf_u_i,
+            &cf_cmT,
         )?;
         // Fold cf1_u_i & cf_U_i into cf1_U_{i+1}
         let cf_U_i1 =
@@ -870,10 +870,10 @@ where
         // P.4.b compute and check the second output of F'
         // Base case: u_{i+1}.x[1] == H(cf_U_{\bot})
         // Non-base case: u_{i+1}.x[1] == H(cf_U_{i+1})
-        let (cf_u_i1_x, _) = cf_U_i1.clone().hash(&sponge, pp_hash.clone())?;
+        let (cf_u_i1_x, _) = cf_U_i1.hash(&sponge, &pp_hash)?;
         let (cf_u_i1_x_base, _) =
             CycleFoldCommittedInstanceVar::<C2, GC2>::new_constant(cs.clone(), cf_u_dummy)?
-                .hash(&sponge, pp_hash)?;
+                .hash(&sponge, &pp_hash)?;
         let cf_x = FpVar::new_input(cs.clone(), || {
             Ok(self.cf_x.unwrap_or(cf_u_i1_x_base.value()?))
         })?;
@@ -1170,7 +1170,7 @@ mod tests {
         let (lcccs, _) = ccs
             .to_lcccs::<_, _, Pedersen<Projective, true>, true>(&mut rng, &pedersen_params, &z1)
             .unwrap();
-        let h = lcccs.clone().hash(&sponge, pp_hash, i, &z_0, &z_i);
+        let h = lcccs.hash(&sponge, pp_hash, i, &z_0, &z_i);
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
@@ -1181,7 +1181,6 @@ mod tests {
         let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i.clone())).unwrap();
         let lcccsVar = LCCCSVar::<Projective>::new_witness(cs.clone(), || Ok(lcccs)).unwrap();
         let (hVar, _) = lcccsVar
-            .clone()
             .hash(&spongeVar, &pp_hashVar, &iVar, &z_0Var, &z_iVar)
             .unwrap();
         assert!(cs.is_satisfied().unwrap());
@@ -1255,7 +1254,7 @@ mod tests {
         let mut cf_U_i = cf_U_dummy.clone();
         u_i.x = vec![
             U_i.hash(&sponge, pp_hash, Fr::zero(), &z_0, &z_i),
-            cf_U_i.hash_cyclefold(&sponge, pp_hash),
+            cf_U_i.hash_cyclefold(&sponge, &pp_hash),
         ];
 
         let n_steps: usize = 4;
@@ -1273,7 +1272,7 @@ mod tests {
             let all_Ws = [vec![W_i.clone()], Ws].concat();
             let all_ws = [vec![w_i.clone()], ws].concat();
 
-            let z_i1 = F_circuit.step_native(i, z_i.clone(), vec![]).unwrap();
+            let z_i1 = F_circuit.step_native(i, &z_i, &[]).unwrap();
 
             let (U_i1, W_i1);
 
@@ -1285,7 +1284,7 @@ mod tests {
 
                 // hash the initial (dummy) CycleFold instance, which is used as the 2nd public
                 // input in the AugmentedFCircuit
-                let cf_u_i1_x = cf_U_i.hash_cyclefold(&sponge, pp_hash);
+                let cf_u_i1_x = cf_U_i.hash_cyclefold(&sponge, &pp_hash);
 
                 augmented_f_circuit = AugmentedFCircuit::<
                     Projective,
@@ -1390,12 +1389,12 @@ mod tests {
                     false,
                 >(
                     &mut transcript_p,
-                    cf_r1cs.clone(),
-                    cf_pedersen_params.clone(),
-                    pp_hash,
-                    cf_W_i.clone(), // CycleFold running instance witness
-                    cf_U_i.clone(), // CycleFold running instance
-                    cf_u_i_x,       // CycleFold incoming instance
+                    &cf_r1cs,
+                    &cf_pedersen_params,
+                    &pp_hash,
+                    &cf_W_i,   // CycleFold running instance witness
+                    &cf_U_i,   // CycleFold running instance
+                    &cf_u_i_x, // CycleFold incoming instance
                     cf_circuit,
                     &mut rng,
                 )
@@ -1403,7 +1402,7 @@ mod tests {
 
                 // hash the CycleFold folded instance, which is used as the 2nd public input in the
                 // AugmentedFCircuit
-                let cf_u_i1_x = cf_U_i1.hash_cyclefold(&sponge, pp_hash);
+                let cf_u_i1_x = cf_U_i1.hash_cyclefold(&sponge, &pp_hash);
 
                 augmented_f_circuit = AugmentedFCircuit::<
                     Projective,
@@ -1463,7 +1462,7 @@ mod tests {
             assert_eq!(u_i.x[0], augmented_f_circuit.x.unwrap());
             assert_eq!(u_i.x[1], augmented_f_circuit.cf_x.unwrap());
             let expected_u_i1_x = U_i1.hash(&sponge, pp_hash, iFr + Fr::one(), &z_0, &z_i1);
-            let expected_cf_U_i1_x = cf_U_i.hash_cyclefold(&sponge, pp_hash);
+            let expected_cf_U_i1_x = cf_U_i.hash_cyclefold(&sponge, &pp_hash);
             // u_i is already u_i1 at this point, check that has the expected value at x[0]
             assert_eq!(u_i.x[0], expected_u_i1_x);
             assert_eq!(u_i.x[1], expected_cf_U_i1_x);

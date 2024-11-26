@@ -382,13 +382,11 @@ where
                 &self.z_0,
                 &state,
             ),
-            cf_U_i.hash_cyclefold(&sponge, self.pp_hash),
+            cf_U_i.hash_cyclefold(&sponge, &self.pp_hash),
         ];
         let us = vec![u_i.clone(); NU - 1];
 
-        let z_i1 = self
-            .F
-            .step_native(0, state.clone(), external_inputs.clone())?;
+        let z_i1 = self.F.step_native(0, &state, &external_inputs)?;
 
         // compute u_{i+1}.x
         let U_i1 = LCCCS::dummy(&self.ccs);
@@ -400,7 +398,7 @@ where
             &z_i1,
         );
 
-        let cf_u_i1_x = cf_U_i.hash_cyclefold(&sponge, self.pp_hash);
+        let cf_u_i1_x = cf_U_i.hash_cyclefold(&sponge, &self.pp_hash);
         let augmented_f_circuit = AugmentedFCircuit::<C1, C2, GC2, FC, MU, NU> {
             _c2: PhantomData,
             _gc2: PhantomData,
@@ -624,7 +622,7 @@ where
             cf_r1cs.dummy_witness_instance();
         u_dummy.x = vec![
             U_dummy.hash(&sponge, pp_hash, C1::ScalarField::zero(), &z_0, &z_0),
-            cf_U_dummy.hash_cyclefold(&sponge, pp_hash),
+            cf_U_dummy.hash_cyclefold(&sponge, &pp_hash),
         ];
 
         // W_dummy=W_0 is a 'dummy witness', all zeroes, but with the size corresponding to the
@@ -755,9 +753,7 @@ where
             i_usize = usize::from_le_bytes(i_bytes);
         }
 
-        let z_i1 = self
-            .F
-            .step_native(i_usize, self.z_i.clone(), external_inputs.clone())?;
+        let z_i1 = self.F.step_native(i_usize, &self.z_i, &external_inputs)?;
 
         // u_{i+1}.x[1] = H(cf_U_{i+1})
         let cf_u_i1_x: C1::ScalarField;
@@ -778,7 +774,7 @@ where
 
             // hash the initial (dummy) CycleFold instance, which is used as the 2nd public
             // input in the AugmentedFCircuit
-            cf_u_i1_x = self.cf_U_i.hash_cyclefold(&sponge, self.pp_hash);
+            cf_u_i1_x = self.cf_U_i.hash_cyclefold(&sponge, &self.pp_hash);
 
             augmented_f_circuit = AugmentedFCircuit::<C1, C2, GC2, FC, MU, NU> {
                 _c2: PhantomData,
@@ -889,17 +885,17 @@ where
                 H,
             >(
                 &mut transcript_p,
-                self.cf_r1cs.clone(),
-                self.cf_cs_pp.clone(),
-                self.pp_hash,
-                self.cf_W_i.clone(), // CycleFold running instance witness
-                self.cf_U_i.clone(), // CycleFold running instance
-                cf_u_i_x,
+                &self.cf_r1cs,
+                &self.cf_cs_pp,
+                &self.pp_hash,
+                &self.cf_W_i, // CycleFold running instance witness
+                &self.cf_U_i, // CycleFold running instance
+                &cf_u_i_x,
                 cf_circuit,
                 &mut rng,
             )?;
 
-            cf_u_i1_x = cf_U_i1.hash_cyclefold(&sponge, self.pp_hash);
+            cf_u_i1_x = cf_U_i1.hash_cyclefold(&sponge, &self.pp_hash);
 
             augmented_f_circuit = AugmentedFCircuit::<C1, C2, GC2, FC, MU, NU> {
                 _c2: PhantomData,
@@ -1079,7 +1075,7 @@ where
             return Err(Error::IVCVerificationFail);
         }
         // u_i.X[1] == H(cf_U_i)
-        let expected_cf_u_i_x = cf_U_i.hash_cyclefold(&sponge, pp_hash);
+        let expected_cf_u_i_x = cf_U_i.hash_cyclefold(&sponge, &pp_hash);
         if expected_cf_u_i_x != u_i.x[1] {
             return Err(Error::IVCVerificationFail);
         }

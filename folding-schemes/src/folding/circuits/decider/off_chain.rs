@@ -199,7 +199,7 @@ where
 
         // 3. u_i.x[0] == H(i, z_0, z_i, U_i), u_i.x[1] == H(cf_U_i)
         let (u_i_x, U_i_vec) = U_i.hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
-        let (cf_u_i_x, _) = cf_U_i.hash(&sponge, pp_hash.clone())?;
+        let (cf_u_i_x, _) = cf_U_i.hash(&sponge, &pp_hash)?;
         u_i.get_public_inputs().enforce_equal(&[u_i_x, cf_u_i_x])?;
 
         // 6.1. partially enforce `NIFS.V(U_i, u_i) = U_{i+1}`.
@@ -277,7 +277,7 @@ impl<C2: CurveGroup> Dummy<(R1CS<CF1<C2>>, PoseidonConfig<CF1<C2>>, usize)>
 impl<C2: CurveGroup> ConstraintSynthesizer<CF1<C2>> for GenericOffchainDeciderCircuit2<C2> {
     fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C2>>) -> Result<(), SynthesisError> {
         let cf_r1cs = R1CSMatricesVar::<CF1<C2>, FpVar<CF1<C2>>>::new_witness(cs.clone(), || {
-            Ok(self.cf_arith.clone())
+            Ok(self.cf_arith)
         })?;
 
         let pp_hash = FpVar::new_input(cs.clone(), || Ok(self.pp_hash))?;

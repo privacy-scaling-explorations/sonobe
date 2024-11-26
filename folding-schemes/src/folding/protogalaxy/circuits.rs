@@ -205,10 +205,10 @@ impl AugmentationGadget {
 
             let cf_r_bits = CycleFoldChallengeGadget::get_challenge_gadget(
                 transcript,
-                pp_hash.clone(),
-                cf_U.to_native_sponge_field_elements()?,
-                cf_u.clone(),
-                cmT.clone(),
+                &pp_hash,
+                &cf_U.to_native_sponge_field_elements()?,
+                &cf_u,
+                &cmT,
             )?;
             // Fold the current incoming CycleFold instance `cf_u` into the
             // running CycleFold instance `cf_U`.
@@ -351,9 +351,9 @@ where
         // Primary Part
         // P.1. Compute u_i.x
         // u_i.x[0] = H(i, z_0, z_i, U_i)
-        let (u_i_x, _) = U_i.clone().hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
+        let (u_i_x, _) = U_i.hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
         // u_i.x[1] = H(cf_U_i)
-        let (cf_u_i_x, _) = cf_U_i.clone().hash(&sponge, pp_hash.clone())?;
+        let (cf_u_i_x, _) = cf_U_i.hash(&sponge, &pp_hash)?;
 
         // P.2. Prepare incoming primary instances
         // P.3. Fold incoming primary instances into the running instance
@@ -372,11 +372,11 @@ where
         // get z_{i+1} from the F circuit
         let z_i1 =
             self.F
-                .generate_step_constraints(cs.clone(), self.i_usize, z_i, external_inputs)?;
+                .generate_step_constraints(cs.clone(), self.i_usize, &z_i, &external_inputs)?;
 
         // Base case: u_{i+1}.x[0] == H((i+1, z_0, z_{i+1}, U_{\bot})
         // Non-base case: u_{i+1}.x[0] == H((i+1, z_0, z_{i+1}, U_{i+1})
-        let (u_i1_x, _) = U_i1.clone().hash(
+        let (u_i1_x, _) = U_i1.hash(
             &sponge,
             &pp_hash,
             &(i + FpVar::<CF1<C1>>::one()),
@@ -457,10 +457,10 @@ where
         // P.4.b compute and check the second output of F'
         // Base case: u_{i+1}.x[1] == H(cf_U_{\bot})
         // Non-base case: u_{i+1}.x[1] == H(cf_U_{i+1})
-        let (cf_u_i1_x, _) = cf_U_i1.clone().hash(&sponge, pp_hash.clone())?;
+        let (cf_u_i1_x, _) = cf_U_i1.hash(&sponge, &pp_hash)?;
         let (cf_u_i1_x_base, _) =
             CycleFoldCommittedInstanceVar::<C2, GC2>::new_constant(cs.clone(), cf_u_dummy)?
-                .hash(&sponge, pp_hash.clone())?;
+                .hash(&sponge, &pp_hash)?;
         let cf_x = FpVar::new_input(cs.clone(), || {
             Ok(self.cf_x.unwrap_or(cf_u_i1_x_base.value()?))
         })?;

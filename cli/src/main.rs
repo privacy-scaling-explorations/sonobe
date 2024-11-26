@@ -7,7 +7,11 @@ use std::{fs, io};
 mod settings;
 
 fn create_or_open_then_write<T: AsRef<[u8]>>(path: &Path, content: &T) -> Result<(), io::Error> {
-    let mut file = fs::OpenOptions::new().create(true).write(true).open(path)?;
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(path)?;
     file.write_all(content.as_ref())
 }
 

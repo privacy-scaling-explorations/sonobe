@@ -26,17 +26,19 @@ sha3 = "0.10"
 log = "0.4"
 
 # tmp import for espresso's sumcheck
-espresso_subroutines = {git="https://github.com/EspressoSystems/hyperplonk", package="subroutines"}
+espresso_subroutines = { git = "https://github.com/EspressoSystems/hyperplonk", package = "subroutines" }
+# Dependencies needed for browser folding
+byteorder = { version = "1.4.3", optional = true }
 
 [dev-dependencies]
-ark-pallas = {version="0.4.0", features=["r1cs"]}
-ark-vesta = {version="0.4.0", features=["r1cs"]}
-ark-bn254 = {version="0.4.0", features=["r1cs"]}
-ark-grumpkin = {version="0.4.0", features=["r1cs"]}
+ark-pallas = { version = "0.4.0", features = ["r1cs"] }
+ark-vesta = { version = "0.4.0", features = ["r1cs"] }
+ark-bn254 = { version = "0.4.0", features = ["r1cs"] }
+ark-grumpkin = { version = "0.4.0", features = ["r1cs"] }
 # Note: do not use the MNTx_298 curves in practice due security reasons, here
 # we only use them in the tests.
-ark-mnt4-298 = {version="0.4.0", features=["r1cs"]}
-ark-mnt6-298 = {version="0.4.0", features=["r1cs"]}
+ark-mnt4-298 = { version = "0.4.0", features = ["r1cs"] }
+ark-mnt6-298 = { version = "0.4.0", features = ["r1cs"] }
 rand = "0.8.5"
 num-bigint = {version = "0.4", features = ["rand"]}
 tracing = { version = "0.1", default-features = false, features = [ "attributes" ] }
@@ -64,3 +66,6 @@ path = "../examples/multi_inputs.rs"
 [[example]]
 name = "external_inputs"
 path = "../examples/external_inputs.rs"
+
+[lib]
+crate-type = ["cdylib", "rlib"]

@@ -99,7 +99,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: -p frontends --no-default-features --target ${{ matrix.target }} --features "wasm, parallel"
+          args: -p frontends --no-default-features --target ${{ matrix.target }} --features "circom-browser, parallel"
       - name: Wasm-compat folding-schemes build
         uses: actions-rs/cargo@v1
         with:
@@ -167,7 +167,7 @@ jobs:
             features: --features default,light-test
             # We only want to test `frontends` package with `wasm` feature.
           - feature_set: wasm
-            features: -p frontends --features wasm,parallel --target wasm32-unknown-unknown
+            features: -p frontends --features circom-browser,parallel --target wasm32-unknown-unknown
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1

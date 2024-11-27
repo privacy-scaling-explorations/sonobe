@@ -8,8 +8,8 @@ use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisE
 use ark_std::fmt::Debug;
 use folding_schemes::{frontend::FCircuit, utils::PathOrBin, Error};
 use num_bigint::BigInt;
+use std::fmt;
 use std::rc::Rc;
-use std::{fmt, usize};
 
 pub mod utils;
 use utils::CircomWrapper;

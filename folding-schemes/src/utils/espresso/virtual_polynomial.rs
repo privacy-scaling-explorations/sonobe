@@ -192,6 +192,7 @@ impl<F: PrimeField> VirtualPolynomial<F> {
     /// Multiple the current VirtualPolynomial by an MLE:
     /// - add the MLE to the MLE list;
     /// - multiple each product by MLE and its coefficient.
+    ///
     /// Returns an error if the MLE has a different `num_vars` from self.
     pub fn mul_by_mle(
         &mut self,

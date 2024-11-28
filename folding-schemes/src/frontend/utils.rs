@@ -1,7 +1,9 @@
 use ark_ff::PrimeField;
-use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar};
+use ark_r1cs_std::{
+    alloc::AllocVar,
+    fields::{fp::FpVar, FieldVar},
+};
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
-#[cfg(test)]
 use ark_std::marker::PhantomData;
 use ark_std::{fmt::Debug, Zero};
 
@@ -96,14 +98,12 @@ impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
 
 /// CustomFCircuit is a circuit that has the number of constraints specified in the
 /// `n_constraints` parameter. Note that the generated circuit will have very sparse matrices.
-#[cfg(test)]
 #[derive(Clone, Copy, Debug)]
 pub struct CustomFCircuit<F: PrimeField> {
     _f: PhantomData<F>,
     pub n_constraints: usize,
 }
 
-#[cfg(test)]
 impl<F: PrimeField> FCircuit<F> for CustomFCircuit<F> {
     type Params = usize;
 
@@ -125,22 +125,22 @@ impl<F: PrimeField> FCircuit<F> for CustomFCircuit<F> {
         z_i: Vec<F>,
         _external_inputs: Vec<F>,
     ) -> Result<Vec<F>, Error> {
-        let mut z_i1 = F::one();
+        let mut z_i1 = z_i[0];
         for _ in 0..self.n_constraints - 1 {
-            z_i1 *= z_i[0];
+            z_i1 = z_i1.square();
         }
         Ok(vec![z_i1])
     }
     fn generate_step_constraints(
         &self,
-        cs: ConstraintSystemRef<F>,
+        _cs: ConstraintSystemRef<F>,
         _i: usize,
         z_i: Vec<FpVar<F>>,
         _external_inputs: Vec<FpVar<F>>,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
-        let mut z_i1 = FpVar::<F>::new_witness(cs.clone(), || Ok(F::one()))?;
+        let mut z_i1 = z_i[0].clone();
         for _ in 0..self.n_constraints - 1 {
-            z_i1 *= z_i[0].clone();
+            z_i1 = z_i1.square()?;
         }
 
         Ok(vec![z_i1])

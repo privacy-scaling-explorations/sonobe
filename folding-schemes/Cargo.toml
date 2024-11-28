@@ -42,6 +42,10 @@ num-bigint = {version = "0.4", features = ["rand"]}
 tracing = { version = "0.1", default-features = false, features = [ "attributes" ] }
 tracing-subscriber = { version = "0.2" }
 
+# for benchmarks
+criterion = "0.5"
+pprof = { version = "0.13", features = ["criterion", "flamegraph"] }
+
 # This allows the crate to be built when targeting WASM.
 # See more at: https://docs.rs/getrandom/#webassembly-support 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
@@ -52,6 +56,21 @@ default = ["parallel"]
 parallel = []
 light-test = []
 
+
+[[bench]]
+name = "nova"
+path = "../benches/nova.rs"
+harness = false
+
+[[bench]]
+name = "hypernova"
+path = "../benches/hypernova.rs"
+harness = false
+
+[[bench]]
+name = "protogalaxy"
+path = "../benches/protogalaxy.rs"
+harness = false
 
 [[example]]
 name = "sha256"

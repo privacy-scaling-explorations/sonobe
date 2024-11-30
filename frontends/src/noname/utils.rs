@@ -72,9 +72,9 @@ pub fn compile_source_code<BF: BackendField>(
     let mut sources = Sources::new();
 
     // parse the transitive dependency
-    let mut tast = TypeChecker::<R1CS<BF>>::new();
+    let mut checker = TypeChecker::<R1CS<BF>>::new();
     let _ = typecheck_next_file(
-        &mut tast,
+        &mut checker,
         None,
         &mut sources,
         "main.no".to_string(),
@@ -84,5 +84,5 @@ pub fn compile_source_code<BF: BackendField>(
     .unwrap();
     let r1cs = R1CS::<BF>::new();
     // compile
-    CircuitWriter::generate_circuit(tast, r1cs)
+    CircuitWriter::generate_circuit(checker, r1cs)
 }

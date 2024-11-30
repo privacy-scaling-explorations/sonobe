@@ -46,7 +46,8 @@ fn main() {
         Path::new("./frontends/src/noir/test_folder/test_mimc/target/test_mimc.json").into(),
         1,
         0,
-    )).unwrap();
+    ))
+    .unwrap();
 
     pub type N = Nova<G1, GVar, G2, GVar2, NoirFCircuit<Fr>, KZG<'static, Bn254>, Pedersen<G2>>;
     pub type D = DeciderEth<

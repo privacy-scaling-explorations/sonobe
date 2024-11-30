@@ -7,7 +7,7 @@ use ark_relations::r1cs::{
     ConstraintSynthesizer, ConstraintSystemRef, LinearCombination, SynthesisError, Variable,
 };
 use noname::backends::{
-    r1cs::{GeneratedWitness, R1CS, LinearCombination as NoNameLinearCombination},
+    r1cs::{GeneratedWitness, LinearCombination as NoNameLinearCombination, R1CS},
     BackendField,
 };
 use noname::witness::CompiledCircuit;
@@ -62,41 +62,36 @@ impl<'a, 'b, 'c, F: PrimeField, BF: BackendField> ConstraintSynthesizer<F>
                     idx_to_var.insert(idx, var);
                     z_i_pointer += 1;
                 }
+            } else if idx <= public_io_length + external_inputs_len {
+                // we are in the case of external inputs
+                // those have already been assigned at specific indexes
+                let var = match &self.assigned_external_inputs[external_inputs_pointer] {
+                    FpVar::Var(allocated_fp) => allocated_fp.variable,
+                    _ => return Err(SynthesisError::Unsatisfiable),
+                };
+                idx_to_var.insert(idx, var);
+                external_inputs_pointer += 1;
             } else {
-                if idx <= public_io_length + external_inputs_len {
-                    // we are in the case of external inputs
-                    // those have already been assigned at specific indexes
-                    let var = match &self.assigned_external_inputs[external_inputs_pointer] {
-                        FpVar::Var(allocated_fp) => allocated_fp.variable,
-                        _ => return Err(SynthesisError::Unsatisfiable),
-                    };
-                    idx_to_var.insert(idx, var);
-                    external_inputs_pointer += 1;
-                } else {
-                    // we are in the case of auxilary private inputs
-                    // we need to assign those
-                    let value: BigUint = Into::into(self.witness.witness[idx]);
-                    let field_element = F::from(value);
-                    let var = cs.new_witness_variable(|| Ok(field_element))?;
-                    idx_to_var.insert(idx, var);
-                }
+                // we are in the case of auxiliary private inputs
+                // we need to assign those
+                let value: BigUint = Into::into(self.witness.witness[idx]);
+                let field_element = F::from(value);
+                let var = cs.new_witness_variable(|| Ok(field_element))?;
+                idx_to_var.insert(idx, var);
             }
         }
 
-        match (z_i_pointer == self.assigned_z_i.len())
-            && (external_inputs_pointer == self.assigned_external_inputs.len())
+        if (z_i_pointer != self.assigned_z_i.len())
+            || (external_inputs_pointer != self.assigned_external_inputs.len())
         {
-            false => {
-                return Err(SynthesisError::AssignmentMissing);
-            }
-            true => {}
+            return Err(SynthesisError::AssignmentMissing);
         }
         let make_index = |index: usize| match index == 0 {
             true => Ok(Variable::One),
             false => {
                 let var = idx_to_var
                     .get(&index)
-                    .ok_or_else(|| SynthesisError::AssignmentMissing)?;
+                    .ok_or(SynthesisError::AssignmentMissing)?;
                 Ok(var.to_owned())
             }
         };

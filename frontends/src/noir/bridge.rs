@@ -5,7 +5,7 @@ use std::convert::TryInto;
 use acvm::acir::{
     acir_field::GenericFieldElement,
     circuit::{Circuit, Opcode, PublicInputs},
-    native_types::{Witness, WitnessMap, Expression},
+    native_types::{Expression, Witness, WitnessMap},
 };
 use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::alloc::AllocVar;
@@ -58,12 +58,10 @@ impl<'a, ConstraintF: Field + PrimeField> ConstraintSynthesizer<ConstraintF>
                 } else {
                     return Err(SynthesisError::Unsatisfiable);
                 }
+            } else if self.public_inputs.contains(i.0.try_into().unwrap()) {
+                cs.new_witness_variable(|| Ok(*val))?
             } else {
-                if self.public_inputs.contains(i.0.try_into().unwrap()) {
-                    cs.new_witness_variable(|| Ok(*val))?
-                } else {
-                    cs.new_witness_variable(|| Ok(*val))?
-                }
+                cs.new_witness_variable(|| Ok(*val))?
             };
             variables.push(var);
         }

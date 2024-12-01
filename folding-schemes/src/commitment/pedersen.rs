@@ -1,13 +1,11 @@
 use ark_ec::CurveGroup;
-use ark_ff::Field;
-use ark_r1cs_std::{boolean::Boolean, prelude::CurveVar};
+use ark_r1cs_std::{boolean::Boolean, convert::ToBitsGadget, prelude::CurveVar};
 use ark_relations::r1cs::SynthesisError;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::Zero;
-use ark_std::{rand::RngCore, UniformRand};
-use core::marker::PhantomData;
+use ark_std::{marker::PhantomData, rand::RngCore, UniformRand, Zero};
 
 use super::CommitmentScheme;
+use crate::folding::circuits::CF2;
 use crate::transcript::Transcript;
 use crate::utils::vec::{vec_add, vec_scalar_mul};
 use crate::Error;
@@ -177,29 +175,26 @@ impl<C: CurveGroup, const H: bool> CommitmentScheme<C, H> for Pedersen<C, H> {
     }
 }
 
-pub type CF<C> = <<C as CurveGroup>::BaseField as Field>::BasePrimeField;
-
 pub struct PedersenGadget<C, GC, const H: bool = false>
 where
     C: CurveGroup,
-    GC: CurveVar<C, CF<C>>,
+    GC: CurveVar<C, CF2<C>>,
 {
-    _cf: PhantomData<CF<C>>,
+    _cf: PhantomData<CF2<C>>,
     _c: PhantomData<C>,
     _gc: PhantomData<GC>,
 }
 
-use ark_r1cs_std::ToBitsGadget;
 impl<C, GC, const H: bool> PedersenGadget<C, GC, H>
 where
     C: CurveGroup,
-    GC: CurveVar<C, CF<C>>,
+    GC: CurveVar<C, CF2<C>>,
 {
     pub fn commit(
         h: &GC,
         g: &[GC],
-        v: &[Vec<Boolean<CF<C>>>],
-        r: &[Boolean<CF<C>>],
+        v: &[Vec<Boolean<CF2<C>>>],
+        r: &[Boolean<CF2<C>>],
     ) -> Result<GC, SynthesisError> {
         let mut res = GC::zero();
         if H {

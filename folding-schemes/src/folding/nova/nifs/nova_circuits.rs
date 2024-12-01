@@ -1,13 +1,13 @@
 /// contains [Nova](https://eprint.iacr.org/2021/370.pdf) NIFS related circuits
 use ark_crypto_primitives::sponge::{constraints::AbsorbGadget, Absorb, CryptographicSponge};
-use ark_ec::{CurveGroup, Group};
+use ark_ec::CurveGroup;
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
+    convert::ToConstraintFieldGadget,
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
     uint8::UInt8,
-    ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{ConstraintSystemRef, Namespace, SynthesisError};
 use ark_std::{fmt::Debug, Zero};
@@ -118,7 +118,7 @@ where
     C: CurveGroup,
     S: CryptographicSponge,
     T: TranscriptVar<CF1<C>, S>,
-    <C as Group>::ScalarField: Absorb,
+    C::ScalarField: Absorb,
 {
     type CommittedInstance = CommittedInstance<C>;
     type CommittedInstanceVar = CommittedInstanceVar<C>;
@@ -141,7 +141,7 @@ where
             u_i.clone(),
             cmT.clone(),
         )?;
-        let r = Boolean::le_bits_to_fp_var(&r_bits)?;
+        let r = Boolean::le_bits_to_fp(&r_bits)?;
 
         Ok((
             Self::CommittedInstanceVar {

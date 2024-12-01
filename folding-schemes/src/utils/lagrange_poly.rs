@@ -53,7 +53,6 @@ mod tests {
     use ark_pallas::Fr;
     use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
     use ark_std::UniformRand;
-    use espresso_subroutines::poly_iop::prelude::PolyIOPErrors;
 
     #[test]
     fn test_compute_lagrange_interpolated_poly() {
@@ -76,7 +75,7 @@ mod tests {
     }
 
     #[test]
-    fn test_interpolation() -> Result<(), PolyIOPErrors> {
+    fn test_interpolation() {
         let mut prng = ark_std::test_rng();
 
         // test a polynomial with 20 known points, i.e., with degree 19
@@ -86,10 +85,10 @@ mod tests {
             .collect::<Vec<Fr>>();
         let query = Fr::rand(&mut prng);
 
-        assert_eq!(poly.evaluate(&query), interpolate_uni_poly(&evals, query)?);
+        assert_eq!(poly.evaluate(&query), interpolate_uni_poly(&evals, query));
         assert_eq!(
             compute_lagrange_interpolated_poly(&evals).evaluate(&query),
-            interpolate_uni_poly(&evals, query)?
+            interpolate_uni_poly(&evals, query)
         );
 
         // test a polynomial with 33 known points, i.e., with degree 32
@@ -99,10 +98,10 @@ mod tests {
             .collect::<Vec<Fr>>();
         let query = Fr::rand(&mut prng);
 
-        assert_eq!(poly.evaluate(&query), interpolate_uni_poly(&evals, query)?);
+        assert_eq!(poly.evaluate(&query), interpolate_uni_poly(&evals, query));
         assert_eq!(
             compute_lagrange_interpolated_poly(&evals).evaluate(&query),
-            interpolate_uni_poly(&evals, query)?
+            interpolate_uni_poly(&evals, query)
         );
 
         // test a polynomial with 64 known points, i.e., with degree 63
@@ -112,12 +111,10 @@ mod tests {
             .collect::<Vec<Fr>>();
         let query = Fr::rand(&mut prng);
 
-        assert_eq!(poly.evaluate(&query), interpolate_uni_poly(&evals, query)?);
+        assert_eq!(poly.evaluate(&query), interpolate_uni_poly(&evals, query));
         assert_eq!(
             compute_lagrange_interpolated_poly(&evals).evaluate(&query),
-            interpolate_uni_poly(&evals, query)?
+            interpolate_uni_poly(&evals, query)
         );
-
-        Ok(())
     }
 }

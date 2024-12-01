@@ -53,7 +53,6 @@ pub trait ProtocolVerifierKey: CanonicalDeserialize + CanonicalSerialize {
 #[cfg(test)]
 pub mod tests {
     use ark_bn254::{Bn254, Fr, G1Projective as G1};
-    use ark_crypto_primitives::snark::CircuitSpecificSetupSNARK;
     use ark_ff::PrimeField;
     use ark_groth16::Groth16;
     use ark_poly_commit::kzg10::VerifierKey as KZGVerifierKey;
@@ -61,6 +60,7 @@ pub mod tests {
     use ark_r1cs_std::eq::EqGadget;
     use ark_r1cs_std::fields::fp::FpVar;
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+    use ark_snark::CircuitSpecificSetupSNARK;
     use ark_std::rand::{RngCore, SeedableRng};
     use ark_std::test_rng;
     use std::marker::PhantomData;

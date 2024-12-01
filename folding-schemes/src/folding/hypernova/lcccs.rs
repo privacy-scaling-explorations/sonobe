@@ -1,8 +1,7 @@
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
-use ark_poly::DenseMultilinearExtension;
-use ark_poly::MultilinearExtension;
+use ark_poly::{DenseMultilinearExtension, Polynomial};
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use ark_std::rand::Rng;
@@ -65,10 +64,7 @@ impl<F: PrimeField> CCS<F> {
             .collect::<Result<_, Error>>()?;
 
         // compute v_j
-        let v: Vec<F> = Mzs
-            .iter()
-            .map(|Mz| Mz.evaluate(&r_x).ok_or(Error::EvaluationFail))
-            .collect::<Result<_, Error>>()?;
+        let v: Vec<F> = Mzs.iter().map(|Mz| Mz.evaluate(&r_x)).collect();
 
         Ok((
             LCCCS::<C> {
@@ -107,7 +103,7 @@ impl<C: CurveGroup> Arith<Witness<CF1<C>>, LCCCS<C>> for CCS<CF1<C>> {
             .iter()
             .map(|M_j| {
                 let Mz_mle = dense_vec_to_dense_mle(self.s, &mat_vec_mul(M_j, &z)?);
-                Mz_mle.evaluate(&u.r_x).ok_or(Error::EvaluationFail)
+                Ok(Mz_mle.evaluate(&u.r_x))
             })
             .collect()
     }

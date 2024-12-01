@@ -1,9 +1,7 @@
 use ark_crypto_primitives::sponge::{constraints::CryptographicSpongeVar, CryptographicSponge};
 use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
-use ark_r1cs_std::{
-    boolean::Boolean, fields::fp::FpVar, groups::CurveVar, ToConstraintFieldGadget,
-};
+use ark_r1cs_std::{boolean::Boolean, fields::fp::FpVar, groups::CurveVar};
 use ark_relations::r1cs::SynthesisError;
 
 pub mod poseidon;
@@ -74,7 +72,7 @@ pub trait TranscriptVar<F: PrimeField, S: CryptographicSponge>:
     ///
     /// If the sponge field `F` is `C::ScalarField`, call `absorb_nonnative`
     /// instead.
-    fn absorb_point<C: CurveGroup<BaseField = F>, GC: CurveVar<C, F> + ToConstraintFieldGadget<F>>(
+    fn absorb_point<C: CurveGroup<BaseField = F>, GC: CurveVar<C, F>>(
         &mut self,
         v: &GC,
     ) -> Result<(), SynthesisError>;

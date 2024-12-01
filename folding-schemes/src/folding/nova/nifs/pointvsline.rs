@@ -1,5 +1,5 @@
 use ark_crypto_primitives::sponge::Absorb;
-use ark_ec::{CurveGroup, Group};
+use ark_ec::CurveGroup;
 use ark_ff::{One, PrimeField};
 use ark_poly::univariate::DensePolynomial;
 use ark_poly::{DenseMultilinearExtension, DenseUVPolynomial, Polynomial};
@@ -36,7 +36,7 @@ pub struct PointVsLine<C: CurveGroup, T: Transcript<C::ScalarField>> {
 /// Protocol 6 from Mova
 impl<C: CurveGroup, T: Transcript<C::ScalarField>> PointVsLine<C, T>
 where
-    <C as Group>::ScalarField: Absorb,
+    C::ScalarField: Absorb,
 {
     pub fn prove(
         transcript: &mut T,

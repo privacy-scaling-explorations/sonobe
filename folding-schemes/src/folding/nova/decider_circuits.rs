@@ -5,7 +5,7 @@
 use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, Absorb, CryptographicSponge};
 use ark_ec::CurveGroup;
 use ark_ff::{BigInteger, PrimeField};
-use ark_r1cs_std::{fields::fp::FpVar, prelude::CurveVar, ToConstraintFieldGadget};
+use ark_r1cs_std::{fields::fp::FpVar, prelude::CurveVar};
 use core::marker::PhantomData;
 
 use super::{
@@ -45,9 +45,9 @@ pub type DeciderCircuit1<C1, C2, GC2> = GenericOffchainDeciderCircuit1<
 
 impl<
         C1: CurveGroup,
-        GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
+        GC1: CurveVar<C1, CF2<C1>>,
         C2: CurveGroup,
-        GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+        GC2: CurveVar<C2, CF2<C2>>,
         FC: FCircuit<C1::ScalarField>,
         CS1: CommitmentScheme<C1, H>,
         CS2: CommitmentScheme<C2, H>,
@@ -118,9 +118,9 @@ pub type DeciderCircuit2<C2> = GenericOffchainDeciderCircuit2<C2>;
 
 impl<
         C1: CurveGroup,
-        GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
+        GC1: CurveVar<C1, CF2<C1>>,
         C2: CurveGroup,
-        GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+        GC2: CurveVar<C2, CF2<C2>>,
         FC: FCircuit<C1::ScalarField>,
         CS1: CommitmentScheme<C1, H>,
         CS2: CommitmentScheme<C2, H>,

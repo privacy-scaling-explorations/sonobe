@@ -13,7 +13,6 @@ use ark_r1cs_std::{
     eq::EqGadget,
     fields::fp::FpVar,
     prelude::CurveVar,
-    ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
 use ark_std::{borrow::Borrow, log2, marker::PhantomData};
@@ -114,9 +113,9 @@ pub type DeciderEthCircuit<C1, C2, GC2> = GenericOnchainDeciderCircuit<
 
 impl<
         C1: CurveGroup,
-        GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
+        GC1: CurveVar<C1, CF2<C1>>,
         C2: CurveGroup,
-        GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+        GC2: CurveVar<C2, CF2<C2>>,
         FC: FCircuit<C1::ScalarField>,
         CS1: CommitmentScheme<C1, H>,
         // enforce that the CS2 is Pedersen commitment scheme, since we're at Ethereum's EVM decider
@@ -217,7 +216,7 @@ where
             nimfs_proof,
             Boolean::TRUE, // enabled
         )?;
-        Boolean::le_bits_to_fp_var(&rho_bits)?.enforce_equal(&rho)?;
+        Boolean::le_bits_to_fp(&rho_bits)?.enforce_equal(&rho)?;
         Ok(computed_U_i1)
     }
 

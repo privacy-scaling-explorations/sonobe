@@ -1,5 +1,5 @@
 use ark_crypto_primitives::sponge::Absorb;
-use ark_ec::{CurveGroup, Group};
+use ark_ec::CurveGroup;
 use ark_ff::{BigInteger, Field, PrimeField};
 use ark_poly::univariate::DensePolynomial;
 use ark_poly::{DenseUVPolynomial, Polynomial};
@@ -72,7 +72,7 @@ pub struct NIMFS<C: CurveGroup, T: Transcript<C::ScalarField>> {
 
 impl<C: CurveGroup, T: Transcript<C::ScalarField>> NIMFS<C, T>
 where
-    <C as Group>::ScalarField: Absorb,
+    C::ScalarField: Absorb,
 {
     pub fn fold(
         lcccs: &[LCCCS<C>],

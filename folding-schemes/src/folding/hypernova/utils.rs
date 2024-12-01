@@ -1,7 +1,6 @@
 use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
-use ark_poly::DenseMultilinearExtension;
-use ark_poly::MultilinearExtension;
+use ark_poly::{DenseMultilinearExtension, MultilinearExtension};
 use ark_std::One;
 use std::sync::Arc;
 
@@ -29,8 +28,8 @@ pub fn compute_sigmas_thetas<F: PrimeField>(
         }
         let sigma_i = Mzs
             .iter()
-            .map(|Mz| Mz.evaluate(r_x_prime).ok_or(Error::EvaluationFail))
-            .collect::<Result<_, Error>>()?;
+            .map(|Mz| Mz.fix_variables(r_x_prime)[0])
+            .collect();
         sigmas.push(sigma_i);
     }
 
@@ -42,8 +41,8 @@ pub fn compute_sigmas_thetas<F: PrimeField>(
         }
         let theta_i = Mzs
             .iter()
-            .map(|Mz| Mz.evaluate(r_x_prime).ok_or(Error::EvaluationFail))
-            .collect::<Result<_, Error>>()?;
+            .map(|Mz| Mz.fix_variables(r_x_prime)[0])
+            .collect();
         thetas.push(theta_i);
     }
     Ok(SigmasThetas(sigmas, thetas))

@@ -1,6 +1,6 @@
 /// Implements the scheme described in [ProtoGalaxy](https://eprint.iacr.org/2023/1106.pdf)
 use ark_crypto_primitives::sponge::Absorb;
-use ark_ec::{CurveGroup, Group};
+use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_poly::{
     univariate::{DensePolynomial, SparsePolynomial},
@@ -49,7 +49,7 @@ pub struct Folding<C: CurveGroup> {
 }
 impl<C: CurveGroup> Folding<C>
 where
-    <C as Group>::ScalarField: Absorb,
+    C::ScalarField: Absorb,
 {
     #![allow(clippy::type_complexity)]
     /// implements the non-interactive Prover from the folding scheme described in section 4
@@ -214,9 +214,7 @@ where
         let L0_e = &L_X[0] * F_alpha;
         let G_L0e = &G_X - &L0_e;
         // Pending optimization: move division by Z_X to the prev loop
-        let (K_X, remainder) = G_L0e.divide_by_vanishing_poly(H).ok_or(Error::ProtoGalaxy(
-            ProtoGalaxyError::CouldNotDivideByVanishing,
-        ))?;
+        let (K_X, remainder) = G_L0e.divide_by_vanishing_poly(H);
         if !remainder.is_zero() {
             return Err(Error::ProtoGalaxy(ProtoGalaxyError::RemainderNotZero));
         }

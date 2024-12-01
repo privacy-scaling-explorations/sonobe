@@ -42,8 +42,8 @@ use ark_crypto_primitives::sponge::{
     poseidon::{PoseidonConfig, PoseidonSponge},
     Absorb, CryptographicSponge,
 };
-use ark_ec::{CurveGroup, Group};
-use ark_r1cs_std::{groups::CurveVar, ToConstraintFieldGadget};
+use ark_ec::CurveGroup;
+use ark_r1cs_std::groups::CurveVar;
 
 use crate::{commitment::CommitmentScheme, folding::circuits::CF2, frontend::FCircuit, Error};
 
@@ -65,15 +65,15 @@ pub struct RandomizedIVCProof<C1: CurveGroup, C2: CurveGroup> {
 
 impl<C1: CurveGroup, C2: CurveGroup> RandomizedIVCProof<C1, C2>
 where
-    <C1 as Group>::ScalarField: Absorb,
+    C1::ScalarField: Absorb,
     <C1 as CurveGroup>::BaseField: PrimeField,
 {
     /// Compute a zero-knowledge proof of a Nova IVC proof
     /// It implements the prover of appendix D.4.in https://eprint.iacr.org/2023/573.pdf
     /// For further details on why folding is hiding, see lemma 9
     pub fn new<
-        GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
-        GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+        GC1: CurveVar<C1, CF2<C1>>,
+        GC2: CurveVar<C2, CF2<C2>>,
         FC: FCircuit<C1::ScalarField>,
         CS1: CommitmentScheme<C1, true>,
         CS2: CommitmentScheme<C2, true>,
@@ -82,9 +82,9 @@ where
         mut rng: impl RngCore,
     ) -> Result<RandomizedIVCProof<C1, C2>, Error>
     where
-        <C1 as Group>::ScalarField: Absorb,
-        <C2 as Group>::ScalarField: Absorb,
-        <C2 as Group>::ScalarField: PrimeField,
+        C1::ScalarField: Absorb,
+        C2::ScalarField: Absorb,
+        C2::ScalarField: PrimeField,
         <C2 as CurveGroup>::BaseField: PrimeField,
         <C2 as CurveGroup>::BaseField: Absorb,
         C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
@@ -139,7 +139,7 @@ where
     #[allow(clippy::too_many_arguments)]
     pub fn verify<
         CS1: CommitmentScheme<C1, true>,
-        GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+        GC2: CurveVar<C2, CF2<C2>>,
         CS2: CommitmentScheme<C2, true>,
     >(
         r1cs: &R1CS<C1::ScalarField>,
@@ -152,8 +152,8 @@ where
         proof: &RandomizedIVCProof<C1, C2>,
     ) -> Result<(), Error>
     where
-        <C1 as Group>::ScalarField: Absorb,
-        <C2 as Group>::ScalarField: Absorb,
+        C1::ScalarField: Absorb,
+        C2::ScalarField: Absorb,
         <C2 as CurveGroup>::BaseField: PrimeField,
         <C2 as CurveGroup>::BaseField: Absorb,
         C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,

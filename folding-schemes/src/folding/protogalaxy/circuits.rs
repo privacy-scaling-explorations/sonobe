@@ -9,11 +9,12 @@ use ark_poly::{univariate::DensePolynomial, EvaluationDomain, GeneralEvaluationD
 use ark_r1cs_std::{
     alloc::AllocVar,
     boolean::Boolean,
+    convert::ToBitsGadget,
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
     groups::CurveVar,
     poly::polynomial::univariate::dense::DensePolynomialVar,
-    R1CSVar, ToBitsGadget, ToConstraintFieldGadget,
+    R1CSVar,
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use ark_std::{fmt::Debug, marker::PhantomData, One, Zero};
@@ -172,7 +173,7 @@ impl AugmentationGadget {
     pub fn prepare_and_fold_cyclefold<
         C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
         C2: CurveGroup,
-        GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+        GC2: CurveVar<C2, CF2<C2>>,
         S: CryptographicSponge,
     >(
         transcript: &mut PoseidonSpongeVar<CF1<C1>>,
@@ -312,7 +313,7 @@ impl<C1, C2, GC2, FC> ConstraintSynthesizer<CF1<C1>> for AugmentedFCircuit<C1, C
 where
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     C2: CurveGroup,
-    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+    GC2: CurveVar<C2, CF2<C2>>,
     FC: FCircuit<CF1<C1>>,
     C2::BaseField: PrimeField + Absorb,
 {

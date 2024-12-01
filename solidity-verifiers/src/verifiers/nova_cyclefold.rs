@@ -332,7 +332,7 @@ mod tests {
     #[allow(clippy::type_complexity)]
     fn init_params<FC: FCircuit<Fr, Params = ()>>(
     ) -> ((FS_PP<FC>, FS_VP<FC>), (DECIDER_PP<FC>, DECIDER_VP<FC>)) {
-        let mut rng = rand::rngs::OsRng;
+        let mut rng = ark_std::rand::rngs::OsRng;
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
         let f_circuit = FC::new(()).unwrap();
@@ -375,7 +375,7 @@ mod tests {
         let nova_cyclefold_vk =
             NovaCycleFoldVerifierKey::from((decider_vp.clone(), f_circuit.state_len()));
 
-        let mut rng = rand::rngs::OsRng;
+        let mut rng = ark_std::rand::rngs::OsRng;
 
         let mut nova = NOVA::<FC>::init(&fs_params, f_circuit, z_0).unwrap();
         for _ in 0..n_steps {

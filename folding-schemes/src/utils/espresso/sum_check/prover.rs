@@ -10,9 +10,12 @@
 //! Prover subroutines for a SumCheck protocol.
 
 use super::SumCheckProver;
-use crate::utils::{
-    lagrange_poly::compute_lagrange_interpolated_poly, multilinear_polynomial::fix_variables,
-    virtual_polynomial::VirtualPolynomial,
+use crate::{
+    utils::{
+        lagrange_poly::compute_lagrange_interpolated_poly, multilinear_polynomial::fix_variables,
+        virtual_polynomial::VirtualPolynomial,
+    },
+    Error,
 };
 use ark_ff::{batch_inversion, PrimeField};
 use ark_poly::DenseMultilinearExtension;
@@ -21,7 +24,6 @@ use rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator};
 use std::sync::Arc;
 
 use super::structs::{IOPProverMessage, IOPProverState};
-use espresso_subroutines::poly_iop::prelude::PolyIOPErrors;
 
 // #[cfg(feature = "parallel")]
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
@@ -32,10 +34,10 @@ impl<F: PrimeField> SumCheckProver<F> for IOPProverState<F> {
 
     /// Initialize the prover state to argue for the sum of the input polynomial
     /// over {0,1}^`num_vars`.
-    fn prover_init(polynomial: &Self::VirtualPolynomial) -> Result<Self, PolyIOPErrors> {
+    fn prover_init(polynomial: &Self::VirtualPolynomial) -> Result<Self, Error> {
         let start = start_timer!(|| "sum check prover init");
         if polynomial.aux_info.num_variables == 0 {
-            return Err(PolyIOPErrors::InvalidParameters(
+            return Err(Error::InvalidPolyIOPParameters(
                 "Attempt to prove a constant.".to_string(),
             ));
         }
@@ -62,13 +64,13 @@ impl<F: PrimeField> SumCheckProver<F> for IOPProverState<F> {
     fn prove_round_and_update_state(
         &mut self,
         challenge: &Option<F>,
-    ) -> Result<Self::ProverMessage, PolyIOPErrors> {
+    ) -> Result<Self::ProverMessage, Error> {
         // let start =
         //     start_timer!(|| format!("sum check prove {}-th round and update state",
         // self.round));
 
         if self.round >= self.poly.aux_info.num_variables {
-            return Err(PolyIOPErrors::InvalidProver(
+            return Err(Error::InvalidPolyIOPProver(
                 "Prover is not active".to_string(),
             ));
         }
@@ -95,7 +97,7 @@ impl<F: PrimeField> SumCheckProver<F> for IOPProverState<F> {
 
         if let Some(chal) = challenge {
             if self.round == 0 {
-                return Err(PolyIOPErrors::InvalidProver(
+                return Err(Error::InvalidPolyIOPProver(
                     "first round should be prover first.".to_string(),
                 ));
             }
@@ -111,7 +113,7 @@ impl<F: PrimeField> SumCheckProver<F> for IOPProverState<F> {
             //     .iter_mut()
             //     .for_each(|mle| *mle = fix_variables(mle, &[r]));
         } else if self.round > 0 {
-            return Err(PolyIOPErrors::InvalidProver(
+            return Err(Error::InvalidPolyIOPProver(
                 "verifier message is empty".to_string(),
             ));
         }

@@ -142,7 +142,7 @@ mod tests {
         v_1: &[C::ScalarField],
         v_2: &[C::ScalarField],
     ) where
-        <C as ark_ec::Group>::ScalarField: Absorb,
+        C::ScalarField: Absorb,
     {
         // compute the commitment of the two vectors using the given CommitmentScheme
         let cm_1 = CS::commit(prover_params, v_1, &C::ScalarField::zero()).unwrap();

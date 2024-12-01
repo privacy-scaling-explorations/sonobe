@@ -4,7 +4,7 @@ use ark_crypto_primitives::sponge::{
     poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig, PoseidonSponge},
     Absorb,
 };
-use ark_ec::{CurveGroup, Group};
+use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_r1cs_std::{
     alloc::AllocVar,
@@ -12,7 +12,7 @@ use ark_r1cs_std::{
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
     prelude::CurveVar,
-    R1CSVar, ToConstraintFieldGadget,
+    R1CSVar,
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use ark_std::{fmt::Debug, One, Zero};
@@ -118,12 +118,12 @@ impl<C1, C2, GC2, FC> ConstraintSynthesizer<CF1<C1>> for AugmentedFCircuit<C1, C
 where
     C1: CurveGroup,
     C2: CurveGroup,
-    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+    GC2: CurveVar<C2, CF2<C2>>,
     FC: FCircuit<CF1<C1>>,
     <C1 as CurveGroup>::BaseField: PrimeField,
     <C2 as CurveGroup>::BaseField: PrimeField,
-    <C1 as Group>::ScalarField: Absorb,
-    <C2 as Group>::ScalarField: Absorb,
+    C1::ScalarField: Absorb,
+    C2::ScalarField: Absorb,
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
 {
     fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
@@ -344,6 +344,7 @@ pub mod tests {
     use ark_bn254::{Fr, G1Projective as Projective};
     use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, CryptographicSponge};
     use ark_ff::BigInteger;
+    use ark_r1cs_std::convert::ToConstraintFieldGadget;
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::UniformRand;
 
@@ -415,7 +416,7 @@ pub mod tests {
         assert!(cs.is_satisfied().unwrap());
 
         // check that the natively computed and in-circuit computed hashes match
-        let rVar = Boolean::le_bits_to_fp_var(&r_bitsVar).unwrap();
+        let rVar = Boolean::le_bits_to_fp(&r_bitsVar).unwrap();
         assert_eq!(rVar.value().unwrap(), r);
         assert_eq!(r_bitsVar.value().unwrap(), r_bits);
     }

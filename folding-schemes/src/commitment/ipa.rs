@@ -12,9 +12,9 @@ use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
-    fields::{nonnative::NonNativeFieldVar, FieldVar},
+    convert::ToBitsGadget,
+    fields::{emulated_fp::EmulatedFpVar, FieldVar},
     prelude::CurveVar,
-    ToBitsGadget,
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -363,12 +363,12 @@ fn build_s<F: PrimeField>(u: &[F], u_invs: &[F], k: usize) -> Result<Vec<F>, Err
 /// taking 2^{k+1}-2.
 /// src: https://github.com/zcash/halo2/blob/81729eca91ba4755e247f49c3a72a4232864ec9e/halo2_proofs/src/poly/commitment/verifier.rs#L156
 fn build_s_gadget<F: PrimeField, CF: PrimeField>(
-    u: &[NonNativeFieldVar<F, CF>],
-    u_invs: &[NonNativeFieldVar<F, CF>],
+    u: &[EmulatedFpVar<F, CF>],
+    u_invs: &[EmulatedFpVar<F, CF>],
     k: usize,
-) -> Result<Vec<NonNativeFieldVar<F, CF>>, SynthesisError> {
+) -> Result<Vec<EmulatedFpVar<F, CF>>, SynthesisError> {
     let d: usize = 2_u64.pow(k as u32) as usize;
-    let mut s: Vec<NonNativeFieldVar<F, CF>> = vec![NonNativeFieldVar::one(); d];
+    let mut s: Vec<EmulatedFpVar<F, CF>> = vec![EmulatedFpVar::one(); d];
     for (len, (u_j, u_j_inv)) in u
         .iter()
         .zip(u_invs)
@@ -422,10 +422,10 @@ fn s_b_inner<F: PrimeField>(u: &[F], x: &F) -> Result<F, Error> {
 // g(x, u_1, u_2, ..., u_k) = <s, b>, naively takes linear, but can compute in log time through
 // g(x, u_1, u_2, ..., u_k) = \Prod u_i x^{2^i} + u_i^-1
 fn s_b_inner_gadget<F: PrimeField, CF: PrimeField>(
-    u: &[NonNativeFieldVar<F, CF>],
-    x: &NonNativeFieldVar<F, CF>,
-) -> Result<NonNativeFieldVar<F, CF>, SynthesisError> {
-    let mut c: NonNativeFieldVar<F, CF> = NonNativeFieldVar::<F, CF>::one();
+    u: &[EmulatedFpVar<F, CF>],
+    x: &EmulatedFpVar<F, CF>,
+) -> Result<EmulatedFpVar<F, CF>, SynthesisError> {
+    let mut c: EmulatedFpVar<F, CF> = EmulatedFpVar::<F, CF>::one();
     let mut x_2_i = x.clone(); // x_2_i is x^{2^i}, starting from x^{2^0}=x
     for u_i in u.iter() {
         c *= u_i.clone() * x_2_i.clone() + u_i.inverse()?;
@@ -437,9 +437,9 @@ fn s_b_inner_gadget<F: PrimeField, CF: PrimeField>(
 pub type CF<C> = <<C as CurveGroup>::BaseField as Field>::BasePrimeField;
 
 pub struct ProofVar<C: CurveGroup, GC: CurveVar<C, CF<C>>> {
-    a: NonNativeFieldVar<C::ScalarField, CF<C>>,
-    l: Vec<NonNativeFieldVar<C::ScalarField, CF<C>>>,
-    r: Vec<NonNativeFieldVar<C::ScalarField, CF<C>>>,
+    a: EmulatedFpVar<C::ScalarField, CF<C>>,
+    l: Vec<EmulatedFpVar<C::ScalarField, CF<C>>>,
+    r: Vec<EmulatedFpVar<C::ScalarField, CF<C>>>,
     L: Vec<GC>,
     R: Vec<GC>,
 }
@@ -457,14 +457,14 @@ where
         f().and_then(|val| {
             let cs = cs.into();
 
-            let a = NonNativeFieldVar::<C::ScalarField, CF<C>>::new_variable(
+            let a = EmulatedFpVar::<C::ScalarField, CF<C>>::new_variable(
                 cs.clone(),
                 || Ok(val.borrow().a),
                 mode,
             )?;
-            let l: Vec<NonNativeFieldVar<C::ScalarField, CF<C>>> =
+            let l: Vec<EmulatedFpVar<C::ScalarField, CF<C>>> =
                 Vec::new_variable(cs.clone(), || Ok(val.borrow().l.clone()), mode)?;
-            let r: Vec<NonNativeFieldVar<C::ScalarField, CF<C>>> =
+            let r: Vec<EmulatedFpVar<C::ScalarField, CF<C>>> =
                 Vec::new_variable(cs.clone(), || Ok(val.borrow().r.clone()), mode)?;
             let L: Vec<GC> = Vec::new_variable(cs.clone(), || Ok(val.borrow().L.clone()), mode)?;
             let R: Vec<GC> = Vec::new_variable(cs.clone(), || Ok(val.borrow().R.clone()), mode)?;
@@ -497,15 +497,15 @@ where
     /// there are some constraints saved.
     #[allow(clippy::too_many_arguments)]
     pub fn verify<const K: usize>(
-        g: &[GC],                                     // params.generators
-        h: &GC,                                       // params.h
-        x: &NonNativeFieldVar<C::ScalarField, CF<C>>, // evaluation point, challenge
-        v: &NonNativeFieldVar<C::ScalarField, CF<C>>, // value at evaluation point
-        P: &GC,                                       // commitment
+        g: &[GC],                                 // params.generators
+        h: &GC,                                   // params.h
+        x: &EmulatedFpVar<C::ScalarField, CF<C>>, // evaluation point, challenge
+        v: &EmulatedFpVar<C::ScalarField, CF<C>>, // value at evaluation point
+        P: &GC,                                   // commitment
         p: &ProofVar<C, GC>,
-        r: &NonNativeFieldVar<C::ScalarField, CF<C>>, // blinding factor
-        u: &[NonNativeFieldVar<C::ScalarField, CF<C>>; K], // challenges
-        U: &GC,                                       // challenge
+        r: &EmulatedFpVar<C::ScalarField, CF<C>>, // blinding factor
+        u: &[EmulatedFpVar<C::ScalarField, CF<C>>; K], // challenges
+        U: &GC,                                   // challenge
     ) -> Result<Boolean<CF<C>>, SynthesisError> {
         if p.L.len() != K || p.R.len() != K {
             return Err(SynthesisError::Unsatisfiable);
@@ -516,7 +516,7 @@ where
         let mut r = r.clone();
 
         // compute u[i]^-1 once
-        let mut u_invs = vec![NonNativeFieldVar::<C::ScalarField, CF<C>>::zero(); u.len()];
+        let mut u_invs = vec![EmulatedFpVar::<C::ScalarField, CF<C>>::zero(); u.len()];
         for (j, u_j) in u.iter().enumerate() {
             u_invs[j] = u_j.inverse()?;
         }
@@ -564,11 +564,10 @@ where
 #[cfg(test)]
 mod tests {
     use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, CryptographicSponge};
-    use ark_ec::Group;
+    use ark_ec::PrimeGroup;
     use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
     use ark_r1cs_std::eq::EqGadget;
     use ark_relations::r1cs::ConstraintSystem;
-    use std::ops::Mul;
 
     use super::*;
     use crate::transcript::poseidon::poseidon_canonical_config;
@@ -667,7 +666,7 @@ mod tests {
         transcript_v.absorb_nonnative(&cm);
         let challenge = transcript_v.get_challenge(); // challenge value at which we evaluate
         let s = transcript_v.get_challenge();
-        let U = Projective::generator().mul(s);
+        let U = Projective::generator() * s;
         let mut u: Vec<Fr> = vec![Fr::zero(); k];
         for i in (0..k).rev() {
             transcript_v.absorb_nonnative(&proof.0.L[i]);
@@ -679,15 +678,14 @@ mod tests {
         let gVar = Vec::<GVar>::new_constant(cs.clone(), params.generators).unwrap();
         let hVar = GVar::new_constant(cs.clone(), params.h).unwrap();
         let challengeVar =
-            NonNativeFieldVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(challenge)).unwrap();
-        let vVar = NonNativeFieldVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(proof.1)).unwrap();
+            EmulatedFpVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(challenge)).unwrap();
+        let vVar = EmulatedFpVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(proof.1)).unwrap();
         let cmVar = GVar::new_witness(cs.clone(), || Ok(cm)).unwrap();
         let proofVar =
             ProofVar::<Projective, GVar>::new_witness(cs.clone(), || Ok(proof.0)).unwrap();
-        let r_blindVar =
-            NonNativeFieldVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(r_blind)).unwrap();
-        let uVar_vec = Vec::<NonNativeFieldVar<Fr, Fq>>::new_witness(cs.clone(), || Ok(u)).unwrap();
-        let uVar: [NonNativeFieldVar<Fr, Fq>; k] = uVar_vec.try_into().unwrap();
+        let r_blindVar = EmulatedFpVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(r_blind)).unwrap();
+        let uVar_vec = Vec::<EmulatedFpVar<Fr, Fq>>::new_witness(cs.clone(), || Ok(u)).unwrap();
+        let uVar: [EmulatedFpVar<Fr, Fq>; k] = uVar_vec.try_into().unwrap();
         let UVar = GVar::new_witness(cs.clone(), || Ok(U)).unwrap();
 
         let v = IPAGadget::<Projective, GVar, hiding>::verify::<k>(

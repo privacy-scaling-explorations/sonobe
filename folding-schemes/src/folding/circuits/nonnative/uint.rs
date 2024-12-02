@@ -947,16 +947,16 @@ impl<CF: PrimeField> MatrixGadget<NonNativeUintVar<CF>> for SparseMatrixVar<NonN
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
-    use super::*;
     use ark_pallas::{Fq, Fr};
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::{test_rng, UniformRand};
     use num_bigint::RandBigInt;
 
+    use super::*;
+    use crate::Error;
+
     #[test]
-    fn test_mul_biguint() -> Result<(), Box<dyn Error>> {
+    fn test_mul_biguint() -> Result<(), Error> {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         let size = 256;
@@ -992,7 +992,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mul_fq() -> Result<(), Box<dyn Error>> {
+    fn test_mul_fq() -> Result<(), Error> {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         let rng = &mut test_rng();
@@ -1023,7 +1023,7 @@ mod tests {
     }
 
     #[test]
-    fn test_pow() -> Result<(), Box<dyn Error>> {
+    fn test_pow() -> Result<(), Error> {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         let rng = &mut test_rng();
@@ -1043,7 +1043,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vec_vec_mul() -> Result<(), Box<dyn Error>> {
+    fn test_vec_vec_mul() -> Result<(), Error> {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         let len = 1000;

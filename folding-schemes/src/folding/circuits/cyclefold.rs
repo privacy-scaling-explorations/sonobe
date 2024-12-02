@@ -707,7 +707,7 @@ pub mod tests {
     }
 
     #[test]
-    fn test_committed_instance_cyclefold_var() {
+    fn test_committed_instance_cyclefold_var() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
 
         let ci = CycleFoldCommittedInstance::<Projective> {
@@ -722,14 +722,14 @@ pub mod tests {
         let ciVar =
             CommittedInstanceInCycleFoldVar::<Projective, GVar>::new_witness(cs.clone(), || {
                 Ok(ci.clone())
-            })
-            .unwrap();
-        assert_eq!(ciVar.cmE.value().unwrap(), ci.cmE);
-        assert_eq!(ciVar.cmW.value().unwrap(), ci.cmW);
+            })?;
+        assert_eq!(ciVar.cmE.value()?, ci.cmE);
+        assert_eq!(ciVar.cmW.value()?, ci.cmW);
+        Ok(())
     }
 
     #[test]
-    fn test_CycleFoldCircuit_n_points_constraints() {
+    fn test_CycleFoldCircuit_n_points_constraints() -> Result<(), Error> {
         const n: usize = 16;
         let mut rng = ark_std::test_rng();
 
@@ -741,8 +741,10 @@ pub mod tests {
         use std::ops::Mul;
         let rho_raw = Fq::rand(&mut rng);
         let rho_bits = rho_raw.into_bigint().to_bits_le()[..NOVA_N_BITS_RO].to_vec();
-        let rho_Fq = Fq::from_bigint(BigInteger::from_bits_le(&rho_bits)).unwrap();
-        let rho_Fr = Fr::from_bigint(BigInteger::from_bits_le(&rho_bits)).unwrap();
+        let rho_Fq =
+            Fq::from_bigint(BigInteger::from_bits_le(&rho_bits)).ok_or(Error::OutOfBounds)?;
+        let rho_Fr =
+            Fr::from_bigint(BigInteger::from_bits_le(&rho_bits)).ok_or(Error::OutOfBounds)?;
         let mut res = Projective::zero();
         use ark_std::One;
         let mut rho_i = Fr::one();
@@ -767,12 +769,13 @@ pub mod tests {
             points: Some(points),
             x: Some(x.clone()),
         };
-        cf_circuit.generate_constraints(cs.clone()).unwrap();
-        assert!(cs.is_satisfied().unwrap());
+        cf_circuit.generate_constraints(cs.clone())?;
+        assert!(cs.is_satisfied()?);
+        Ok(())
     }
 
     #[test]
-    fn test_nifs_full_gadget() {
+    fn test_nifs_full_gadget() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
 
         let poseidon_config = poseidon_canonical_config::<Fr>();
@@ -801,35 +804,31 @@ pub mod tests {
             &ci1,
             &ci2,
             &cmT,
-        )
-        .unwrap();
+        )?;
 
         let cs = ConstraintSystem::<Fq>::new_ref();
-        let r_bitsVar = Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(r_bits)).unwrap();
+        let r_bitsVar = Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(r_bits))?;
         let ci1Var =
             CycleFoldCommittedInstanceVar::<Projective, GVar>::new_witness(cs.clone(), || {
                 Ok(ci1.clone())
-            })
-            .unwrap();
+            })?;
         let ci2Var =
             CycleFoldCommittedInstanceVar::<Projective, GVar>::new_witness(cs.clone(), || {
                 Ok(ci2.clone())
-            })
-            .unwrap();
+            })?;
         let ci3Var =
             CycleFoldCommittedInstanceVar::<Projective, GVar>::new_witness(cs.clone(), || {
                 Ok(ci3.clone())
-            })
-            .unwrap();
-        let cmTVar = GVar::new_witness(cs.clone(), || Ok(cmT)).unwrap();
+            })?;
+        let cmTVar = GVar::new_witness(cs.clone(), || Ok(cmT))?;
 
-        NIFSFullGadget::<Projective, GVar>::verify(r_bitsVar, cmTVar, ci1Var, ci2Var, ci3Var)
-            .unwrap();
-        assert!(cs.is_satisfied().unwrap());
+        NIFSFullGadget::<Projective, GVar>::verify(r_bitsVar, cmTVar, ci1Var, ci2Var, ci3Var)?;
+        assert!(cs.is_satisfied()?);
+        Ok(())
     }
 
     #[test]
-    fn test_cyclefold_challenge_gadget() {
+    fn test_cyclefold_challenge_gadget() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_canonical_config::<Fq>();
         let mut transcript = PoseidonSponge::<Fq>::new(&poseidon_config);
@@ -866,37 +865,35 @@ pub mod tests {
         let u_iVar =
             CycleFoldCommittedInstanceVar::<Projective, GVar>::new_witness(cs.clone(), || {
                 Ok(u_i.clone())
-            })
-            .unwrap();
+            })?;
         let U_iVar =
             CycleFoldCommittedInstanceVar::<Projective, GVar>::new_witness(cs.clone(), || {
                 Ok(U_i.clone())
-            })
-            .unwrap();
-        let cmTVar = GVar::new_witness(cs.clone(), || Ok(cmT)).unwrap();
+            })?;
+        let cmTVar = GVar::new_witness(cs.clone(), || Ok(cmT))?;
         let mut transcript_var =
             PoseidonSpongeVar::<Fq>::new(ConstraintSystem::<Fq>::new_ref(), &poseidon_config);
 
-        let pp_hashVar = FpVar::<Fq>::new_witness(cs.clone(), || Ok(pp_hash)).unwrap();
+        let pp_hashVar = FpVar::<Fq>::new_witness(cs.clone(), || Ok(pp_hash))?;
         let r_bitsVar = CycleFoldChallengeGadget::<Projective, GVar>::get_challenge_gadget(
             &mut transcript_var,
             pp_hashVar,
-            U_iVar.to_native_sponge_field_elements().unwrap(),
+            U_iVar.to_native_sponge_field_elements()?,
             u_iVar,
             cmTVar,
-        )
-        .unwrap();
-        assert!(cs.is_satisfied().unwrap());
+        )?;
+        assert!(cs.is_satisfied()?);
 
         // check that the natively computed and in-circuit computed hashes match
-        let rVar = Boolean::le_bits_to_fp(&r_bitsVar).unwrap();
-        let r = Fq::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
-        assert_eq!(rVar.value().unwrap(), r);
-        assert_eq!(r_bitsVar.value().unwrap(), r_bits);
+        let rVar = Boolean::le_bits_to_fp(&r_bitsVar)?;
+        let r = Fq::from_bigint(BigInteger::from_bits_le(&r_bits)).ok_or(Error::OutOfBounds)?;
+        assert_eq!(rVar.value()?, r);
+        assert_eq!(r_bitsVar.value()?, r_bits);
+        Ok(())
     }
 
     #[test]
-    fn test_cyclefold_hash_gadget() {
+    fn test_cyclefold_hash_gadget() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_canonical_config::<Fq>();
         let sponge = PoseidonSponge::<Fq>::new(&poseidon_config);
@@ -916,17 +913,14 @@ pub mod tests {
         let U_iVar =
             CycleFoldCommittedInstanceVar::<Projective, GVar>::new_witness(cs.clone(), || {
                 Ok(U_i.clone())
-            })
-            .unwrap();
-        let pp_hashVar = FpVar::<Fq>::new_witness(cs.clone(), || Ok(pp_hash)).unwrap();
-        let (hVar, _) = U_iVar
-            .hash(
-                &PoseidonSpongeVar::new(cs.clone(), &poseidon_config),
-                pp_hashVar,
-            )
-            .unwrap();
-        hVar.enforce_equal(&FpVar::new_witness(cs.clone(), || Ok(h)).unwrap())
-            .unwrap();
-        assert!(cs.is_satisfied().unwrap());
+            })?;
+        let pp_hashVar = FpVar::<Fq>::new_witness(cs.clone(), || Ok(pp_hash))?;
+        let (hVar, _) = U_iVar.hash(
+            &PoseidonSpongeVar::new(cs.clone(), &poseidon_config),
+            pp_hashVar,
+        )?;
+        hVar.enforce_equal(&FpVar::new_witness(cs.clone(), || Ok(h))?)?;
+        assert!(cs.is_satisfied()?);
+        Ok(())
     }
 }

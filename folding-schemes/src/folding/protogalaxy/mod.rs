@@ -1045,7 +1045,7 @@ where
         augmented_F_circuit.generate_constraints(cs.clone())?;
 
         #[cfg(test)]
-        assert!(cs.is_satisfied().unwrap());
+        assert!(cs.is_satisfied()?);
 
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
         let (w_i1, x_i1) = extract_w_x::<C1::ScalarField>(&cs);
@@ -1251,50 +1251,49 @@ mod tests {
     /// This test tests the ProtoGalaxy+CycleFold IVC, and by consequence it is
     /// also testing the AugmentedFCircuit
     #[test]
-    fn test_ivc() {
+    fn test_ivc() -> Result<(), Error> {
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
-        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
+        let F_circuit = CubicFCircuit::<Fr>::new(())?;
 
         // run the test using Pedersen commitments on both sides of the curve cycle
-        test_ivc_opt::<Pedersen<Projective>, Pedersen<Projective2>>(
+        let _ = test_ivc_opt::<Pedersen<Projective>, Pedersen<Projective2>>(
             poseidon_config.clone(),
             F_circuit,
-        );
+        )?;
         // run the test using KZG for the commitments on the main curve, and Pedersen for the
         // commitments on the secondary curve
-        test_ivc_opt::<KZG<Bn254>, Pedersen<Projective2>>(poseidon_config, F_circuit);
+        let _ = test_ivc_opt::<KZG<Bn254>, Pedersen<Projective2>>(poseidon_config, F_circuit)?;
+        Ok(())
     }
 
     // test_ivc allowing to choose the CommitmentSchemes
     fn test_ivc_opt<CS1: CommitmentScheme<Projective>, CS2: CommitmentScheme<Projective2>>(
         poseidon_config: PoseidonConfig<Fr>,
         F_circuit: CubicFCircuit<Fr>,
-    ) {
+    ) -> Result<(), Error> {
         type PG<CS1, CS2> =
             ProtoGalaxy<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>, CS1, CS2>;
 
-        let params =
-            PG::<CS1, CS2>::preprocess(&mut test_rng(), &(poseidon_config, F_circuit)).unwrap();
+        let params = PG::<CS1, CS2>::preprocess(&mut test_rng(), &(poseidon_config, F_circuit))?;
 
         let z_0 = vec![Fr::from(3_u32)];
-        let mut protogalaxy = PG::init(&params, F_circuit, z_0.clone()).unwrap();
+        let mut protogalaxy = PG::init(&params, F_circuit, z_0.clone())?;
 
         let num_steps: usize = 3;
         for _ in 0..num_steps {
-            protogalaxy
-                .prove_step(&mut test_rng(), vec![], None)
-                .unwrap();
+            protogalaxy.prove_step(&mut test_rng(), vec![], None)?;
         }
         assert_eq!(Fr::from(num_steps as u32), protogalaxy.i);
 
         let ivc_proof = protogalaxy.ivc_proof();
-        PG::<CS1, CS2>::verify(params.1, ivc_proof).unwrap();
+        PG::<CS1, CS2>::verify(params.1, ivc_proof)?;
+        Ok(())
     }
 
     #[ignore]
     #[test]
-    fn test_t_bounds() {
+    fn test_t_bounds() -> Result<(), Error> {
         let d = 2;
         let k = 1;
 
@@ -1302,9 +1301,9 @@ mod tests {
         for state_len in [1, 10, 100] {
             for external_inputs_len in [1, 10, 100] {
                 let dummy_circuit: DummyCircuit =
-                    FCircuit::<Fr>::new((state_len, external_inputs_len)).unwrap();
+                    FCircuit::<Fr>::new((state_len, external_inputs_len))?;
 
-                let costs = (1..32)
+                let costs: Vec<usize> = (1..32)
                     .into_par_iter()
                     .map(|t| {
                         let cs = ConstraintSystem::<Fr>::new_ref();
@@ -1315,11 +1314,10 @@ mod tests {
                             d,
                             k,
                         )
-                        .generate_constraints(cs.clone())
-                        .unwrap();
-                        cs.num_constraints()
+                        .generate_constraints(cs.clone())?;
+                        Ok(cs.num_constraints())
                     })
-                    .collect::<Vec<_>>();
+                    .collect::<Result<Vec<usize>, Error>>()?;
 
                 for t_lower_bound in log2(costs[0]) as usize..32 {
                     let num_constraints =
@@ -1329,5 +1327,6 @@ mod tests {
                 }
             }
         }
+        Ok(())
     }
 }

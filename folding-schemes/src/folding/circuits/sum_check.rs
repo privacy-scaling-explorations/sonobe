@@ -186,7 +186,7 @@ mod tests {
     use super::*;
     use crate::{
         transcript::poseidon::poseidon_canonical_config,
-        utils::virtual_polynomial::VirtualPolynomial,
+        utils::virtual_polynomial::VirtualPolynomial, Error,
     };
 
     pub type TestSumCheckProof<F> = (VirtualPolynomial<F>, PoseidonConfig<F>, IOPProof<F>);
@@ -195,7 +195,7 @@ mod tests {
     /// Returns a random virtual polynomial, the poseidon config used and the associated sumcheck proof
     pub fn get_test_sumcheck_proof<F: PrimeField + Absorb>(
         num_vars: usize,
-    ) -> TestSumCheckProof<F> {
+    ) -> Result<TestSumCheckProof<F>, Error> {
         let mut rng = ark_std::test_rng();
         let poseidon_config: PoseidonConfig<F> = poseidon_canonical_config::<F>();
         let mut poseidon_transcript_prove = PoseidonSponge::<F>::new(&poseidon_config);
@@ -204,24 +204,22 @@ mod tests {
         let sum_check: IOPProof<F> = IOPSumCheck::<F, PoseidonSponge<F>>::prove(
             &virtual_poly,
             &mut poseidon_transcript_prove,
-        )
-        .unwrap();
-        (virtual_poly, poseidon_config, sum_check)
+        )?;
+        Ok((virtual_poly, poseidon_config, sum_check))
     }
 
     #[test]
-    fn test_sum_check_circuit() {
+    fn test_sum_check_circuit() -> Result<(), Error> {
         for num_vars in 1..15 {
             let cs = ConstraintSystem::<Fr>::new_ref();
             let (virtual_poly, poseidon_config, sum_check) =
-                get_test_sumcheck_proof::<Fr>(num_vars);
+                get_test_sumcheck_proof::<Fr>(num_vars)?;
             let mut poseidon_var: PoseidonSpongeVar<Fr> =
                 PoseidonSpongeVar::new(cs.clone(), &poseidon_config);
-            let iop_proof_var =
-                IOPProofVar::<Fr>::new_witness(cs.clone(), || Ok(&sum_check)).unwrap();
+            let iop_proof_var = IOPProofVar::<Fr>::new_witness(cs.clone(), || Ok(&sum_check))?;
             let poly_aux_info_var =
-                VPAuxInfoVar::<Fr>::new_witness(cs.clone(), || Ok(virtual_poly.aux_info)).unwrap();
-            let enabled = Boolean::<Fr>::new_witness(cs.clone(), || Ok(true)).unwrap();
+                VPAuxInfoVar::<Fr>::new_witness(cs.clone(), || Ok(virtual_poly.aux_info))?;
+            let enabled = Boolean::<Fr>::new_witness(cs.clone(), || Ok(true))?;
             let res = SumCheckVerifierGadget::<Fr>::verify(
                 &iop_proof_var,
                 &poly_aux_info_var,
@@ -230,11 +228,11 @@ mod tests {
             );
 
             assert!(res.is_ok());
-            let (circuit_evals, r_challenges) = res.unwrap();
+            let (circuit_evals, r_challenges) = res?;
 
             // 1. assert claim from circuit is equal to the one from the sum-check
             let claim: Fr = IOPSumCheck::<Fr, PoseidonSponge<Fr>>::extract_sum(&sum_check);
-            assert_eq!(circuit_evals[0].value().unwrap(), claim);
+            assert_eq!(circuit_evals[0].value()?, claim);
 
             // 2. assert that all in-circuit evaluations are equal to the ones from the sum-check
             for ((proof, point), circuit_eval) in sum_check
@@ -246,15 +244,16 @@ mod tests {
             {
                 let poly = DensePolynomial::from_coefficients_slice(&proof.coeffs);
                 let eval = poly.evaluate(point);
-                assert_eq!(eval, circuit_eval.value().unwrap());
+                assert_eq!(eval, circuit_eval.value()?);
             }
 
             // 3. assert that all challenges are equal to the ones from the sum-check
             for (point, r_challenge) in sum_check.point.iter().zip(r_challenges.iter()) {
-                assert_eq!(*point, r_challenge.value().unwrap());
+                assert_eq!(*point, r_challenge.value()?);
             }
 
-            assert!(cs.is_satisfied().unwrap());
+            assert!(cs.is_satisfied()?);
         }
+        Ok(())
     }
 }

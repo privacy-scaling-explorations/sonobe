@@ -214,18 +214,19 @@ pub mod tests {
     use crate::transcript::poseidon::poseidon_canonical_config;
     use crate::utils::sum_check::SumCheck;
     use crate::utils::virtual_polynomial::VirtualPolynomial;
+    use crate::Error;
 
     use super::IOPSumCheck;
 
     #[test]
-    pub fn sumcheck_poseidon() {
+    pub fn sumcheck_poseidon() -> Result<(), Error> {
         let n_vars = 5;
 
         let mut rng = test_rng();
         let poly_mle = DenseMultilinearExtension::rand(n_vars, &mut rng);
         let virtual_poly = VirtualPolynomial::new_from_mle(&Arc::new(poly_mle), Fr::ONE);
 
-        sumcheck_poseidon_opt(virtual_poly);
+        let _ = sumcheck_poseidon_opt(virtual_poly)?;
 
         // test with zero poly
         let poly_mle = DenseMultilinearExtension::from_evaluations_vec(
@@ -233,16 +234,17 @@ pub mod tests {
             vec![Fr::zero(); 2u32.pow(n_vars as u32) as usize],
         );
         let virtual_poly = VirtualPolynomial::new_from_mle(&Arc::new(poly_mle), Fr::ONE);
-        sumcheck_poseidon_opt(virtual_poly);
+        let _ = sumcheck_poseidon_opt(virtual_poly)?;
+        Ok(())
     }
 
-    fn sumcheck_poseidon_opt(virtual_poly: VirtualPolynomial<Fr>) {
+    fn sumcheck_poseidon_opt(virtual_poly: VirtualPolynomial<Fr>) -> Result<(), Error> {
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
         // sum-check prove
         let mut transcript_p: PoseidonSponge<Fr> = PoseidonSponge::<Fr>::new(&poseidon_config);
         let sum_check =
-            IOPSumCheck::<Fr, PoseidonSponge<Fr>>::prove(&virtual_poly, &mut transcript_p).unwrap();
+            IOPSumCheck::<Fr, PoseidonSponge<Fr>>::prove(&virtual_poly, &mut transcript_p)?;
 
         // sum-check verify
         let claimed_sum = IOPSumCheck::<Fr, PoseidonSponge<Fr>>::extract_sum(&sum_check);
@@ -255,5 +257,6 @@ pub mod tests {
         );
 
         assert!(res_verify.is_ok());
+        Ok(())
     }
 }

@@ -398,11 +398,12 @@ pub mod tests {
     use crate::folding::nova::nifs::tests::test_nifs_opt;
 
     #[test]
-    fn test_nifs_mova() {
-        let (W, U) = test_nifs_opt::<NIFS<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>>();
+    fn test_nifs_mova() -> Result<(), Error> {
+        let (W, U) = test_nifs_opt::<NIFS<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>>()?;
 
         // check the last folded instance relation
         let r1cs = get_test_r1cs();
-        r1cs.check_relation(&W, &U).unwrap();
+        r1cs.check_relation(&W, &U)?;
+        Ok(())
     }
 }

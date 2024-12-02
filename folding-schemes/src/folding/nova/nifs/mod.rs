@@ -151,11 +151,11 @@ pub mod tests {
     /// so that their relation can be checked.
     pub(crate) fn test_nifs_opt<
         N: NIFSTrait<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>,
-    >() -> (N::Witness, N::CommittedInstance) {
+    >() -> Result<(N::Witness, N::CommittedInstance), Error> {
         let r1cs: R1CS<Fr> = get_test_r1cs();
 
         let mut rng = ark_std::test_rng();
-        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, r1cs.A.n_cols).unwrap();
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, r1cs.A.n_cols)?;
 
         let poseidon_config = poseidon_canonical_config::<Fr>();
         let mut transcript_p = PoseidonSponge::<Fr>::new(&poseidon_config);
@@ -166,7 +166,7 @@ pub mod tests {
         let z = get_test_z(3);
         let (w, x) = r1cs.split_z(&z);
         let mut W_i = N::new_witness(w.clone(), r1cs.A.n_rows, test_rng());
-        let mut U_i = N::new_instance(&mut rng, &pedersen_params, &W_i, x, vec![]).unwrap();
+        let mut U_i = N::new_instance(&mut rng, &pedersen_params, &W_i, x, vec![])?;
 
         let num_iters = 10;
         for i in 0..num_iters {
@@ -174,7 +174,7 @@ pub mod tests {
             let incoming_instance_z = get_test_z(i + 4);
             let (w, x) = r1cs.split_z(&incoming_instance_z);
             let w_i = N::new_witness(w.clone(), r1cs.A.n_rows, test_rng());
-            let u_i = N::new_instance(&mut rng, &pedersen_params, &w_i, x, vec![]).unwrap();
+            let u_i = N::new_instance(&mut rng, &pedersen_params, &w_i, x, vec![])?;
 
             // NIFS.P
             let (folded_witness, _, proof, _) = N::prove(
@@ -186,19 +186,18 @@ pub mod tests {
                 &U_i,
                 &w_i,
                 &u_i,
-            )
-            .unwrap();
+            )?;
 
             // NIFS.V
             let (folded_committed_instance, _) =
-                N::verify(&mut transcript_v, pp_hash, &U_i, &u_i, &proof).unwrap();
+                N::verify(&mut transcript_v, pp_hash, &U_i, &u_i, &proof)?;
 
             // set running_instance for next loop iteration
             W_i = folded_witness;
             U_i = folded_committed_instance;
         }
 
-        (W_i, U_i)
+        Ok((W_i, U_i))
     }
 
     /// Test method used to test the different implementations of the NIFSGadgetTrait (ie. Nova,
@@ -252,7 +251,9 @@ pub mod tests {
 
     /// test that checks the native CommittedInstance.to_sponge_{bytes,field_elements}
     /// vs the R1CS constraints version
-    pub(crate) fn test_committed_instance_to_sponge_preimage_opt<N, NG>(ci: N::CommittedInstance)
+    pub(crate) fn test_committed_instance_to_sponge_preimage_opt<N, NG>(
+        ci: N::CommittedInstance,
+    ) -> Result<(), Error>
     where
         N: NIFSTrait<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>,
         NG: NIFSGadgetTrait<
@@ -267,18 +268,21 @@ pub mod tests {
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        let ciVar = NG::CommittedInstanceVar::new_witness(cs.clone(), || Ok(ci.clone())).unwrap();
-        let bytes_var = ciVar.to_sponge_bytes().unwrap();
-        let field_elements_var = ciVar.to_sponge_field_elements().unwrap();
+        let ciVar = NG::CommittedInstanceVar::new_witness(cs.clone(), || Ok(ci.clone()))?;
+        let bytes_var = ciVar.to_sponge_bytes()?;
+        let field_elements_var = ciVar.to_sponge_field_elements()?;
 
-        assert!(cs.is_satisfied().unwrap());
+        assert!(cs.is_satisfied()?);
 
         // check that the natively computed and in-circuit computed hashes match
-        assert_eq!(bytes_var.value().unwrap(), bytes);
-        assert_eq!(field_elements_var.value().unwrap(), field_elements);
+        assert_eq!(bytes_var.value()?, bytes);
+        assert_eq!(field_elements_var.value()?, field_elements);
+        Ok(())
     }
 
-    pub(crate) fn test_committed_instance_hash_opt<N, NG>(ci: NG::CommittedInstance)
+    pub(crate) fn test_committed_instance_hash_opt<N, NG>(
+        ci: NG::CommittedInstance,
+    ) -> Result<(), Error>
     where
         N: NIFSTrait<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>,
         NG: NIFSGadgetTrait<
@@ -302,21 +306,20 @@ pub mod tests {
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        let pp_hashVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(pp_hash)).unwrap();
-        let iVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(i)).unwrap();
-        let z_0Var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_0.clone())).unwrap();
-        let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i.clone())).unwrap();
-        let ciVar = NG::CommittedInstanceVar::new_witness(cs.clone(), || Ok(ci.clone())).unwrap();
+        let pp_hashVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(pp_hash))?;
+        let iVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(i))?;
+        let z_0Var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_0.clone()))?;
+        let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i.clone()))?;
+        let ciVar = NG::CommittedInstanceVar::new_witness(cs.clone(), || Ok(ci.clone()))?;
 
         let sponge = PoseidonSpongeVar::<Fr>::new(cs.clone(), &poseidon_config);
 
         // compute the CommittedInstance hash in-circuit
-        let (hVar, _) = ciVar
-            .hash(&sponge, &pp_hashVar, &iVar, &z_0Var, &z_iVar)
-            .unwrap();
-        assert!(cs.is_satisfied().unwrap());
+        let (hVar, _) = ciVar.hash(&sponge, &pp_hashVar, &iVar, &z_0Var, &z_iVar)?;
+        assert!(cs.is_satisfied()?);
 
         // check that the natively computed and in-circuit computed hashes match
-        assert_eq!(hVar.value().unwrap(), h);
+        assert_eq!(hVar.value()?, h);
+        Ok(())
     }
 }

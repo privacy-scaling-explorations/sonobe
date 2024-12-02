@@ -38,9 +38,10 @@ mod tests {
 
     use super::EqEvalGadget;
     use crate::utils::virtual_polynomial::eq_eval;
+    use crate::Error;
 
     #[test]
-    pub fn test_eq_eval_gadget() {
+    pub fn test_eq_eval_gadget() -> Result<(), Error> {
         let mut rng = test_rng();
         let cs = ConstraintSystem::<Fr>::new_ref();
 
@@ -49,15 +50,15 @@ mod tests {
             let y_vec: Vec<Fr> = (0..i).map(|_| Fr::rand(&mut rng)).collect();
             let x: Vec<FpVar<Fr>> = x_vec
                 .iter()
-                .map(|x| FpVar::<Fr>::new_witness(cs.clone(), || Ok(x)).unwrap())
-                .collect();
+                .map(|x| FpVar::<Fr>::new_witness(cs.clone(), || Ok(x)))
+                .collect::<Result<Vec<_>, _>>()?;
             let y: Vec<FpVar<Fr>> = y_vec
                 .iter()
-                .map(|y| FpVar::<Fr>::new_witness(cs.clone(), || Ok(y)).unwrap())
-                .collect();
-            let expected_eq_eval = eq_eval::<Fr>(&x_vec, &y_vec).unwrap();
-            let gadget_eq_eval: FpVar<Fr> = EqEvalGadget::<Fr>::eq_eval(&x, &y).unwrap();
-            assert_eq!(expected_eq_eval, gadget_eq_eval.value().unwrap());
+                .map(|y| FpVar::<Fr>::new_witness(cs.clone(), || Ok(y)))
+                .collect::<Result<Vec<_>, _>>()?;
+            let expected_eq_eval = eq_eval::<Fr>(&x_vec, &y_vec)?;
+            let gadget_eq_eval: FpVar<Fr> = EqEvalGadget::<Fr>::eq_eval(&x, &y)?;
+            assert_eq!(expected_eq_eval, gadget_eq_eval.value()?);
         }
 
         let x: Vec<FpVar<Fr>> = vec![];
@@ -66,9 +67,9 @@ mod tests {
         assert!(gadget_eq_eval.is_err());
 
         let x: Vec<FpVar<Fr>> = vec![];
-        let y: Vec<FpVar<Fr>> =
-            vec![FpVar::<Fr>::new_witness(cs.clone(), || Ok(&Fr::ONE)).unwrap()];
+        let y: Vec<FpVar<Fr>> = vec![FpVar::<Fr>::new_witness(cs.clone(), || Ok(&Fr::ONE))?];
         let gadget_eq_eval = EqEvalGadget::<Fr>::eq_eval(&x, &y);
         assert!(gadget_eq_eval.is_err());
+        Ok(())
     }
 }

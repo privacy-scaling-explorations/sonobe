@@ -236,54 +236,52 @@ mod tests {
     use ark_r1cs_std::R1CSVar;
     use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar};
     use ark_relations::r1cs::ConstraintSystem;
-    use folding_schemes::frontend::FCircuit;
+    use folding_schemes::{frontend::FCircuit, Error};
     use std::env;
 
     use crate::noir::NoirFCircuit;
 
     #[test]
-    fn test_step_native() {
-        let cur_path = env::current_dir().unwrap();
+    fn test_step_native() -> Result<(), Error> {
+        let cur_path = env::current_dir()?;
         let noirfcircuit = NoirFCircuit::new((
             cur_path
                 .join("src/noir/test_folder/test_circuit/target/test_circuit.json")
                 .into(),
             2,
             2,
-        ))
-        .unwrap();
+        ))?;
         let inputs = vec![Fr::from(2), Fr::from(5)];
         let res = noirfcircuit.step_native(0, inputs.clone(), inputs);
         assert!(res.is_ok());
-        assert_eq!(res.unwrap(), vec![Fr::from(4), Fr::from(25)]);
+        assert_eq!(res?, vec![Fr::from(4), Fr::from(25)]);
+        Ok(())
     }
 
     #[test]
-    fn test_step_constraints() {
+    fn test_step_constraints() -> Result<(), Error> {
         let cs = ConstraintSystem::<Fr>::new_ref();
-        let cur_path = env::current_dir().unwrap();
+        let cur_path = env::current_dir()?;
         let noirfcircuit = NoirFCircuit::new((
             cur_path
                 .join("src/noir/test_folder/test_circuit/target/test_circuit.json")
                 .into(),
             2,
             2,
-        ))
-        .unwrap();
+        ))?;
         let inputs = vec![Fr::from(2), Fr::from(5)];
-        let z_i = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs.clone())).unwrap();
-        let external_inputs = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs)).unwrap();
-        let output = noirfcircuit
-            .generate_step_constraints(cs.clone(), 0, z_i, external_inputs)
-            .unwrap();
-        assert_eq!(output[0].value().unwrap(), Fr::from(4));
-        assert_eq!(output[1].value().unwrap(), Fr::from(25));
+        let z_i = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs.clone()))?;
+        let external_inputs = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs))?;
+        let output = noirfcircuit.generate_step_constraints(cs.clone(), 0, z_i, external_inputs)?;
+        assert_eq!(output[0].value()?, Fr::from(4));
+        assert_eq!(output[1].value()?, Fr::from(25));
+        Ok(())
     }
 
     #[test]
-    fn test_step_constraints_no_external_inputs() {
+    fn test_step_constraints_no_external_inputs() -> Result<(), Error> {
         let cs = ConstraintSystem::<Fr>::new_ref();
-        let cur_path = env::current_dir().unwrap();
+        let cur_path = env::current_dir()?;
         let noirfcircuit = NoirFCircuit::new((
             cur_path
                 .join("src/noir/test_folder/test_no_external_inputs/target/test_no_external_inputs.json")
@@ -291,14 +289,13 @@ mod tests {
             2,
             0,
         ))
-        .unwrap();
+        ?;
         let inputs = vec![Fr::from(2), Fr::from(5)];
-        let z_i = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs.clone())).unwrap();
+        let z_i = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs.clone()))?;
         let external_inputs = vec![];
-        let output = noirfcircuit
-            .generate_step_constraints(cs.clone(), 0, z_i, external_inputs)
-            .unwrap();
-        assert_eq!(output[0].value().unwrap(), Fr::from(4));
-        assert_eq!(output[1].value().unwrap(), Fr::from(25));
+        let output = noirfcircuit.generate_step_constraints(cs.clone(), 0, z_i, external_inputs)?;
+        assert_eq!(output[0].value()?, Fr::from(4));
+        assert_eq!(output[1].value()?, Fr::from(25));
+        Ok(())
     }
 }

@@ -210,100 +210,99 @@ pub mod tests {
 
     // Tests the step_native function of CircomFCircuit.
     #[test]
-    fn test_circom_step_native() {
+    fn test_circom_step_native() -> Result<(), Error> {
         let r1cs_path = PathBuf::from("./src/circom/test_folder/cubic_circuit.r1cs");
         let wasm_path =
             PathBuf::from("./src/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
         let circom_fcircuit =
-            CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 1, 0)).unwrap(); // state_len:1, external_inputs_len:0
+            CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 1, 0))?; // state_len:1, external_inputs_len:0
 
         let z_i = vec![Fr::from(3u32)];
-        let z_i1 = circom_fcircuit.step_native(1, z_i, vec![]).unwrap();
+        let z_i1 = circom_fcircuit.step_native(1, z_i, vec![])?;
         assert_eq!(z_i1, vec![Fr::from(35u32)]);
+        Ok(())
     }
 
     // Tests the generate_step_constraints function of CircomFCircuit.
     #[test]
-    fn test_circom_step_constraints() {
+    fn test_circom_step_constraints() -> Result<(), Error> {
         let r1cs_path = PathBuf::from("./src/circom/test_folder/cubic_circuit.r1cs");
         let wasm_path =
             PathBuf::from("./src/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
         let circom_fcircuit =
-            CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 1, 0)).unwrap(); // state_len:1, external_inputs_len:0
+            CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 1, 0))?; // state_len:1, external_inputs_len:0
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         let z_i = vec![Fr::from(3u32)];
 
-        let z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i)).unwrap();
-        let z_i1_var = circom_fcircuit
-            .generate_step_constraints(cs.clone(), 1, z_i_var, vec![])
-            .unwrap();
-        assert_eq!(z_i1_var.value().unwrap(), vec![Fr::from(35u32)]);
+        let z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i))?;
+        let z_i1_var = circom_fcircuit.generate_step_constraints(cs.clone(), 1, z_i_var, vec![])?;
+        assert_eq!(z_i1_var.value()?, vec![Fr::from(35u32)]);
+        Ok(())
     }
 
     // Tests the WrapperCircuit with CircomFCircuit.
     #[test]
-    fn test_wrapper_circomtofcircuit() {
+    fn test_wrapper_circomtofcircuit() -> Result<(), Error> {
         let r1cs_path = PathBuf::from("./src/circom/test_folder/cubic_circuit.r1cs");
         let wasm_path =
             PathBuf::from("./src/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
         let circom_fcircuit =
-            CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 1, 0)).unwrap(); // state_len:1, external_inputs_len:0
+            CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 1, 0))?; // state_len:1, external_inputs_len:0
 
         // Allocates z_i1 by using step_native function.
         let z_i = vec![Fr::from(3_u32)];
         let wrapper_circuit = folding_schemes::frontend::utils::WrapperCircuit {
             FC: circom_fcircuit.clone(),
             z_i: Some(z_i.clone()),
-            z_i1: Some(circom_fcircuit.step_native(0, z_i.clone(), vec![]).unwrap()),
+            z_i1: Some(circom_fcircuit.step_native(0, z_i.clone(), vec![])?),
         };
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        wrapper_circuit.generate_constraints(cs.clone()).unwrap();
-        assert!(
-            cs.is_satisfied().unwrap(),
-            "Constraint system is not satisfied"
-        );
+        wrapper_circuit.generate_constraints(cs.clone())?;
+        assert!(cs.is_satisfied()?, "Constraint system is not satisfied");
+        Ok(())
     }
 
     #[test]
-    fn test_circom_external_inputs() {
+    fn test_circom_external_inputs() -> Result<(), Error> {
         let r1cs_path = PathBuf::from("./src/circom/test_folder/with_external_inputs.r1cs");
         let wasm_path = PathBuf::from(
             "./src/circom/test_folder/with_external_inputs_js/with_external_inputs.wasm",
         );
         let circom_fcircuit =
-            CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 1, 2)).unwrap(); // state_len:1, external_inputs_len:2
+            CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 1, 2))?; // state_len:1, external_inputs_len:2
         let cs = ConstraintSystem::<Fr>::new_ref();
         let z_i = vec![Fr::from(3u32)];
         let external_inputs = vec![Fr::from(6u32), Fr::from(7u32)];
 
         // run native step
-        let z_i1_native = circom_fcircuit
-            .step_native(1, z_i.clone(), external_inputs.clone())
-            .unwrap();
+        let z_i1_native = circom_fcircuit.step_native(1, z_i.clone(), external_inputs.clone())?;
 
         // run gadget step
-        let z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i)).unwrap();
+        let z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i))?;
         let external_inputs_var =
-            Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(external_inputs.clone())).unwrap();
-        let z_i1_var = circom_fcircuit
-            .generate_step_constraints(cs.clone(), 1, z_i_var, external_inputs_var)
-            .unwrap();
+            Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(external_inputs.clone()))?;
+        let z_i1_var = circom_fcircuit.generate_step_constraints(
+            cs.clone(),
+            1,
+            z_i_var,
+            external_inputs_var,
+        )?;
 
-        assert_eq!(z_i1_var.value().unwrap(), z_i1_native);
+        assert_eq!(z_i1_var.value()?, z_i1_native);
 
         // re-init cs and run gadget step with wrong ivc inputs (first ivc should not be zero)
         let cs = ConstraintSystem::<Fr>::new_ref();
         let wrong_z_i = vec![Fr::from(0)];
-        let wrong_z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(wrong_z_i)).unwrap();
+        let wrong_z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(wrong_z_i))?;
         let external_inputs_var =
-            Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(external_inputs)).unwrap();
+            Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(external_inputs))?;
         let _z_i1_var = circom_fcircuit.generate_step_constraints(
             cs.clone(),
             1,
@@ -313,48 +312,48 @@ pub mod tests {
         // TODO:: https://github.com/privacy-scaling-explorations/sonobe/issues/104
         // Disable check for now
         // assert!(z_i1_var.is_err());
+        Ok(())
     }
 
     #[test]
-    fn test_circom_no_external_inputs() {
+    fn test_circom_no_external_inputs() -> Result<(), Error> {
         let r1cs_path = PathBuf::from("./src/circom/test_folder/no_external_inputs.r1cs");
         let wasm_path =
             PathBuf::from("./src/circom/test_folder/no_external_inputs_js/no_external_inputs.wasm");
         let circom_fcircuit =
-            CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 3, 0)).unwrap();
+            CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 3, 0))?;
         let cs = ConstraintSystem::<Fr>::new_ref();
         let z_i = vec![Fr::from(3u32), Fr::from(4u32), Fr::from(5u32)];
-        let z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i.clone())).unwrap();
+        let z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i.clone()))?;
 
         // run native step
-        let z_i1_native = circom_fcircuit.step_native(1, z_i.clone(), vec![]).unwrap();
+        let z_i1_native = circom_fcircuit.step_native(1, z_i.clone(), vec![])?;
 
         // run gadget step
-        let z_i1_var = circom_fcircuit
-            .generate_step_constraints(cs.clone(), 1, z_i_var, vec![])
-            .unwrap();
+        let z_i1_var = circom_fcircuit.generate_step_constraints(cs.clone(), 1, z_i_var, vec![])?;
 
-        assert_eq!(z_i1_var.value().unwrap(), z_i1_native);
+        assert_eq!(z_i1_var.value()?, z_i1_native);
 
         // re-init cs and run gadget step with wrong ivc inputs (first ivc input should not be zero)
         let cs = ConstraintSystem::<Fr>::new_ref();
         let wrong_z_i = vec![Fr::from(0u32), Fr::from(4u32), Fr::from(5u32)];
-        let wrong_z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(wrong_z_i)).unwrap();
+        let wrong_z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(wrong_z_i))?;
         let _z_i1_var =
             circom_fcircuit.generate_step_constraints(cs.clone(), 1, wrong_z_i_var, vec![]);
         // TODO:: https://github.com/privacy-scaling-explorations/sonobe/issues/104
         // Disable check for now
         // assert!(z_i1_var.is_err())
+        Ok(())
     }
 
     #[test]
-    fn test_custom_code() {
+    fn test_custom_code() -> Result<(), Error> {
         let r1cs_path = PathBuf::from("./src/circom/test_folder/cubic_circuit.r1cs");
         let wasm_path =
             PathBuf::from("./src/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
         let mut circom_fcircuit =
-            CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 1, 0)).unwrap(); // state_len:1, external_inputs_len:0
+            CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 1, 0))?; // state_len:1, external_inputs_len:0
 
         circom_fcircuit.set_custom_step_native(Rc::new(|_i, z_i, _external| {
             let z = z_i[0];
@@ -366,15 +365,13 @@ pub mod tests {
         let wrapper_circuit = folding_schemes::frontend::utils::WrapperCircuit {
             FC: circom_fcircuit.clone(),
             z_i: Some(z_i.clone()),
-            z_i1: Some(circom_fcircuit.step_native(0, z_i.clone(), vec![]).unwrap()),
+            z_i1: Some(circom_fcircuit.step_native(0, z_i.clone(), vec![])?),
         };
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        wrapper_circuit.generate_constraints(cs.clone()).unwrap();
-        assert!(
-            cs.is_satisfied().unwrap(),
-            "Constraint system is not satisfied"
-        );
+        wrapper_circuit.generate_constraints(cs.clone())?;
+        assert!(cs.is_satisfied()?, "Constraint system is not satisfied");
+        Ok(())
     }
 }

@@ -249,7 +249,7 @@ pub mod tests {
     use crate::FoldingScheme;
 
     #[test]
-    fn test_lcccs_checker_gadget() {
+    fn test_lcccs_checker_gadget() -> Result<(), Error> {
         let mut rng = test_rng();
         let n_rows = 2_u32.pow(5) as usize;
         let n_cols = 2_u32.pow(5) as usize;
@@ -257,31 +257,33 @@ pub mod tests {
         let ccs = CCS::from(r1cs);
         let z: Vec<Fr> = (0..n_cols).map(|_| Fr::rand(&mut rng)).collect();
 
-        let (pedersen_params, _) =
-            Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1)?;
 
-        let (lcccs, w) = ccs
-            .to_lcccs::<_, Projective, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &z)
-            .unwrap();
+        let (lcccs, w) = ccs.to_lcccs::<_, Projective, Pedersen<Projective>, false>(
+            &mut rng,
+            &pedersen_params,
+            &z,
+        )?;
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         // CCS's (sparse) matrices are constants in the circuit
-        let ccs_mat = CCSMatricesVar::<Fr>::new_constant(cs.clone(), ccs.clone()).unwrap();
-        let w_var = WitnessVar::new_witness(cs.clone(), || Ok(w)).unwrap();
-        let lcccs_var = LCCCSVar::new_input(cs.clone(), || Ok(lcccs)).unwrap();
+        let ccs_mat = CCSMatricesVar::<Fr>::new_constant(cs.clone(), ccs.clone())?;
+        let w_var = WitnessVar::new_witness(cs.clone(), || Ok(w))?;
+        let lcccs_var = LCCCSVar::new_input(cs.clone(), || Ok(lcccs))?;
 
-        ccs_mat.enforce_relation(&w_var, &lcccs_var).unwrap();
+        ccs_mat.enforce_relation(&w_var, &lcccs_var)?;
 
-        assert!(cs.is_satisfied().unwrap());
+        assert!(cs.is_satisfied()?);
+        Ok(())
     }
 
     #[test]
-    fn test_decider_circuit() {
+    fn test_decider_circuit() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
-        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
+        let F_circuit = CubicFCircuit::<Fr>::new(())?;
         let z_0 = vec![Fr::from(3_u32)];
 
         const MU: usize = 1;
@@ -307,24 +309,25 @@ pub mod tests {
             Pedersen<Projective2>,
             false,
         >::new(poseidon_config, F_circuit);
-        let hn_params = HN::preprocess(&mut rng, &prep_param).unwrap();
+        let hn_params = HN::preprocess(&mut rng, &prep_param)?;
 
         // generate a Nova instance and do a step of it
-        let mut hypernova = HN::init(&hn_params, F_circuit, z_0.clone()).unwrap();
-        hypernova.prove_step(&mut rng, vec![], None).unwrap();
+        let mut hypernova = HN::init(&hn_params, F_circuit, z_0.clone())?;
+        hypernova.prove_step(&mut rng, vec![], None)?;
 
         let ivc_proof = hypernova.ivc_proof();
-        HN::verify(hn_params.1, ivc_proof).unwrap();
+        HN::verify(hn_params.1, ivc_proof)?;
 
         // load the DeciderEthCircuit from the generated Nova instance
         let decider_circuit =
-            DeciderEthCircuit::<Projective, Projective2, GVar2>::try_from(hypernova).unwrap();
+            DeciderEthCircuit::<Projective, Projective2, GVar2>::try_from(hypernova)?;
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         // generate the constraints and check that are satisfied by the inputs
-        decider_circuit.generate_constraints(cs.clone()).unwrap();
-        assert!(cs.is_satisfied().unwrap());
+        decider_circuit.generate_constraints(cs.clone())?;
+        assert!(cs.is_satisfied()?);
         dbg!(cs.num_constraints());
+        Ok(())
     }
 }

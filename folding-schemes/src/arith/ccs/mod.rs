@@ -135,24 +135,26 @@ pub mod tests {
     }
 
     #[test]
-    fn test_eval_ccs_relation() {
+    fn test_eval_ccs_relation() -> Result<(), Error> {
         let ccs = get_test_ccs::<Fr>();
         let (_, x, mut w) = get_test_z_split(3);
 
-        let f_w = ccs.eval_relation(&w, &x).unwrap();
+        let f_w = ccs.eval_relation(&w, &x)?;
         assert!(is_zero_vec(&f_w));
 
         w[1] = Fr::from(111);
-        let f_w = ccs.eval_relation(&w, &x).unwrap();
+        let f_w = ccs.eval_relation(&w, &x)?;
         assert!(!is_zero_vec(&f_w));
+        Ok(())
     }
 
     /// Test that a basic CCS relation can be satisfied
     #[test]
-    fn test_check_ccs_relation() {
+    fn test_check_ccs_relation() -> Result<(), Error> {
         let ccs = get_test_ccs::<Fr>();
         let (_, x, w) = get_test_z_split(3);
 
-        ccs.check_relation(&w, &x).unwrap();
+        ccs.check_relation(&w, &x)?;
+        Ok(())
     }
 }

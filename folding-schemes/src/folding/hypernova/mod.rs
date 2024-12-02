@@ -1108,25 +1108,27 @@ mod tests {
     use crate::transcript::poseidon::poseidon_canonical_config;
 
     #[test]
-    pub fn test_ivc() {
+    pub fn test_ivc() -> Result<(), Error> {
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
-        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
+        let F_circuit = CubicFCircuit::<Fr>::new(())?;
 
         // run the test using Pedersen commitments on both sides of the curve cycle
-        test_ivc_opt::<Pedersen<Projective>, Pedersen<Projective2>, false>(
+        let _ = test_ivc_opt::<Pedersen<Projective>, Pedersen<Projective2>, false>(
             poseidon_config.clone(),
             F_circuit,
-        );
+        )?;
 
-        test_ivc_opt::<Pedersen<Projective, true>, Pedersen<Projective2, true>, true>(
+        let _ = test_ivc_opt::<Pedersen<Projective, true>, Pedersen<Projective2, true>, true>(
             poseidon_config.clone(),
             F_circuit,
-        );
+        )?;
 
         // run the test using KZG for the commitments on the main curve, and Pedersen for the
         // commitments on the secondary curve
-        test_ivc_opt::<KZG<Bn254>, Pedersen<Projective2>, false>(poseidon_config, F_circuit);
+        let _ =
+            test_ivc_opt::<KZG<Bn254>, Pedersen<Projective2>, false>(poseidon_config, F_circuit)?;
+        Ok(())
     }
 
     #[allow(clippy::type_complexity)]
@@ -1138,7 +1140,7 @@ mod tests {
     >(
         poseidon_config: PoseidonConfig<Fr>,
         F_circuit: CubicFCircuit<Fr>,
-    ) {
+    ) -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
 
         const MU: usize = 2;
@@ -1152,10 +1154,10 @@ mod tests {
                 poseidon_config.clone(),
                 F_circuit,
             );
-        let hypernova_params = HN::preprocess(&mut rng, &prep_param).unwrap();
+        let hypernova_params = HN::preprocess(&mut rng, &prep_param)?;
 
         let z_0 = vec![Fr::from(3_u32)];
-        let mut hypernova = HN::init(&hypernova_params, F_circuit, z_0.clone()).unwrap();
+        let mut hypernova = HN::init(&hypernova_params, F_circuit, z_0.clone())?;
 
         let (w_i_blinding, W_i_blinding) = if H {
             (Fr::rand(&mut rng), Fr::rand(&mut rng))
@@ -1171,23 +1173,17 @@ mod tests {
             let mut lcccs = vec![];
             for j in 0..MU - 1 {
                 let instance_state = vec![Fr::from(j as u32 + 85_u32)];
-                let (U, W) = hypernova
-                    .new_running_instance(&mut rng, instance_state, vec![])
-                    .unwrap();
+                let (U, W) = hypernova.new_running_instance(&mut rng, instance_state, vec![])?;
                 lcccs.push((U, W));
             }
             let mut cccs = vec![];
             for j in 0..NU - 1 {
                 let instance_state = vec![Fr::from(j as u32 + 15_u32)];
-                let (u, w) = hypernova
-                    .new_incoming_instance(&mut rng, instance_state, vec![])
-                    .unwrap();
+                let (u, w) = hypernova.new_incoming_instance(&mut rng, instance_state, vec![])?;
                 cccs.push((u, w));
             }
 
-            hypernova
-                .prove_step(&mut rng, vec![], Some((lcccs, cccs)))
-                .unwrap();
+            hypernova.prove_step(&mut rng, vec![], Some((lcccs, cccs)))?;
         }
         assert_eq!(Fr::from(num_steps as u32), hypernova.i);
 
@@ -1195,7 +1191,7 @@ mod tests {
         HN::verify(
             hypernova_params.1.clone(), // verifier_params
             ivc_proof,
-        )
-        .unwrap();
+        )?;
+        Ok(())
     }
 }

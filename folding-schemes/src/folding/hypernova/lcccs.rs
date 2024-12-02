@@ -187,28 +187,27 @@ pub mod tests {
         ccs: &CCS<C::ScalarField>,
         lcccs: &LCCCS<C>,
         z: &[C::ScalarField],
-    ) -> Vec<VirtualPolynomial<C::ScalarField>> {
-        let eq_rx = build_eq_x_r_vec(&lcccs.r_x).unwrap();
+    ) -> Result<Vec<VirtualPolynomial<C::ScalarField>>, Error> {
+        let eq_rx = build_eq_x_r_vec(&lcccs.r_x)?;
         let eq_rx_mle = dense_vec_to_dense_mle(ccs.s, &eq_rx);
 
         let mut Ls = Vec::with_capacity(ccs.t);
         for M_j in ccs.M.iter() {
             let mut L = VirtualPolynomial::<C::ScalarField>::new(ccs.s);
-            let mut Mz = vec![dense_vec_to_dense_mle(ccs.s, &mat_vec_mul(M_j, z).unwrap())];
+            let mut Mz = vec![dense_vec_to_dense_mle(ccs.s, &mat_vec_mul(M_j, z)?)];
             Mz.push(eq_rx_mle.clone());
             L.add_mle_list(
                 Mz.iter().map(|v| Arc::new(v.clone())),
                 C::ScalarField::one(),
-            )
-            .unwrap();
+            )?;
             Ls.push(L);
         }
-        Ls
+        Ok(Ls)
     }
 
     #[test]
     /// Test linearized CCCS v_j against the L_j(x)
-    fn test_lcccs_v_j() {
+    fn test_lcccs_v_j() -> Result<(), Error> {
         let mut rng = test_rng();
 
         let n_rows = 2_u32.pow(5) as usize;
@@ -217,39 +216,39 @@ pub mod tests {
         let ccs = CCS::from(r1cs);
         let z: Vec<Fr> = (0..n_cols).map(|_| Fr::rand(&mut rng)).collect();
 
-        let (pedersen_params, _) =
-            Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1)?;
 
-        let (lcccs, _) = ccs
-            .to_lcccs::<_, Projective, Pedersen<Projective, false>, false>(
-                &mut rng,
-                &pedersen_params,
-                &z,
-            )
-            .unwrap();
+        let (lcccs, _) = ccs.to_lcccs::<_, Projective, Pedersen<Projective, false>, false>(
+            &mut rng,
+            &pedersen_params,
+            &z,
+        )?;
         // with our test vector coming from R1CS, v should have length 3
         assert_eq!(lcccs.v.len(), 3);
 
-        let vec_L_j_x = compute_Ls(&ccs, &lcccs, &z);
+        let vec_L_j_x = compute_Ls(&ccs, &lcccs, &z)?;
         assert_eq!(vec_L_j_x.len(), lcccs.v.len());
 
         for (v_i, L_j_x) in lcccs.v.into_iter().zip(vec_L_j_x) {
             let sum_L_j_x = BooleanHypercube::new(ccs.s)
-                .map(|y| L_j_x.evaluate(&y).unwrap())
+                .map(|y| L_j_x.evaluate(&y))
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
                 .fold(Fr::zero(), |acc, result| acc + result);
             assert_eq!(v_i, sum_L_j_x);
         }
+        Ok(())
     }
 
     /// Given a bad z, check that the v_j should not match with the L_j(x)
     #[test]
-    fn test_bad_v_j() {
+    fn test_bad_v_j() -> Result<(), Error> {
         let mut rng = test_rng();
 
         let ccs = get_test_ccs();
         let z = get_test_z(3);
         let (w, x) = ccs.split_z(&z);
-        ccs.check_relation(&w, &x).unwrap();
+        ccs.check_relation(&w, &x)?;
 
         // Mutate z so that the relation does not hold
         let mut bad_z = z.clone();
@@ -257,17 +256,18 @@ pub mod tests {
         let (bad_w, bad_x) = ccs.split_z(&bad_z);
         assert!(ccs.check_relation(&bad_w, &bad_x).is_err());
 
-        let (pedersen_params, _) =
-            Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1)?;
         // Compute v_j with the right z
-        let (lcccs, _) = ccs
-            .to_lcccs::<_, Projective, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &z)
-            .unwrap();
+        let (lcccs, _) = ccs.to_lcccs::<_, Projective, Pedersen<Projective>, false>(
+            &mut rng,
+            &pedersen_params,
+            &z,
+        )?;
         // with our test vector coming from R1CS, v should have length 3
         assert_eq!(lcccs.v.len(), 3);
 
         // Bad compute L_j(x) with the bad z
-        let vec_L_j_x = compute_Ls(&ccs, &lcccs, &bad_z);
+        let vec_L_j_x = compute_Ls(&ccs, &lcccs, &bad_z)?;
         assert_eq!(vec_L_j_x.len(), lcccs.v.len());
 
         // Make sure that the LCCCS is not satisfied given these L_j(x)
@@ -275,12 +275,15 @@ pub mod tests {
         let mut satisfied = true;
         for (v_i, L_j_x) in lcccs.v.into_iter().zip(vec_L_j_x) {
             let sum_L_j_x = BooleanHypercube::new(ccs.s)
-                .map(|y| L_j_x.evaluate(&y).unwrap())
+                .map(|y| L_j_x.evaluate(&y))
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
                 .fold(Fr::zero(), |acc, result| acc + result);
             if v_i != sum_L_j_x {
                 satisfied = false;
             }
         }
         assert!(!satisfied);
+        Ok(())
     }
 }

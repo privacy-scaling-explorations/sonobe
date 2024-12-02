@@ -232,23 +232,25 @@ pub mod tests {
     }
 
     #[test]
-    fn test_eval_r1cs_relation() {
+    fn test_eval_r1cs_relation() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
         let r1cs = get_test_r1cs::<Fr>();
         let (_, x, mut w) = get_test_z_split::<Fr>(rng.gen::<u16>() as usize);
 
-        let f_w = r1cs.eval_relation(&w, &x).unwrap();
+        let f_w = r1cs.eval_relation(&w, &x)?;
         assert!(is_zero_vec(&f_w));
 
         w[1] = Fr::from(111);
-        let f_w = r1cs.eval_relation(&w, &x).unwrap();
+        let f_w = r1cs.eval_relation(&w, &x)?;
         assert!(!is_zero_vec(&f_w));
+        Ok(())
     }
 
     #[test]
-    fn test_check_r1cs_relation() {
+    fn test_check_r1cs_relation() -> Result<(), Error> {
         let r1cs = get_test_r1cs::<Fr>();
         let (_, x, w) = get_test_z_split(5);
-        r1cs.check_relation(&w, &x).unwrap();
+        r1cs.check_relation(&w, &x)?;
+        Ok(())
     }
 }

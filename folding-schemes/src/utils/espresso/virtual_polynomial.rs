@@ -410,6 +410,7 @@ pub fn bit_decompose(input: u64, num_var: usize) -> Vec<bool> {
 mod tests {
     use super::*;
     use crate::utils::multilinear_polynomial::tests::random_mle_list;
+    use crate::Error;
     use ark_ff::UniformRand;
     use ark_pallas::Fr;
     use ark_std::{
@@ -495,14 +496,15 @@ mod tests {
     }
 
     #[test]
-    fn test_eq_xr() {
+    fn test_eq_xr() -> Result<(), Error> {
         let mut rng = test_rng();
         for nv in 4..10 {
             let r: Vec<Fr> = (0..nv).map(|_| Fr::rand(&mut rng)).collect();
-            let eq_x_r = build_eq_x_r(r.as_ref()).unwrap();
+            let eq_x_r = build_eq_x_r(r.as_ref())?;
             let eq_x_r2 = build_eq_x_r_for_test(r.as_ref());
             assert_eq!(eq_x_r, eq_x_r2);
         }
+        Ok(())
     }
 
     /// Naive method to build eq(x, r).

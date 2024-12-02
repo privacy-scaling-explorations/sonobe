@@ -180,7 +180,7 @@ jobs:
         feature_set: [basic, wasm]
         include:
           - feature_set: basic
-            features: --features default,light-test
+            features: --features default
             # We only want to test `frontends` package with `wasm` feature.
           - feature_set: wasm
             features: -p frontends --features wasm,parallel --target wasm32-unknown-unknown

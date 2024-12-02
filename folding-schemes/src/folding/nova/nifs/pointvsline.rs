@@ -179,17 +179,18 @@ fn compute_l<F: PrimeField>(r1: &[F], r1_sub_r2: &[F], x: F) -> Result<Vec<F>, E
 #[cfg(test)]
 mod tests {
     use super::{compute_h, compute_l};
+    use crate::Error;
     use ark_pallas::Fq;
     use ark_poly::{DenseMultilinearExtension, DenseUVPolynomial};
 
     #[test]
-    fn test_compute_h() {
+    fn test_compute_h() -> Result<(), Error> {
         let mle = DenseMultilinearExtension::from_evaluations_slice(1, &[Fq::from(1), Fq::from(2)]);
         let r0 = [Fq::from(5)];
         let r1 = [Fq::from(6)];
         let r1_sub_r0: Vec<Fq> = r1.iter().zip(&r0).map(|(&x, y)| x - y).collect();
 
-        let result = compute_h(&mle, &r0, &r1_sub_r0).unwrap();
+        let result = compute_h(&mle, &r0, &r1_sub_r0)?;
         assert_eq!(
             result,
             DenseUVPolynomial::from_coefficients_slice(&[Fq::from(6), Fq::from(1)])
@@ -200,7 +201,7 @@ mod tests {
         let r1 = [Fq::from(7)];
         let r1_sub_r0: Vec<Fq> = r1.iter().zip(&r0).map(|(&x, y)| x - y).collect();
 
-        let result = compute_h(&mle, &r0, &r1_sub_r0).unwrap();
+        let result = compute_h(&mle, &r0, &r1_sub_r0)?;
         assert_eq!(
             result,
             DenseUVPolynomial::from_coefficients_slice(&[Fq::from(5), Fq::from(3)])
@@ -214,7 +215,7 @@ mod tests {
         let r1 = [Fq::from(2), Fq::from(7)];
         let r1_sub_r0: Vec<Fq> = r1.iter().zip(&r0).map(|(&x, y)| x - y).collect();
 
-        let result = compute_h(&mle, &r0, &r1_sub_r0).unwrap();
+        let result = compute_h(&mle, &r0, &r1_sub_r0)?;
         assert_eq!(
             result,
             DenseUVPolynomial::from_coefficients_slice(&[Fq::from(14), Fq::from(3)])
@@ -236,11 +237,12 @@ mod tests {
         let r1 = [Fq::from(5), Fq::from(6), Fq::from(7)];
         let r1_sub_r0: Vec<Fq> = r1.iter().zip(&r0).map(|(&x, y)| x - y).collect();
 
-        let result = compute_h(&mle, &r0, &r1_sub_r0).unwrap();
+        let result = compute_h(&mle, &r0, &r1_sub_r0)?;
         assert_eq!(
             result,
             DenseUVPolynomial::from_coefficients_slice(&[Fq::from(18), Fq::from(28)])
         );
+        Ok(())
     }
 
     #[test]
@@ -264,7 +266,7 @@ mod tests {
     }
 
     #[test]
-    fn test_compute_l() {
+    fn test_compute_l() -> Result<(), Error> {
         // Test with simple non-zero values
         let r1 = vec![Fq::from(1), Fq::from(2), Fq::from(3)];
         let r1_sub_r2 = vec![Fq::from(4), Fq::from(5), Fq::from(6)];
@@ -276,7 +278,8 @@ mod tests {
             Fq::from(3) + Fq::from(2) * Fq::from(6),
         ];
 
-        let result = compute_l(&r1, &r1_sub_r2, x).unwrap();
+        let result = compute_l(&r1, &r1_sub_r2, x)?;
         assert_eq!(result, expected);
+        Ok(())
     }
 }

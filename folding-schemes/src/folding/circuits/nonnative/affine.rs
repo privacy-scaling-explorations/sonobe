@@ -201,10 +201,12 @@ impl<C: CurveGroup> AbsorbNonNativeGadget<C::ScalarField> for NonNativeAffineVar
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use ark_pallas::{Fr, Projective};
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::UniformRand;
+
+    use super::*;
+    use crate::Error;
 
     #[test]
     fn test_alloc_zero() {
@@ -216,33 +218,29 @@ mod tests {
     }
 
     #[test]
-    fn test_improved_to_constraint_field() {
+    fn test_improved_to_constraint_field() -> Result<(), Error> {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         // check that point_to_nonnative_limbs returns the expected values
         let mut rng = ark_std::test_rng();
         let p = Projective::rand(&mut rng);
-        let pVar = NonNativeAffineVar::<Projective>::new_witness(cs.clone(), || Ok(p)).unwrap();
+        let pVar = NonNativeAffineVar::<Projective>::new_witness(cs.clone(), || Ok(p))?;
         let (x, y) = nonnative_affine_to_field_elements(p);
-        assert_eq!(
-            pVar.to_constraint_field().unwrap().value().unwrap(),
-            [x, y].concat()
-        );
+        assert_eq!(pVar.to_constraint_field()?.value()?, [x, y].concat());
+        Ok(())
     }
 
     #[test]
-    fn test_inputize() {
+    fn test_inputize() -> Result<(), Error> {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         // check that point_to_nonnative_limbs returns the expected values
         let mut rng = ark_std::test_rng();
         let p = Projective::rand(&mut rng);
-        let pVar = NonNativeAffineVar::<Projective>::new_witness(cs.clone(), || Ok(p)).unwrap();
+        let pVar = NonNativeAffineVar::<Projective>::new_witness(cs.clone(), || Ok(p))?;
         let xy = p.inputize();
 
-        assert_eq!(
-            [pVar.x.0.value().unwrap(), pVar.y.0.value().unwrap()].concat(),
-            xy
-        );
+        assert_eq!([pVar.x.0.value()?, pVar.y.0.value()?].concat(), xy);
+        Ok(())
     }
 }

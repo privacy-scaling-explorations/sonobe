@@ -232,17 +232,17 @@ pub mod tests {
 
     // Tests zk proof generation and verification for a valid nova IVC proof
     #[test]
-    fn test_zk_nova_ivc() {
+    fn test_zk_nova_ivc() -> Result<(), Error> {
         let mut rng = OsRng;
         let poseidon_config = poseidon_canonical_config::<Fr>();
-        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
-        let (_, nova) = test_ivc_opt::<Pedersen<Projective, true>, Pedersen<Projective2, true>, true>(
-            poseidon_config.clone(),
-            F_circuit,
-            3,
-        );
+        let F_circuit = CubicFCircuit::<Fr>::new(())?;
+        let (_, nova) = test_ivc_opt::<
+            Pedersen<Projective, true>,
+            Pedersen<Projective2, true>,
+            true,
+        >(poseidon_config.clone(), F_circuit, 3)?;
 
-        let proof = RandomizedIVCProof::new(&nova, &mut rng).unwrap();
+        let proof = RandomizedIVCProof::new(&nova, &mut rng)?;
         let verify = RandomizedIVCProof::verify::<
             Pedersen<Projective, true>,
             GVar2,
@@ -258,20 +258,21 @@ pub mod tests {
             &proof,
         );
         assert!(verify.is_ok());
+        Ok(())
     }
 
     #[test]
-    fn test_zk_nova_when_i_is_zero() {
+    fn test_zk_nova_when_i_is_zero() -> Result<(), Error> {
         let mut rng = OsRng;
         let poseidon_config = poseidon_canonical_config::<Fr>();
-        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
-        let (_, nova) = test_ivc_opt::<Pedersen<Projective, true>, Pedersen<Projective2, true>, true>(
-            poseidon_config.clone(),
-            F_circuit,
-            0,
-        );
+        let F_circuit = CubicFCircuit::<Fr>::new(())?;
+        let (_, nova) = test_ivc_opt::<
+            Pedersen<Projective, true>,
+            Pedersen<Projective2, true>,
+            true,
+        >(poseidon_config.clone(), F_circuit, 0)?;
 
-        let proof = RandomizedIVCProof::new(&nova, &mut rng).unwrap();
+        let proof = RandomizedIVCProof::new(&nova, &mut rng)?;
         let verify = RandomizedIVCProof::verify::<
             Pedersen<Projective, true>,
             GVar2,
@@ -287,28 +288,28 @@ pub mod tests {
             &proof,
         );
         assert!(verify.is_ok());
+        Ok(())
     }
 
     #[test]
-    fn test_zk_nova_verification_fails_with_wrong_running_instance() {
+    fn test_zk_nova_verification_fails_with_wrong_running_instance() -> Result<(), Error> {
         let mut rng = OsRng;
         let poseidon_config = poseidon_canonical_config::<Fr>();
-        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
-        let (_, nova) = test_ivc_opt::<Pedersen<Projective, true>, Pedersen<Projective2, true>, true>(
-            poseidon_config.clone(),
-            F_circuit,
-            3,
-        );
+        let F_circuit = CubicFCircuit::<Fr>::new(())?;
+        let (_, nova) = test_ivc_opt::<
+            Pedersen<Projective, true>,
+            Pedersen<Projective2, true>,
+            true,
+        >(poseidon_config.clone(), F_circuit, 3)?;
         let (_, sampled_committed_instance) = nova
             .r1cs
-            .sample_witness_instance::<Pedersen<Projective, true>>(&nova.cs_pp, rng)
-            .unwrap();
+            .sample_witness_instance::<Pedersen<Projective, true>>(&nova.cs_pp, rng)?;
 
         // proof verification fails with incorrect running instance
         let mut nova_with_incorrect_running_instance = nova.clone();
         nova_with_incorrect_running_instance.U_i = sampled_committed_instance;
         let incorrect_proof =
-            RandomizedIVCProof::new(&nova_with_incorrect_running_instance, &mut rng).unwrap();
+            RandomizedIVCProof::new(&nova_with_incorrect_running_instance, &mut rng)?;
         let verify = RandomizedIVCProof::verify::<
             Pedersen<Projective, true>,
             GVar2,
@@ -324,28 +325,28 @@ pub mod tests {
             &incorrect_proof,
         );
         assert!(verify.is_err());
+        Ok(())
     }
 
     #[test]
-    fn test_zk_nova_verification_fails_with_wrong_running_witness() {
+    fn test_zk_nova_verification_fails_with_wrong_running_witness() -> Result<(), Error> {
         let mut rng = OsRng;
         let poseidon_config = poseidon_canonical_config::<Fr>();
-        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
-        let (_, nova) = test_ivc_opt::<Pedersen<Projective, true>, Pedersen<Projective2, true>, true>(
-            poseidon_config.clone(),
-            F_circuit,
-            3,
-        );
+        let F_circuit = CubicFCircuit::<Fr>::new(())?;
+        let (_, nova) = test_ivc_opt::<
+            Pedersen<Projective, true>,
+            Pedersen<Projective2, true>,
+            true,
+        >(poseidon_config.clone(), F_circuit, 3)?;
         let (sampled_committed_witness, _) = nova
             .r1cs
-            .sample_witness_instance::<Pedersen<Projective, true>>(&nova.cs_pp, rng)
-            .unwrap();
+            .sample_witness_instance::<Pedersen<Projective, true>>(&nova.cs_pp, rng)?;
 
         // proof generation fails with incorrect running witness
         let mut nova_with_incorrect_running_witness = nova.clone();
         nova_with_incorrect_running_witness.W_i = sampled_committed_witness;
         let incorrect_proof =
-            RandomizedIVCProof::new(&nova_with_incorrect_running_witness, &mut rng).unwrap();
+            RandomizedIVCProof::new(&nova_with_incorrect_running_witness, &mut rng)?;
         let verify = RandomizedIVCProof::verify::<
             Pedersen<Projective, true>,
             GVar2,
@@ -361,5 +362,6 @@ pub mod tests {
             &incorrect_proof,
         );
         assert!(verify.is_err());
+        Ok(())
     }
 }

@@ -155,7 +155,7 @@ pub mod tests {
 
     // checks that the gadget and native implementations of the challenge computation match
     #[test]
-    fn test_kzg_challenge_gadget() {
+    fn test_kzg_challenge_gadget() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_canonical_config::<Fr>();
         let mut transcript = PoseidonSponge::<Fr>::new(&poseidon_config);
@@ -172,20 +172,20 @@ pub mod tests {
 
         let cs = ConstraintSystem::<Fr>::new_ref();
         let U_iVar =
-            CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || Ok(U_i.clone()))
-                .unwrap();
+            CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || Ok(U_i.clone()))?;
         let mut transcript_var = PoseidonSpongeVar::<Fr>::new(cs.clone(), &poseidon_config);
 
         let challenges_var =
-            KZGChallengesGadget::get_challenges_gadget(&mut transcript_var, &U_iVar).unwrap();
-        assert!(cs.is_satisfied().unwrap());
+            KZGChallengesGadget::get_challenges_gadget(&mut transcript_var, &U_iVar)?;
+        assert!(cs.is_satisfied()?);
 
         // check that the natively computed and in-circuit computed hashes match
-        assert_eq!(challenges_var.value().unwrap(), challenges);
+        assert_eq!(challenges_var.value()?, challenges);
+        Ok(())
     }
 
     #[test]
-    fn test_polynomial_interpolation() {
+    fn test_polynomial_interpolation() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
         let n = 12;
         let l = 1 << n;
@@ -196,16 +196,17 @@ pub mod tests {
         let challenge = Fr::rand(&mut rng);
 
         use ark_poly::Polynomial;
-        let polynomial = poly_from_vec(v.to_vec()).unwrap();
+        let polynomial = poly_from_vec(v.to_vec())?;
         let eval = polynomial.evaluate(&challenge);
 
         let cs = ConstraintSystem::<Fr>::new_ref();
-        let vVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(v)).unwrap();
-        let challengeVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(challenge)).unwrap();
+        let vVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(v))?;
+        let challengeVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(challenge))?;
 
-        let evalVar = EvalGadget::evaluate_gadget(&vVar, &challengeVar).unwrap();
+        let evalVar = EvalGadget::evaluate_gadget(&vVar, &challengeVar)?;
 
-        assert_eq!(evalVar.value().unwrap(), eval);
-        assert!(cs.is_satisfied().unwrap());
+        assert_eq!(evalVar.value()?, eval);
+        assert!(cs.is_satisfied()?);
+        Ok(())
     }
 }

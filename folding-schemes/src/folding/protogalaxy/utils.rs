@@ -107,7 +107,6 @@ pub fn pow_i_var<F: PrimeField>(mut i: usize, betas: &[FpVar<F>]) -> FpVar<F> {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
 
     use ark_bn254::Fr;
     use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
@@ -116,9 +115,10 @@ mod tests {
     use rand::Rng;
 
     use super::*;
+    use crate::Error;
 
     #[test]
-    fn test_exponential_powers() -> Result<(), Box<dyn Error>> {
+    fn test_exponential_powers() -> Result<(), Error> {
         let rng = &mut test_rng();
 
         for t in 1..10 {
@@ -138,7 +138,7 @@ mod tests {
     }
 
     #[test]
-    fn test_all_powers() -> Result<(), Box<dyn Error>> {
+    fn test_all_powers() -> Result<(), Error> {
         let rng = &mut test_rng();
 
         for n in 1..10 {
@@ -158,7 +158,7 @@ mod tests {
     }
 
     #[test]
-    fn test_betas_star() -> Result<(), Box<dyn Error>> {
+    fn test_betas_star() -> Result<(), Error> {
         let rng = &mut test_rng();
 
         for t in 1..10 {
@@ -182,7 +182,7 @@ mod tests {
     }
 
     #[test]
-    fn test_pow_i() -> Result<(), Box<dyn Error>> {
+    fn test_pow_i() -> Result<(), Error> {
         let rng = &mut test_rng();
 
         for t in 1..10 {

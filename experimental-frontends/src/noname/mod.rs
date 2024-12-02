@@ -120,7 +120,7 @@ mod tests {
     use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, R1CSVar};
     use noname::backends::r1cs::R1csBn254Field;
 
-    use folding_schemes::frontend::FCircuit;
+    use folding_schemes::{frontend::FCircuit, Error};
 
     use super::NonameFCircuit;
     use ark_relations::r1cs::ConstraintSystem;
@@ -140,63 +140,65 @@ mod tests {
 }";
 
     #[test]
-    fn test_step_native() {
+    fn test_step_native() -> Result<(), Error> {
         let cs = ConstraintSystem::<Fr>::new_ref();
         let params = (NONAME_CIRCUIT_EXTERNAL_INPUTS.to_owned(), 2, 2);
-        let circuit = NonameFCircuit::<Fr, R1csBn254Field>::new(params).unwrap();
+        let circuit = NonameFCircuit::<Fr, R1csBn254Field>::new(params)?;
         let inputs_public = vec![Fr::from(2), Fr::from(5)];
         let inputs_private = vec![Fr::from(8), Fr::from(2)];
 
         let ivc_inputs_var =
-            Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs_public.clone())).unwrap();
+            Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs_public.clone()))?;
         let external_inputs_var =
-            Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs_private.clone())).unwrap();
+            Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs_private.clone()))?;
 
-        let z_i1 = circuit
-            .generate_step_constraints(cs.clone(), 0, ivc_inputs_var, external_inputs_var)
-            .unwrap();
-        let z_i1_native = circuit
-            .step_native(0, inputs_public, inputs_private)
-            .unwrap();
+        let z_i1 = circuit.generate_step_constraints(
+            cs.clone(),
+            0,
+            ivc_inputs_var,
+            external_inputs_var,
+        )?;
+        let z_i1_native = circuit.step_native(0, inputs_public, inputs_private)?;
 
-        assert_eq!(z_i1[0].value().unwrap(), z_i1_native[0]);
-        assert_eq!(z_i1[1].value().unwrap(), z_i1_native[1]);
+        assert_eq!(z_i1[0].value()?, z_i1_native[0]);
+        assert_eq!(z_i1[1].value()?, z_i1_native[1]);
+        Ok(())
     }
 
     #[test]
-    fn test_step_constraints() {
+    fn test_step_constraints() -> Result<(), Error> {
         let cs = ConstraintSystem::<Fr>::new_ref();
         let params = (NONAME_CIRCUIT_EXTERNAL_INPUTS.to_owned(), 2, 2);
-        let circuit = NonameFCircuit::<Fr, R1csBn254Field>::new(params).unwrap();
+        let circuit = NonameFCircuit::<Fr, R1csBn254Field>::new(params)?;
         let inputs_public = vec![Fr::from(2), Fr::from(5)];
         let inputs_private = vec![Fr::from(8), Fr::from(2)];
 
-        let ivc_inputs_var =
-            Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs_public)).unwrap();
-        let external_inputs_var =
-            Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs_private)).unwrap();
+        let ivc_inputs_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs_public))?;
+        let external_inputs_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs_private))?;
 
-        let z_i1 = circuit
-            .generate_step_constraints(cs.clone(), 0, ivc_inputs_var, external_inputs_var)
-            .unwrap();
-        assert!(cs.is_satisfied().unwrap());
-        assert_eq!(z_i1[0].value().unwrap(), Fr::from(10_u8));
-        assert_eq!(z_i1[1].value().unwrap(), Fr::from(10_u8));
+        let z_i1 = circuit.generate_step_constraints(
+            cs.clone(),
+            0,
+            ivc_inputs_var,
+            external_inputs_var,
+        )?;
+        assert!(cs.is_satisfied()?);
+        assert_eq!(z_i1[0].value()?, Fr::from(10_u8));
+        assert_eq!(z_i1[1].value()?, Fr::from(10_u8));
+        Ok(())
     }
 
     #[test]
-    fn test_generate_constraints_no_external_inputs() {
+    fn test_generate_constraints_no_external_inputs() -> Result<(), Error> {
         let cs = ConstraintSystem::<Fr>::new_ref();
         let params = (NONAME_CIRCUIT_NO_EXTERNAL_INPUTS.to_owned(), 2, 0);
         let inputs_public = vec![Fr::from(2), Fr::from(5)];
 
-        let ivc_inputs_var =
-            Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs_public)).unwrap();
+        let ivc_inputs_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs_public))?;
 
-        let f_circuit = NonameFCircuit::<Fr, R1csBn254Field>::new(params).unwrap();
-        f_circuit
-            .generate_step_constraints(cs.clone(), 0, ivc_inputs_var, vec![])
-            .unwrap();
-        assert!(cs.is_satisfied().unwrap());
+        let f_circuit = NonameFCircuit::<Fr, R1csBn254Field>::new(params)?;
+        f_circuit.generate_step_constraints(cs.clone(), 0, ivc_inputs_var, vec![])?;
+        assert!(cs.is_satisfied()?);
+        Ok(())
     }
 }

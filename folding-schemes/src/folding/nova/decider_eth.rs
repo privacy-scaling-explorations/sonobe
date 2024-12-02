@@ -323,7 +323,7 @@ pub mod tests {
     use crate::transcript::poseidon::poseidon_canonical_config;
 
     #[test]
-    fn test_decider() {
+    fn test_decider() -> Result<(), Error> {
         // use Nova as FoldingScheme
         type N = Nova<
             Projective,
@@ -350,27 +350,27 @@ pub mod tests {
         let mut rng = rand::rngs::OsRng;
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
-        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
+        let F_circuit = CubicFCircuit::<Fr>::new(())?;
         let z_0 = vec![Fr::from(3_u32)];
 
         let preprocessor_param = PreprocessorParam::new(poseidon_config, F_circuit);
-        let nova_params = N::preprocess(&mut rng, &preprocessor_param).unwrap();
+        let nova_params = N::preprocess(&mut rng, &preprocessor_param)?;
 
         let start = Instant::now();
-        let mut nova = N::init(&nova_params, F_circuit, z_0.clone()).unwrap();
+        let mut nova = N::init(&nova_params, F_circuit, z_0.clone())?;
         println!("Nova initialized, {:?}", start.elapsed());
 
         // prepare the Decider prover & verifier params
-        let (decider_pp, decider_vp) = D::preprocess(&mut rng, nova_params, nova.clone()).unwrap();
+        let (decider_pp, decider_vp) = D::preprocess(&mut rng, nova_params, nova.clone())?;
 
         let start = Instant::now();
-        nova.prove_step(&mut rng, vec![], None).unwrap();
+        nova.prove_step(&mut rng, vec![], None)?;
         println!("prove_step, {:?}", start.elapsed());
-        nova.prove_step(&mut rng, vec![], None).unwrap(); // do a 2nd step
+        nova.prove_step(&mut rng, vec![], None)?; // do a 2nd step
 
         // decider proof generation
         let start = Instant::now();
-        let proof = D::prove(rng, decider_pp, nova.clone()).unwrap();
+        let proof = D::prove(rng, decider_pp, nova.clone())?;
         println!("Decider prove, {:?}", start.elapsed());
 
         // decider proof verification
@@ -383,8 +383,7 @@ pub mod tests {
             &nova.U_i.get_commitments(),
             &nova.u_i.get_commitments(),
             &proof,
-        )
-        .unwrap();
+        )?;
         assert!(verified);
         println!("Decider verify, {:?}", start.elapsed());
 
@@ -397,16 +396,16 @@ pub mod tests {
             &nova.U_i.get_commitments(),
             &nova.u_i.get_commitments(),
             &proof,
-        )
-        .unwrap();
+        )?;
         assert!(verified);
+        Ok(())
     }
 
     // Test to check the serialization and deserialization of diverse Decider related parameters.
     // This test is the same test as `test_decider` but it serializes values and then uses the
     // deserialized values to continue the checks.
     #[test]
-    fn test_decider_serialization() {
+    fn test_decider_serialization() -> Result<(), Error> {
         // use Nova as FoldingScheme
         type N = Nova<
             Projective,
@@ -433,32 +432,29 @@ pub mod tests {
         let mut rng = rand::rngs::OsRng;
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
-        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
+        let F_circuit = CubicFCircuit::<Fr>::new(())?;
         let z_0 = vec![Fr::from(3_u32)];
 
         let preprocessor_param = PreprocessorParam::new(poseidon_config, F_circuit);
-        let nova_params = N::preprocess(&mut rng, &preprocessor_param).unwrap();
+        let nova_params = N::preprocess(&mut rng, &preprocessor_param)?;
 
         let start = Instant::now();
-        let nova = N::init(&nova_params, F_circuit, z_0.clone()).unwrap();
+        let nova = N::init(&nova_params, F_circuit, z_0.clone())?;
         println!("Nova initialized, {:?}", start.elapsed());
 
         // prepare the Decider prover & verifier params
-        let (decider_pp, decider_vp) =
-            D::preprocess(&mut rng, nova_params.clone(), nova.clone()).unwrap();
+        let (decider_pp, decider_vp) = D::preprocess(&mut rng, nova_params.clone(), nova.clone())?;
 
         // serialize the Nova params. These params are the trusted setup of the commitment schemes used
         // (ie. KZG & Pedersen in this case)
         let mut nova_pp_serialized = vec![];
         nova_params
             .0
-            .serialize_compressed(&mut nova_pp_serialized)
-            .unwrap();
+            .serialize_compressed(&mut nova_pp_serialized)?;
         let mut nova_vp_serialized = vec![];
         nova_params
             .1
-            .serialize_compressed(&mut nova_vp_serialized)
-            .unwrap();
+            .serialize_compressed(&mut nova_vp_serialized)?;
         // deserialize the Nova params. This would be done by the client reading from a file
         let nova_pp_deserialized = NovaProverParams::<
             Projective,
@@ -467,8 +463,7 @@ pub mod tests {
             Pedersen<Projective2>,
         >::deserialize_compressed(
             &mut nova_pp_serialized.as_slice()
-        )
-        .unwrap();
+        )?;
         let nova_vp_deserialized = <N as FoldingScheme<
             Projective,
             Projective2,
@@ -478,21 +473,20 @@ pub mod tests {
             ark_serialize::Compress::Yes,
             ark_serialize::Validate::Yes,
             (), // fcircuit_params
-        )
-        .unwrap();
+        )?;
 
         // initialize nova again, but from the deserialized parameters
         let nova_params = (nova_pp_deserialized, nova_vp_deserialized);
-        let mut nova = N::init(&nova_params, F_circuit, z_0).unwrap();
+        let mut nova = N::init(&nova_params, F_circuit, z_0)?;
 
         let start = Instant::now();
-        nova.prove_step(&mut rng, vec![], None).unwrap();
+        nova.prove_step(&mut rng, vec![], None)?;
         println!("prove_step, {:?}", start.elapsed());
-        nova.prove_step(&mut rng, vec![], None).unwrap(); // do a 2nd step
+        nova.prove_step(&mut rng, vec![], None)?; // do a 2nd step
 
         // decider proof generation
         let start = Instant::now();
-        let proof = D::prove(rng, decider_pp, nova.clone()).unwrap();
+        let proof = D::prove(rng, decider_pp, nova.clone())?;
         println!("Decider prove, {:?}", start.elapsed());
 
         // decider proof verification
@@ -505,8 +499,7 @@ pub mod tests {
             &nova.U_i.get_commitments(),
             &nova.u_i.get_commitments(),
             &proof,
-        )
-        .unwrap();
+        )?;
         assert!(verified);
         println!("Decider verify, {:?}", start.elapsed());
 
@@ -515,22 +508,16 @@ pub mod tests {
 
         // serialize the verifier_params, proof and public inputs
         let mut decider_vp_serialized = vec![];
-        decider_vp
-            .serialize_compressed(&mut decider_vp_serialized)
-            .unwrap();
+        decider_vp.serialize_compressed(&mut decider_vp_serialized)?;
         let mut proof_serialized = vec![];
-        proof.serialize_compressed(&mut proof_serialized).unwrap();
+        proof.serialize_compressed(&mut proof_serialized)?;
         // serialize the public inputs in a single packet
         let mut public_inputs_serialized = vec![];
-        nova.i
-            .serialize_compressed(&mut public_inputs_serialized)
-            .unwrap();
+        nova.i.serialize_compressed(&mut public_inputs_serialized)?;
         nova.z_0
-            .serialize_compressed(&mut public_inputs_serialized)
-            .unwrap();
+            .serialize_compressed(&mut public_inputs_serialized)?;
         nova.z_i
-            .serialize_compressed(&mut public_inputs_serialized)
-            .unwrap();
+            .serialize_compressed(&mut public_inputs_serialized)?;
 
         // deserialize back the verifier_params, proof and public inputs
         let decider_vp_deserialized =
@@ -538,19 +525,17 @@ pub mod tests {
                 Projective,
                 <KZG<'static, Bn254> as CommitmentScheme<Projective>>::VerifierParams,
                 <Groth16<Bn254> as SNARK<Fr>>::VerifyingKey,
-            >::deserialize_compressed(&mut decider_vp_serialized.as_slice())
-            .unwrap();
+            >::deserialize_compressed(&mut decider_vp_serialized.as_slice())?;
         let proof_deserialized =
             Proof::<Projective, KZG<'static, Bn254>, Groth16<Bn254>>::deserialize_compressed(
                 &mut proof_serialized.as_slice(),
-            )
-            .unwrap();
+            )?;
 
         // deserialize the public inputs from the single packet 'public_inputs_serialized'
         let mut reader = public_inputs_serialized.as_slice();
-        let i_deserialized = Fr::deserialize_compressed(&mut reader).unwrap();
-        let z_0_deserialized = Vec::<Fr>::deserialize_compressed(&mut reader).unwrap();
-        let z_i_deserialized = Vec::<Fr>::deserialize_compressed(&mut reader).unwrap();
+        let i_deserialized = Fr::deserialize_compressed(&mut reader)?;
+        let z_0_deserialized = Vec::<Fr>::deserialize_compressed(&mut reader)?;
+        let z_i_deserialized = Vec::<Fr>::deserialize_compressed(&mut reader)?;
 
         // decider proof verification using the deserialized data
         let verified = D::verify(
@@ -561,8 +546,8 @@ pub mod tests {
             &nova.U_i.get_commitments(),
             &nova.u_i.get_commitments(),
             &proof_deserialized,
-        )
-        .unwrap();
+        )?;
         assert!(verified);
+        Ok(())
     }
 }

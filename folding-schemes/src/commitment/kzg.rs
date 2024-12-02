@@ -293,22 +293,22 @@ mod tests {
     use crate::transcript::poseidon::poseidon_canonical_config;
 
     #[test]
-    fn test_kzg_commitment_scheme() {
+    fn test_kzg_commitment_scheme() -> Result<(), Error> {
         let mut rng = &mut test_rng();
         let poseidon_config = poseidon_canonical_config::<Fr>();
         let transcript_p = &mut PoseidonSponge::<Fr>::new(&poseidon_config);
         let transcript_v = &mut PoseidonSponge::<Fr>::new(&poseidon_config);
 
         let n = 10;
-        let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) =
-            KZG::<Bn254>::setup(&mut rng, n).unwrap();
+        let (pk, vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZG::<Bn254>::setup(&mut rng, n)?;
 
         let v: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(rng)).take(n).collect();
-        let cm = KZG::<Bn254>::commit(&pk, &v, &Fr::zero()).unwrap();
+        let cm = KZG::<Bn254>::commit(&pk, &v, &Fr::zero())?;
 
-        let proof = KZG::<Bn254>::prove(&pk, transcript_p, &cm, &v, &Fr::zero(), None).unwrap();
+        let proof = KZG::<Bn254>::prove(&pk, transcript_p, &cm, &v, &Fr::zero(), None)?;
 
         // verify the proof:
-        KZG::<Bn254>::verify(&vk, transcript_v, &cm, &proof).unwrap();
+        KZG::<Bn254>::verify(&vk, transcript_v, &cm, &proof)?;
+        Ok(())
     }
 }

@@ -122,8 +122,6 @@ pub enum Error {
     NoMultiInstances,
     #[error("Missing 'other' instances, since this is a multi-instances folding scheme. Expected number of instances, mu:{0}, nu:{1}")]
     MissingOtherInstances(usize, usize),
-    #[error("Type conversion error")]
-    TypeConversion,
 }
 
 /// FoldingScheme defines trait that is implemented by the diverse folding schemes. It is defined

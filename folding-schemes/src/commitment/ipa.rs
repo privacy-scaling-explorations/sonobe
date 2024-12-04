@@ -684,8 +684,13 @@ mod tests {
         let proofVar = ProofVar::<Projective, GVar>::new_witness(cs.clone(), || Ok(proof.0))?;
         let r_blindVar = EmulatedFpVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(r_blind))?;
         let uVar_vec = Vec::<EmulatedFpVar<Fr, Fq>>::new_witness(cs.clone(), || Ok(u))?;
-        let uVar: [EmulatedFpVar<Fr, Fq>; k] =
-            uVar_vec.try_into().map_err(|_| Error::TypeConversion)?;
+        let uVar: [EmulatedFpVar<Fr, Fq>; k] = uVar_vec.try_into().map_err(|_| {
+            Error::ConversionError(
+                "Vec<_>".to_string(),
+                "[_; 1]".to_string(),
+                "variable name: uVar".to_string(),
+            )
+        })?;
         let UVar = GVar::new_witness(cs.clone(), || Ok(U))?;
 
         let v = IPAGadget::<Projective, GVar, hiding>::verify::<k>(

@@ -135,7 +135,11 @@ pub mod tests {
         let mut poseidon_sponge: PoseidonSponge<_> = CryptographicSponge::new(&config);
         let v: Vec<Fr> = vec!["1", "2", "3", "4"]
             .into_iter()
-            .map(|x| Fr::from_str(x).map_err(|_| Error::TypeConversion))
+            .map(|x| {
+                Fr::from_str(x).map_err(|_| {
+                    Error::ConversionError("str".to_string(), "Fr".to_string(), x.to_string())
+                })
+            })
             .collect::<Result<Vec<Fr>, Error>>()?;
         poseidon_sponge.absorb(&v);
         poseidon_sponge.squeeze_field_elements::<Fr>(1);
@@ -144,7 +148,13 @@ pub mod tests {
                 == Fr::from_str(
                     "18821383157269793795438455681495246036402687001665670618754263018637548127333"
                 )
-                .map_err(|_| Error::TypeConversion)?
+                .map_err(|_| {
+                    Error::ConversionError(
+                        "str".to_string(),
+                        "Fr".to_string(),
+                        "hardcoded string".to_string(),
+                    )
+                })?
         );
         Ok(())
     }

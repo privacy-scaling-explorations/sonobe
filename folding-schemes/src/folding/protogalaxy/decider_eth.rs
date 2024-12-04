@@ -174,10 +174,20 @@ where
         Ok(Self::Proof {
             snark_proof,
             L_X_evals,
-            kzg_proofs: kzg_proofs.try_into().map_err(|_| Error::TypeConversion)?,
-            kzg_challenges: kzg_challenges
-                .try_into()
-                .map_err(|_| Error::TypeConversion)?,
+            kzg_proofs: kzg_proofs.try_into().map_err(|_| {
+                Error::ConversionError(
+                    "Vec<_>".to_string(),
+                    "[_; 1]".to_string(),
+                    "variable name: kzg_proofs".to_string(),
+                )
+            })?,
+            kzg_challenges: kzg_challenges.try_into().map_err(|_| {
+                Error::ConversionError(
+                    "Vec<_>".to_string(),
+                    "[_; 1]".to_string(),
+                    "variable name: kzg_challenges".to_string(),
+                )
+            })?,
         })
     }
 

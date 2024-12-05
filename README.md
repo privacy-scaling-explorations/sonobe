@@ -23,9 +23,6 @@ Folding schemes implemented:
 - [Nova: Recursive Zero-Knowledge Arguments from Folding Schemes](https://eprint.iacr.org/2021/370.pdf), Abhiram Kothapalli, Srinath Setty, Ioanna Tzialla. 2021
 - [CycleFold: Folding-scheme-based recursive arguments over a cycle of elliptic curves](https://eprint.iacr.org/2023/1192.pdf), Abhiram Kothapalli, Srinath Setty. 2023
 - [HyperNova: Recursive arguments for customizable constraint systems](https://eprint.iacr.org/2023/573.pdf), Abhiram Kothapalli, Srinath Setty. 2023
-
-Work in progress:
-
 - [ProtoGalaxy: Efficient ProtoStar-style folding of multiple instances](https://eprint.iacr.org/2023/1106.pdf), Liam Eagen, Ariel Gabizon. 2023
 
 
@@ -34,7 +31,7 @@ Work in progress:
 Frontends allow to define the circuit to be folded (ie. `FCircuit`).
 The recommended frontend is directly implementing the [`FCircuit` trait](https://github.com/privacy-scaling-explorations/sonobe/blob/main/folding-schemes/src/frontend/mod.rs#L16) with the Arkworks constraint system.
 
-Alternatively, experimental frontends for [Circom](https://github.com/iden3/circom), [Noir](https://github.com/noir-lang/noir) and [Noname](https://github.com/zksecurity/noname) can be found at the [sonobe/frontends](https://github.com/privacy-scaling-explorations/sonobe/tree/main/frontends) directory, which have some computational (and time) overhead.
+Alternatively, experimental frontends for [Circom](https://github.com/iden3/circom), [Noir](https://github.com/noir-lang/noir) and [Noname](https://github.com/zksecurity/noname) can be found at the [sonobe/experimental-frontends](https://github.com/privacy-scaling-explorations/sonobe/tree/main/experimental-frontends) directory, which have some computational (and time) overhead.
 
 More details about the frontend interface and the experimental frontends can be found at the [sonobe-docs/frontend](https://privacy-scaling-explorations.github.io/sonobe-docs/usage/frontend.html) page.
 
@@ -49,7 +46,7 @@ folding-schemes = { git = "https://github.com/privacy-scaling-explorations/sonob
 Available packages:
 - `folding-schemes`: main crate, contains the different scheme implementations, together with commitment schemes, frontend trait, arithmetization, transcript, etc.
 - `solidity-verifiers`: contains the templating logic to output the verifier contracts for the DeciderEth proofs. Currently only supports Nova+CycleFold DeciderEth proofs.
-- `frontends`: contains the experimental frontends other than the arkworks frontend. More details at the [sonobe/frontends](https://github.com/privacy-scaling-explorations/sonobe/tree/main/frontends) directory.
+- `experimental-frontends`: contains the experimental frontends other than the arkworks frontend. More details at the [sonobe/experimental-frontends](https://github.com/privacy-scaling-explorations/sonobe/tree/main/experimental-frontends) directory.
 
 Available features:
 - `parallel` enables some parallelization optimizations available in the crate. It is enabled by default.
@@ -105,7 +102,7 @@ Sonobe is [MIT Licensed](https://github.com/privacy-scaling-explorations/sonobe/
 
 ## Acknowledgments
 
-This project builds on top of multiple [arkworks](https://github.com/arkworks-rs) libraries. It uses Espresso system's [virtual polynomial](https://github.com/EspressoSystems/hyperplonk/blob/main/arithmetic/src/virtual_polynomial.rs) abstraction and its [SumCheck](https://github.com/EspressoSystems/hyperplonk/tree/main/subroutines/src/poly_iop/sum_check) implementation.
+This project builds on top of multiple [arkworks](https://github.com/arkworks-rs) libraries. It uses Espresso System's [virtual polynomial](https://github.com/EspressoSystems/hyperplonk/blob/main/arithmetic/src/virtual_polynomial.rs) abstraction and its [SumCheck](https://github.com/EspressoSystems/hyperplonk/tree/main/subroutines/src/poly_iop/sum_check) implementation.
 
 The Solidity templates used in `nova_cyclefold_verifier.sol`, use [iden3](https://github.com/iden3/snarkjs/blob/master/templates/verifier_groth16.sol.ejs)'s Groth16 implementation and a KZG10 Solidity template adapted from [weijiekoh/libkzg](https://github.com/weijiekoh/libkzg).
 

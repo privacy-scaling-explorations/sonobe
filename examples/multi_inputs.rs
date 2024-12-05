@@ -88,10 +88,10 @@ pub mod tests {
 
     // test to check that the MultiInputsFCircuit computes the same values inside and outside the circuit
     #[test]
-    fn test_f_circuit() {
+    fn test_f_circuit() -> Result<(), Error> {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        let circuit = MultiInputsFCircuit::<Fr>::new(()).unwrap();
+        let circuit = MultiInputsFCircuit::<Fr>::new(())?;
         let z_i = vec![
             Fr::from(1_u32),
             Fr::from(1_u32),
@@ -100,18 +100,18 @@ pub mod tests {
             Fr::from(1_u32),
         ];
 
-        let z_i1 = circuit.step_native(0, z_i.clone(), vec![]).unwrap();
+        let z_i1 = circuit.step_native(0, z_i.clone(), vec![])?;
 
-        let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i)).unwrap();
-        let computed_z_i1Var = circuit
-            .generate_step_constraints(cs.clone(), 0, z_iVar.clone(), vec![])
-            .unwrap();
-        assert_eq!(computed_z_i1Var.value().unwrap(), z_i1);
+        let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i))?;
+        let computed_z_i1Var =
+            circuit.generate_step_constraints(cs.clone(), 0, z_iVar.clone(), vec![])?;
+        assert_eq!(computed_z_i1Var.value()?, z_i1);
+        Ok(())
     }
 }
 
 /// cargo run --release --example multi_inputs
-fn main() {
+fn main() -> Result<(), Error> {
     let num_steps = 10;
     let initial_state = vec![
         Fr::from(1_u32),
@@ -121,7 +121,7 @@ fn main() {
         Fr::from(1_u32),
     ];
 
-    let F_circuit = MultiInputsFCircuit::<Fr>::new(()).unwrap();
+    let F_circuit = MultiInputsFCircuit::<Fr>::new(())?;
 
     let poseidon_config = poseidon_canonical_config::<Fr>();
     let mut rng = rand::rngs::OsRng;
@@ -142,15 +142,15 @@ fn main() {
 
     println!("Prepare Nova ProverParams & VerifierParams");
     let nova_preprocess_params = PreprocessorParam::new(poseidon_config, F_circuit);
-    let nova_params = N::preprocess(&mut rng, &nova_preprocess_params).unwrap();
+    let nova_params = N::preprocess(&mut rng, &nova_preprocess_params)?;
 
     println!("Initialize FoldingScheme");
-    let mut folding_scheme = N::init(&nova_params, F_circuit, initial_state.clone()).unwrap();
+    let mut folding_scheme = N::init(&nova_params, F_circuit, initial_state.clone())?;
 
     // compute a step of the IVC
     for i in 0..num_steps {
         let start = Instant::now();
-        folding_scheme.prove_step(rng, vec![], None).unwrap();
+        folding_scheme.prove_step(rng, vec![], None)?;
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
 
@@ -159,6 +159,6 @@ fn main() {
     N::verify(
         nova_params.1, // Nova's verifier params
         ivc_proof,
-    )
-    .unwrap();
+    )?;
+    Ok(())
 }

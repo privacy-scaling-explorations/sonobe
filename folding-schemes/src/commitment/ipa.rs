@@ -573,18 +573,19 @@ mod tests {
     use crate::transcript::poseidon::poseidon_canonical_config;
 
     #[test]
-    fn test_ipa() {
-        test_ipa_opt::<false>();
-        test_ipa_opt::<true>();
+    fn test_ipa() -> Result<(), Error> {
+        let _ = test_ipa_opt::<false>()?;
+        let _ = test_ipa_opt::<true>()?;
+        Ok(())
     }
-    fn test_ipa_opt<const hiding: bool>() {
+    fn test_ipa_opt<const hiding: bool>() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
 
         const k: usize = 4;
         const d: usize = 2_u64.pow(k as u32) as usize;
 
         // setup params
-        let (params, _) = IPA::<Projective, hiding>::setup(&mut rng, d).unwrap();
+        let (params, _) = IPA::<Projective, hiding>::setup(&mut rng, d)?;
 
         let poseidon_config = poseidon_canonical_config::<Fr>();
         // init Prover's transcript
@@ -601,7 +602,7 @@ mod tests {
         } else {
             Fr::zero()
         };
-        let cm = IPA::<Projective, hiding>::commit(&params, &a, &r_blind).unwrap();
+        let cm = IPA::<Projective, hiding>::commit(&params, &a, &r_blind)?;
 
         let proof = IPA::<Projective, hiding>::prove(
             &params,
@@ -610,25 +611,26 @@ mod tests {
             &a,
             &r_blind,
             Some(&mut rng),
-        )
-        .unwrap();
+        )?;
 
-        IPA::<Projective, hiding>::verify(&params, &mut transcript_v, &cm, &proof).unwrap();
+        IPA::<Projective, hiding>::verify(&params, &mut transcript_v, &cm, &proof)?;
+        Ok(())
     }
 
     #[test]
-    fn test_ipa_gadget() {
-        test_ipa_gadget_opt::<false>();
-        test_ipa_gadget_opt::<true>();
+    fn test_ipa_gadget() -> Result<(), Error> {
+        let _ = test_ipa_gadget_opt::<false>()?;
+        let _ = test_ipa_gadget_opt::<true>()?;
+        Ok(())
     }
-    fn test_ipa_gadget_opt<const hiding: bool>() {
+    fn test_ipa_gadget_opt<const hiding: bool>() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
 
         const k: usize = 3;
         const d: usize = 2_u64.pow(k as u32) as usize;
 
         // setup params
-        let (params, _) = IPA::<Projective, hiding>::setup(&mut rng, d).unwrap();
+        let (params, _) = IPA::<Projective, hiding>::setup(&mut rng, d)?;
 
         let poseidon_config = poseidon_canonical_config::<Fr>();
         // init Prover's transcript
@@ -645,7 +647,7 @@ mod tests {
         } else {
             Fr::zero()
         };
-        let cm = IPA::<Projective, hiding>::commit(&params, &a, &r_blind).unwrap();
+        let cm = IPA::<Projective, hiding>::commit(&params, &a, &r_blind)?;
 
         let proof = IPA::<Projective, hiding>::prove(
             &params,
@@ -654,10 +656,9 @@ mod tests {
             &a,
             &r_blind,
             Some(&mut rng),
-        )
-        .unwrap();
+        )?;
 
-        IPA::<Projective, hiding>::verify(&params, &mut transcript_v, &cm, &proof).unwrap();
+        IPA::<Projective, hiding>::verify(&params, &mut transcript_v, &cm, &proof)?;
 
         // circuit
         let cs = ConstraintSystem::<Fq>::new_ref();
@@ -675,18 +676,22 @@ mod tests {
         }
 
         // prepare inputs
-        let gVar = Vec::<GVar>::new_constant(cs.clone(), params.generators).unwrap();
-        let hVar = GVar::new_constant(cs.clone(), params.h).unwrap();
-        let challengeVar =
-            EmulatedFpVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(challenge)).unwrap();
-        let vVar = EmulatedFpVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(proof.1)).unwrap();
-        let cmVar = GVar::new_witness(cs.clone(), || Ok(cm)).unwrap();
-        let proofVar =
-            ProofVar::<Projective, GVar>::new_witness(cs.clone(), || Ok(proof.0)).unwrap();
-        let r_blindVar = EmulatedFpVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(r_blind)).unwrap();
-        let uVar_vec = Vec::<EmulatedFpVar<Fr, Fq>>::new_witness(cs.clone(), || Ok(u)).unwrap();
-        let uVar: [EmulatedFpVar<Fr, Fq>; k] = uVar_vec.try_into().unwrap();
-        let UVar = GVar::new_witness(cs.clone(), || Ok(U)).unwrap();
+        let gVar = Vec::<GVar>::new_constant(cs.clone(), params.generators)?;
+        let hVar = GVar::new_constant(cs.clone(), params.h)?;
+        let challengeVar = EmulatedFpVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(challenge))?;
+        let vVar = EmulatedFpVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(proof.1))?;
+        let cmVar = GVar::new_witness(cs.clone(), || Ok(cm))?;
+        let proofVar = ProofVar::<Projective, GVar>::new_witness(cs.clone(), || Ok(proof.0))?;
+        let r_blindVar = EmulatedFpVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(r_blind))?;
+        let uVar_vec = Vec::<EmulatedFpVar<Fr, Fq>>::new_witness(cs.clone(), || Ok(u))?;
+        let uVar: [EmulatedFpVar<Fr, Fq>; k] = uVar_vec.try_into().map_err(|_| {
+            Error::ConversionError(
+                "Vec<_>".to_string(),
+                "[_; 1]".to_string(),
+                "variable name: uVar".to_string(),
+            )
+        })?;
+        let UVar = GVar::new_witness(cs.clone(), || Ok(U))?;
 
         let v = IPAGadget::<Projective, GVar, hiding>::verify::<k>(
             &gVar,
@@ -698,9 +703,9 @@ mod tests {
             &r_blindVar,
             &uVar,
             &UVar,
-        )
-        .unwrap();
-        v.enforce_equal(&Boolean::TRUE).unwrap();
-        assert!(cs.is_satisfied().unwrap());
+        )?;
+        v.enforce_equal(&Boolean::TRUE)?;
+        assert!(cs.is_satisfied()?);
+        Ok(())
     }
 }

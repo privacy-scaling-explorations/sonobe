@@ -145,7 +145,7 @@ mod tests {
 
     // Test the satisfication by using the CircomBuilder of circom-compat
     #[test]
-    fn test_circombuilder_satisfied() {
+    fn test_circombuilder_satisfied() -> Result<(), Error> {
         let cfg = CircomConfig::<Fr>::new(
             "./src/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm",
             "./src/circom/test_folder/cubic_circuit.r1cs",
@@ -156,21 +156,22 @@ mod tests {
 
         let circom = builder.build().unwrap();
         let cs = ConstraintSystem::<Fr>::new_ref();
-        circom.generate_constraints(cs.clone()).unwrap();
-        assert!(cs.is_satisfied().unwrap());
+        circom.generate_constraints(cs.clone())?;
+        assert!(cs.is_satisfied()?);
+        Ok(())
     }
 
     // Test the satisfication by using the CircomWrapper
     #[test]
-    fn test_extract_r1cs_and_witness() {
+    fn test_extract_r1cs_and_witness() -> Result<(), Error> {
         let r1cs_path = PathBuf::from("./src/circom/test_folder/cubic_circuit.r1cs");
         let wasm_path =
             PathBuf::from("./src/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
         let inputs = vec![("ivc_input".to_string(), vec![BigInt::from(3)])];
-        let wrapper = CircomWrapper::<Fr>::new(r1cs_path.into(), wasm_path.into()).unwrap();
+        let wrapper = CircomWrapper::<Fr>::new(r1cs_path.into(), wasm_path.into())?;
 
-        let (r1cs, witness) = wrapper.extract_r1cs_and_witness(&inputs).unwrap();
+        let (r1cs, witness) = wrapper.extract_r1cs_and_witness(&inputs)?;
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
@@ -181,7 +182,8 @@ mod tests {
             allocate_inputs_as_witnesses: false,
         };
 
-        circom_circuit.generate_constraints(cs.clone()).unwrap();
-        assert!(cs.is_satisfied().unwrap());
+        circom_circuit.generate_constraints(cs.clone())?;
+        assert!(cs.is_satisfied()?);
+        Ok(())
     }
 }

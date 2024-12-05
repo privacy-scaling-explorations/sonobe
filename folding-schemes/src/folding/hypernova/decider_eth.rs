@@ -238,7 +238,7 @@ pub mod tests {
     use crate::transcript::poseidon::poseidon_canonical_config;
 
     #[test]
-    fn test_decider() {
+    fn test_decider() -> Result<(), Error> {
         const MU: usize = 1;
         const NU: usize = 1;
         // use HyperNova as FoldingScheme
@@ -271,26 +271,22 @@ pub mod tests {
         let mut rng = rand::rngs::OsRng;
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
-        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
+        let F_circuit = CubicFCircuit::<Fr>::new(())?;
         let z_0 = vec![Fr::from(3_u32)];
 
         let prep_param = PreprocessorParam::new(poseidon_config, F_circuit);
-        let hypernova_params = HN::preprocess(&mut rng, &prep_param).unwrap();
+        let hypernova_params = HN::preprocess(&mut rng, &prep_param)?;
 
-        let mut hypernova = HN::init(&hypernova_params, F_circuit, z_0.clone()).unwrap();
-        hypernova
-            .prove_step(&mut rng, vec![], Some((vec![], vec![])))
-            .unwrap();
-        hypernova
-            .prove_step(&mut rng, vec![], Some((vec![], vec![])))
-            .unwrap(); // do a 2nd step
+        let mut hypernova = HN::init(&hypernova_params, F_circuit, z_0.clone())?;
+        hypernova.prove_step(&mut rng, vec![], Some((vec![], vec![])))?;
+        hypernova.prove_step(&mut rng, vec![], Some((vec![], vec![])))?; // do a 2nd step
 
         // prepare the Decider prover & verifier params
         let (decider_pp, decider_vp) =
-            D::preprocess(&mut rng, hypernova_params, hypernova.clone()).unwrap();
+            D::preprocess(&mut rng, hypernova_params, hypernova.clone())?;
 
         // decider proof generation
-        let proof = D::prove(rng, decider_pp, hypernova.clone()).unwrap();
+        let proof = D::prove(rng, decider_pp, hypernova.clone())?;
 
         // decider proof verification
         let verified = D::verify(
@@ -301,13 +297,13 @@ pub mod tests {
             &hypernova.U_i.get_commitments(),
             &hypernova.u_i.get_commitments(),
             &proof,
-        )
-        .unwrap();
+        )?;
         assert!(verified);
+        Ok(())
     }
 
     #[test]
-    fn test_decider_serialization() {
+    fn test_decider_serialization() -> Result<(), Error> {
         const MU: usize = 1;
         const NU: usize = 1;
         // use HyperNova as FoldingScheme
@@ -340,61 +336,53 @@ pub mod tests {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
-        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
+        let F_circuit = CubicFCircuit::<Fr>::new(())?;
         let z_0 = vec![Fr::from(3_u32)];
 
         let prep_param = PreprocessorParam::new(poseidon_config.clone(), F_circuit);
-        let hypernova_params = HN::preprocess(&mut rng, &prep_param).unwrap();
+        let hypernova_params = HN::preprocess(&mut rng, &prep_param)?;
 
-        let hypernova = HN::init(&hypernova_params, F_circuit, z_0.clone()).unwrap();
+        let hypernova = HN::init(&hypernova_params, F_circuit, z_0.clone())?;
 
         let mut rng = rand::rngs::OsRng;
 
         // prepare the Decider prover & verifier params
         let (decider_pp, decider_vp) =
-            D::preprocess(&mut rng, hypernova_params.clone(), hypernova.clone()).unwrap();
+            D::preprocess(&mut rng, hypernova_params.clone(), hypernova.clone())?;
 
         let mut hypernova_pp_serialized = vec![];
         hypernova_params
             .0
             .clone()
-            .serialize_compressed(&mut hypernova_pp_serialized)
-            .unwrap();
+            .serialize_compressed(&mut hypernova_pp_serialized)?;
         let mut hypernova_vp_serialized = vec![];
         hypernova_params
             .1
             .clone()
-            .serialize_compressed(&mut hypernova_vp_serialized)
-            .unwrap();
+            .serialize_compressed(&mut hypernova_vp_serialized)?;
 
         let hypernova_pp_deserialized = HN::pp_deserialize_with_mode(
             hypernova_pp_serialized.as_slice(),
             Compress::Yes,
             Validate::No,
             (), // FCircuit's Params
-        )
-        .unwrap();
+        )?;
 
         let hypernova_vp_deserialized = HN::vp_deserialize_with_mode(
             hypernova_vp_serialized.as_slice(),
             Compress::Yes,
             Validate::No,
             (), // FCircuit's Params
-        )
-        .unwrap();
+        )?;
 
         let hypernova_params = (hypernova_pp_deserialized, hypernova_vp_deserialized);
-        let mut hypernova = HN::init(&hypernova_params, F_circuit, z_0.clone()).unwrap();
+        let mut hypernova = HN::init(&hypernova_params, F_circuit, z_0.clone())?;
 
-        hypernova
-            .prove_step(&mut rng, vec![], Some((vec![], vec![])))
-            .unwrap();
-        hypernova
-            .prove_step(&mut rng, vec![], Some((vec![], vec![])))
-            .unwrap();
+        hypernova.prove_step(&mut rng, vec![], Some((vec![], vec![])))?;
+        hypernova.prove_step(&mut rng, vec![], Some((vec![], vec![])))?;
 
         // decider proof generation
-        let proof = D::prove(rng, decider_pp, hypernova.clone()).unwrap();
+        let proof = D::prove(rng, decider_pp, hypernova.clone())?;
 
         let verified = D::verify(
             decider_vp.clone(),
@@ -404,8 +392,7 @@ pub mod tests {
             &hypernova.U_i.get_commitments(),
             &hypernova.u_i.get_commitments(),
             &proof,
-        )
-        .unwrap();
+        )?;
         assert!(verified);
 
         // The rest of this test will serialize the data and deserialize it back, and use it to
@@ -413,33 +400,26 @@ pub mod tests {
 
         // serialize the verifier_params, proof and public inputs
         let mut decider_vp_serialized = vec![];
-        decider_vp
-            .serialize_compressed(&mut decider_vp_serialized)
-            .unwrap();
+        decider_vp.serialize_compressed(&mut decider_vp_serialized)?;
         let mut proof_serialized = vec![];
-        proof.serialize_compressed(&mut proof_serialized).unwrap();
+        proof.serialize_compressed(&mut proof_serialized)?;
         // serialize the public inputs in a single packet
         let mut public_inputs_serialized = vec![];
         hypernova
             .i
-            .serialize_compressed(&mut public_inputs_serialized)
-            .unwrap();
+            .serialize_compressed(&mut public_inputs_serialized)?;
         hypernova
             .z_0
-            .serialize_compressed(&mut public_inputs_serialized)
-            .unwrap();
+            .serialize_compressed(&mut public_inputs_serialized)?;
         hypernova
             .z_i
-            .serialize_compressed(&mut public_inputs_serialized)
-            .unwrap();
+            .serialize_compressed(&mut public_inputs_serialized)?;
         hypernova
             .U_i
-            .serialize_compressed(&mut public_inputs_serialized)
-            .unwrap();
+            .serialize_compressed(&mut public_inputs_serialized)?;
         hypernova
             .u_i
-            .serialize_compressed(&mut public_inputs_serialized)
-            .unwrap();
+            .serialize_compressed(&mut public_inputs_serialized)?;
 
         // deserialize back the verifier_params, proof and public inputs
         let decider_vp_deserialized =
@@ -447,21 +427,19 @@ pub mod tests {
                 Projective,
                 <KZG<'static, Bn254> as CommitmentScheme<Projective>>::VerifierParams,
                 <Groth16<Bn254> as SNARK<Fr>>::VerifyingKey,
-            >::deserialize_compressed(&mut decider_vp_serialized.as_slice())
-            .unwrap();
+            >::deserialize_compressed(&mut decider_vp_serialized.as_slice())?;
 
         let proof_deserialized =
             Proof::<Projective, KZG<'static, Bn254>, Groth16<Bn254>>::deserialize_compressed(
                 &mut proof_serialized.as_slice(),
-            )
-            .unwrap();
+            )?;
 
         let mut reader = public_inputs_serialized.as_slice();
-        let i_deserialized = Fr::deserialize_compressed(&mut reader).unwrap();
-        let z_0_deserialized = Vec::<Fr>::deserialize_compressed(&mut reader).unwrap();
-        let z_i_deserialized = Vec::<Fr>::deserialize_compressed(&mut reader).unwrap();
-        let _U_i = LCCCS::<Projective>::deserialize_compressed(&mut reader).unwrap();
-        let _u_i = CCCS::<Projective>::deserialize_compressed(&mut reader).unwrap();
+        let i_deserialized = Fr::deserialize_compressed(&mut reader)?;
+        let z_0_deserialized = Vec::<Fr>::deserialize_compressed(&mut reader)?;
+        let z_i_deserialized = Vec::<Fr>::deserialize_compressed(&mut reader)?;
+        let _U_i = LCCCS::<Projective>::deserialize_compressed(&mut reader)?;
+        let _u_i = CCCS::<Projective>::deserialize_compressed(&mut reader)?;
 
         let verified = D::verify(
             decider_vp_deserialized,
@@ -471,8 +449,8 @@ pub mod tests {
             &hypernova.U_i.get_commitments(),
             &hypernova.u_i.get_commitments(),
             &proof_deserialized,
-        )
-        .unwrap();
+        )?;
         assert!(verified);
+        Ok(())
     }
 }

@@ -219,16 +219,17 @@ mod tests {
     use crate::transcript::poseidon::poseidon_canonical_config;
 
     #[test]
-    fn test_pedersen() {
-        test_pedersen_opt::<false>();
-        test_pedersen_opt::<true>();
+    fn test_pedersen() -> Result<(), Error> {
+        let _ = test_pedersen_opt::<false>()?;
+        let _ = test_pedersen_opt::<true>()?;
+        Ok(())
     }
-    fn test_pedersen_opt<const hiding: bool>() {
+    fn test_pedersen_opt<const hiding: bool>() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
 
         let n: usize = 10;
         // setup params
-        let (params, _) = Pedersen::<Projective>::setup(&mut rng, n).unwrap();
+        let (params, _) = Pedersen::<Projective>::setup(&mut rng, n)?;
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
         // init Prover's transcript
@@ -245,24 +246,25 @@ mod tests {
         } else {
             Fr::zero()
         };
-        let cm = Pedersen::<Projective, hiding>::commit(&params, &v, &r).unwrap();
+        let cm = Pedersen::<Projective, hiding>::commit(&params, &v, &r)?;
         let proof =
-            Pedersen::<Projective, hiding>::prove(&params, &mut transcript_p, &cm, &v, &r, None)
-                .unwrap();
-        Pedersen::<Projective, hiding>::verify(&params, &mut transcript_v, &cm, &proof).unwrap();
+            Pedersen::<Projective, hiding>::prove(&params, &mut transcript_p, &cm, &v, &r, None)?;
+        Pedersen::<Projective, hiding>::verify(&params, &mut transcript_v, &cm, &proof)?;
+        Ok(())
     }
 
     #[test]
-    fn test_pedersen_circuit() {
-        test_pedersen_circuit_opt::<false>();
-        test_pedersen_circuit_opt::<true>();
+    fn test_pedersen_circuit() -> Result<(), Error> {
+        let _ = test_pedersen_circuit_opt::<false>()?;
+        let _ = test_pedersen_circuit_opt::<true>()?;
+        Ok(())
     }
-    fn test_pedersen_circuit_opt<const hiding: bool>() {
+    fn test_pedersen_circuit_opt<const hiding: bool>() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
 
         let n: usize = 8;
         // setup params
-        let (params, _) = Pedersen::<Projective, hiding>::setup(&mut rng, n).unwrap();
+        let (params, _) = Pedersen::<Projective, hiding>::setup(&mut rng, n)?;
 
         let v: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(&mut rng))
             .take(n)
@@ -273,7 +275,7 @@ mod tests {
         } else {
             Fr::zero()
         };
-        let cm = Pedersen::<Projective, hiding>::commit(&params, &v, &r).unwrap();
+        let cm = Pedersen::<Projective, hiding>::commit(&params, &v, &r)?;
 
         let v_bits: Vec<Vec<bool>> = v.iter().map(|val| val.into_bigint().to_bits_le()).collect();
         let r_bits: Vec<bool> = r.into_bigint().to_bits_le();
@@ -284,18 +286,16 @@ mod tests {
         // prepare inputs
         let vVar: Vec<Vec<Boolean<Fq>>> = v_bits
             .iter()
-            .map(|val_bits| {
-                Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(val_bits.clone())).unwrap()
-            })
-            .collect();
-        let rVar = Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(r_bits)).unwrap();
-        let gVar = Vec::<GVar>::new_witness(cs.clone(), || Ok(params.generators)).unwrap();
-        let hVar = GVar::new_witness(cs.clone(), || Ok(params.h)).unwrap();
-        let expected_cmVar = GVar::new_witness(cs.clone(), || Ok(cm)).unwrap();
+            .map(|val_bits| Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(val_bits.clone())))
+            .collect::<Result<_, _>>()?;
+        let rVar = Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(r_bits))?;
+        let gVar = Vec::<GVar>::new_witness(cs.clone(), || Ok(params.generators))?;
+        let hVar = GVar::new_witness(cs.clone(), || Ok(params.h))?;
+        let expected_cmVar = GVar::new_witness(cs.clone(), || Ok(cm))?;
 
         // use the gadget
-        let cmVar =
-            PedersenGadget::<Projective, GVar, hiding>::commit(&hVar, &gVar, &vVar, &rVar).unwrap();
-        cmVar.enforce_equal(&expected_cmVar).unwrap();
+        let cmVar = PedersenGadget::<Projective, GVar, hiding>::commit(&hVar, &gVar, &vVar, &rVar)?;
+        cmVar.enforce_equal(&expected_cmVar)?;
+        Ok(())
     }
 }

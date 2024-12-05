@@ -300,14 +300,14 @@ pub mod tests {
     }
 
     #[test]
-    fn test_nifs_ova() {
-        let (W, U) = test_nifs_opt::<NIFS<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>>();
+    fn test_nifs_ova() -> Result<(), Error> {
+        let (W, U) = test_nifs_opt::<NIFS<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>>()?;
 
         // check the last folded instance relation
         let r1cs = get_test_r1cs();
         let z: Vec<Fr> = [&[U.u][..], &U.x, &W.w].concat();
-        let e = compute_E::<Projective>(&r1cs, &z, U.u).unwrap();
-        r1cs.check_relation(&TestingWitness::<Projective> { e, w: W.w.clone() }, &U)
-            .unwrap();
+        let e = compute_E::<Projective>(&r1cs, &z, U.u)?;
+        r1cs.check_relation(&TestingWitness::<Projective> { e, w: W.w.clone() }, &U)?;
+        Ok(())
     }
 }

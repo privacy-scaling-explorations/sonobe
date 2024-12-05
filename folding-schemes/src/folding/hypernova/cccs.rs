@@ -172,38 +172,39 @@ pub mod tests {
     /// Do some sanity checks on q(x). It's a multivariable polynomial and it should evaluate to zero inside the
     /// hypercube, but to not-zero outside the hypercube.
     #[test]
-    fn test_compute_q() {
+    fn test_compute_q() -> Result<(), Error> {
         let mut rng = test_rng();
 
         let ccs = get_test_ccs::<Fr>();
         let z = get_test_z(3);
 
-        let q = ccs.compute_q(&z).unwrap();
+        let q = ccs.compute_q(&z)?;
 
         // Evaluate inside the hypercube
         for x in BooleanHypercube::new(ccs.s) {
-            assert_eq!(Fr::zero(), q.evaluate(&x).unwrap());
+            assert_eq!(Fr::zero(), q.evaluate(&x)?);
         }
 
         // Evaluate outside the hypercube
         let beta: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
-        assert_ne!(Fr::zero(), q.evaluate(&beta).unwrap());
+        assert_ne!(Fr::zero(), q.evaluate(&beta)?);
+        Ok(())
     }
 
     /// Perform some sanity checks on Q(x).
     #[test]
-    fn test_compute_Q() {
+    fn test_compute_Q() -> Result<(), Error> {
         let mut rng = test_rng();
 
         let ccs: CCS<Fr> = get_test_ccs();
         let z = get_test_z(3);
         let (w, x) = ccs.split_z(&z);
-        ccs.check_relation(&w, &x).unwrap();
+        ccs.check_relation(&w, &x)?;
 
         let beta: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
 
         // Compute Q(x) = eq(beta, x) * q(x).
-        let Q = ccs.compute_Q(&z, &beta).unwrap();
+        let Q = ccs.compute_Q(&z, &beta)?;
 
         // Let's consider the multilinear polynomial G(x) = \sum_{y \in {0, 1}^s} eq(x, y) q(y)
         // which interpolates the multivariate polynomial q(x) inside the hypercube.
@@ -218,44 +219,53 @@ pub mod tests {
 
         // Now sum Q(x) evaluations in the hypercube and expect it to be 0
         let r = BooleanHypercube::new(ccs.s)
-            .map(|x| Q.evaluate(&x).unwrap())
+            .map(|x| Q.evaluate(&x))
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
             .fold(Fr::zero(), |acc, result| acc + result);
         assert_eq!(r, Fr::zero());
+        Ok(())
     }
 
     /// The polynomial G(x) (see above) interpolates q(x) inside the hypercube.
     /// Summing Q(x) over the hypercube is equivalent to evaluating G(x) at some point.
     /// This test makes sure that G(x) agrees with q(x) inside the hypercube, but not outside
     #[test]
-    fn test_Q_against_q() {
+    fn test_Q_against_q() -> Result<(), Error> {
         let mut rng = test_rng();
 
         let ccs: CCS<Fr> = get_test_ccs();
         let z = get_test_z(3);
         let (w, x) = ccs.split_z(&z);
-        ccs.check_relation(&w, &x).unwrap();
+        ccs.check_relation(&w, &x)?;
 
         // Now test that if we create Q(x) with eq(d,y) where d is inside the hypercube, \sum Q(x) should be G(d) which
         // should be equal to q(d), since G(x) interpolates q(x) inside the hypercube
-        let q = ccs.compute_q(&z).unwrap();
+        let q = ccs.compute_q(&z)?;
         for d in BooleanHypercube::new(ccs.s) {
-            let Q_at_d = ccs.compute_Q(&z, &d).unwrap();
+            let Q_at_d = ccs.compute_Q(&z, &d)?;
 
             // Get G(d) by summing over Q_d(x) over the hypercube
             let G_at_d = BooleanHypercube::new(ccs.s)
-                .map(|x| Q_at_d.evaluate(&x).unwrap())
+                .map(|x| Q_at_d.evaluate(&x))
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
                 .fold(Fr::zero(), |acc, result| acc + result);
-            assert_eq!(G_at_d, q.evaluate(&d).unwrap());
+            assert_eq!(G_at_d, q.evaluate(&d)?);
         }
 
         // Now test that they should disagree outside of the hypercube
         let r: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
-        let Q_at_r = ccs.compute_Q(&z, &r).unwrap();
+        let Q_at_r = ccs.compute_Q(&z, &r)?;
 
         // Get G(d) by summing over Q_d(x) over the hypercube
         let G_at_r = BooleanHypercube::new(ccs.s)
-            .map(|x| Q_at_r.evaluate(&x).unwrap())
+            .map(|x| Q_at_r.evaluate(&x))
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
             .fold(Fr::zero(), |acc, result| acc + result);
-        assert_ne!(G_at_r, q.evaluate(&r).unwrap());
+
+        assert_ne!(G_at_r, q.evaluate(&r)?);
+        Ok(())
     }
 }

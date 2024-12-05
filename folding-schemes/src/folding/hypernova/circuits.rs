@@ -567,7 +567,7 @@ where
         ccs: Option<CCS<C1::ScalarField>>,
     ) -> Result<Self, Error> {
         let initial_ccs = CCS {
-            // m, n, s, s_prime and M will be overwritten by the `upper_bound_ccs' method
+            // m, n, s, s_prime and M will be overwritten by the `compute_concrete_ccs' method
             m: 0,
             n: 0,
             l: 2, // io_len
@@ -583,7 +583,7 @@ where
         let mut augmented_f_circuit = Self::default(poseidon_config, F, initial_ccs)?;
         augmented_f_circuit.ccs = ccs
             .ok_or(())
-            .or_else(|_| augmented_f_circuit.upper_bound_ccs())?;
+            .or_else(|_| augmented_f_circuit.compute_concrete_ccs())?;
         Ok(augmented_f_circuit)
     }
 
@@ -591,7 +591,7 @@ where
     /// dependency between the AugmentedFCircuit CCS and the CCS parameters m & n & s & s'.
     /// For a stable FCircuit circuit, the CCS parameters can be computed in advance and can be
     /// feed in as parameter for the AugmentedFCircuit::empty method to avoid computing them there.
-    pub fn upper_bound_ccs(&self) -> Result<CCS<C1::ScalarField>, Error> {
+    pub fn compute_concrete_ccs(&self) -> Result<CCS<C1::ScalarField>, Error> {
         let r1cs = get_r1cs_from_cs::<CF1<C1>>(self.clone())?;
         let mut ccs = CCS::from(r1cs);
 
@@ -668,8 +668,6 @@ where
             U_i = LCCCS::<C1>::dummy(&ccs);
         }
         Ok(ccs)
-
-        // Ok(augmented_f_circuit.compute_cs_ccs()?.1)
     }
 
     /// Returns the cs (ConstraintSystem) and the CCS out of the AugmentedFCircuit
@@ -914,7 +912,7 @@ mod tests {
     };
 
     #[test]
-    pub fn test_compute_c_gadget() {
+    pub fn test_compute_c_gadget() -> Result<(), Error> {
         // number of LCCCS & CCCS instances to fold in a single step
         let mu = 32;
         let nu = 42;
@@ -937,27 +935,27 @@ mod tests {
         let beta: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
         let r_x_prime: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
 
-        let (pedersen_params, _) =
-            Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1)?;
 
         // Create the LCCCS instances out of z_lcccs
         let mut lcccs_instances = Vec::new();
         for z_i in z_lcccs.iter() {
-            let (inst, _) = ccs
-                .to_lcccs::<_, _, Pedersen<Projective, true>, true>(&mut rng, &pedersen_params, z_i)
-                .unwrap();
+            let (inst, _) = ccs.to_lcccs::<_, _, Pedersen<Projective, true>, true>(
+                &mut rng,
+                &pedersen_params,
+                z_i,
+            )?;
             lcccs_instances.push(inst);
         }
         // Create the CCCS instance out of z_cccs
         let mut cccs_instances = Vec::new();
         for z_i in z_cccs.iter() {
-            let (inst, _) = ccs
-                .to_cccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, z_i)
-                .unwrap();
+            let (inst, _) =
+                ccs.to_cccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, z_i)?;
             cccs_instances.push(inst);
         }
 
-        let sigmas_thetas = compute_sigmas_thetas(&ccs, &z_lcccs, &z_cccs, &r_x_prime).unwrap();
+        let sigmas_thetas = compute_sigmas_thetas(&ccs, &z_lcccs, &z_cccs, &r_x_prime)?;
 
         let expected_c = compute_c(
             &ccs,
@@ -969,30 +967,28 @@ mod tests {
                 .map(|lcccs| lcccs.r_x.clone())
                 .collect(),
             &r_x_prime,
-        )
-        .unwrap();
+        )?;
 
         let cs = ConstraintSystem::<Fr>::new_ref();
         let mut vec_sigmas = Vec::new();
         let mut vec_thetas = Vec::new();
         for sigmas in sigmas_thetas.0 {
-            vec_sigmas
-                .push(Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(sigmas.clone())).unwrap());
+            vec_sigmas.push(Vec::<FpVar<Fr>>::new_witness(cs.clone(), || {
+                Ok(sigmas.clone())
+            })?);
         }
         for thetas in sigmas_thetas.1 {
-            vec_thetas
-                .push(Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(thetas.clone())).unwrap());
+            vec_thetas.push(Vec::<FpVar<Fr>>::new_witness(cs.clone(), || {
+                Ok(thetas.clone())
+            })?);
         }
         let vec_r_x: Vec<Vec<FpVar<Fr>>> = lcccs_instances
             .iter()
-            .map(|lcccs| {
-                Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(lcccs.r_x.clone())).unwrap()
-            })
-            .collect();
-        let vec_r_x_prime =
-            Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(r_x_prime.clone())).unwrap();
-        let gamma_var = FpVar::<Fr>::new_witness(cs.clone(), || Ok(gamma)).unwrap();
-        let beta_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(beta.clone())).unwrap();
+            .map(|lcccs| Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(lcccs.r_x.clone())))
+            .collect::<Result<Vec<_>, _>>()?;
+        let vec_r_x_prime = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(r_x_prime.clone()))?;
+        let gamma_var = FpVar::<Fr>::new_witness(cs.clone(), || Ok(gamma))?;
+        let beta_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(beta.clone()))?;
 
         let computed_c = compute_c_gadget(
             cs.clone(),
@@ -1003,22 +999,21 @@ mod tests {
             beta_var,
             vec_r_x,
             vec_r_x_prime,
-        )
-        .unwrap();
+        )?;
 
-        assert_eq!(expected_c, computed_c.value().unwrap());
+        assert_eq!(expected_c, computed_c.value()?);
+        Ok(())
     }
 
     /// Test that generates mu>1 and nu>1 instances, and folds them in a single multifolding step,
     /// to verify the folding in the NIMFSGadget circuit
     #[test]
-    pub fn test_nimfs_gadget_verify() {
+    pub fn test_nimfs_gadget_verify() -> Result<(), Error> {
         let mut rng = test_rng();
 
         // Create a basic CCS circuit
         let ccs = get_test_ccs::<Fr>();
-        let (pedersen_params, _) =
-            Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1)?;
 
         let mu = 32;
         let nu = 42;
@@ -1039,13 +1034,11 @@ mod tests {
         let mut lcccs_instances = Vec::new();
         let mut w_lcccs = Vec::new();
         for z_i in z_lcccs.iter() {
-            let (running_instance, w) = ccs
-                .to_lcccs::<_, _, Pedersen<Projective, false>, false>(
-                    &mut rng,
-                    &pedersen_params,
-                    z_i,
-                )
-                .unwrap();
+            let (running_instance, w) = ccs.to_lcccs::<_, _, Pedersen<Projective, false>, false>(
+                &mut rng,
+                &pedersen_params,
+                z_i,
+            )?;
             lcccs_instances.push(running_instance);
             w_lcccs.push(w);
         }
@@ -1053,9 +1046,8 @@ mod tests {
         let mut cccs_instances = Vec::new();
         let mut w_cccs = Vec::new();
         for z_i in z_cccs.iter() {
-            let (new_instance, w) = ccs
-                .to_cccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, z_i)
-                .unwrap();
+            let (new_instance, w) =
+                ccs.to_cccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, z_i)?;
             cccs_instances.push(new_instance);
             w_cccs.push(w);
         }
@@ -1073,8 +1065,7 @@ mod tests {
                 &cccs_instances,
                 &w_lcccs,
                 &w_cccs,
-            )
-            .unwrap();
+            )?;
 
         // Verifier's transcript
         let mut transcript_v: PoseidonSponge<Fr> = PoseidonSponge::<Fr>::new(&poseidon_config);
@@ -1086,26 +1077,22 @@ mod tests {
             &lcccs_instances,
             &cccs_instances,
             proof.clone(),
-        )
-        .unwrap();
+        )?;
         assert_eq!(folded_lcccs, folded_lcccs_v);
 
         // Check that the folded LCCCS instance is a valid instance with respect to the folded witness
-        ccs.check_relation(&folded_witness, &folded_lcccs).unwrap();
+        ccs.check_relation(&folded_witness, &folded_lcccs)?;
 
         // allocate circuit inputs
         let cs = ConstraintSystem::<Fr>::new_ref();
         let lcccs_instancesVar =
-            Vec::<LCCCSVar<Projective>>::new_witness(cs.clone(), || Ok(lcccs_instances.clone()))
-                .unwrap();
+            Vec::<LCCCSVar<Projective>>::new_witness(cs.clone(), || Ok(lcccs_instances.clone()))?;
         let cccs_instancesVar =
-            Vec::<CCCSVar<Projective>>::new_witness(cs.clone(), || Ok(cccs_instances.clone()))
-                .unwrap();
-        let proofVar =
-            ProofVar::<Projective>::new_witness(cs.clone(), || Ok(proof.clone())).unwrap();
+            Vec::<CCCSVar<Projective>>::new_witness(cs.clone(), || Ok(cccs_instances.clone()))?;
+        let proofVar = ProofVar::<Projective>::new_witness(cs.clone(), || Ok(proof.clone()))?;
         let mut transcriptVar = PoseidonSpongeVar::<Fr>::new(cs.clone(), &poseidon_config);
 
-        let enabled = Boolean::<Fr>::new_witness(cs.clone(), || Ok(true)).unwrap();
+        let enabled = Boolean::<Fr>::new_witness(cs.clone(), || Ok(true))?;
         let (folded_lcccsVar, _) = NIMFSGadget::<Projective>::verify(
             cs.clone(),
             &ccs,
@@ -1114,46 +1101,48 @@ mod tests {
             &cccs_instancesVar,
             proofVar,
             enabled,
-        )
-        .unwrap();
-        assert!(cs.is_satisfied().unwrap());
-        assert_eq!(folded_lcccsVar.u.value().unwrap(), folded_lcccs.u);
+        )?;
+        assert!(cs.is_satisfied()?);
+        assert_eq!(folded_lcccsVar.u.value()?, folded_lcccs.u);
+        Ok(())
     }
 
     /// test that checks the native LCCCS.to_sponge_{bytes,field_elements} vs
     /// the R1CS constraints version
     #[test]
-    pub fn test_lcccs_to_sponge_preimage() {
+    pub fn test_lcccs_to_sponge_preimage() -> Result<(), Error> {
         let mut rng = test_rng();
 
         let ccs = get_test_ccs();
         let z1 = get_test_z::<Fr>(3);
 
-        let (pedersen_params, _) =
-            Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1)?;
 
-        let (lcccs, _) = ccs
-            .to_lcccs::<_, _, Pedersen<Projective, true>, true>(&mut rng, &pedersen_params, &z1)
-            .unwrap();
+        let (lcccs, _) = ccs.to_lcccs::<_, _, Pedersen<Projective, true>, true>(
+            &mut rng,
+            &pedersen_params,
+            &z1,
+        )?;
         let bytes = lcccs.to_sponge_bytes_as_vec();
         let field_elements = lcccs.to_sponge_field_elements_as_vec();
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        let lcccsVar = LCCCSVar::<Projective>::new_witness(cs.clone(), || Ok(lcccs)).unwrap();
-        let bytes_var = lcccsVar.to_sponge_bytes().unwrap();
-        let field_elements_var = lcccsVar.to_sponge_field_elements().unwrap();
+        let lcccsVar = LCCCSVar::<Projective>::new_witness(cs.clone(), || Ok(lcccs))?;
+        let bytes_var = lcccsVar.to_sponge_bytes()?;
+        let field_elements_var = lcccsVar.to_sponge_field_elements()?;
 
-        assert!(cs.is_satisfied().unwrap());
+        assert!(cs.is_satisfied()?);
 
         // check that the natively computed and in-circuit computed hashes match
-        assert_eq!(bytes_var.value().unwrap(), bytes);
-        assert_eq!(field_elements_var.value().unwrap(), field_elements);
+        assert_eq!(bytes_var.value()?, bytes);
+        assert_eq!(field_elements_var.value()?, field_elements);
+        Ok(())
     }
 
     /// test that checks the native LCCCS.hash vs the R1CS constraints version
     #[test]
-    pub fn test_lcccs_hash() {
+    pub fn test_lcccs_hash() -> Result<(), Error> {
         let mut rng = test_rng();
         let poseidon_config = poseidon_canonical_config::<Fr>();
         let sponge = PoseidonSponge::<Fr>::new(&poseidon_config);
@@ -1161,38 +1150,39 @@ mod tests {
         let ccs = get_test_ccs();
         let z1 = get_test_z::<Fr>(3);
 
-        let (pedersen_params, _) =
-            Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1)?;
         let pp_hash = Fr::from(42u32); // only for test
 
         let i = Fr::from(3_u32);
         let z_0 = vec![Fr::from(3_u32)];
         let z_i = vec![Fr::from(3_u32)];
-        let (lcccs, _) = ccs
-            .to_lcccs::<_, _, Pedersen<Projective, true>, true>(&mut rng, &pedersen_params, &z1)
-            .unwrap();
+        let (lcccs, _) = ccs.to_lcccs::<_, _, Pedersen<Projective, true>, true>(
+            &mut rng,
+            &pedersen_params,
+            &z1,
+        )?;
         let h = lcccs.clone().hash(&sponge, pp_hash, i, &z_0, &z_i);
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         let spongeVar = PoseidonSpongeVar::<Fr>::new(cs.clone(), &poseidon_config);
-        let pp_hashVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(pp_hash)).unwrap();
-        let iVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(i)).unwrap();
-        let z_0Var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_0.clone())).unwrap();
-        let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i.clone())).unwrap();
-        let lcccsVar = LCCCSVar::<Projective>::new_witness(cs.clone(), || Ok(lcccs)).unwrap();
+        let pp_hashVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(pp_hash))?;
+        let iVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(i))?;
+        let z_0Var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_0.clone()))?;
+        let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i.clone()))?;
+        let lcccsVar = LCCCSVar::<Projective>::new_witness(cs.clone(), || Ok(lcccs))?;
         let (hVar, _) = lcccsVar
             .clone()
-            .hash(&spongeVar, &pp_hashVar, &iVar, &z_0Var, &z_iVar)
-            .unwrap();
-        assert!(cs.is_satisfied().unwrap());
+            .hash(&spongeVar, &pp_hashVar, &iVar, &z_0Var, &z_iVar)?;
+        assert!(cs.is_satisfied()?);
 
         // check that the natively computed and in-circuit computed hashes match
-        assert_eq!(hVar.value().unwrap(), h);
+        assert_eq!(hVar.value()?, h);
+        Ok(())
     }
 
     #[test]
-    pub fn test_augmented_f_circuit() {
+    pub fn test_augmented_f_circuit() -> Result<(), Error> {
         let mut rng = test_rng();
         let poseidon_config = poseidon_canonical_config::<Fr>();
         let sponge = PoseidonSponge::<Fr>::new(&poseidon_config);
@@ -1201,14 +1191,13 @@ mod tests {
         const NU: usize = 3;
 
         let start = Instant::now();
-        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
+        let F_circuit = CubicFCircuit::<Fr>::new(())?;
         let mut augmented_f_circuit =
             AugmentedFCircuit::<Projective, Projective2, GVar2, CubicFCircuit<Fr>, MU, NU>::empty(
                 &poseidon_config,
                 F_circuit,
                 None,
-            )
-            .unwrap();
+            )?;
         let ccs = augmented_f_circuit.ccs.clone();
         println!("AugmentedFCircuit & CCS generation: {:?}", start.elapsed());
         println!("CCS m x n: {} x {}", ccs.m, ccs.n);
@@ -1216,19 +1205,15 @@ mod tests {
         // CycleFold circuit
         let cs2 = ConstraintSystem::<Fq>::new_ref();
         let cf_circuit = HyperNovaCycleFoldCircuit::<Projective, GVar, MU, NU>::empty();
-        cf_circuit.generate_constraints(cs2.clone()).unwrap();
+        cf_circuit.generate_constraints(cs2.clone())?;
         cs2.finalize();
-        let cs2 = cs2
-            .into_inner()
-            .ok_or(Error::NoInnerConstraintSystem)
-            .unwrap();
-        let cf_r1cs = extract_r1cs::<Fq>(&cs2).unwrap();
+        let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
+        let cf_r1cs = extract_r1cs::<Fq>(&cs2)?;
         println!("CF m x n: {} x {}", cf_r1cs.A.n_rows, cf_r1cs.A.n_cols);
 
-        let (pedersen_params, _) =
-            Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1)?;
         let (cf_pedersen_params, _) =
-            Pedersen::<Projective2>::setup(&mut rng, cf_r1cs.A.n_cols - cf_r1cs.l - 1).unwrap();
+            Pedersen::<Projective2>::setup(&mut rng, cf_r1cs.A.n_cols - cf_r1cs.l - 1)?;
 
         // public params hash
         let pp_hash = Fr::from(42u32); // only for test
@@ -1274,7 +1259,7 @@ mod tests {
             let all_Ws = [vec![W_i.clone()], Ws].concat();
             let all_ws = [vec![w_i.clone()], ws].concat();
 
-            let z_i1 = F_circuit.step_native(i, z_i.clone(), vec![]).unwrap();
+            let z_i1 = F_circuit.step_native(i, z_i.clone(), vec![])?;
 
             let (U_i1, W_i1);
 
@@ -1333,16 +1318,16 @@ mod tests {
                     &all_us,
                     &all_Ws,
                     &all_ws,
-                )
-                .unwrap();
+                )?;
 
                 // sanity check: check the folded instance relation
-                ccs.check_relation(&W_i1, &U_i1).unwrap();
+                ccs.check_relation(&W_i1, &U_i1)?;
 
                 let u_i1_x = U_i1.hash(&sponge, pp_hash, iFr + Fr::one(), &z_0, &z_i1);
 
                 let rho_bits = rho.into_bigint().to_bits_le()[..NOVA_N_BITS_RO].to_vec();
-                let rho_Fq = Fq::from_bigint(BigInteger::from_bits_le(&rho_bits)).unwrap();
+                let rho_Fq = Fq::from_bigint(BigInteger::from_bits_le(&rho_bits))
+                    .ok_or(Error::OutOfBounds)?;
 
                 // CycleFold part:
                 // get the vector used as public inputs 'x' in the CycleFold circuit
@@ -1399,8 +1384,7 @@ mod tests {
                     cf_u_i_x,       // CycleFold incoming instance
                     cf_circuit,
                     &mut rng,
-                )
-                .unwrap();
+                )?;
 
                 // hash the CycleFold folded instance, which is used as the 2nd public input in the
                 // AugmentedFCircuit
@@ -1445,18 +1429,20 @@ mod tests {
                 cf_U_i = cf_U_i1;
             }
 
-            let (cs, _) = augmented_f_circuit.compute_cs_ccs().unwrap();
-            assert!(cs.is_satisfied().unwrap());
+            let (cs, _) = augmented_f_circuit.compute_cs_ccs()?;
+            assert!(cs.is_satisfied()?);
 
             let (r1cs_w_i1, r1cs_x_i1) = extract_w_x::<Fr>(&cs); // includes 1 and public inputs
             assert_eq!(r1cs_x_i1[0], augmented_f_circuit.x.unwrap());
             let r1cs_z = [vec![Fr::one()], r1cs_x_i1.clone(), r1cs_w_i1.clone()].concat();
             // compute committed instances, w_{i+1}, u_{i+1}, which will be used as w_i, u_i, so we
             // assign them directly to w_i, u_i.
-            (u_i, w_i) = ccs
-                .to_cccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &r1cs_z)
-                .unwrap();
-            ccs.check_relation(&w_i, &u_i).unwrap();
+            (u_i, w_i) = ccs.to_cccs::<_, _, Pedersen<Projective>, false>(
+                &mut rng,
+                &pedersen_params,
+                &r1cs_z,
+            )?;
+            ccs.check_relation(&w_i, &u_i)?;
 
             // sanity checks
             assert_eq!(w_i.w, r1cs_w_i1);
@@ -1477,14 +1463,15 @@ mod tests {
             W_i = W_i1.clone();
 
             // check the new LCCCS instance relation
-            ccs.check_relation(&W_i, &U_i).unwrap();
+            ccs.check_relation(&W_i, &U_i)?;
             // check the new CCCS instance relation
-            ccs.check_relation(&w_i, &u_i).unwrap();
+            ccs.check_relation(&w_i, &u_i)?;
 
             // check the CycleFold instance relation
-            cf_r1cs.check_relation(&cf_W_i, &cf_U_i).unwrap();
+            cf_r1cs.check_relation(&cf_W_i, &cf_U_i)?;
 
             println!("augmented_f_circuit step {}: {:?}", i, start.elapsed());
         }
+        Ok(())
     }
 }

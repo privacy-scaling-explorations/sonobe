@@ -128,32 +128,29 @@ pub mod tests {
 
     // test to check that the ExternalInputsCircuit computes the same values inside and outside the circuit
     #[test]
-    fn test_f_circuit() {
+    fn test_f_circuit() -> Result<(), Error> {
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        let circuit = ExternalInputsCircuit::<Fr>::new(poseidon_config).unwrap();
+        let circuit = ExternalInputsCircuit::<Fr>::new(poseidon_config)?;
         let z_i = vec![Fr::from(1_u32)];
         let external_inputs = vec![Fr::from(3_u32)];
 
-        let z_i1 = circuit
-            .step_native(0, z_i.clone(), external_inputs.clone())
-            .unwrap();
+        let z_i1 = circuit.step_native(0, z_i.clone(), external_inputs.clone())?;
 
-        let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i)).unwrap();
-        let external_inputsVar =
-            Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(external_inputs)).unwrap();
+        let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i))?;
+        let external_inputsVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(external_inputs))?;
 
-        let computed_z_i1Var = circuit
-            .generate_step_constraints(cs.clone(), 0, z_iVar, external_inputsVar)
-            .unwrap();
-        assert_eq!(computed_z_i1Var.value().unwrap(), z_i1);
+        let computed_z_i1Var =
+            circuit.generate_step_constraints(cs.clone(), 0, z_iVar, external_inputsVar)?;
+        assert_eq!(computed_z_i1Var.value()?, z_i1);
+        Ok(())
     }
 }
 
 /// cargo run --release --example external_inputs
-fn main() {
+fn main() -> Result<(), Error> {
     let num_steps = 5;
     let initial_state = vec![Fr::from(1_u32)];
 
@@ -168,7 +165,7 @@ fn main() {
     assert_eq!(external_inputs.len(), num_steps);
 
     let poseidon_config = poseidon_canonical_config::<Fr>();
-    let F_circuit = ExternalInputsCircuit::<Fr>::new(poseidon_config.clone()).unwrap();
+    let F_circuit = ExternalInputsCircuit::<Fr>::new(poseidon_config.clone())?;
 
     /// The idea here is that eventually we could replace the next line chunk that defines the
     /// `type N = Nova<...>` by using another folding scheme that fulfills the `FoldingScheme`
@@ -188,17 +185,15 @@ fn main() {
 
     println!("Prepare Nova's ProverParams & VerifierParams");
     let nova_preprocess_params = PreprocessorParam::new(poseidon_config, F_circuit.clone());
-    let nova_params = N::preprocess(&mut rng, &nova_preprocess_params).unwrap();
+    let nova_params = N::preprocess(&mut rng, &nova_preprocess_params)?;
 
     println!("Initialize FoldingScheme");
-    let mut folding_scheme = N::init(&nova_params, F_circuit, initial_state.clone()).unwrap();
+    let mut folding_scheme = N::init(&nova_params, F_circuit, initial_state.clone())?;
 
     // compute a step of the IVC
     for (i, external_inputs_at_step) in external_inputs.iter().enumerate() {
         let start = Instant::now();
-        folding_scheme
-            .prove_step(rng, external_inputs_at_step.clone(), None)
-            .unwrap();
+        folding_scheme.prove_step(rng, external_inputs_at_step.clone(), None)?;
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
     println!(
@@ -212,6 +207,6 @@ fn main() {
     N::verify(
         nova_params.1, // Nova's verifier params
         ivc_proof,
-    )
-    .unwrap();
+    )?;
+    Ok(())
 }

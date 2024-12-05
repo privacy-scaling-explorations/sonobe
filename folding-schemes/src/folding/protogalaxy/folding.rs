@@ -436,17 +436,20 @@ pub mod tests {
     #[allow(clippy::type_complexity)]
     pub fn prepare_inputs<C: CurveGroup>(
         k: usize,
-    ) -> (
-        Witness<C::ScalarField>,
-        CommittedInstance<C, true>,
-        Vec<Witness<C::ScalarField>>,
-        Vec<CommittedInstance<C, false>>,
-    ) {
+    ) -> Result<
+        (
+            Witness<C::ScalarField>,
+            CommittedInstance<C, true>,
+            Vec<Witness<C::ScalarField>>,
+            Vec<CommittedInstance<C, false>>,
+        ),
+        Error,
+    > {
         let mut rng = ark_std::test_rng();
 
         let (_, x, w) = get_test_z_split::<C::ScalarField>(rng.gen::<u16>() as usize);
 
-        let (pedersen_params, _) = Pedersen::<C>::setup(&mut rng, w.len()).unwrap();
+        let (pedersen_params, _) = Pedersen::<C>::setup(&mut rng, w.len())?;
 
         let t = log2(get_test_r1cs::<C::ScalarField>().A.n_rows) as usize;
 
@@ -457,7 +460,7 @@ pub mod tests {
             w,
             r_w: C::ScalarField::zero(),
         };
-        let phi = Pedersen::<C>::commit(&pedersen_params, &witness.w, &witness.r_w).unwrap();
+        let phi = Pedersen::<C>::commit(&pedersen_params, &witness.w, &witness.r_w)?;
         let instance = CommittedInstance::<C, true> {
             phi,
             betas: betas.clone(),
@@ -474,8 +477,7 @@ pub mod tests {
                 w: w_i,
                 r_w: C::ScalarField::zero(),
             };
-            let phi_i =
-                Pedersen::<C>::commit(&pedersen_params, &witness_i.w, &witness_i.r_w).unwrap();
+            let phi_i = Pedersen::<C>::commit(&pedersen_params, &witness_i.w, &witness_i.r_w)?;
             let instance_i = CommittedInstance::<C, false> {
                 phi: phi_i,
                 betas: vec![],
@@ -486,13 +488,13 @@ pub mod tests {
             instances.push(instance_i);
         }
 
-        (witness, instance, witnesses, instances)
+        Ok((witness, instance, witnesses, instances))
     }
 
     #[test]
-    fn test_fold() {
+    fn test_fold() -> Result<(), Error> {
         let k = 7;
-        let (witness, instance, witnesses, instances) = prepare_inputs(k);
+        let (witness, instance, witnesses, instances) = prepare_inputs(k)?;
         let r1cs = get_test_r1cs::<Fr>();
 
         // init Prover & Verifier's transcript
@@ -507,12 +509,11 @@ pub mod tests {
             &witness,
             &instances,
             &witnesses,
-        )
-        .unwrap();
+        )?;
 
         // verifier
         let folded_instance_v =
-            Folding::<Projective>::verify(&mut transcript_v, &instance, &instances, proof).unwrap();
+            Folding::<Projective>::verify(&mut transcript_v, &instance, &instances, proof)?;
 
         // check that prover & verifier folded instances are the same values
         assert_eq!(folded_instance.phi, folded_instance_v.phi);
@@ -521,12 +522,12 @@ pub mod tests {
         assert!(!folded_instance.e.is_zero());
 
         // check that the folded instance satisfies the relation
-        r1cs.check_relation(&folded_witness, &folded_instance)
-            .unwrap();
+        r1cs.check_relation(&folded_witness, &folded_instance)?;
+        Ok(())
     }
 
     #[test]
-    fn test_fold_various_iterations() {
+    fn test_fold_various_iterations() -> Result<(), Error> {
         let r1cs = get_test_r1cs::<Fr>();
 
         // init Prover & Verifier's transcript
@@ -534,14 +535,14 @@ pub mod tests {
         let mut transcript_p = PoseidonSponge::<Fr>::new(&poseidon_config);
         let mut transcript_v = PoseidonSponge::<Fr>::new(&poseidon_config);
 
-        let (mut running_witness, mut running_instance, _, _) = prepare_inputs(0);
+        let (mut running_witness, mut running_instance, _, _) = prepare_inputs(0)?;
 
         // fold k instances on each of num_iters iterations
         let k = 7;
         let num_iters = 10;
         for _ in 0..num_iters {
             // generate the instances to be fold
-            let (_, _, witnesses, instances) = prepare_inputs(k);
+            let (_, _, witnesses, instances) = prepare_inputs(k)?;
 
             let (folded_instance, folded_witness, proof, _) = Folding::<Projective>::prove(
                 &mut transcript_p,
@@ -550,8 +551,7 @@ pub mod tests {
                 &running_witness,
                 &instances,
                 &witnesses,
-            )
-            .unwrap();
+            )?;
 
             // verifier
             let folded_instance_v = Folding::<Projective>::verify(
@@ -559,8 +559,7 @@ pub mod tests {
                 &running_instance,
                 &instances,
                 proof,
-            )
-            .unwrap();
+            )?;
 
             // check that prover & verifier folded instances are the same values
             assert_eq!(folded_instance, folded_instance_v);
@@ -568,11 +567,11 @@ pub mod tests {
             assert!(!folded_instance.e.is_zero());
 
             // check that the folded instance satisfies the relation
-            r1cs.check_relation(&folded_witness, &folded_instance)
-                .unwrap();
+            r1cs.check_relation(&folded_witness, &folded_instance)?;
 
             running_witness = folded_witness;
             running_instance = folded_instance;
         }
+        Ok(())
     }
 }

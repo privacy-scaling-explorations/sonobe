@@ -170,9 +170,10 @@ pub mod tests {
             test_nifs_gadget_opt,
         },
     };
+    use crate::Error;
 
     #[test]
-    fn test_nifs_gadget() {
+    fn test_nifs_gadget() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
         // prepare the committed instances to test in-circuit
         let ci: Vec<CommittedInstance<Projective>> = (0..2)
@@ -187,14 +188,14 @@ pub mod tests {
         let (ci_out, ciVar_out) = test_nifs_gadget_opt::<
             NIFS<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>,
             NIFSGadget<Projective, PoseidonSponge<Fr>, PoseidonSpongeVar<Fr>>,
-        >(ci, Fr::zero())
-        .unwrap();
-        assert_eq!(ciVar_out.u.value().unwrap(), ci_out.u);
-        assert_eq!(ciVar_out.x.value().unwrap(), ci_out.x);
+        >(ci, Fr::zero())?;
+        assert_eq!(ciVar_out.u.value()?, ci_out.u);
+        assert_eq!(ciVar_out.x.value()?, ci_out.x);
+        Ok(())
     }
 
     #[test]
-    fn test_committed_instance_to_sponge_preimage() {
+    fn test_committed_instance_to_sponge_preimage() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
         let ci = CommittedInstance::<Projective> {
             u: Fr::rand(&mut rng),
@@ -205,11 +206,12 @@ pub mod tests {
         test_committed_instance_to_sponge_preimage_opt::<
             NIFS<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>,
             NIFSGadget<Projective, PoseidonSponge<Fr>, PoseidonSpongeVar<Fr>>,
-        >(ci);
+        >(ci)?;
+        Ok(())
     }
 
     #[test]
-    fn test_committed_instance_hash() {
+    fn test_committed_instance_hash() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
         let ci = CommittedInstance::<Projective> {
             u: Fr::rand(&mut rng),
@@ -219,6 +221,7 @@ pub mod tests {
         test_committed_instance_hash_opt::<
             NIFS<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>,
             NIFSGadget<Projective, PoseidonSponge<Fr>, PoseidonSpongeVar<Fr>>,
-        >(ci);
+        >(ci)?;
+        Ok(())
     }
 }

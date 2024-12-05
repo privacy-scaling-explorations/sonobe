@@ -197,7 +197,7 @@ pub mod tests {
     /// of the matrix and the z vector. This technique is also used extensively in "An Algebraic Framework for
     /// Universal and Updatable SNARKs".
     #[test]
-    fn test_compute_M_r_y_compression() {
+    fn test_compute_M_r_y_compression() -> Result<(), Error> {
         let mut rng = test_rng();
 
         // s = 2, s' = 3
@@ -222,17 +222,18 @@ pub mod tests {
 
             assert_eq!(M_r_y.evaluations[j], rlc);
         }
+        Ok(())
     }
 
     #[test]
-    fn test_compute_sigmas_thetas() {
+    fn test_compute_sigmas_thetas() -> Result<(), Error> {
         let ccs = get_test_ccs();
         let z1 = get_test_z(3);
         let z2 = get_test_z(4);
         let (w1, x1) = ccs.split_z(&z1);
         let (w2, x2) = ccs.split_z(&z2);
-        ccs.check_relation(&w1, &x1).unwrap();
-        ccs.check_relation(&w2, &x2).unwrap();
+        ccs.check_relation(&w1, &x1)?;
+        ccs.check_relation(&w2, &x2)?;
 
         let mut rng = test_rng();
         let gamma: Fr = Fr::rand(&mut rng);
@@ -240,14 +241,11 @@ pub mod tests {
         let r_x_prime: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
 
         // Initialize a multifolding object
-        let (pedersen_params, _) =
-            Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
-        let (lcccs_instance, _) = ccs
-            .to_lcccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &z1)
-            .unwrap();
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1)?;
+        let (lcccs_instance, _) =
+            ccs.to_lcccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &z1)?;
 
-        let sigmas_thetas =
-            compute_sigmas_thetas(&ccs, &[z1.clone()], &[z2.clone()], &r_x_prime).unwrap();
+        let sigmas_thetas = compute_sigmas_thetas(&ccs, &[z1.clone()], &[z2.clone()], &r_x_prime)?;
 
         let g = compute_g(
             &ccs,
@@ -256,13 +254,12 @@ pub mod tests {
             &[z2.clone()],
             gamma,
             &beta,
-        )
-        .unwrap();
+        )?;
 
         // we expect g(r_x_prime) to be equal to:
         // c = (sum gamma^j * e1 * sigma_j) + gamma^{t+1} * e2 * sum c_i * prod theta_j
         // from compute_c
-        let expected_c = g.evaluate(&r_x_prime).unwrap();
+        let expected_c = g.evaluate(&r_x_prime)?;
         let c = compute_c::<Fr>(
             &ccs,
             &sigmas_thetas,
@@ -270,13 +267,13 @@ pub mod tests {
             &beta,
             &vec![lcccs_instance.r_x],
             &r_x_prime,
-        )
-        .unwrap();
+        )?;
         assert_eq!(c, expected_c);
+        Ok(())
     }
 
     #[test]
-    fn test_compute_g() {
+    fn test_compute_g() -> Result<(), Error> {
         let mut rng = test_rng();
 
         // generate test CCS & z vectors
@@ -285,18 +282,16 @@ pub mod tests {
         let z2 = get_test_z(4);
         let (w1, x1) = ccs.split_z(&z1);
         let (w2, x2) = ccs.split_z(&z2);
-        ccs.check_relation(&w1, &x1).unwrap();
-        ccs.check_relation(&w2, &x2).unwrap();
+        ccs.check_relation(&w1, &x1)?;
+        ccs.check_relation(&w2, &x2)?;
 
         let gamma: Fr = Fr::rand(&mut rng);
         let beta: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
 
         // Initialize a multifolding object
-        let (pedersen_params, _) =
-            Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
-        let (lcccs_instance, _) = ccs
-            .to_lcccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &z1)
-            .unwrap();
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1)?;
+        let (lcccs_instance, _) =
+            ccs.to_lcccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &z1)?;
 
         // Compute g(x) with that r_x
         let g = compute_g::<Projective>(
@@ -306,13 +301,12 @@ pub mod tests {
             &[z2.clone()],
             gamma,
             &beta,
-        )
-        .unwrap();
+        )?;
 
         // evaluate g(x) over x \in {0,1}^s
         let mut g_on_bhc = Fr::zero();
         for x in BooleanHypercube::new(ccs.s) {
-            g_on_bhc += g.evaluate(&x).unwrap();
+            g_on_bhc += g.evaluate(&x)?;
         }
 
         // Q(x) over bhc is assumed to be zero, as checked in the test 'test_compute_Q'
@@ -330,16 +324,17 @@ pub mod tests {
 
         // evaluate sum_{j \in [t]} (gamma^j * Lj(x)) over x \in {0,1}^s
         let mut sum_Lj_on_bhc = Fr::zero();
-        let vec_L = compute_Ls(&ccs, &lcccs_instance, &z1);
+        let vec_L = compute_Ls(&ccs, &lcccs_instance, &z1)?;
         for x in BooleanHypercube::new(ccs.s) {
             for (j, Lj) in vec_L.iter().enumerate() {
                 let gamma_j = gamma.pow([j as u64]);
-                sum_Lj_on_bhc += Lj.evaluate(&x).unwrap() * gamma_j;
+                sum_Lj_on_bhc += Lj.evaluate(&x)? * gamma_j;
             }
         }
 
         // evaluating g(x) over the boolean hypercube should give the same result as evaluating the
         // sum of gamma^j * Lj(x) over the boolean hypercube
         assert_eq!(g_on_bhc, sum_Lj_on_bhc);
+        Ok(())
     }
 }

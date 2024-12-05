@@ -154,7 +154,7 @@ pub mod tests {
     /// test that checks the native CommittedInstance.to_sponge_{bytes,field_elements}
     /// vs the R1CS constraints version
     #[test]
-    pub fn test_committed_instance_to_sponge_preimage() {
+    pub fn test_committed_instance_to_sponge_preimage() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
 
         let t = rng.gen::<u8>() as usize;
@@ -173,15 +173,15 @@ pub mod tests {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         let ciVar =
-            CommittedInstanceVar::<Projective, true>::new_witness(cs.clone(), || Ok(ci.clone()))
-                .unwrap();
-        let bytes_var = ciVar.to_sponge_bytes().unwrap();
-        let field_elements_var = ciVar.to_sponge_field_elements().unwrap();
+            CommittedInstanceVar::<Projective, true>::new_witness(cs.clone(), || Ok(ci.clone()))?;
+        let bytes_var = ciVar.to_sponge_bytes()?;
+        let field_elements_var = ciVar.to_sponge_field_elements()?;
 
-        assert!(cs.is_satisfied().unwrap());
+        assert!(cs.is_satisfied()?);
 
         // check that the natively computed and in-circuit computed hashes match
-        assert_eq!(bytes_var.value().unwrap(), bytes);
-        assert_eq!(field_elements_var.value().unwrap(), field_elements);
+        assert_eq!(bytes_var.value()?, bytes);
+        assert_eq!(field_elements_var.value()?, field_elements);
+        Ok(())
     }
 }

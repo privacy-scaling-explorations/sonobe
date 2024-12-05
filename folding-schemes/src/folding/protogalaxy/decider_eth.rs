@@ -114,7 +114,8 @@ where
         let circuit = DeciderEthCircuit::<C1, C2, GC2>::try_from(ProtoGalaxy::from(fs))?;
 
         // get the Groth16 specific setup for the circuit
-        let (g16_pk, g16_vk) = S::circuit_specific_setup(circuit, &mut rng).unwrap();
+        let (g16_pk, g16_vk) = S::circuit_specific_setup(circuit, &mut rng)
+            .map_err(|e| Error::SNARKSetupFail(e.to_string()))?;
 
         // get the FoldingScheme prover & verifier params from ProtoGalaxy
         #[allow(clippy::type_complexity)]
@@ -173,8 +174,20 @@ where
         Ok(Self::Proof {
             snark_proof,
             L_X_evals,
-            kzg_proofs: kzg_proofs.try_into().unwrap(),
-            kzg_challenges: kzg_challenges.try_into().unwrap(),
+            kzg_proofs: kzg_proofs.try_into().map_err(|_| {
+                Error::ConversionError(
+                    "Vec<_>".to_string(),
+                    "[_; 1]".to_string(),
+                    "variable name: kzg_proofs".to_string(),
+                )
+            })?,
+            kzg_challenges: kzg_challenges.try_into().map_err(|_| {
+                Error::ConversionError(
+                    "Vec<_>".to_string(),
+                    "[_; 1]".to_string(),
+                    "variable name: kzg_challenges".to_string(),
+                )
+            })?,
         })
     }
 
@@ -255,9 +268,10 @@ pub mod tests {
     use crate::folding::traits::CommittedInstanceOps;
     use crate::frontend::utils::CubicFCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
+    use crate::Error;
 
     #[test]
-    fn test_decider() {
+    fn test_decider() -> Result<(), Error> {
         // use ProtoGalaxy as FoldingScheme
         type PG = ProtoGalaxy<
             Projective,
@@ -283,25 +297,25 @@ pub mod tests {
         let mut rng = rand::rngs::OsRng;
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
-        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
+        let F_circuit = CubicFCircuit::<Fr>::new(())?;
         let z_0 = vec![Fr::from(3_u32)];
 
         let preprocessor_param = (poseidon_config, F_circuit);
-        let protogalaxy_params = PG::preprocess(&mut rng, &preprocessor_param).unwrap();
+        let protogalaxy_params = PG::preprocess(&mut rng, &preprocessor_param)?;
 
         let start = Instant::now();
-        let mut protogalaxy = PG::init(&protogalaxy_params, F_circuit, z_0.clone()).unwrap();
+        let mut protogalaxy = PG::init(&protogalaxy_params, F_circuit, z_0.clone())?;
         println!("ProtoGalaxy initialized, {:?}", start.elapsed());
-        protogalaxy.prove_step(&mut rng, vec![], None).unwrap();
-        protogalaxy.prove_step(&mut rng, vec![], None).unwrap(); // do a 2nd step
+        protogalaxy.prove_step(&mut rng, vec![], None)?;
+        protogalaxy.prove_step(&mut rng, vec![], None)?; // do a 2nd step
 
         // prepare the Decider prover & verifier params
         let (decider_pp, decider_vp) =
-            D::preprocess(&mut rng, protogalaxy_params, protogalaxy.clone()).unwrap();
+            D::preprocess(&mut rng, protogalaxy_params, protogalaxy.clone())?;
 
         // decider proof generation
         let start = Instant::now();
-        let proof = D::prove(rng, decider_pp, protogalaxy.clone()).unwrap();
+        let proof = D::prove(rng, decider_pp, protogalaxy.clone())?;
         println!("Decider prove, {:?}", start.elapsed());
 
         // decider proof verification
@@ -314,8 +328,7 @@ pub mod tests {
             &protogalaxy.U_i.get_commitments(),
             &protogalaxy.u_i.get_commitments(),
             &proof,
-        )
-        .unwrap();
+        )?;
         assert!(verified);
         println!("Decider verify, {:?}", start.elapsed());
 
@@ -328,16 +341,16 @@ pub mod tests {
             &protogalaxy.U_i.get_commitments(),
             &protogalaxy.u_i.get_commitments(),
             &proof,
-        )
-        .unwrap();
+        )?;
         assert!(verified);
+        Ok(())
     }
 
     // Test to check the serialization and deserialization of diverse Decider related parameters.
     // This test is the same test as `test_decider` but it serializes values and then uses the
     // deserialized values to continue the checks.
     #[test]
-    fn test_decider_serialization() {
+    fn test_decider_serialization() -> Result<(), Error> {
         // use ProtoGalaxy as FoldingScheme
         type PG = ProtoGalaxy<
             Projective,
@@ -363,34 +376,32 @@ pub mod tests {
         let mut rng = rand::rngs::OsRng;
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
-        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
+        let F_circuit = CubicFCircuit::<Fr>::new(())?;
         let z_0 = vec![Fr::from(3_u32)];
 
         let preprocessor_param = (poseidon_config, F_circuit);
-        let protogalaxy_params = PG::preprocess(&mut rng, &preprocessor_param).unwrap();
+        let protogalaxy_params = PG::preprocess(&mut rng, &preprocessor_param)?;
 
         let start = Instant::now();
-        let mut protogalaxy = PG::init(&protogalaxy_params, F_circuit, z_0.clone()).unwrap();
+        let mut protogalaxy = PG::init(&protogalaxy_params, F_circuit, z_0.clone())?;
         println!("ProtoGalaxy initialized, {:?}", start.elapsed());
-        protogalaxy.prove_step(&mut rng, vec![], None).unwrap();
-        protogalaxy.prove_step(&mut rng, vec![], None).unwrap(); // do a 2nd step
+        protogalaxy.prove_step(&mut rng, vec![], None)?;
+        protogalaxy.prove_step(&mut rng, vec![], None)?; // do a 2nd step
 
         // prepare the Decider prover & verifier params
         let (decider_pp, decider_vp) =
-            D::preprocess(&mut rng, protogalaxy_params.clone(), protogalaxy.clone()).unwrap();
+            D::preprocess(&mut rng, protogalaxy_params.clone(), protogalaxy.clone())?;
 
         // serialize the Nova params. These params are the trusted setup of the commitment schemes used
         // (ie. KZG & Pedersen in this case)
         let mut protogalaxy_pp_serialized = vec![];
         protogalaxy_params
             .0
-            .serialize_compressed(&mut protogalaxy_pp_serialized)
-            .unwrap();
+            .serialize_compressed(&mut protogalaxy_pp_serialized)?;
         let mut protogalaxy_vp_serialized = vec![];
         protogalaxy_params
             .1
-            .serialize_compressed(&mut protogalaxy_vp_serialized)
-            .unwrap();
+            .serialize_compressed(&mut protogalaxy_vp_serialized)?;
         // deserialize the Nova params. This would be done by the client reading from a file
         let protogalaxy_pp_deserialized = ProverParams::<
             Projective,
@@ -399,8 +410,7 @@ pub mod tests {
             Pedersen<Projective2>,
         >::deserialize_compressed(
             &mut protogalaxy_pp_serialized.as_slice()
-        )
-        .unwrap();
+        )?;
         let protogalaxy_vp_deserialized = <PG as FoldingScheme<
             Projective,
             Projective2,
@@ -410,21 +420,20 @@ pub mod tests {
             ark_serialize::Compress::Yes,
             ark_serialize::Validate::Yes,
             (), // fcircuit_params
-        )
-        .unwrap();
+        )?;
 
         // initialize protogalaxy again, but from the deserialized parameters
         let protogalaxy_params = (protogalaxy_pp_deserialized, protogalaxy_vp_deserialized);
-        let mut protogalaxy = PG::init(&protogalaxy_params, F_circuit, z_0).unwrap();
+        let mut protogalaxy = PG::init(&protogalaxy_params, F_circuit, z_0)?;
 
         let start = Instant::now();
-        protogalaxy.prove_step(&mut rng, vec![], None).unwrap();
+        protogalaxy.prove_step(&mut rng, vec![], None)?;
         println!("prove_step, {:?}", start.elapsed());
-        protogalaxy.prove_step(&mut rng, vec![], None).unwrap(); // do a 2nd step
+        protogalaxy.prove_step(&mut rng, vec![], None)?; // do a 2nd step
 
         // decider proof generation
         let start = Instant::now();
-        let proof = D::prove(rng, decider_pp, protogalaxy.clone()).unwrap();
+        let proof = D::prove(rng, decider_pp, protogalaxy.clone())?;
         println!("Decider prove, {:?}", start.elapsed());
 
         // decider proof verification
@@ -437,8 +446,7 @@ pub mod tests {
             &protogalaxy.U_i.get_commitments(),
             &protogalaxy.u_i.get_commitments(),
             &proof,
-        )
-        .unwrap();
+        )?;
         assert!(verified);
         println!("Decider verify, {:?}", start.elapsed());
 
@@ -447,25 +455,20 @@ pub mod tests {
 
         // serialize the verifier_params, proof and public inputs
         let mut decider_vp_serialized = vec![];
-        decider_vp
-            .serialize_compressed(&mut decider_vp_serialized)
-            .unwrap();
+        decider_vp.serialize_compressed(&mut decider_vp_serialized)?;
         let mut proof_serialized = vec![];
-        proof.serialize_compressed(&mut proof_serialized).unwrap();
+        proof.serialize_compressed(&mut proof_serialized)?;
         // serialize the public inputs in a single packet
         let mut public_inputs_serialized = vec![];
         protogalaxy
             .i
-            .serialize_compressed(&mut public_inputs_serialized)
-            .unwrap();
+            .serialize_compressed(&mut public_inputs_serialized)?;
         protogalaxy
             .z_0
-            .serialize_compressed(&mut public_inputs_serialized)
-            .unwrap();
+            .serialize_compressed(&mut public_inputs_serialized)?;
         protogalaxy
             .z_i
-            .serialize_compressed(&mut public_inputs_serialized)
-            .unwrap();
+            .serialize_compressed(&mut public_inputs_serialized)?;
 
         // deserialize back the verifier_params, proof and public inputs
         let decider_vp_deserialized =
@@ -473,19 +476,17 @@ pub mod tests {
                 Projective,
                 <KZG<'static, Bn254> as CommitmentScheme<Projective>>::VerifierParams,
                 <Groth16<Bn254> as SNARK<Fr>>::VerifyingKey,
-            >::deserialize_compressed(&mut decider_vp_serialized.as_slice())
-            .unwrap();
+            >::deserialize_compressed(&mut decider_vp_serialized.as_slice())?;
         let proof_deserialized =
             Proof::<Projective, KZG<'static, Bn254>, Groth16<Bn254>>::deserialize_compressed(
                 &mut proof_serialized.as_slice(),
-            )
-            .unwrap();
+            )?;
 
         // deserialize the public inputs from the single packet 'public_inputs_serialized'
         let mut reader = public_inputs_serialized.as_slice();
-        let i_deserialized = Fr::deserialize_compressed(&mut reader).unwrap();
-        let z_0_deserialized = Vec::<Fr>::deserialize_compressed(&mut reader).unwrap();
-        let z_i_deserialized = Vec::<Fr>::deserialize_compressed(&mut reader).unwrap();
+        let i_deserialized = Fr::deserialize_compressed(&mut reader)?;
+        let z_0_deserialized = Vec::<Fr>::deserialize_compressed(&mut reader)?;
+        let z_i_deserialized = Vec::<Fr>::deserialize_compressed(&mut reader)?;
 
         // decider proof verification using the deserialized data
         let verified = D::verify(
@@ -496,8 +497,8 @@ pub mod tests {
             &protogalaxy.U_i.get_commitments(),
             &protogalaxy.u_i.get_commitments(),
             &proof_deserialized,
-        )
-        .unwrap();
+        )?;
         assert!(verified);
+        Ok(())
     }
 }

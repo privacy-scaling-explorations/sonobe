@@ -179,11 +179,11 @@ pub mod tests {
     use crate::FoldingScheme;
 
     #[test]
-    fn test_decider_circuits() {
+    fn test_decider_circuits() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
-        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
+        let F_circuit = CubicFCircuit::<Fr>::new(())?;
         let z_0 = vec![Fr::from(3_u32)];
 
         type N = Nova<
@@ -205,26 +205,27 @@ pub mod tests {
             Pedersen<Projective2>,
             false,
         >::new(poseidon_config, F_circuit);
-        let nova_params = N::preprocess(&mut rng, &prep_param).unwrap();
+        let nova_params = N::preprocess(&mut rng, &prep_param)?;
 
         // generate a Nova instance and do a step of it
-        let mut nova = N::init(&nova_params, F_circuit, z_0.clone()).unwrap();
-        nova.prove_step(&mut rng, vec![], None).unwrap();
+        let mut nova = N::init(&nova_params, F_circuit, z_0.clone())?;
+        nova.prove_step(&mut rng, vec![], None)?;
         // verify the IVC
         let ivc_proof = nova.ivc_proof();
-        N::verify(nova_params.1, ivc_proof).unwrap();
+        N::verify(nova_params.1, ivc_proof)?;
 
         // load the DeciderCircuit 1 & 2 from the Nova instance
         let decider_circuit1 =
-            DeciderCircuit1::<Projective, Projective2, GVar2>::try_from(nova.clone()).unwrap();
-        let decider_circuit2 = DeciderCircuit2::<Projective2>::try_from(nova).unwrap();
+            DeciderCircuit1::<Projective, Projective2, GVar2>::try_from(nova.clone())?;
+        let decider_circuit2 = DeciderCircuit2::<Projective2>::try_from(nova)?;
 
         // generate the constraints of both circuits and check that are satisfied by the inputs
         let cs1 = ConstraintSystem::<Fr>::new_ref();
-        decider_circuit1.generate_constraints(cs1.clone()).unwrap();
-        assert!(cs1.is_satisfied().unwrap());
+        decider_circuit1.generate_constraints(cs1.clone())?;
+        assert!(cs1.is_satisfied()?);
         let cs2 = ConstraintSystem::<Fq>::new_ref();
-        decider_circuit2.generate_constraints(cs2.clone()).unwrap();
-        assert!(cs2.is_satisfied().unwrap());
+        decider_circuit2.generate_constraints(cs2.clone())?;
+        assert!(cs2.is_satisfied()?);
+        Ok(())
     }
 }

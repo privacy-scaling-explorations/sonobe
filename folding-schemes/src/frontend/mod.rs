@@ -56,31 +56,33 @@ pub mod tests {
     use utils::{CubicFCircuit, CustomFCircuit, WrapperCircuit};
 
     #[test]
-    fn test_testfcircuit() {
+    fn test_testfcircuit() -> Result<(), Error> {
         let cs = ConstraintSystem::<Fr>::new_ref();
-        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
+        let F_circuit = CubicFCircuit::<Fr>::new(())?;
 
         let wrapper_circuit = WrapperCircuit::<Fr, CubicFCircuit<Fr>> {
             FC: F_circuit,
             z_i: Some(vec![Fr::from(3_u32)]),
             z_i1: Some(vec![Fr::from(35_u32)]),
         };
-        wrapper_circuit.generate_constraints(cs.clone()).unwrap();
+        wrapper_circuit.generate_constraints(cs.clone())?;
         assert_eq!(cs.num_constraints(), 3);
+        Ok(())
     }
 
     #[test]
-    fn test_customtestfcircuit() {
+    fn test_customtestfcircuit() -> Result<(), Error> {
         let cs = ConstraintSystem::<Fr>::new_ref();
         let n_constraints = 1000;
-        let custom_circuit = CustomFCircuit::<Fr>::new(n_constraints).unwrap();
+        let custom_circuit = CustomFCircuit::<Fr>::new(n_constraints)?;
         let z_i = vec![Fr::from(5_u32)];
         let wrapper_circuit = WrapperCircuit::<Fr, CustomFCircuit<Fr>> {
             FC: custom_circuit,
             z_i: Some(z_i.clone()),
-            z_i1: Some(custom_circuit.step_native(0, z_i, vec![]).unwrap()),
+            z_i1: Some(custom_circuit.step_native(0, z_i, vec![])?),
         };
-        wrapper_circuit.generate_constraints(cs.clone()).unwrap();
+        wrapper_circuit.generate_constraints(cs.clone())?;
         assert_eq!(cs.num_constraints(), n_constraints);
+        Ok(())
     }
 }

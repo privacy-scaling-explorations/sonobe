@@ -350,10 +350,11 @@ pub mod tests {
 
     use crate::folding::nova::nifs::nova::ChallengeGadget;
     use crate::transcript::poseidon::poseidon_canonical_config;
+    use crate::Error;
 
     // checks that the gadget and native implementations of the challenge computation match
     #[test]
-    fn test_challenge_gadget() {
+    fn test_challenge_gadget() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_canonical_config::<Fr>();
         let mut transcript = PoseidonSponge::<Fr>::new(&poseidon_config);
@@ -383,25 +384,23 @@ pub mod tests {
                 &u_i,
                 Some(&cmT),
             );
-        let r = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).unwrap();
+        let r = Fr::from_bigint(BigInteger::from_bits_le(&r_bits)).ok_or(Error::OutOfBounds)?;
 
         let cs = ConstraintSystem::<Fr>::new_ref();
-        let pp_hashVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(pp_hash)).unwrap();
+        let pp_hashVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(pp_hash))?;
         let u_iVar =
-            CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || Ok(u_i.clone()))
-                .unwrap();
+            CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || Ok(u_i.clone()))?;
         let U_iVar =
-            CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || Ok(U_i.clone()))
-                .unwrap();
-        let cmTVar = NonNativeAffineVar::<Projective>::new_witness(cs.clone(), || Ok(cmT)).unwrap();
+            CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || Ok(U_i.clone()))?;
+        let cmTVar = NonNativeAffineVar::<Projective>::new_witness(cs.clone(), || Ok(cmT))?;
         let mut transcriptVar = PoseidonSpongeVar::<Fr>::new(cs.clone(), &poseidon_config);
 
         // compute the challenge in-circuit
         let U_iVar_vec = [
             vec![U_iVar.u.clone()],
             U_iVar.x.clone(),
-            U_iVar.cmE.to_constraint_field().unwrap(),
-            U_iVar.cmW.to_constraint_field().unwrap(),
+            U_iVar.cmE.to_constraint_field()?,
+            U_iVar.cmW.to_constraint_field()?,
         ]
         .concat();
         let r_bitsVar =
@@ -411,13 +410,13 @@ pub mod tests {
                 U_iVar_vec,
                 u_iVar,
                 Some(cmTVar),
-            )
-            .unwrap();
-        assert!(cs.is_satisfied().unwrap());
+            )?;
+        assert!(cs.is_satisfied()?);
 
         // check that the natively computed and in-circuit computed hashes match
-        let rVar = Boolean::le_bits_to_fp(&r_bitsVar).unwrap();
-        assert_eq!(rVar.value().unwrap(), r);
-        assert_eq!(r_bitsVar.value().unwrap(), r_bits);
+        let rVar = Boolean::le_bits_to_fp(&r_bitsVar)?;
+        assert_eq!(rVar.value()?, r);
+        assert_eq!(r_bitsVar.value()?, r_bits);
+        Ok(())
     }
 }

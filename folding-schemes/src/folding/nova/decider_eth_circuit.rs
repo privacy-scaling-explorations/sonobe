@@ -227,11 +227,11 @@ pub mod tests {
     use crate::FoldingScheme;
 
     #[test]
-    fn test_decider_circuit() {
+    fn test_decider_circuit() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
-        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
+        let F_circuit = CubicFCircuit::<Fr>::new(())?;
         let z_0 = vec![Fr::from(3_u32)];
 
         type N = Nova<
@@ -253,22 +253,23 @@ pub mod tests {
             Pedersen<Projective2>,
             false,
         >::new(poseidon_config, F_circuit);
-        let nova_params = N::preprocess(&mut rng, &prep_param).unwrap();
+        let nova_params = N::preprocess(&mut rng, &prep_param)?;
 
         // generate a Nova instance and do a step of it
-        let mut nova = N::init(&nova_params, F_circuit, z_0.clone()).unwrap();
-        nova.prove_step(&mut rng, vec![], None).unwrap();
+        let mut nova = N::init(&nova_params, F_circuit, z_0.clone())?;
+        nova.prove_step(&mut rng, vec![], None)?;
         let ivc_proof = nova.ivc_proof();
-        N::verify(nova_params.1, ivc_proof).unwrap();
+        N::verify(nova_params.1, ivc_proof)?;
 
         // load the DeciderEthCircuit from the generated Nova instance
-        let decider_circuit =
-            DeciderEthCircuit::<Projective, Projective2, GVar2>::try_from(nova).unwrap();
+        let decider_circuit = DeciderEthCircuit::<Projective, Projective2, GVar2>::try_from(nova)?;
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         // generate the constraints and check that are satisfied by the inputs
-        decider_circuit.generate_constraints(cs.clone()).unwrap();
-        assert!(cs.is_satisfied().unwrap());
+        decider_circuit.generate_constraints(cs.clone())?;
+        assert!(cs.is_satisfied()?);
+
+        Ok(())
     }
 }

@@ -473,22 +473,22 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
 
     use super::*;
     use crate::{
         arith::r1cs::tests::get_test_r1cs,
         folding::protogalaxy::folding::{tests::prepare_inputs, Folding},
         transcript::poseidon::poseidon_canonical_config,
+        Error,
     };
 
     use ark_bn254::{Fr, G1Projective as Projective};
     use ark_relations::r1cs::ConstraintSystem;
 
     #[test]
-    fn test_folding_gadget() -> Result<(), Box<dyn Error>> {
+    fn test_folding_gadget() -> Result<(), Error> {
         let k = 7;
-        let (witness, instance, witnesses, instances) = prepare_inputs(k);
+        let (witness, instance, witnesses, instances) = prepare_inputs(k)?;
         let r1cs = get_test_r1cs::<Fr>();
 
         // init Prover & Verifier's transcript
@@ -526,7 +526,6 @@ mod tests {
         assert_eq!(folded_instance.e, folded_instance_var.e.value()?);
         assert_eq!(folded_instance.x, folded_instance_var.x.value()?);
         assert!(cs.is_satisfied()?);
-
         Ok(())
     }
 }

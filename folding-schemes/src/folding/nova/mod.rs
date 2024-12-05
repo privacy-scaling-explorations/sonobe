@@ -879,7 +879,7 @@ where
         augmented_F_circuit.generate_constraints(cs.clone())?;
 
         #[cfg(test)]
-        assert!(cs.is_satisfied().unwrap());
+        assert!(cs.is_satisfied()?);
 
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
         let (w_i1, x_i1) = extract_w_x::<C1::ScalarField>(&cs);
@@ -1166,27 +1166,32 @@ pub mod tests {
     /// This test tests the Nova+CycleFold IVC, and by consequence it is also testing the
     /// AugmentedFCircuit
     #[test]
-    fn test_ivc() {
+    fn test_ivc() -> Result<(), Error> {
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
-        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
+        let F_circuit = CubicFCircuit::<Fr>::new(())?;
 
         // run the test using Pedersen commitments on both sides of the curve cycle
-        test_ivc_opt::<Pedersen<Projective>, Pedersen<Projective2>, false>(
+        let _ = test_ivc_opt::<Pedersen<Projective>, Pedersen<Projective2>, false>(
             poseidon_config.clone(),
             F_circuit,
             3,
-        );
+        )?;
 
-        test_ivc_opt::<Pedersen<Projective, true>, Pedersen<Projective2, true>, true>(
+        let _ = test_ivc_opt::<Pedersen<Projective, true>, Pedersen<Projective2, true>, true>(
             poseidon_config.clone(),
             F_circuit,
             3,
-        );
+        )?;
 
         // run the test using KZG for the commitments on the main curve, and Pedersen for the
         // commitments on the secondary curve
-        test_ivc_opt::<KZG<Bn254>, Pedersen<Projective2>, false>(poseidon_config, F_circuit, 3);
+        let _ = test_ivc_opt::<KZG<Bn254>, Pedersen<Projective2>, false>(
+            poseidon_config,
+            F_circuit,
+            3,
+        )?;
+        Ok(())
     }
 
     // test_ivc allowing to choose the CommitmentSchemes
@@ -1199,10 +1204,13 @@ pub mod tests {
         poseidon_config: PoseidonConfig<Fr>,
         F_circuit: CubicFCircuit<Fr>,
         num_steps: usize,
-    ) -> (
-        Vec<Fr>,
-        Nova<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>, CS1, CS2, H>,
-    ) {
+    ) -> Result<
+        (
+            Vec<Fr>,
+            Nova<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>, CS1, CS2, H>,
+        ),
+        Error,
+    > {
         let mut rng = ark_std::test_rng();
 
         let prep_param =
@@ -1223,8 +1231,7 @@ pub mod tests {
             CS1,
             CS2,
             H,
-        >::preprocess(&mut rng, &prep_param)
-        .unwrap();
+        >::preprocess(&mut rng, &prep_param)?;
 
         let z_0 = vec![Fr::from(3_u32)];
         let mut nova =
@@ -1232,11 +1239,10 @@ pub mod tests {
                 &nova_params,
                 F_circuit,
                 z_0.clone(),
-            )
-            .unwrap();
+            )?;
 
         for _ in 0..num_steps {
-            nova.prove_step(&mut rng, vec![], None).unwrap();
+            nova.prove_step(&mut rng, vec![], None)?;
         }
         assert_eq!(Fr::from(num_steps as u32), nova.i);
 
@@ -1244,20 +1250,17 @@ pub mod tests {
         let mut nova_pp_serialized = vec![];
         nova_params
             .0
-            .serialize_compressed(&mut nova_pp_serialized)
-            .unwrap();
+            .serialize_compressed(&mut nova_pp_serialized)?;
         let mut nova_vp_serialized = vec![];
         nova_params
             .1
-            .serialize_compressed(&mut nova_vp_serialized)
-            .unwrap();
+            .serialize_compressed(&mut nova_vp_serialized)?;
 
         // deserialize the Nova params
         let _nova_pp_deserialized =
             ProverParams::<Projective, Projective2, CS1, CS2, H>::deserialize_compressed(
                 &mut nova_pp_serialized.as_slice(),
-            )
-            .unwrap();
+            )?;
         let nova_vp_deserialized = Nova::<
             Projective,
             GVar,
@@ -1272,8 +1275,7 @@ pub mod tests {
             ark_serialize::Compress::Yes,
             ark_serialize::Validate::Yes,
             (), // fcircuit_params
-        )
-        .unwrap();
+        )?;
 
         let ivc_proof = nova.ivc_proof();
 
@@ -1295,15 +1297,13 @@ pub mod tests {
         > as FoldingScheme<Projective,Projective2, CubicFCircuit<Fr>>>::IVCProof::deserialize_compressed(
             ivc_proof_serialized.as_slice()
         )
-        .unwrap();
+        ?;
 
         // verify the deserialized IVCProof with the deserialized VerifierParams
         Nova::<Projective, GVar, Projective2, GVar2, CubicFCircuit<Fr>, CS1, CS2, H>::verify(
             nova_vp_deserialized, // Nova's verifier params
             ivc_proof_deserialized,
-        )
-        .unwrap();
-
-        (z_0, nova)
+        )?;
+        Ok((z_0, nova))
     }
 }

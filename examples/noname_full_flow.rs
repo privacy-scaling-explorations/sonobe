@@ -15,6 +15,7 @@ use noname::backends::r1cs::R1csBn254Field;
 use ark_groth16::Groth16;
 use ark_grumpkin::{constraints::GVar as GVar2, Projective as G2};
 
+use experimental_frontends::noname::NonameFCircuit;
 use folding_schemes::{
     commitment::{kzg::KZG, pedersen::Pedersen},
     folding::{
@@ -26,9 +27,8 @@ use folding_schemes::{
     },
     frontend::FCircuit,
     transcript::poseidon::poseidon_canonical_config,
-    Decider, FoldingScheme,
+    Decider, Error, FoldingScheme,
 };
-use frontends::noname::NonameFCircuit;
 use std::time::Instant;
 
 use solidity_verifiers::{
@@ -38,7 +38,7 @@ use solidity_verifiers::{
     NovaCycleFoldVerifierKey,
 };
 
-fn main() {
+fn main() -> Result<(), Error> {
     const NONAME_CIRCUIT_EXTERNAL_INPUTS: &str =
         "fn main(pub ivc_inputs: [Field; 2], external_inputs: [Field; 2]) -> [Field; 2] {
     let xx = external_inputs[0] + ivc_inputs[0];
@@ -59,7 +59,7 @@ fn main() {
 
     // initialize the noname circuit
     let f_circuit_params = (NONAME_CIRCUIT_EXTERNAL_INPUTS.to_owned(), 2, 2);
-    let f_circuit = NonameFCircuit::<Fr, R1csBn254Field>::new(f_circuit_params).unwrap();
+    let f_circuit = NonameFCircuit::<Fr, R1csBn254Field>::new(f_circuit_params)?;
 
     pub type N = Nova<
         G1,
@@ -87,20 +87,18 @@ fn main() {
 
     // prepare the Nova prover & verifier params
     let nova_preprocess_params = PreprocessorParam::new(poseidon_config, f_circuit.clone());
-    let nova_params = N::preprocess(&mut rng, &nova_preprocess_params).unwrap();
+    let nova_params = N::preprocess(&mut rng, &nova_preprocess_params)?;
 
     // initialize the folding scheme engine, in our case we use Nova
-    let mut nova = N::init(&nova_params, f_circuit.clone(), z_0).unwrap();
+    let mut nova = N::init(&nova_params, f_circuit.clone(), z_0)?;
 
     // prepare the Decider prover & verifier params
-    let (decider_pp, decider_vp) =
-        D::preprocess(&mut rng, nova_params.clone(), nova.clone()).unwrap();
+    let (decider_pp, decider_vp) = D::preprocess(&mut rng, nova_params.clone(), nova.clone())?;
 
     // run n steps of the folding iteration
     for (i, external_inputs_at_step) in external_inputs.iter().enumerate() {
         let start = Instant::now();
-        nova.prove_step(rng, external_inputs_at_step.clone(), None)
-            .unwrap();
+        nova.prove_step(rng, external_inputs_at_step.clone(), None)?;
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
 
@@ -109,11 +107,10 @@ fn main() {
     N::verify(
         nova_params.1, // Nova's verifier params
         ivc_proof,
-    )
-    .unwrap();
+    )?;
 
     let start = Instant::now();
-    let proof = D::prove(rng, decider_pp, nova.clone()).unwrap();
+    let proof = D::prove(rng, decider_pp, nova.clone())?;
     println!("generated Decider proof: {:?}", start.elapsed());
 
     let verified = D::verify(
@@ -124,8 +121,7 @@ fn main() {
         &nova.U_i.get_commitments(),
         &nova.u_i.get_commitments(),
         &proof,
-    )
-    .unwrap();
+    )?;
     assert!(verified);
     println!("Decider proof verification: {}", verified);
 
@@ -141,8 +137,7 @@ fn main() {
         &nova.U_i,
         &nova.u_i,
         proof,
-    )
-    .unwrap();
+    )?;
 
     // prepare the setup params for the solidity verifier
     let nova_cyclefold_vk = NovaCycleFoldVerifierKey::from((decider_vp, f_circuit.state_len()));
@@ -163,9 +158,9 @@ fn main() {
     fs::write(
         "./examples/nova-verifier.sol",
         decider_solidity_code.clone(),
-    )
-    .unwrap();
-    fs::write("./examples/solidity-calldata.calldata", calldata.clone()).unwrap();
+    )?;
+    fs::write("./examples/solidity-calldata.calldata", calldata.clone())?;
     let s = solidity_verifiers::utils::get_formatted_calldata(calldata.clone());
     fs::write("./examples/solidity-calldata.inputs", s.join(",\n")).expect("");
+    Ok(())
 }

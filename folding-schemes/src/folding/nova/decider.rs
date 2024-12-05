@@ -359,7 +359,7 @@ pub mod tests {
     use crate::transcript::poseidon::poseidon_canonical_config;
 
     #[test]
-    fn test_decider() {
+    fn test_decider() -> Result<(), Error> {
         // use Nova as FoldingScheme
         type N = Nova<
             Projective,
@@ -387,32 +387,32 @@ pub mod tests {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
-        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
+        let F_circuit = CubicFCircuit::<Fr>::new(())?;
         let z_0 = vec![Fr::from(3_u32)];
 
         let start = Instant::now();
         let prep_param = PreprocessorParam::new(poseidon_config, F_circuit);
-        let nova_params = N::preprocess(&mut rng, &prep_param).unwrap();
+        let nova_params = N::preprocess(&mut rng, &prep_param)?;
         println!("Nova preprocess, {:?}", start.elapsed());
 
         let start = Instant::now();
-        let mut nova = N::init(&nova_params, F_circuit, z_0.clone()).unwrap();
+        let mut nova = N::init(&nova_params, F_circuit, z_0.clone())?;
         println!("Nova initialized, {:?}", start.elapsed());
         let start = Instant::now();
-        nova.prove_step(&mut rng, vec![], None).unwrap();
+        nova.prove_step(&mut rng, vec![], None)?;
         println!("prove_step, {:?}", start.elapsed());
-        nova.prove_step(&mut rng, vec![], None).unwrap(); // do a 2nd step
+        nova.prove_step(&mut rng, vec![], None)?; // do a 2nd step
 
         let mut rng = rand::rngs::OsRng;
 
         // prepare the Decider prover & verifier params
         let start = Instant::now();
-        let (decider_pp, decider_vp) = D::preprocess(&mut rng, nova_params, nova.clone()).unwrap();
+        let (decider_pp, decider_vp) = D::preprocess(&mut rng, nova_params, nova.clone())?;
         println!("Decider preprocess, {:?}", start.elapsed());
 
         // decider proof generation
         let start = Instant::now();
-        let proof = D::prove(rng, decider_pp, nova.clone()).unwrap();
+        let proof = D::prove(rng, decider_pp, nova.clone())?;
         println!("Decider prove, {:?}", start.elapsed());
 
         // decider proof verification
@@ -425,9 +425,9 @@ pub mod tests {
             &nova.U_i.get_commitments(),
             &nova.u_i.get_commitments(),
             &proof,
-        )
-        .unwrap();
+        )?;
         assert!(verified);
         println!("Decider verify, {:?}", start.elapsed());
+        Ok(())
     }
 }

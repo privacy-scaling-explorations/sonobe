@@ -44,13 +44,15 @@ where
     ));
     group.significance_level(0.1).sample_size(10);
     group.bench_function("prove_step", |b| {
-        b.iter(|| black_box(fs.clone()).prove_step(rng, vec![], None).unwrap())
+        b.iter(|| -> Result<_, _> { black_box(fs.clone()).prove_step(rng, vec![], None) })
     });
 
     // verify the IVCProof
     let ivc_proof = fs.ivc_proof();
     group.bench_function("verify", |b| {
-        b.iter(|| FS::verify(black_box(fs_params.1.clone()), black_box(ivc_proof.clone())).unwrap())
+        b.iter(|| -> Result<_, _> {
+            FS::verify(black_box(fs_params.1.clone()), black_box(ivc_proof.clone()))
+        })
     });
     group.finish();
     Ok(())

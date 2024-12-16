@@ -670,7 +670,11 @@ where
         Ok(ccs)
     }
 
-    /// Returns the cs (ConstraintSystem) and the CCS out of the AugmentedFCircuit
+    /// Returns the cs (ConstraintSystem) and the CCS out of the AugmentedFCircuit.
+    /// Notice that in order to be able to internally call the `extract_r1cs` function, this method
+    /// calls the `cs.finalize` method which consumes a noticeable portion of the time. If the CCS
+    /// is not needed, directly generate the ConstraintSystem without calling the `finalize` method
+    /// will save computing time.
     #[allow(clippy::type_complexity)]
     pub fn compute_cs_ccs(
         &self,
@@ -1429,7 +1433,11 @@ mod tests {
                 cf_U_i = cf_U_i1;
             }
 
-            let (cs, _) = augmented_f_circuit.compute_cs_ccs()?;
+            let cs = ConstraintSystem::<Fr>::new_ref();
+            augmented_f_circuit
+                .clone()
+                .generate_constraints(cs.clone())?;
+            let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
             assert!(cs.is_satisfied()?);
 
             let (r1cs_w_i1, r1cs_x_i1) = extract_w_x::<Fr>(&cs); // includes 1 and public inputs

@@ -6,6 +6,7 @@ use ark_crypto_primitives::sponge::{
 use ark_ec::CurveGroup;
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::prelude::CurveVar;
+use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress, SerializationError};
 use ark_std::{fmt::Debug, marker::PhantomData, rand::RngCore, One, Zero};
 
@@ -427,7 +428,9 @@ where
             cf_cmT: None,
         };
 
-        let (cs, _) = augmented_f_circuit.compute_cs_ccs()?;
+        let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
+        augmented_f_circuit.generate_constraints(cs.clone())?;
+        let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
 
         #[cfg(test)]
         assert!(cs.is_satisfied()?);
@@ -435,7 +438,7 @@ where
         let (r1cs_w_i1, r1cs_x_i1) = extract_w_x::<C1::ScalarField>(&cs); // includes 1 and public inputs
 
         #[cfg(test)]
-        assert_eq!(r1cs_x_i1[0], augmented_f_circuit.x.unwrap());
+        assert_eq!(r1cs_x_i1[0], u_i1_x);
 
         let r1cs_z = [
             vec![C1::ScalarField::one()],
@@ -932,7 +935,9 @@ where
             self.cf_U_i = cf_U_i1;
         }
 
-        let (cs, _) = augmented_f_circuit.compute_cs_ccs()?;
+        let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
+        augmented_f_circuit.generate_constraints(cs.clone())?;
+        let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
 
         #[cfg(test)]
         assert!(cs.is_satisfied()?);

@@ -812,6 +812,12 @@ where
         // This line "converts" `x` from a witness to a public input.
         // Instead of directly modifying the constraint system, we explicitly
         // allocate a public input and enforce that its value is indeed `x`.
+        // While comparing `x` with itself seems redundant, this is necessary
+        // because:
+        // - `.value()` allows an honest prover to extract public inputs without
+        //   computing them outside the circuit.
+        // - `.enforce_equal()` prevents a malicious prover from claiming wrong
+        //   public inputs that are not the honest `x` computed in-circuit.
         FpVar::new_input(cs.clone(), || x.value())?.enforce_equal(&x)?;
 
         // convert rho_bits of the rho_vec to a `NonNativeFieldVar`
@@ -876,6 +882,12 @@ where
         // This line "converts" `cf_x` from a witness to a public input.
         // Instead of directly modifying the constraint system, we explicitly
         // allocate a public input and enforce that its value is indeed `cf_x`.
+        // While comparing `cf_x` with itself seems redundant, this is necessary
+        // because:
+        // - `.value()` allows an honest prover to extract public inputs without
+        //   computing them outside the circuit.
+        // - `.enforce_equal()` prevents a malicious prover from claiming wrong
+        //   public inputs that are not the honest `cf_x` computed in-circuit.
         FpVar::new_input(cs.clone(), || cf_x.value())?.enforce_equal(&cf_x)?;
 
         Ok(z_i1)

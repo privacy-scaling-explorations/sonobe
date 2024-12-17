@@ -77,69 +77,6 @@ impl<F: PrimeField> FCircuit<F> for NoirFCircuit<F> {
         self.external_inputs_len
     }
 
-    fn step_native(
-        &self,
-        _i: usize,
-        z_i: Vec<F>,
-        external_inputs: Vec<F>, // inputs that are not part of the state
-    ) -> Result<Vec<F>, Error> {
-        let mut acvm = ACVM::new(
-            &StubbedBlackBoxSolver,
-            &self.circuit.opcodes,
-            WitnessMap::new(),
-            &[],
-            &[],
-        );
-
-        self.circuit
-            .public_parameters
-            .0
-            .iter()
-            .map(|witness| {
-                let idx: usize = witness.as_usize();
-                let value = z_i[idx].to_string();
-                let witness = AcvmWitness(witness.witness_index());
-                let f = GenericFieldElement::<F>::try_from_str(&value)
-                    .ok_or(SynthesisError::Unsatisfiable)?;
-                acvm.overwrite_witness(witness, f);
-                Ok(())
-            })
-            .collect::<Result<Vec<()>, SynthesisError>>()?;
-
-        // write witness values for external_inputs
-        self.circuit
-            .private_parameters
-            .iter()
-            .map(|witness| {
-                let idx = witness.as_usize() - z_i.len();
-                let value = external_inputs[idx].to_string();
-                let f = GenericFieldElement::<F>::try_from_str(&value)
-                    .ok_or(SynthesisError::Unsatisfiable)?;
-                acvm.overwrite_witness(AcvmWitness(witness.witness_index()), f);
-                Ok(())
-            })
-            .collect::<Result<Vec<()>, SynthesisError>>()?;
-        let _ = acvm.solve();
-
-        let witness_map = acvm.finalize();
-
-        // get the z_{i+1} output state
-        let assigned_z_i1 = self
-            .circuit
-            .return_values
-            .0
-            .iter()
-            .map(|witness| {
-                let noir_field_element = witness_map
-                    .get(witness)
-                    .ok_or(SynthesisError::AssignmentMissing)?;
-                Ok(noir_field_element.into_repr())
-            })
-            .collect::<Result<Vec<F>, SynthesisError>>()?;
-
-        Ok(assigned_z_i1)
-    }
-
     fn generate_step_constraints(
         &self,
         cs: ConstraintSystemRef<F>,
@@ -233,6 +170,7 @@ impl<F: PrimeField> FCircuit<F> for NoirFCircuit<F> {
 #[cfg(test)]
 mod tests {
     use ark_bn254::Fr;
+    use ark_ff::PrimeField;
     use ark_r1cs_std::R1CSVar;
     use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar};
     use ark_relations::r1cs::ConstraintSystem;
@@ -241,20 +179,21 @@ mod tests {
 
     use crate::noir::NoirFCircuit;
 
+    /// Native implementation of `src/noir/test_folder/test_circuit`
+    fn external_inputs_step_native<F: PrimeField>(
+        z_i: Vec<F>,
+        external_inputs: Vec<F>,
+    ) -> Vec<F> {
+        let xx = external_inputs[0] * z_i[0];
+        let yy = external_inputs[1] * z_i[1];
+        vec![xx, yy]
+    }
+
     #[test]
     fn test_step_native() -> Result<(), Error> {
-        let cur_path = env::current_dir()?;
-        let noirfcircuit = NoirFCircuit::new((
-            cur_path
-                .join("src/noir/test_folder/test_circuit/target/test_circuit.json")
-                .into(),
-            2,
-            2,
-        ))?;
         let inputs = vec![Fr::from(2), Fr::from(5)];
-        let res = noirfcircuit.step_native(0, inputs.clone(), inputs);
-        assert!(res.is_ok());
-        assert_eq!(res?, vec![Fr::from(4), Fr::from(25)]);
+        let res = external_inputs_step_native(inputs.clone(), inputs);
+        assert_eq!(res, vec![Fr::from(4), Fr::from(25)]);
         Ok(())
     }
 

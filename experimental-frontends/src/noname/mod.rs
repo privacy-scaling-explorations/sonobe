@@ -47,32 +47,6 @@ impl<F: PrimeField, BF: BackendField> FCircuit<F> for NonameFCircuit<F, BF> {
         self.external_inputs_len
     }
 
-    fn step_native(
-        &self,
-        _i: usize,
-        z_i: Vec<F>,
-        external_inputs: Vec<F>,
-    ) -> Result<Vec<F>, Error> {
-        let wtns_external_inputs =
-            NonameInputs::from((&external_inputs, "external_inputs".to_string()));
-        let wtns_ivc_inputs = NonameInputs::from((&z_i, "ivc_inputs".to_string()));
-
-        let noname_witness = self
-            .circuit
-            .generate_witness(wtns_ivc_inputs.0, wtns_external_inputs.0)
-            .map_err(|e| Error::WitnessCalculationError(e.to_string()))?;
-
-        let z_i1_end_index = z_i.len() + 1;
-        let assigned_z_i1 = (1..z_i1_end_index)
-            .map(|idx| {
-                let value: BigUint = Into::into(noname_witness.witness[idx]);
-                F::from(value)
-            })
-            .collect();
-
-        Ok(assigned_z_i1)
-    }
-
     fn generate_step_constraints(
         &self,
         cs: ConstraintSystemRef<F>,
@@ -117,6 +91,7 @@ impl<F: PrimeField, BF: BackendField> FCircuit<F> for NonameFCircuit<F, BF> {
 mod tests {
 
     use ark_bn254::Fr;
+    use ark_ff::PrimeField;
     use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, R1CSVar};
     use noname::backends::r1cs::R1csBn254Field;
 
@@ -124,6 +99,17 @@ mod tests {
 
     use super::NonameFCircuit;
     use ark_relations::r1cs::ConstraintSystem;
+
+    /// Native implementation of `NONAME_CIRCUIT_EXTERNAL_INPUTS`
+    fn external_inputs_step_native<F: PrimeField>(
+        z_i: Vec<F>,
+        external_inputs: Vec<F>,
+    ) -> Vec<F> {
+        let xx = external_inputs[0] + z_i[0];
+        let yy = external_inputs[1] * z_i[1];
+        assert_eq!(yy, xx);
+        vec![xx, yy]
+    }
 
     const NONAME_CIRCUIT_EXTERNAL_INPUTS: &str =
         "fn main(pub ivc_inputs: [Field; 2], external_inputs: [Field; 2]) -> [Field; 2] {
@@ -158,7 +144,7 @@ mod tests {
             ivc_inputs_var,
             external_inputs_var,
         )?;
-        let z_i1_native = circuit.step_native(0, inputs_public, inputs_private)?;
+        let z_i1_native = external_inputs_step_native(inputs_public, inputs_private);
 
         assert_eq!(z_i1[0].value()?, z_i1_native[0]);
         assert_eq!(z_i1[1].value()?, z_i1_native[1]);

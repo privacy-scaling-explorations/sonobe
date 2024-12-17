@@ -7,8 +7,7 @@ use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as Projective};
 use ark_crypto_primitives::{
     crh::{
         poseidon::constraints::{CRHGadget, CRHParametersVar},
-        poseidon::CRH,
-        CRHScheme, CRHSchemeGadget,
+        CRHSchemeGadget,
     },
     sponge::{poseidon::PoseidonConfig, Absorb},
 };
@@ -88,20 +87,6 @@ where
     fn external_inputs_len(&self) -> usize {
         1
     }
-
-    /// computes the next state value for the step of F for the given z_i and external_inputs
-    /// z_{i+1}
-    fn step_native(
-        &self,
-        _i: usize,
-        z_i: Vec<F>,
-        external_inputs: Vec<F>,
-    ) -> Result<Vec<F>, Error> {
-        let hash_input: [F; 2] = [z_i[0], external_inputs[0]];
-        let h = CRH::<F>::evaluate(&self.poseidon_config, hash_input).unwrap();
-        Ok(vec![h])
-    }
-
     /// generates the constraints and returns the next state value for the step of F for the given
     /// z_i and external_inputs
     fn generate_step_constraints(
@@ -123,8 +108,15 @@ where
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use ark_crypto_primitives::crh::{poseidon::CRH, CRHScheme};
     use ark_r1cs_std::R1CSVar;
     use ark_relations::r1cs::ConstraintSystem;
+
+    fn external_inputs_step_native<F: PrimeField>(z_i: Vec<F>, external_inputs: Vec<F>) -> Vec<F> {
+        let hash_input: [F; 2] = [z_i[0], external_inputs[0]];
+        let h = CRH::<F>::evaluate(&self.poseidon_config, hash_input).unwrap();
+        vec![h]
+    }
 
     // test to check that the ExternalInputsCircuit computes the same values inside and outside the circuit
     #[test]
@@ -137,7 +129,7 @@ pub mod tests {
         let z_i = vec![Fr::from(1_u32)];
         let external_inputs = vec![Fr::from(3_u32)];
 
-        let z_i1 = circuit.step_native(0, z_i.clone(), external_inputs.clone())?;
+        let z_i1 = external_inputs_step_native(z_i.clone(), external_inputs.clone())?;
 
         let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i))?;
         let external_inputsVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(external_inputs))?;

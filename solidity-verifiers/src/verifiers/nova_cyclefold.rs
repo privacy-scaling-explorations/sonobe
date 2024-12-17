@@ -208,14 +208,6 @@ mod tests {
         fn external_inputs_len(&self) -> usize {
             0
         }
-        fn step_native(
-            &self,
-            _i: usize,
-            z_i: Vec<F>,
-            _external_inputs: Vec<F>,
-        ) -> Result<Vec<F>, Error> {
-            Ok(vec![z_i[0] * z_i[0] * z_i[0] + z_i[0] + F::from(5_u32)])
-        }
         fn generate_step_constraints(
             &self,
             cs: ConstraintSystemRef<F>,
@@ -251,24 +243,6 @@ mod tests {
         fn external_inputs_len(&self) -> usize {
             0
         }
-
-        /// computes the next state values in place, assigning z_{i+1} into z_i, and computing the new
-        /// z_{i+1}
-        fn step_native(
-            &self,
-            _i: usize,
-            z_i: Vec<F>,
-            _external_inputs: Vec<F>,
-        ) -> Result<Vec<F>, Error> {
-            let a = z_i[0] + F::from(4_u32);
-            let b = z_i[1] + F::from(40_u32);
-            let c = z_i[2] * F::from(4_u32);
-            let d = z_i[3] * F::from(40_u32);
-            let e = z_i[4] + F::from(100_u32);
-
-            Ok(vec![a, b, c, d, e])
-        }
-
         /// generates the constraints for the step of F for the given z_i
         fn generate_step_constraints(
             &self,

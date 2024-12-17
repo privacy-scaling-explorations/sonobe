@@ -40,24 +40,6 @@ impl<F: PrimeField> FCircuit<F> for MultiInputsFCircuit<F> {
     fn external_inputs_len(&self) -> usize {
         0
     }
-
-    /// computes the next state values in place, assigning z_{i+1} into z_i, and computing the new
-    /// z_{i+1}
-    fn step_native(
-        &self,
-        _i: usize,
-        z_i: Vec<F>,
-        _external_inputs: Vec<F>,
-    ) -> Result<Vec<F>, Error> {
-        let a = z_i[0] + F::from(4_u32);
-        let b = z_i[1] + F::from(40_u32);
-        let c = z_i[2] * F::from(4_u32);
-        let d = z_i[3] * F::from(40_u32);
-        let e = z_i[4] + F::from(100_u32);
-
-        Ok(vec![a, b, c, d, e])
-    }
-
     /// generates the constraints for the step of F for the given z_i
     fn generate_step_constraints(
         &self,
@@ -86,6 +68,16 @@ pub mod tests {
     use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
     use ark_relations::r1cs::ConstraintSystem;
 
+    fn multi_inputs_step_native<F: PrimeField>(z_i: Vec<F>) -> Vec<F> {
+        let a = z_i[0] + F::from(4_u32);
+        let b = z_i[1] + F::from(40_u32);
+        let c = z_i[2] * F::from(4_u32);
+        let d = z_i[3] * F::from(40_u32);
+        let e = z_i[4] + F::from(100_u32);
+
+        vec![a, b, c, d, e]
+    }
+
     // test to check that the MultiInputsFCircuit computes the same values inside and outside the circuit
     #[test]
     fn test_f_circuit() -> Result<(), Error> {
@@ -100,7 +92,7 @@ pub mod tests {
             Fr::from(1_u32),
         ];
 
-        let z_i1 = circuit.step_native(0, z_i.clone(), vec![])?;
+        let z_i1 = multi_inputs_step_native(z_i.clone())?;
 
         let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i))?;
         let computed_z_i1Var =

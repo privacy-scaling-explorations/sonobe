@@ -24,17 +24,6 @@ pub trait FCircuit<F: PrimeField>: Clone + Debug {
     /// are optional, and in case no external inputs are used, this method should return 0.
     fn external_inputs_len(&self) -> usize;
 
-    /// computes the next state values in place, assigning z_{i+1} into z_i, and computing the new
-    /// z_{i+1}
-    fn step_native(
-        // this method uses self, so that each FCircuit implementation (and different frontends)
-        // can hold a state if needed to store data to compute the next state.
-        &self,
-        i: usize,
-        z_i: Vec<F>,
-        external_inputs: Vec<F>, // inputs that are not part of the state
-    ) -> Result<Vec<F>, Error>;
-
     /// generates the constraints for the step of F for the given z_i
     fn generate_step_constraints(
         // this method uses self, so that each FCircuit implementation (and different frontends)
@@ -53,7 +42,7 @@ pub mod tests {
     use ark_bn254::Fr;
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 
-    use utils::{CubicFCircuit, CustomFCircuit, WrapperCircuit};
+    use utils::{custom_step_native, CubicFCircuit, CustomFCircuit, WrapperCircuit};
 
     #[test]
     fn test_testfcircuit() -> Result<(), Error> {
@@ -79,7 +68,7 @@ pub mod tests {
         let wrapper_circuit = WrapperCircuit::<Fr, CustomFCircuit<Fr>> {
             FC: custom_circuit,
             z_i: Some(z_i.clone()),
-            z_i1: Some(custom_circuit.step_native(0, z_i, vec![])?),
+            z_i1: Some(custom_step_native(z_i, n_constraints)),
         };
         wrapper_circuit.generate_constraints(cs.clone())?;
         assert_eq!(cs.num_constraints(), n_constraints);

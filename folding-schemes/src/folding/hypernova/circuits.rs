@@ -920,7 +920,7 @@ mod tests {
             },
             traits::CommittedInstanceOps,
         },
-        frontend::utils::CubicFCircuit,
+        frontend::utils::{cubic_step_native, CubicFCircuit},
         transcript::poseidon::poseidon_canonical_config,
     };
 
@@ -1272,7 +1272,7 @@ mod tests {
             let all_Ws = [vec![W_i.clone()], Ws].concat();
             let all_ws = [vec![w_i.clone()], ws].concat();
 
-            let z_i1 = F_circuit.step_native(i, z_i.clone(), vec![])?;
+            let z_i1 = cubic_step_native(z_i.clone());
 
             let (U_i1, W_i1);
 

@@ -8,28 +8,9 @@ use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisE
 use ark_std::fmt::Debug;
 use folding_schemes::{frontend::FCircuit, utils::PathOrBin, Error};
 use num_bigint::BigInt;
-use std::fmt;
-use std::rc::Rc;
 
 pub mod utils;
 use utils::CircomWrapper;
-
-type ClosurePointer<F> = Rc<dyn Fn(usize, Vec<F>, Vec<F>) -> Result<Vec<F>, Error>>;
-
-#[derive(Clone)]
-struct CustomStepNative<F: PrimeField> {
-    func: ClosurePointer<F>,
-}
-
-impl<F: PrimeField> fmt::Debug for CustomStepNative<F> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Function pointer: {:?}",
-            std::any::type_name::<fn(usize, Vec<F>, Vec<F>) -> Result<Vec<F>, Error>>()
-        )
-    }
-}
 
 /// Define CircomFCircuit
 #[derive(Clone, Debug)]
@@ -38,55 +19,6 @@ pub struct CircomFCircuit<F: PrimeField> {
     pub state_len: usize,
     pub external_inputs_len: usize,
     r1cs: CircomR1CS<F>,
-    custom_step_native_code: Option<CustomStepNative<F>>,
-}
-
-impl<F: PrimeField> CircomFCircuit<F> {
-    pub fn set_custom_step_native(&mut self, func: ClosurePointer<F>) {
-        self.custom_step_native_code = Some(CustomStepNative::<F> { func });
-    }
-
-    pub fn execute_custom_step_native(
-        &self,
-        _i: usize,
-        z_i: Vec<F>,
-        external_inputs: Vec<F>,
-    ) -> Result<Vec<F>, Error> {
-        if let Some(code) = &self.custom_step_native_code {
-            (code.func)(_i, z_i, external_inputs)
-        } else {
-            #[cfg(test)]
-            assert_eq!(z_i.len(), self.state_len());
-            #[cfg(test)]
-            assert_eq!(external_inputs.len(), self.external_inputs_len());
-
-            let inputs_bi = z_i
-                .iter()
-                .map(|val| self.circom_wrapper.ark_primefield_to_num_bigint(*val))
-                .collect::<Vec<BigInt>>();
-            let mut inputs_map = vec![("ivc_input".to_string(), inputs_bi)];
-
-            if self.external_inputs_len() > 0 {
-                let external_inputs_bi = external_inputs
-                    .iter()
-                    .map(|val| self.circom_wrapper.ark_primefield_to_num_bigint(*val))
-                    .collect::<Vec<BigInt>>();
-                inputs_map.push(("external_inputs".to_string(), external_inputs_bi));
-            }
-
-            // Computes witness
-            let witness = self
-                .circom_wrapper
-                .extract_witness(&inputs_map)
-                .map_err(|e| {
-                    Error::WitnessCalculationError(format!("Failed to calculate witness: {}", e))
-                })?;
-
-            // Extracts the z_i1(next state) from the witness vector.
-            let z_i1 = witness[1..1 + self.state_len()].to_vec();
-            Ok(z_i1)
-        }
-    }
 }
 
 impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
@@ -103,7 +35,6 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
             state_len,
             external_inputs_len,
             r1cs,
-            custom_step_native_code: None,
         })
     }
 
@@ -112,15 +43,6 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
     }
     fn external_inputs_len(&self) -> usize {
         self.external_inputs_len
-    }
-
-    fn step_native(
-        &self,
-        _i: usize,
-        z_i: Vec<F>,
-        external_inputs: Vec<F>,
-    ) -> Result<Vec<F>, Error> {
-        self.execute_custom_step_native(_i, z_i, external_inputs)
     }
 
     fn generate_step_constraints(
@@ -208,18 +130,35 @@ pub mod tests {
     use ark_relations::r1cs::ConstraintSystem;
     use std::path::PathBuf;
 
+    /// Native implementation of `src/circom/test_folder/cubic_circuit.r1cs`
+    fn cubic_step_native<F: PrimeField>(z_i: Vec<F>) -> Vec<F> {
+        let z = z_i[0];
+        vec![z * z * z + z + F::from(5)]
+    }
+
+    /// Native implementation of `src/circom/test_folder/with_external_inputs.r1cs`
+    fn external_inputs_step_native<F: PrimeField>(z_i: Vec<F>, external_inputs: Vec<F>) -> Vec<F> {
+        let temp1 = z_i[0] * z_i[0];
+        let temp2 = z_i[0] * external_inputs[0];
+        vec![temp1 * z_i[0] + temp2 + external_inputs[1]]
+    }
+
+    /// Native implementation of `src/circom/test_folder/no_external_inputs.r1cs`
+    fn no_external_inputs_step_native<F: PrimeField>(z_i: Vec<F>) -> Vec<F> {
+        let temp1 = z_i[0] * z_i[1];
+        let temp2 = temp1 * z_i[2];
+        vec![
+            temp1 * z_i[0],
+            temp1 * z_i[1] + temp1,
+            temp1 * z_i[2] + temp2,
+        ]
+    }
+
     // Tests the step_native function of CircomFCircuit.
     #[test]
     fn test_circom_step_native() -> Result<(), Error> {
-        let r1cs_path = PathBuf::from("./src/circom/test_folder/cubic_circuit.r1cs");
-        let wasm_path =
-            PathBuf::from("./src/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
-
-        let circom_fcircuit =
-            CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 1, 0))?; // state_len:1, external_inputs_len:0
-
         let z_i = vec![Fr::from(3u32)];
-        let z_i1 = circom_fcircuit.step_native(1, z_i, vec![])?;
+        let z_i1 = cubic_step_native(z_i);
         assert_eq!(z_i1, vec![Fr::from(35u32)]);
         Ok(())
     }
@@ -259,7 +198,7 @@ pub mod tests {
         let wrapper_circuit = folding_schemes::frontend::utils::WrapperCircuit {
             FC: circom_fcircuit.clone(),
             z_i: Some(z_i.clone()),
-            z_i1: Some(circom_fcircuit.step_native(0, z_i.clone(), vec![])?),
+            z_i1: Some(cubic_step_native(z_i)),
         };
 
         let cs = ConstraintSystem::<Fr>::new_ref();
@@ -282,7 +221,7 @@ pub mod tests {
         let external_inputs = vec![Fr::from(6u32), Fr::from(7u32)];
 
         // run native step
-        let z_i1_native = circom_fcircuit.step_native(1, z_i.clone(), external_inputs.clone())?;
+        let z_i1_native = external_inputs_step_native(z_i.clone(), external_inputs.clone());
 
         // run gadget step
         let z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i))?;
@@ -327,7 +266,7 @@ pub mod tests {
         let z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i.clone()))?;
 
         // run native step
-        let z_i1_native = circom_fcircuit.step_native(1, z_i.clone(), vec![])?;
+        let z_i1_native = no_external_inputs_step_native(z_i.clone());
 
         // run gadget step
         let z_i1_var = circom_fcircuit.generate_step_constraints(cs.clone(), 1, z_i_var, vec![])?;
@@ -352,20 +291,15 @@ pub mod tests {
         let wasm_path =
             PathBuf::from("./src/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
-        let mut circom_fcircuit =
+        let circom_fcircuit =
             CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 1, 0))?; // state_len:1, external_inputs_len:0
-
-        circom_fcircuit.set_custom_step_native(Rc::new(|_i, z_i, _external| {
-            let z = z_i[0];
-            Ok(vec![z * z * z + z + Fr::from(5)])
-        }));
 
         // Allocates z_i1 by using step_native function.
         let z_i = vec![Fr::from(3_u32)];
         let wrapper_circuit = folding_schemes::frontend::utils::WrapperCircuit {
             FC: circom_fcircuit.clone(),
             z_i: Some(z_i.clone()),
-            z_i1: Some(circom_fcircuit.step_native(0, z_i.clone(), vec![])?),
+            z_i1: Some(cubic_step_native(z_i)),
         };
 
         let cs = ConstraintSystem::<Fr>::new_ref();

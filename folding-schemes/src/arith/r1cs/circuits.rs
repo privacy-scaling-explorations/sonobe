@@ -126,7 +126,9 @@ pub mod tests {
         },
     };
     use crate::frontend::{
-        utils::{CubicFCircuit, CustomFCircuit, WrapperCircuit},
+        utils::{
+            cubic_step_native, custom_step_native, CubicFCircuit, CustomFCircuit, WrapperCircuit,
+        },
         FCircuit,
     };
     use crate::Error;
@@ -209,7 +211,7 @@ pub mod tests {
         let circuit = WrapperCircuit::<Fr, CubicFCircuit<Fr>> {
             FC: cubic_circuit,
             z_i: Some(z_i.clone()),
-            z_i1: Some(cubic_circuit.step_native(0, z_i, vec![])?),
+            z_i1: Some(cubic_step_native(z_i)),
         };
 
         test_relaxed_r1cs_gadget(circuit)
@@ -253,25 +255,26 @@ pub mod tests {
         let circuit = WrapperCircuit::<Fr, CustomFCircuit<Fr>> {
             FC: custom_circuit,
             z_i: Some(z_i.clone()),
-            z_i1: Some(custom_circuit.step_native(0, z_i, vec![])?),
+            z_i1: Some(custom_step_native(z_i, n_constraints)),
         };
         test_relaxed_r1cs_gadget(circuit)
     }
 
     #[test]
     fn test_relaxed_r1cs_nonnative_circuit() -> Result<(), Error> {
+        let n_constraints = 10;
         let rng = &mut thread_rng();
 
         let cs = ConstraintSystem::<Fq>::new_ref();
         // in practice we would use CycleFoldCircuit, but is a very big circuit (when computed
         // non-natively inside the RelaxedR1CS circuit), so in order to have a short test we use a
         // custom circuit.
-        let custom_circuit = CustomFCircuit::<Fq>::new(10)?;
+        let custom_circuit = CustomFCircuit::<Fq>::new(n_constraints)?;
         let z_i = vec![Fq::from(5_u32)];
         let circuit = WrapperCircuit::<Fq, CustomFCircuit<Fq>> {
             FC: custom_circuit,
             z_i: Some(z_i.clone()),
-            z_i1: Some(custom_circuit.step_native(0, z_i, vec![])?),
+            z_i1: Some(custom_step_native(z_i, n_constraints)),
         };
         circuit.generate_constraints(cs.clone())?;
         cs.finalize();

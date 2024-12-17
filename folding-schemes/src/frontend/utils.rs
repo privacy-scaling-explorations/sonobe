@@ -33,14 +33,6 @@ impl<F: PrimeField> FCircuit<F> for DummyCircuit {
     fn external_inputs_len(&self) -> usize {
         self.external_inputs_len
     }
-    fn step_native(
-        &self,
-        _i: usize,
-        _z_i: Vec<F>,
-        _external_inputs: Vec<F>,
-    ) -> Result<Vec<F>, Error> {
-        Ok(vec![F::zero(); self.state_len])
-    }
     fn generate_step_constraints(
         &self,
         cs: ConstraintSystemRef<F>,
@@ -74,14 +66,6 @@ impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
     fn external_inputs_len(&self) -> usize {
         0
     }
-    fn step_native(
-        &self,
-        _i: usize,
-        z_i: Vec<F>,
-        _external_inputs: Vec<F>,
-    ) -> Result<Vec<F>, Error> {
-        Ok(vec![z_i[0] * z_i[0] * z_i[0] + z_i[0] + F::from(5_u32)])
-    }
     fn generate_step_constraints(
         &self,
         cs: ConstraintSystemRef<F>,
@@ -94,6 +78,13 @@ impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
 
         Ok(vec![&z_i * &z_i * &z_i + &z_i + &five])
     }
+}
+
+/// Native implementation of `CubicFCircuit`
+#[cfg(test)]
+pub fn cubic_step_native<F: PrimeField>(z_i: Vec<F>) -> Vec<F> {
+    let z = z_i[0];
+    vec![z * z * z + z + F::from(5)]
 }
 
 /// CustomFCircuit is a circuit that has the number of constraints specified in the
@@ -119,18 +110,6 @@ impl<F: PrimeField> FCircuit<F> for CustomFCircuit<F> {
     fn external_inputs_len(&self) -> usize {
         0
     }
-    fn step_native(
-        &self,
-        _i: usize,
-        z_i: Vec<F>,
-        _external_inputs: Vec<F>,
-    ) -> Result<Vec<F>, Error> {
-        let mut z_i1 = z_i[0];
-        for _ in 0..self.n_constraints - 1 {
-            z_i1 = z_i1.square();
-        }
-        Ok(vec![z_i1])
-    }
     fn generate_step_constraints(
         &self,
         _cs: ConstraintSystemRef<F>,
@@ -145,6 +124,16 @@ impl<F: PrimeField> FCircuit<F> for CustomFCircuit<F> {
 
         Ok(vec![z_i1])
     }
+}
+
+/// Native implementation of `CubicFCircuit`
+#[cfg(test)]
+pub fn custom_step_native<F: PrimeField>(z_i: Vec<F>, n_constraints: usize) -> Vec<F> {
+    let mut z_i1 = z_i[0];
+    for _ in 0..n_constraints - 1 {
+        z_i1 = z_i1.square();
+    }
+    vec![z_i1]
 }
 
 /// WrapperCircuit is a circuit that wraps any circuit that implements the FCircuit trait. This

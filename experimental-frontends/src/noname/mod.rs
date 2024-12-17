@@ -101,10 +101,7 @@ mod tests {
     use ark_relations::r1cs::ConstraintSystem;
 
     /// Native implementation of `NONAME_CIRCUIT_EXTERNAL_INPUTS`
-    fn external_inputs_step_native<F: PrimeField>(
-        z_i: Vec<F>,
-        external_inputs: Vec<F>,
-    ) -> Vec<F> {
+    fn external_inputs_step_native<F: PrimeField>(z_i: Vec<F>, external_inputs: Vec<F>) -> Vec<F> {
         let xx = external_inputs[0] + z_i[0];
         let yy = external_inputs[1] * z_i[1];
         assert_eq!(yy, xx);

@@ -860,31 +860,7 @@ where
         let i_bn: BigUint = self.i.into();
         let i_usize: usize = i_bn.try_into().map_err(|_| Error::MaxStep)?;
 
-        let z_i1 = self
-            .F
-            .step_native(i_usize, self.z_i.clone(), external_inputs.clone())?;
-
-        // folded instance output (public input, x)
-        // u_{i+1}.x[0] = H(i+1, z_0, z_{i+1}, U_{i+1})
-        let u_i1_x: C1::ScalarField;
-        // u_{i+1}.x[1] = H(cf_U_{i+1})
-        let cf_u_i1_x: C1::ScalarField;
-
         if self.i.is_zero() {
-            // Take extra care of the base case
-            // `U_{i+1}` (i.e., `U_1`) is fixed to `U_dummy`, so we just use
-            // `self.U_i = U_0 = U_dummy`.
-            u_i1_x = self.U_i.hash(
-                &sponge,
-                self.pp_hash,
-                self.i + C1::ScalarField::one(),
-                &self.z_0,
-                &z_i1,
-            );
-            // `cf_U_{i+1}` (i.e., `cf_U_1`) is fixed to `cf_U_dummy`, so we
-            // just use `self.cf_U_i = cf_U_0 = cf_U_dummy`.
-            cf_u_i1_x = self.cf_U_i.hash_cyclefold(&sponge, self.pp_hash);
-
             augmented_F_circuit = AugmentedFCircuit::empty(
                 &self.poseidon_config,
                 self.F.clone(),
@@ -979,16 +955,6 @@ where
                 &mut rng,
             )?;
 
-            // Derive `u_{i+1}.x[0], u_{i+1}.x[1]` by hashing folded instances
-            u_i1_x = U_i1.hash(
-                &sponge,
-                self.pp_hash,
-                self.i + C1::ScalarField::one(),
-                &self.z_0,
-                &z_i1,
-            );
-            cf_u_i1_x = cf_U_i1.hash_cyclefold(&sponge, self.pp_hash);
-
             augmented_F_circuit = AugmentedFCircuit {
                 _gc2: PhantomData,
                 poseidon_config: self.poseidon_config.clone(),
@@ -1005,14 +971,12 @@ where
                 K_coeffs: proof.K_coeffs.clone(),
                 phi_stars: aux.phi_stars,
                 F: self.F.clone(),
-                x: Some(u_i1_x),
                 // cyclefold values
                 cf1_u_i_cmW: cf1_u_i.cmW,
                 cf2_u_i_cmW: cf2_u_i.cmW,
                 cf_U_i: self.cf_U_i.clone(),
                 cf1_cmT,
                 cf2_cmT,
-                cf_x: Some(cf_u_i1_x),
             };
 
             #[cfg(test)]
@@ -1042,16 +1006,15 @@ where
 
         let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
 
-        augmented_F_circuit.generate_constraints(cs.clone())?;
+        let z_i1 = augmented_F_circuit
+            .compute_next_state(cs.clone())?
+            .value()?;
 
         #[cfg(test)]
         assert!(cs.is_satisfied()?);
 
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
         let (w_i1, x_i1) = extract_w_x::<C1::ScalarField>(&cs);
-        if x_i1[0] != u_i1_x || x_i1[1] != cf_u_i1_x {
-            return Err(Error::NotEqual);
-        }
 
         #[cfg(test)]
         if x_i1.len() != 2 {

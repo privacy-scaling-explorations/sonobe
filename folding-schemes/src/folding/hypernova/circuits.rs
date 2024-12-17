@@ -505,13 +505,11 @@ pub struct AugmentedFCircuit<
     pub(super) us: Option<Vec<CCCS<C1>>>, // other u_i's to be folded that are not the main incoming instance
     pub(super) U_i1_C: Option<C1>,        // U_{i+1}.C
     pub(super) F: FC,                     // F circuit
-    pub(super) x: Option<CF1<C1>>,        // public input (u_{i+1}.x[0])
     pub(super) nimfs_proof: Option<NIMFSProof<C1>>,
 
     // cyclefold verifier on C1
     pub(super) cf_u_i_cmW: Option<C2>, // input, cf_u_i.cmW
     pub(super) cf_U_i: Option<CycleFoldCommittedInstance<C2>>, // input, RelaxedR1CS CycleFold instance
-    pub(super) cf_x: Option<CF1<C1>>,                          // public input (cf_u_{i+1}.x[1])
     pub(super) cf_cmT: Option<C2>,
 }
 
@@ -552,11 +550,9 @@ where
             us: None,
             U_i1_C: None,
             F: F_circuit,
-            x: None,
             nimfs_proof: None,
             cf_u_i_cmW: None,
             cf_U_i: None,
-            cf_x: None,
             cf_cmT: None,
         })
     }
@@ -642,12 +638,10 @@ where
                 us: Some(us),
                 U_i1_C: Some(U_i1.C),
                 F: self.F.clone(),
-                x: Some(C1::ScalarField::zero()),
                 nimfs_proof: Some(nimfs_proof),
                 // cyclefold values
                 cf_u_i_cmW: None,
                 cf_U_i: None,
-                cf_x: None,
                 cf_cmT: None,
             };
 
@@ -690,20 +684,18 @@ where
     }
 }
 
-impl<C1, C2, GC2, FC, const MU: usize, const NU: usize> ConstraintSynthesizer<CF1<C1>>
-    for AugmentedFCircuit<C1, C2, GC2, FC, MU, NU>
+impl<C1, C2, GC2, FC, const MU: usize, const NU: usize> AugmentedFCircuit<C1, C2, GC2, FC, MU, NU>
 where
-    C1: CurveGroup,
+    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     C2: CurveGroup,
     GC2: CurveVar<C2, CF2<C2>>,
     FC: FCircuit<CF1<C1>>,
-    <C1 as CurveGroup>::BaseField: PrimeField,
-    <C2 as CurveGroup>::BaseField: PrimeField,
-    C1::ScalarField: Absorb,
-    C2::ScalarField: Absorb,
-    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2::BaseField: PrimeField + Absorb,
 {
-    fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
+    pub fn compute_next_state(
+        self,
+        cs: ConstraintSystemRef<CF1<C1>>,
+    ) -> Result<Vec<FpVar<CF1<C1>>>, SynthesisError> {
         let pp_hash = FpVar::<CF1<C1>>::new_witness(cs.clone(), || {
             Ok(self.pp_hash.unwrap_or_else(CF1::<C1>::zero))
         })?;
@@ -816,8 +808,11 @@ where
             &z_0,
             &z_i1,
         )?;
-        let x = FpVar::new_input(cs.clone(), || Ok(self.x.unwrap_or(u_i1_x_base.value()?)))?;
-        x.enforce_equal(&is_basecase.select(&u_i1_x_base, &u_i1_x)?)?;
+        let x = is_basecase.select(&u_i1_x_base, &u_i1_x)?;
+        // This line "converts" `x` from a witness to a public input.
+        // Instead of directly modifying the constraint system, we explicitly
+        // allocate a public input and enforce that its value is indeed `x`.
+        FpVar::new_input(cs.clone(), || x.value())?.enforce_equal(&x)?;
 
         // convert rho_bits of the rho_vec to a `NonNativeFieldVar`
         let mut rho_bits_resized = rho_bits.clone();
@@ -877,12 +872,27 @@ where
         let (cf_u_i1_x_base, _) =
             CycleFoldCommittedInstanceVar::<C2, GC2>::new_constant(cs.clone(), cf_u_dummy)?
                 .hash(&sponge, pp_hash)?;
-        let cf_x = FpVar::new_input(cs.clone(), || {
-            Ok(self.cf_x.unwrap_or(cf_u_i1_x_base.value()?))
-        })?;
-        cf_x.enforce_equal(&is_basecase.select(&cf_u_i1_x_base, &cf_u_i1_x)?)?;
+        let cf_x = is_basecase.select(&cf_u_i1_x_base, &cf_u_i1_x)?;
+        // This line "converts" `cf_x` from a witness to a public input.
+        // Instead of directly modifying the constraint system, we explicitly
+        // allocate a public input and enforce that its value is indeed `cf_x`.
+        FpVar::new_input(cs.clone(), || cf_x.value())?.enforce_equal(&cf_x)?;
 
-        Ok(())
+        Ok(z_i1)
+    }
+}
+
+impl<C1, C2, GC2, FC, const MU: usize, const NU: usize> ConstraintSynthesizer<CF1<C1>>
+    for AugmentedFCircuit<C1, C2, GC2, FC, MU, NU>
+where
+    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: CurveGroup,
+    GC2: CurveVar<C2, CF2<C2>>,
+    FC: FCircuit<CF1<C1>>,
+    C2::BaseField: PrimeField + Absorb,
+{
+    fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
+        self.compute_next_state(cs).map(|_| ())
     }
 }
 
@@ -1267,15 +1277,18 @@ mod tests {
 
             let (U_i1, W_i1);
 
+            let u_i1_x;
+            let cf_u_i1_x;
+
             if i == 0 {
                 W_i1 = Witness::<Fr>::dummy(&ccs);
                 U_i1 = LCCCS::dummy(&ccs);
 
-                let u_i1_x = U_i1.hash(&sponge, pp_hash, Fr::one(), &z_0, &z_i1);
+                u_i1_x = U_i1.hash(&sponge, pp_hash, Fr::one(), &z_0, &z_i1);
 
                 // hash the initial (dummy) CycleFold instance, which is used as the 2nd public
                 // input in the AugmentedFCircuit
-                let cf_u_i1_x = cf_U_i.hash_cyclefold(&sponge, pp_hash);
+                cf_u_i1_x = cf_U_i.hash_cyclefold(&sponge, pp_hash);
 
                 augmented_f_circuit = AugmentedFCircuit::<
                     Projective,
@@ -1301,13 +1314,11 @@ mod tests {
                     us: Some(us.clone()),
                     U_i1_C: Some(U_i1.C),
                     F: F_circuit,
-                    x: Some(u_i1_x),
                     nimfs_proof: None,
 
                     // cyclefold values
                     cf_u_i_cmW: None,
                     cf_U_i: None,
-                    cf_x: Some(cf_u_i1_x),
                     cf_cmT: None,
                 };
             } else {
@@ -1327,7 +1338,7 @@ mod tests {
                 // sanity check: check the folded instance relation
                 ccs.check_relation(&W_i1, &U_i1)?;
 
-                let u_i1_x = U_i1.hash(&sponge, pp_hash, iFr + Fr::one(), &z_0, &z_i1);
+                u_i1_x = U_i1.hash(&sponge, pp_hash, iFr + Fr::one(), &z_0, &z_i1);
 
                 let rho_bits = rho.into_bigint().to_bits_le()[..NOVA_N_BITS_RO].to_vec();
                 let rho_Fq = Fq::from_bigint(BigInteger::from_bits_le(&rho_bits))
@@ -1392,7 +1403,7 @@ mod tests {
 
                 // hash the CycleFold folded instance, which is used as the 2nd public input in the
                 // AugmentedFCircuit
-                let cf_u_i1_x = cf_U_i1.hash_cyclefold(&sponge, pp_hash);
+                cf_u_i1_x = cf_U_i1.hash_cyclefold(&sponge, pp_hash);
 
                 augmented_f_circuit = AugmentedFCircuit::<
                     Projective,
@@ -1418,13 +1429,11 @@ mod tests {
                     us: Some(us.clone()),
                     U_i1_C: Some(U_i1.C),
                     F: F_circuit,
-                    x: Some(u_i1_x),
                     nimfs_proof: Some(nimfs_proof),
 
                     // cyclefold values
                     cf_u_i_cmW: Some(cf_u_i.cmW),
                     cf_U_i: Some(cf_U_i),
-                    cf_x: Some(cf_u_i1_x),
                     cf_cmT: Some(cf_cmT),
                 };
 
@@ -1441,7 +1450,7 @@ mod tests {
             assert!(cs.is_satisfied()?);
 
             let (r1cs_w_i1, r1cs_x_i1) = extract_w_x::<Fr>(&cs); // includes 1 and public inputs
-            assert_eq!(r1cs_x_i1[0], augmented_f_circuit.x.unwrap());
+            assert_eq!(r1cs_x_i1[0], u_i1_x);
             let r1cs_z = [vec![Fr::one()], r1cs_x_i1.clone(), r1cs_w_i1.clone()].concat();
             // compute committed instances, w_{i+1}, u_{i+1}, which will be used as w_i, u_i, so we
             // assign them directly to w_i, u_i.
@@ -1455,8 +1464,8 @@ mod tests {
             // sanity checks
             assert_eq!(w_i.w, r1cs_w_i1);
             assert_eq!(u_i.x, r1cs_x_i1);
-            assert_eq!(u_i.x[0], augmented_f_circuit.x.unwrap());
-            assert_eq!(u_i.x[1], augmented_f_circuit.cf_x.unwrap());
+            assert_eq!(u_i.x[0], u_i1_x);
+            assert_eq!(u_i.x[1], cf_u_i1_x);
             let expected_u_i1_x = U_i1.hash(&sponge, pp_hash, iFr + Fr::one(), &z_0, &z_i1);
             let expected_cf_U_i1_x = cf_U_i.hash_cyclefold(&sponge, pp_hash);
             // u_i is already u_i1 at this point, check that has the expected value at x[0]

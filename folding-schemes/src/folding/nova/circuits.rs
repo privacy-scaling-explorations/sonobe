@@ -69,8 +69,7 @@ pub struct AugmentedFCircuit<
     pub(super) U_i1_cmE: Option<C1>,
     pub(super) U_i1_cmW: Option<C1>,
     pub(super) cmT: Option<C1>,
-    pub(super) F: FC,              // F circuit
-    pub(super) x: Option<CF1<C1>>, // public input (u_{i+1}.x[0])
+    pub(super) F: FC, // F circuit
 
     // cyclefold verifier on C1
     // Here 'cf1, cf2' are for each of the CycleFold circuits, corresponding to the fold of cmW and
@@ -80,7 +79,6 @@ pub struct AugmentedFCircuit<
     pub(super) cf_U_i: Option<CycleFoldCommittedInstance<C2>>, // input
     pub(super) cf1_cmT: Option<C2>,
     pub(super) cf2_cmT: Option<C2>,
-    pub(super) cf_x: Option<CF1<C1>>, // public input (u_{i+1}.x[1])
 }
 
 impl<C1: CurveGroup, C2: CurveGroup, GC2: CurveVar<C2, CF2<C2>>, FC: FCircuit<CF1<C1>>>
@@ -102,31 +100,28 @@ impl<C1: CurveGroup, C2: CurveGroup, GC2: CurveVar<C2, CF2<C2>>, FC: FCircuit<CF
             U_i1_cmW: None,
             cmT: None,
             F: F_circuit,
-            x: None,
             // cyclefold values
             cf1_u_i_cmW: None,
             cf2_u_i_cmW: None,
             cf_U_i: None,
             cf1_cmT: None,
             cf2_cmT: None,
-            cf_x: None,
         }
     }
 }
 
-impl<C1, C2, GC2, FC> ConstraintSynthesizer<CF1<C1>> for AugmentedFCircuit<C1, C2, GC2, FC>
+impl<C1, C2, GC2, FC> AugmentedFCircuit<C1, C2, GC2, FC>
 where
-    C1: CurveGroup,
+    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     C2: CurveGroup,
     GC2: CurveVar<C2, CF2<C2>>,
     FC: FCircuit<CF1<C1>>,
-    <C1 as CurveGroup>::BaseField: PrimeField,
-    <C2 as CurveGroup>::BaseField: PrimeField,
-    C1::ScalarField: Absorb,
-    C2::ScalarField: Absorb,
-    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2::BaseField: PrimeField + Absorb,
 {
-    fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
+    pub fn compute_next_state(
+        self,
+        cs: ConstraintSystemRef<CF1<C1>>,
+    ) -> Result<Vec<FpVar<CF1<C1>>>, SynthesisError> {
         let pp_hash = FpVar::<CF1<C1>>::new_witness(cs.clone(), || {
             Ok(self.pp_hash.unwrap_or_else(CF1::<C1>::zero))
         })?;
@@ -249,8 +244,11 @@ where
             &z_0,
             &z_i1,
         )?;
-        let x = FpVar::new_input(cs.clone(), || Ok(self.x.unwrap_or(u_i1_x_base.value()?)))?;
-        x.enforce_equal(&is_basecase.select(&u_i1_x_base, &u_i1_x)?)?;
+        let x = is_basecase.select(&u_i1_x_base, &u_i1_x)?;
+        // This line "converts" `x` from a witness to a public input.
+        // Instead of directly modifying the constraint system, we explicitly
+        // allocate a public input and enforce that its value is indeed `x`.
+        FpVar::new_input(cs.clone(), || x.value())?.enforce_equal(&x)?;
 
         // CycleFold part
         // C.1. Compute cf1_u_i.x and cf2_u_i.x
@@ -329,12 +327,26 @@ where
         let (cf_u_i1_x_base, _) =
             CycleFoldCommittedInstanceVar::<C2, GC2>::new_constant(cs.clone(), cf_u_dummy)?
                 .hash(&sponge, pp_hash)?;
-        let cf_x = FpVar::new_input(cs.clone(), || {
-            Ok(self.cf_x.unwrap_or(cf_u_i1_x_base.value()?))
-        })?;
-        cf_x.enforce_equal(&is_basecase.select(&cf_u_i1_x_base, &cf_u_i1_x)?)?;
+        let cf_x = is_basecase.select(&cf_u_i1_x_base, &cf_u_i1_x)?;
+        // This line "converts" `cf_x` from a witness to a public input.
+        // Instead of directly modifying the constraint system, we explicitly
+        // allocate a public input and enforce that its value is indeed `cf_x`.
+        FpVar::new_input(cs.clone(), || cf_x.value())?.enforce_equal(&cf_x)?;
 
-        Ok(())
+        Ok(z_i1)
+    }
+}
+
+impl<C1, C2, GC2, FC> ConstraintSynthesizer<CF1<C1>> for AugmentedFCircuit<C1, C2, GC2, FC>
+where
+    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: CurveGroup,
+    GC2: CurveVar<C2, CF2<C2>>,
+    FC: FCircuit<CF1<C1>>,
+    C2::BaseField: PrimeField + Absorb,
+{
+    fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
+        self.compute_next_state(cs).map(|_| ())
     }
 }
 

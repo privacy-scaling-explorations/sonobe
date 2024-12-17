@@ -5,7 +5,7 @@ use ark_crypto_primitives::sponge::{
 };
 use ark_ec::CurveGroup;
 use ark_ff::{BigInteger, PrimeField};
-use ark_r1cs_std::prelude::CurveVar;
+use ark_r1cs_std::{prelude::CurveVar, R1CSVar};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress, SerializationError};
 use ark_std::{fmt::Debug, marker::PhantomData, rand::RngCore, One, Zero};
@@ -386,21 +386,9 @@ where
         ];
         let us = vec![u_i.clone(); NU - 1];
 
-        let z_i1 = self
-            .F
-            .step_native(0, state.clone(), external_inputs.clone())?;
-
         // compute u_{i+1}.x
         let U_i1 = LCCCS::dummy(&self.ccs);
-        let u_i1_x = U_i1.hash(
-            &sponge,
-            self.pp_hash,
-            C1::ScalarField::one(), // i+1, where i=0
-            &self.z_0,
-            &z_i1,
-        );
 
-        let cf_u_i1_x = cf_U_i.hash_cyclefold(&sponge, self.pp_hash);
         let augmented_f_circuit = AugmentedFCircuit::<C1, C2, GC2, FC, MU, NU> {
             _c2: PhantomData,
             _gc2: PhantomData,
@@ -418,13 +406,11 @@ where
             us: Some(us),
             U_i1_C: Some(U_i1.C),
             F: self.F.clone(),
-            x: Some(u_i1_x),
             nimfs_proof: None,
 
             // cyclefold values
             cf_u_i_cmW: None,
             cf_U_i: None,
-            cf_x: Some(cf_u_i1_x),
             cf_cmT: None,
         };
 
@@ -436,9 +422,6 @@ where
         assert!(cs.is_satisfied()?);
 
         let (r1cs_w_i1, r1cs_x_i1) = extract_w_x::<C1::ScalarField>(&cs); // includes 1 and public inputs
-
-        #[cfg(test)]
-        assert_eq!(r1cs_x_i1[0], u_i1_x);
 
         let r1cs_z = [
             vec![C1::ScalarField::one()],
@@ -678,9 +661,6 @@ where
             }
         }
 
-        // `sponge` is for digest computation.
-        let sponge = PoseidonSponge::<C1::ScalarField>::new(&self.poseidon_config);
-
         let (Us, Ws, us, ws) = if MU > 1 || NU > 1 {
             let other_instances = other_instances.ok_or(Error::MissingOtherInstances(MU, NU))?;
 
@@ -757,30 +737,12 @@ where
             i_usize = usize::from_le_bytes(i_bytes);
         }
 
-        let z_i1 = self
-            .F
-            .step_native(i_usize, self.z_i.clone(), external_inputs.clone())?;
-
-        // u_{i+1}.x[1] = H(cf_U_{i+1})
-        let cf_u_i1_x: C1::ScalarField;
         let (U_i1, mut W_i1);
 
         if self.i == C1::ScalarField::zero() {
             W_i1 = Witness::<C1::ScalarField>::dummy(&self.ccs);
             W_i1.r_w = self.W_i.r_w;
             U_i1 = LCCCS::dummy(&self.ccs);
-
-            let u_i1_x = U_i1.hash(
-                &sponge,
-                self.pp_hash,
-                C1::ScalarField::one(),
-                &self.z_0,
-                &z_i1,
-            );
-
-            // hash the initial (dummy) CycleFold instance, which is used as the 2nd public
-            // input in the AugmentedFCircuit
-            cf_u_i1_x = self.cf_U_i.hash_cyclefold(&sponge, self.pp_hash);
 
             augmented_f_circuit = AugmentedFCircuit::<C1, C2, GC2, FC, MU, NU> {
                 _c2: PhantomData,
@@ -799,13 +761,11 @@ where
                 us: Some(us),
                 U_i1_C: Some(U_i1.C),
                 F: self.F.clone(),
-                x: Some(u_i1_x),
                 nimfs_proof: None,
 
                 // cyclefold values
                 cf_u_i_cmW: None,
                 cf_U_i: None,
-                cf_x: Some(cf_u_i1_x),
                 cf_cmT: None,
             };
         } else {
@@ -833,14 +793,6 @@ where
             // sanity check: check the folded instance relation
             #[cfg(test)]
             self.ccs.check_relation(&W_i1, &U_i1)?;
-
-            let u_i1_x = U_i1.hash(
-                &sponge,
-                self.pp_hash,
-                self.i + C1::ScalarField::one(),
-                &self.z_0,
-                &z_i1,
-            );
 
             let rho_bits = rho.into_bigint().to_bits_le()[..NOVA_N_BITS_RO].to_vec();
             let rho_Fq = C1::BaseField::from(<C1::BaseField as PrimeField>::BigInt::from_bits_le(
@@ -901,8 +853,6 @@ where
                 &mut rng,
             )?;
 
-            cf_u_i1_x = cf_U_i1.hash_cyclefold(&sponge, self.pp_hash);
-
             augmented_f_circuit = AugmentedFCircuit::<C1, C2, GC2, FC, MU, NU> {
                 _c2: PhantomData,
                 _gc2: PhantomData,
@@ -920,13 +870,11 @@ where
                 us: Some(us),
                 U_i1_C: Some(U_i1.C),
                 F: self.F.clone(),
-                x: Some(u_i1_x),
                 nimfs_proof: Some(nimfs_proof),
 
                 // cyclefold values
                 cf_u_i_cmW: Some(cf_u_i.cmW),
                 cf_U_i: Some(self.cf_U_i.clone()),
-                cf_x: Some(cf_u_i1_x),
                 cf_cmT: Some(cf_cmT),
             };
 
@@ -936,7 +884,9 @@ where
         }
 
         let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
-        augmented_f_circuit.generate_constraints(cs.clone())?;
+        let z_i1 = augmented_f_circuit
+            .compute_next_state(cs.clone())?
+            .value()?;
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
 
         #[cfg(test)]
@@ -961,7 +911,7 @@ where
         // set values for next iteration
         self.i += C1::ScalarField::one();
         // assign z_{i+1} into z_i
-        self.z_i = z_i1.clone();
+        self.z_i = z_i1;
         self.U_i = U_i1.clone();
         self.W_i = W_i1.clone();
 

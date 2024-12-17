@@ -10,7 +10,7 @@ use ark_crypto_primitives::sponge::{
 };
 use ark_ec::CurveGroup;
 use ark_ff::{BigInteger, PrimeField};
-use ark_r1cs_std::prelude::CurveVar;
+use ark_r1cs_std::{prelude::CurveVar, R1CSVar};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Valid};
 use ark_std::fmt::Debug;
@@ -34,7 +34,7 @@ use crate::FoldingScheme;
 use crate::{
     arith::r1cs::{extract_r1cs, extract_w_x, R1CS},
     constants::NOVA_N_BITS_RO,
-    utils::{get_cm_coordinates, pp_hash},
+    utils::pp_hash,
 };
 use crate::{arith::Arith, commitment::CommitmentScheme};
 use decider_eth_circuit::WitnessVar;
@@ -714,10 +714,6 @@ where
             i_usize = usize::from_le_bytes(i_bytes);
         }
 
-        let z_i1 = self
-            .F
-            .step_native(i_usize, self.z_i.clone(), external_inputs.clone())?;
-
         // fold Nova instances
         let (W_i1, U_i1, cmT, r_bits): (Witness<C1>, CommittedInstance<C1>, C1, Vec<bool>) =
             NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>, H>::prove(
@@ -730,23 +726,8 @@ where
                 &self.w_i,
                 &self.u_i,
             )?;
-        let r_Fq = C1::BaseField::from_bigint(BigInteger::from_bits_le(&r_bits))
-            .ok_or(Error::OutOfBounds)?;
-
-        // folded instance output (public input, x)
-        // u_{i+1}.x[0] = H(i+1, z_0, z_{i+1}, U_{i+1})
-        let u_i1_x = U_i1.hash(
-            &sponge,
-            self.pp_hash,
-            self.i + C1::ScalarField::one(),
-            &self.z_0,
-            &z_i1,
-        );
-        // u_{i+1}.x[1] = H(cf_U_{i+1})
-        let cf_u_i1_x: C1::ScalarField;
 
         if self.i == C1::ScalarField::zero() {
-            cf_u_i1_x = self.cf_U_i.hash_cyclefold(&sponge, self.pp_hash);
             // base case
             augmented_F_circuit = AugmentedFCircuit::<C1, C2, GC2, FC> {
                 _gc2: PhantomData,
@@ -763,13 +744,11 @@ where
                 U_i1_cmW: Some(U_i1.cmW),
                 cmT: Some(cmT),
                 F: self.F.clone(),
-                x: Some(u_i1_x),
                 cf1_u_i_cmW: None,
                 cf2_u_i_cmW: None,
                 cf_U_i: None,
                 cf1_cmT: None,
                 cf2_cmT: None,
-                cf_x: Some(cf_u_i1_x),
             };
 
             #[cfg(test)]
@@ -784,35 +763,15 @@ where
             }
         } else {
             // CycleFold part:
-            // get the vector used as public inputs 'x' in the CycleFold circuit
-            // cyclefold circuit for cmW
-            let cfW_u_i_x = [
-                vec![r_Fq],
-                get_cm_coordinates(&self.U_i.cmW),
-                get_cm_coordinates(&self.u_i.cmW),
-                get_cm_coordinates(&U_i1.cmW),
-            ]
-            .concat();
-            // cyclefold circuit for cmE
-            let cfE_u_i_x = [
-                vec![r_Fq],
-                get_cm_coordinates(&self.U_i.cmE),
-                get_cm_coordinates(&cmT),
-                get_cm_coordinates(&U_i1.cmE),
-            ]
-            .concat();
-
             let cfW_circuit = NovaCycleFoldCircuit::<C1, GC1> {
                 _gc: PhantomData,
                 r_bits: Some(r_bits.clone()),
                 points: Some(vec![self.U_i.clone().cmW, self.u_i.clone().cmW]),
-                x: Some(cfW_u_i_x.clone()),
             };
             let cfE_circuit = NovaCycleFoldCircuit::<C1, GC1> {
                 _gc: PhantomData,
                 r_bits: Some(r_bits.clone()),
                 points: Some(vec![self.U_i.clone().cmE, cmT]),
-                x: Some(cfE_u_i_x.clone()),
             };
 
             // fold self.cf_U_i + cfW_U -> folded running with cfW
@@ -820,7 +779,6 @@ where
                 &mut transcript,
                 self.cf_W_i.clone(), // CycleFold running instance witness
                 self.cf_U_i.clone(), // CycleFold running instance
-                cfW_u_i_x,
                 cfW_circuit,
                 &mut rng,
             )?;
@@ -829,12 +787,9 @@ where
                 &mut transcript,
                 cfW_W_i1,
                 cfW_U_i1.clone(),
-                cfE_u_i_x,
                 cfE_circuit,
                 &mut rng,
             )?;
-
-            cf_u_i1_x = cf_U_i1.hash_cyclefold(&sponge, self.pp_hash);
 
             augmented_F_circuit = AugmentedFCircuit::<C1, C2, GC2, FC> {
                 _gc2: PhantomData,
@@ -851,14 +806,12 @@ where
                 U_i1_cmW: Some(U_i1.cmW),
                 cmT: Some(cmT),
                 F: self.F.clone(),
-                x: Some(u_i1_x),
                 // cyclefold values
                 cf1_u_i_cmW: Some(cfW_u_i.cmW),
                 cf2_u_i_cmW: Some(cfE_u_i.cmW),
                 cf_U_i: Some(self.cf_U_i.clone()),
                 cf1_cmT: Some(cfW_cmT),
                 cf2_cmT: Some(cf_cmT),
-                cf_x: Some(cf_u_i1_x),
             };
 
             self.cf_W_i = cf_W_i1;
@@ -876,16 +829,15 @@ where
 
         let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
 
-        augmented_F_circuit.generate_constraints(cs.clone())?;
+        let z_i1 = augmented_F_circuit
+            .compute_next_state(cs.clone())?
+            .value()?;
 
         #[cfg(test)]
         assert!(cs.is_satisfied()?);
 
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
         let (w_i1, x_i1) = extract_w_x::<C1::ScalarField>(&cs);
-        if x_i1[0] != u_i1_x || x_i1[1] != cf_u_i1_x {
-            return Err(Error::NotEqual);
-        }
 
         #[cfg(test)]
         if x_i1.len() != 2 {
@@ -1064,7 +1016,6 @@ where
         transcript: &mut T,
         cf_W_i: CycleFoldWitness<C2>, // witness of the running instance
         cf_U_i: CycleFoldCommittedInstance<C2>, // running instance
-        cf_u_i_x: Vec<C2::ScalarField>,
         cf_circuit: NovaCycleFoldCircuit<C1, GC1>,
         rng: &mut impl RngCore,
     ) -> Result<
@@ -1085,7 +1036,6 @@ where
             self.pp_hash,
             cf_W_i,
             cf_U_i,
-            cf_u_i_x,
             cf_circuit,
             rng,
         )

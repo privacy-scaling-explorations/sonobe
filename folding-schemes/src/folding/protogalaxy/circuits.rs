@@ -255,7 +255,6 @@ pub struct AugmentedFCircuit<
     pub(super) U_i1_phi: C1,
     pub(super) F_coeffs: Vec<CF1<C1>>,
     pub(super) K_coeffs: Vec<CF1<C1>>,
-    pub(super) x: Option<CF1<C1>>, // public input (u_{i+1}.x[0])
 
     pub(super) phi_stars: Vec<C1>,
 
@@ -264,7 +263,6 @@ pub struct AugmentedFCircuit<
     pub(super) cf_U_i: CycleFoldCommittedInstance<C2>, // input
     pub(super) cf1_cmT: C2,
     pub(super) cf2_cmT: C2,
-    pub(super) cf_x: Option<CF1<C1>>, // public input (u_{i+1}.x[1])
 }
 
 impl<C1: CurveGroup, C2: CurveGroup, GC2: CurveVar<C2, CF2<C2>>, FC: FCircuit<CF1<C1>>>
@@ -297,19 +295,17 @@ impl<C1: CurveGroup, C2: CurveGroup, GC2: CurveVar<C2, CF2<C2>>, FC: FCircuit<CF
             K_coeffs: vec![CF1::<C1>::zero(); d * k + 1],
             phi_stars: vec![C1::zero(); k],
             F: F_circuit,
-            x: None,
             // cyclefold values
             cf1_u_i_cmW: C2::zero(),
             cf2_u_i_cmW: C2::zero(),
             cf_U_i: cf_u_dummy,
             cf1_cmT: C2::zero(),
             cf2_cmT: C2::zero(),
-            cf_x: None,
         }
     }
 }
 
-impl<C1, C2, GC2, FC> ConstraintSynthesizer<CF1<C1>> for AugmentedFCircuit<C1, C2, GC2, FC>
+impl<C1, C2, GC2, FC> AugmentedFCircuit<C1, C2, GC2, FC>
 where
     C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     C2: CurveGroup,
@@ -317,7 +313,10 @@ where
     FC: FCircuit<CF1<C1>>,
     C2::BaseField: PrimeField + Absorb,
 {
-    fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
+    pub fn compute_next_state(
+        self,
+        cs: ConstraintSystemRef<CF1<C1>>,
+    ) -> Result<Vec<FpVar<CF1<C1>>>, SynthesisError> {
         let pp_hash = FpVar::<CF1<C1>>::new_witness(cs.clone(), || Ok(self.pp_hash))?;
         let i = FpVar::<CF1<C1>>::new_witness(cs.clone(), || Ok(self.i))?;
         let z_0 = Vec::<FpVar<CF1<C1>>>::new_witness(cs.clone(), || Ok(self.z_0))?;
@@ -391,8 +390,17 @@ where
             &z_0,
             &z_i1,
         )?;
-        let x = FpVar::new_input(cs.clone(), || Ok(self.x.unwrap_or(u_i1_x_base.value()?)))?;
-        x.enforce_equal(&is_basecase.select(&u_i1_x_base, &u_i1_x)?)?;
+        let x = is_basecase.select(&u_i1_x_base, &u_i1_x)?;
+        // This line "converts" `x` from a witness to a public input.
+        // Instead of directly modifying the constraint system, we explicitly
+        // allocate a public input and enforce that its value is indeed `x`.
+        // While comparing `x` with itself seems redundant, this is necessary
+        // because:
+        // - `.value()` allows an honest prover to extract public inputs without
+        //   computing them outside the circuit.
+        // - `.enforce_equal()` prevents a malicious prover from claiming wrong
+        //   public inputs that are not the honest `x` computed in-circuit.
+        FpVar::new_input(cs.clone(), || x.value())?.enforce_equal(&x)?;
 
         // CycleFold part
         // C.1. Compute cf1_u_i.x and cf2_u_i.x
@@ -462,12 +470,32 @@ where
         let (cf_u_i1_x_base, _) =
             CycleFoldCommittedInstanceVar::<C2, GC2>::new_constant(cs.clone(), cf_u_dummy)?
                 .hash(&sponge, pp_hash.clone())?;
-        let cf_x = FpVar::new_input(cs.clone(), || {
-            Ok(self.cf_x.unwrap_or(cf_u_i1_x_base.value()?))
-        })?;
-        cf_x.enforce_equal(&is_basecase.select(&cf_u_i1_x_base, &cf_u_i1_x)?)?;
+        let cf_x = is_basecase.select(&cf_u_i1_x_base, &cf_u_i1_x)?;
+        // This line "converts" `cf_x` from a witness to a public input.
+        // Instead of directly modifying the constraint system, we explicitly
+        // allocate a public input and enforce that its value is indeed `cf_x`.
+        // While comparing `cf_x` with itself seems redundant, this is necessary
+        // because:
+        // - `.value()` allows an honest prover to extract public inputs without
+        //   computing them outside the circuit.
+        // - `.enforce_equal()` prevents a malicious prover from claiming wrong
+        //   public inputs that are not the honest `cf_x` computed in-circuit.
+        FpVar::new_input(cs.clone(), || cf_x.value())?.enforce_equal(&cf_x)?;
 
-        Ok(())
+        Ok(z_i1)
+    }
+}
+
+impl<C1, C2, GC2, FC> ConstraintSynthesizer<CF1<C1>> for AugmentedFCircuit<C1, C2, GC2, FC>
+where
+    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: CurveGroup,
+    GC2: CurveVar<C2, CF2<C2>>,
+    FC: FCircuit<CF1<C1>>,
+    C2::BaseField: PrimeField + Absorb,
+{
+    fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
+        self.compute_next_state(cs).map(|_| ())
     }
 }
 

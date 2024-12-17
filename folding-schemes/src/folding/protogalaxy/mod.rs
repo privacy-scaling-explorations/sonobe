@@ -38,7 +38,7 @@ use crate::{
     },
     frontend::{utils::DummyCircuit, FCircuit},
     transcript::poseidon::poseidon_canonical_config,
-    utils::{get_cm_coordinates, pp_hash},
+    utils::pp_hash,
     Error, FoldingScheme,
 };
 
@@ -860,31 +860,7 @@ where
         let i_bn: BigUint = self.i.into();
         let i_usize: usize = i_bn.try_into().map_err(|_| Error::MaxStep)?;
 
-        let z_i1 = self
-            .F
-            .step_native(i_usize, self.z_i.clone(), external_inputs.clone())?;
-
-        // folded instance output (public input, x)
-        // u_{i+1}.x[0] = H(i+1, z_0, z_{i+1}, U_{i+1})
-        let u_i1_x: C1::ScalarField;
-        // u_{i+1}.x[1] = H(cf_U_{i+1})
-        let cf_u_i1_x: C1::ScalarField;
-
         if self.i.is_zero() {
-            // Take extra care of the base case
-            // `U_{i+1}` (i.e., `U_1`) is fixed to `U_dummy`, so we just use
-            // `self.U_i = U_0 = U_dummy`.
-            u_i1_x = self.U_i.hash(
-                &sponge,
-                self.pp_hash,
-                self.i + C1::ScalarField::one(),
-                &self.z_0,
-                &z_i1,
-            );
-            // `cf_U_{i+1}` (i.e., `cf_U_1`) is fixed to `cf_U_dummy`, so we
-            // just use `self.cf_U_i = cf_U_0 = cf_U_dummy`.
-            cf_u_i1_x = self.cf_U_i.hash_cyclefold(&sponge, self.pp_hash);
-
             augmented_F_circuit = AugmentedFCircuit::empty(
                 &self.poseidon_config,
                 self.F.clone(),
@@ -913,7 +889,6 @@ where
             )?;
 
             // CycleFold part:
-            // get the vector used as public inputs 'x' in the CycleFold circuit
             let mut r0_bits = aux.L_X_evals[0].into_bigint().to_bits_le();
             let mut r1_bits = aux.L_X_evals[1].into_bigint().to_bits_le();
             r0_bits.resize(C1::ScalarField::MODULUS_BIT_SIZE as usize, false);
@@ -921,43 +896,19 @@ where
 
             // cyclefold circuit for enforcing:
             // 0 + U_i.phi * L_evals[0] == phi_stars[0]
-            let cf1_u_i_x = [
-                r0_bits
-                    .chunks(C1::BaseField::MODULUS_BIT_SIZE as usize - 1)
-                    .map(<C1::BaseField as PrimeField>::BigInt::from_bits_le)
-                    .map(C1::BaseField::from)
-                    .collect::<Vec<_>>(),
-                get_cm_coordinates(&C1::zero()),
-                get_cm_coordinates(&self.U_i.phi),
-                get_cm_coordinates(&aux.phi_stars[0]),
-            ]
-            .concat();
             let cf1_circuit = ProtoGalaxyCycleFoldCircuit::<C1, GC1> {
                 _gc: PhantomData,
                 r_bits: Some(r0_bits),
                 points: Some(vec![C1::zero(), self.U_i.phi]),
-                x: Some(cf1_u_i_x.clone()),
             };
 
             // cyclefold circuit for enforcing:
             // phi_stars[0] + u_i.phi * L_evals[1] == U_i1.phi
             // i.e., U_i.phi * L_evals[0] + u_i.phi * L_evals[1] == U_i1.phi
-            let cf2_u_i_x = [
-                r1_bits
-                    .chunks(C1::BaseField::MODULUS_BIT_SIZE as usize - 1)
-                    .map(<C1::BaseField as PrimeField>::BigInt::from_bits_le)
-                    .map(C1::BaseField::from)
-                    .collect::<Vec<_>>(),
-                get_cm_coordinates(&aux.phi_stars[0]),
-                get_cm_coordinates(&self.u_i.phi),
-                get_cm_coordinates(&U_i1.phi),
-            ]
-            .concat();
             let cf2_circuit = ProtoGalaxyCycleFoldCircuit::<C1, GC1> {
                 _gc: PhantomData,
                 r_bits: Some(r1_bits),
                 points: Some(vec![aux.phi_stars[0], self.u_i.phi]),
-                x: Some(cf2_u_i_x.clone()),
             };
 
             // fold self.cf_U_i + cf1_U -> folded running with cf1
@@ -965,7 +916,6 @@ where
                 &mut transcript_prover,
                 self.cf_W_i.clone(), // CycleFold running instance witness
                 self.cf_U_i.clone(), // CycleFold running instance
-                cf1_u_i_x,
                 cf1_circuit,
                 &mut rng,
             )?;
@@ -974,20 +924,9 @@ where
                 &mut transcript_prover,
                 cf1_W_i1,
                 cf1_U_i1.clone(),
-                cf2_u_i_x,
                 cf2_circuit,
                 &mut rng,
             )?;
-
-            // Derive `u_{i+1}.x[0], u_{i+1}.x[1]` by hashing folded instances
-            u_i1_x = U_i1.hash(
-                &sponge,
-                self.pp_hash,
-                self.i + C1::ScalarField::one(),
-                &self.z_0,
-                &z_i1,
-            );
-            cf_u_i1_x = cf_U_i1.hash_cyclefold(&sponge, self.pp_hash);
 
             augmented_F_circuit = AugmentedFCircuit {
                 _gc2: PhantomData,
@@ -1005,14 +944,12 @@ where
                 K_coeffs: proof.K_coeffs.clone(),
                 phi_stars: aux.phi_stars,
                 F: self.F.clone(),
-                x: Some(u_i1_x),
                 // cyclefold values
                 cf1_u_i_cmW: cf1_u_i.cmW,
                 cf2_u_i_cmW: cf2_u_i.cmW,
                 cf_U_i: self.cf_U_i.clone(),
                 cf1_cmT,
                 cf2_cmT,
-                cf_x: Some(cf_u_i1_x),
             };
 
             #[cfg(test)]
@@ -1042,16 +979,15 @@ where
 
         let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
 
-        augmented_F_circuit.generate_constraints(cs.clone())?;
+        let z_i1 = augmented_F_circuit
+            .compute_next_state(cs.clone())?
+            .value()?;
 
         #[cfg(test)]
         assert!(cs.is_satisfied()?);
 
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
         let (w_i1, x_i1) = extract_w_x::<C1::ScalarField>(&cs);
-        if x_i1[0] != u_i1_x || x_i1[1] != cf_u_i1_x {
-            return Err(Error::NotEqual);
-        }
 
         #[cfg(test)]
         if x_i1.len() != 2 {
@@ -1205,7 +1141,6 @@ where
         transcript: &mut PoseidonSponge<C1::ScalarField>,
         cf_W_i: CycleFoldWitness<C2>, // witness of the running instance
         cf_U_i: CycleFoldCommittedInstance<C2>, // running instance
-        cf_u_i_x: Vec<C2::ScalarField>,
         cf_circuit: ProtoGalaxyCycleFoldCircuit<C1, GC1>,
         rng: &mut impl RngCore,
     ) -> Result<
@@ -1226,7 +1161,6 @@ where
             self.pp_hash,
             cf_W_i,
             cf_U_i,
-            cf_u_i_x,
             cf_circuit,
             rng,
         )

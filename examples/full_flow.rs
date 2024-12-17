@@ -55,14 +55,6 @@ impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
     fn external_inputs_len(&self) -> usize {
         0
     }
-    fn step_native(
-        &self,
-        _i: usize,
-        z_i: Vec<F>,
-        _external_inputs: Vec<F>,
-    ) -> Result<Vec<F>, Error> {
-        Ok(vec![z_i[0] * z_i[0] * z_i[0] + z_i[0] + F::from(5_u32)])
-    }
     fn generate_step_constraints(
         &self,
         cs: ConstraintSystemRef<F>,

@@ -9,6 +9,7 @@ use ark_r1cs_std::{
     eq::EqGadget,
     fields::fp::FpVar,
     prelude::CurveVar,
+    R1CSVar,
 };
 use ark_relations::r1cs::{
     ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, Namespace, SynthesisError,
@@ -443,8 +444,6 @@ pub struct CycleFoldCircuit<CFG: CycleFoldConfig, GC: CurveVar<CFG::C, CF2<CFG::
     pub r_bits: Option<Vec<bool>>,
     /// points to be folded in the CycleFoldCircuit
     pub points: Option<Vec<CFG::C>>,
-    /// public inputs (cf_u_{i+1}.x)
-    pub x: Option<Vec<CF2<CFG::C>>>,
 }
 
 impl<CFG: CycleFoldConfig, GC: CurveVar<CFG::C, CF2<CFG::C>>> CycleFoldCircuit<CFG, GC> {
@@ -454,7 +453,6 @@ impl<CFG: CycleFoldConfig, GC: CurveVar<CFG::C, CF2<CFG::C>>> CycleFoldCircuit<C
             _gc: PhantomData,
             r_bits: None,
             points: None,
-            x: None,
         }
     }
 }
@@ -497,12 +495,6 @@ impl<CFG: CycleFoldConfig, GC: CurveVar<CFG::C, CF2<CFG::C>>> ConstraintSynthesi
             p_folded = p_folded.scalar_mul_le(r_bits.iter())? + points[i].clone();
         }
 
-        let x = Vec::new_input(cs.clone(), || {
-            Ok(self.x.unwrap_or(vec![CF2::<CFG::C>::zero(); CFG::IO_LEN]))
-        })?;
-        #[cfg(test)]
-        assert_eq!(x.len(), CFG::IO_LEN); // non-constrained sanity check
-
         // Check that the points coordinates are placed as the public input x:
         // In Nova, this is: x == [r, p1, p2, p3] (wheere p3 is the p_folded).
         // In multifolding schemes such as HyperNova, this is:
@@ -520,13 +512,25 @@ impl<CFG: CycleFoldConfig, GC: CurveVar<CFG::C, CF2<CFG::C>>> ConstraintSynthesi
             .flatten()
             .collect();
 
-        let computed_x = [
+        let x = [
             r_fp,
             points_aux,
             p_folded.to_constraint_field()?[..2].to_vec(),
         ]
         .concat();
-        computed_x.enforce_equal(&x)?;
+        #[cfg(test)]
+        assert_eq!(x.len(), CFG::IO_LEN); // non-constrained sanity check
+
+        // This line "converts" `x` from a witness to a public input.
+        // Instead of directly modifying the constraint system, we explicitly
+        // allocate a public input and enforce that its value is indeed `x`.
+        // While comparing `x` with itself seems redundant, this is necessary
+        // because:
+        // - `.value()` allows an honest prover to extract public inputs without
+        //   computing them outside the circuit.
+        // - `.enforce_equal()` prevents a malicious prover from claiming wrong
+        //   public inputs that are not the honest `x` computed in-circuit.
+        Vec::new_input(cs.clone(), || x.value())?.enforce_equal(&x)?;
 
         Ok(())
     }
@@ -607,7 +611,6 @@ pub fn fold_cyclefold_circuit<CFG, C1, GC1, C2, GC2, CS2, const H: bool>(
     pp_hash: C1::ScalarField,               // public params hash
     cf_W_i: CycleFoldWitness<C2>,           // witness of the running instance
     cf_U_i: CycleFoldCommittedInstance<C2>, // running instance
-    cf_u_i_x: Vec<C2::ScalarField>,
     cf_circuit: CycleFoldCircuit<CFG, GC1>,
     mut rng: impl RngCore,
 ) -> Result<
@@ -639,9 +642,6 @@ where
 
     let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
     let (cf_w_i, cf_x_i) = extract_w_x::<C1::BaseField>(&cs2);
-    if cf_x_i != cf_u_i_x {
-        return Err(Error::NotEqual);
-    }
 
     #[cfg(test)]
     assert_eq!(cf_x_i.len(), CFG::IO_LEN);
@@ -767,10 +767,11 @@ pub mod tests {
             _gc: PhantomData,
             r_bits: Some(rho_bits),
             points: Some(points),
-            x: Some(x.clone()),
         };
         cf_circuit.generate_constraints(cs.clone())?;
         assert!(cs.is_satisfied()?);
+        // `instance_assignment[0]` is the constant term 1
+        assert_eq!(&cs.borrow().unwrap().instance_assignment[1..], &x);
         Ok(())
     }
 

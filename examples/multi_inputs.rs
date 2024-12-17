@@ -92,7 +92,7 @@ pub mod tests {
             Fr::from(1_u32),
         ];
 
-        let z_i1 = multi_inputs_step_native(z_i.clone())?;
+        let z_i1 = multi_inputs_step_native(z_i.clone());
 
         let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i))?;
         let computed_z_i1Var =

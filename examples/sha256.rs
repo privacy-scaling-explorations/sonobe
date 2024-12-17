@@ -66,7 +66,7 @@ impl<F: PrimeField> FCircuit<F> for Sha256FCircuit<F> {
 pub mod tests {
     use super::*;
     use ark_crypto_primitives::crh::{sha256::Sha256, CRHScheme};
-    use ark_ff::ToConstraintField;
+    use ark_ff::{BigInteger, ToConstraintField};
     use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
     use ark_relations::r1cs::ConstraintSystem;
 
@@ -85,7 +85,7 @@ pub mod tests {
         let circuit = Sha256FCircuit::<Fr>::new(())?;
         let z_i = vec![Fr::from(1_u32)];
 
-        let z_i1 = sha256_step_native(z_i.clone())?;
+        let z_i1 = sha256_step_native(z_i.clone());
 
         let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i))?;
         let computed_z_i1Var =

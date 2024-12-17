@@ -112,9 +112,13 @@ pub mod tests {
     use ark_r1cs_std::R1CSVar;
     use ark_relations::r1cs::ConstraintSystem;
 
-    fn external_inputs_step_native<F: PrimeField>(z_i: Vec<F>, external_inputs: Vec<F>) -> Vec<F> {
+    fn external_inputs_step_native<F: PrimeField + Absorb>(
+        z_i: Vec<F>,
+        external_inputs: Vec<F>,
+        poseidon_config: &PoseidonConfig<F>,
+    ) -> Vec<F> {
         let hash_input: [F; 2] = [z_i[0], external_inputs[0]];
-        let h = CRH::<F>::evaluate(&self.poseidon_config, hash_input).unwrap();
+        let h = CRH::<F>::evaluate(poseidon_config, hash_input).unwrap();
         vec![h]
     }
 
@@ -125,11 +129,12 @@ pub mod tests {
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        let circuit = ExternalInputsCircuit::<Fr>::new(poseidon_config)?;
+        let circuit = ExternalInputsCircuit::<Fr>::new(poseidon_config.clone())?;
         let z_i = vec![Fr::from(1_u32)];
         let external_inputs = vec![Fr::from(3_u32)];
 
-        let z_i1 = external_inputs_step_native(z_i.clone(), external_inputs.clone())?;
+        let z_i1 =
+            external_inputs_step_native(z_i.clone(), external_inputs.clone(), &poseidon_config);
 
         let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i))?;
         let external_inputsVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(external_inputs))?;

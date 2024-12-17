@@ -922,7 +922,6 @@ mod tests {
         },
         frontend::utils::CubicFCircuit,
         transcript::poseidon::poseidon_canonical_config,
-        utils::get_cm_coordinates,
     };
 
     #[test]
@@ -1341,25 +1340,8 @@ mod tests {
                 u_i1_x = U_i1.hash(&sponge, pp_hash, iFr + Fr::one(), &z_0, &z_i1);
 
                 let rho_bits = rho.into_bigint().to_bits_le()[..NOVA_N_BITS_RO].to_vec();
-                let rho_Fq = Fq::from_bigint(BigInteger::from_bits_le(&rho_bits))
-                    .ok_or(Error::OutOfBounds)?;
 
                 // CycleFold part:
-                // get the vector used as public inputs 'x' in the CycleFold circuit
-                let cf_u_i_x = [
-                    vec![rho_Fq],
-                    get_cm_coordinates(&U_i.C),
-                    Us.iter()
-                        .flat_map(|Us_i| get_cm_coordinates(&Us_i.C))
-                        .collect(),
-                    get_cm_coordinates(&u_i.C),
-                    us.iter()
-                        .flat_map(|us_i| get_cm_coordinates(&us_i.C))
-                        .collect(),
-                    get_cm_coordinates(&U_i1.C),
-                ]
-                .concat();
-
                 let cf_circuit = HyperNovaCycleFoldCircuit::<Projective, GVar, MU, NU> {
                     _gc: PhantomData,
                     r_bits: Some(rho_bits.clone()),
@@ -1372,7 +1354,6 @@ mod tests {
                         ]
                         .concat(),
                     ),
-                    x: Some(cf_u_i_x.clone()),
                 };
 
                 // ensure that the CycleFoldCircuit is well defined
@@ -1396,7 +1377,6 @@ mod tests {
                     pp_hash,
                     cf_W_i.clone(), // CycleFold running instance witness
                     cf_U_i.clone(), // CycleFold running instance
-                    cf_u_i_x,       // CycleFold incoming instance
                     cf_circuit,
                     &mut rng,
                 )?;

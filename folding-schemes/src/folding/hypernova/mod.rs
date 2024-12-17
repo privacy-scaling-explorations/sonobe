@@ -39,7 +39,7 @@ use crate::folding::{
 };
 use crate::frontend::FCircuit;
 use crate::transcript::poseidon::poseidon_canonical_config;
-use crate::utils::{get_cm_coordinates, pp_hash};
+use crate::utils::pp_hash;
 use crate::Error;
 use crate::{
     arith::{
@@ -795,34 +795,11 @@ where
             self.ccs.check_relation(&W_i1, &U_i1)?;
 
             let rho_bits = rho.into_bigint().to_bits_le()[..NOVA_N_BITS_RO].to_vec();
-            let rho_Fq = C1::BaseField::from(<C1::BaseField as PrimeField>::BigInt::from_bits_le(
-                &rho_bits,
-            ));
 
             // CycleFold part:
-            // get the vector used as public inputs 'x' in the CycleFold circuit.
-            // Place the random values and the points coordinates as the public input x:
-            // In Nova, this is: x == [r, p1, p2, p3].
-            // In multifolding schemes such as HyperNova, this is:
-            // computed_x = [r, p_0, p_1, p_2, ..., p_n],
-            // where each p_i is in fact p_i.to_constraint_field()
-            let cf_u_i_x = [
-                vec![rho_Fq],
-                all_Us
-                    .iter()
-                    .flat_map(|Us_i| get_cm_coordinates(&Us_i.C))
-                    .collect(),
-                all_us
-                    .iter()
-                    .flat_map(|us_i| get_cm_coordinates(&us_i.C))
-                    .collect(),
-                get_cm_coordinates(&U_i1.C),
-            ]
-            .concat();
-
             let cf_circuit = HyperNovaCycleFoldCircuit::<C1, GC1, MU, NU> {
                 _gc: PhantomData,
-                r_bits: Some(rho_bits.clone()),
+                r_bits: Some(rho_bits),
                 points: Some(
                     [
                         all_Us.iter().map(|Us_i| Us_i.C).collect::<Vec<_>>(),
@@ -830,7 +807,6 @@ where
                     ]
                     .concat(),
                 ),
-                x: Some(cf_u_i_x.clone()),
             };
 
             let (_cf_w_i, cf_u_i, cf_W_i1, cf_U_i1, cf_cmT, _) = fold_cyclefold_circuit::<
@@ -848,7 +824,6 @@ where
                 self.pp_hash,
                 self.cf_W_i.clone(), // CycleFold running instance witness
                 self.cf_U_i.clone(), // CycleFold running instance
-                cf_u_i_x,
                 cf_circuit,
                 &mut rng,
             )?;

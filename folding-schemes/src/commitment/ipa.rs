@@ -1,12 +1,13 @@
-/// IPA implements the modified Inner Product Argument described in
-/// [Halo](https://eprint.iacr.org/2019/1021.pdf). The variable names used follow the paper
-/// notation in order to make it more readable.
-///
-/// The implementation does the following optimizations in order to reduce the amount of
-/// constraints in the circuit:
-/// i. <s, b> computation is done in log time following a modification of the equation 3 in section
-/// 3.2 from the paper.
-/// ii. s computation is done in 2^{k+1}-2 instead of k*2^k.
+//! IPA implements the modified Inner Product Argument described in
+//! [Halo](https://eprint.iacr.org/2019/1021.pdf). The variable names used follow the paper
+//! notation in order to make it more readable.
+//!
+//! The implementation does the following optimizations in order to reduce the amount of
+//! constraints in the circuit:
+//! i. <s, b> computation is done in log time following a modification of the equation 3 in section
+//! 3.2 from the paper.
+//! ii. s computation is done in 2^{k+1}-2 instead of k*2^k.
+
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::{
@@ -30,36 +31,42 @@ use crate::utils::{
 };
 use crate::Error;
 
+/// IPA proof structure containing all components needed for verification
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<C: CurveGroup> {
-    a: C::ScalarField,
-    l: Vec<C::ScalarField>,
-    r: Vec<C::ScalarField>,
-    L: Vec<C>,
-    R: Vec<C>,
+    /// Final value of vector a after the folding process
+    pub a: C::ScalarField,
+    /// Left blinding factors used in each round
+    pub l: Vec<C::ScalarField>,
+    /// Right blinding factors used in each round
+    pub r: Vec<C::ScalarField>,
+    /// Left commitments for each round
+    pub L: Vec<C>,
+    /// Right commitments for each round  
+    pub R: Vec<C>,
 }
 
-/// IPA implements the Inner Product Argument protocol following the CommitmentScheme trait. The
-/// `H` parameter indicates if to use the commitment in hiding mode or not.
+/// Implementation of the Inner Product Argument (IPA) as described in [Halo](https://eprint.iacr.org/2019/1021.pdf).
+/// The variable names follow the paper notation to maintain clarity and readability.
+///
+/// This implementation includes optimizations to reduce circuit constraints:
+/// 1. The `<s, b>` computation is done in log time using a modified version of equation 3 in section 3.2
+/// 2. The `s` computation is optimized to take 2^{k+1}-2 steps instead of k*2^k steps
+///
+/// The `H` parameter indicates if to use the commitment in hiding mode or not.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct IPA<C: CurveGroup, const H: bool = false> {
+    /// The inner [`CurveGroup`] type
     _c: PhantomData<C>,
 }
 
-/// Implements the CommitmentScheme trait for IPA
+/// Implements the [`CommitmentScheme`]` trait for IPA
 impl<C: CurveGroup, const H: bool> CommitmentScheme<C, H> for IPA<C, H> {
     type ProverParams = PedersenParams<C>;
     type VerifierParams = PedersenParams<C>;
     type Proof = (Proof<C>, C::ScalarField, C::ScalarField); // (proof, v=p(x), r=blinding factor)
     type ProverChallenge = (C::ScalarField, C, Vec<C::ScalarField>);
     type Challenge = (C::ScalarField, C, Vec<C::ScalarField>);
-
-    fn is_hiding() -> bool {
-        if H {
-            return true;
-        }
-        false
-    }
 
     fn setup(
         mut rng: impl RngCore,
@@ -110,26 +117,26 @@ impl<C: CurveGroup, const H: bool> CommitmentScheme<C, H> for IPA<C, H> {
             return Err(Error::BlindingNotZero);
         }
         let d = a.len();
+        // TODO (autoparallel): Casting this back into `usize` could be dangerous in 32bit systems (e.g., wasm32)
         let k = (f64::from(d as u32).log2()) as usize;
 
         if params.generators.len() < a.len() {
             return Err(Error::PedersenParamsLen(params.generators.len(), a.len()));
         }
         // blinding factors
-        let l: Vec<C::ScalarField>;
-        let r: Vec<C::ScalarField>;
-        if H {
+        let (l, r) = if H {
             let rng = rng.ok_or(Error::MissingRandomness)?;
-            l = std::iter::repeat_with(|| C::ScalarField::rand(rng))
-                .take(k)
-                .collect();
-            r = std::iter::repeat_with(|| C::ScalarField::rand(rng))
-                .take(k)
-                .collect();
+            (
+                std::iter::repeat_with(|| C::ScalarField::rand(rng))
+                    .take(k)
+                    .collect(),
+                std::iter::repeat_with(|| C::ScalarField::rand(rng))
+                    .take(k)
+                    .collect(),
+            )
         } else {
-            l = vec![];
-            r = vec![];
-        }
+            (vec![], vec![])
+        };
 
         transcript.absorb_nonnative(P);
         let x = transcript.get_challenge(); // challenge value at which we evaluate
@@ -202,8 +209,8 @@ impl<C: CurveGroup, const H: bool> CommitmentScheme<C, H> for IPA<C, H> {
         Ok((
             Proof {
                 a: a[0],
-                l: l.clone(),
-                r: r.clone(),
+                l,
+                r,
                 L,
                 R,
             },
@@ -229,8 +236,7 @@ impl<C: CurveGroup, const H: bool> CommitmentScheme<C, H> for IPA<C, H> {
         P: &C, // commitment
         proof: &Self::Proof,
     ) -> Result<(), Error> {
-        let (p, _r) = (proof.0.clone(), proof.1);
-        let k = p.L.len();
+        let k = proof.0.L.len();
 
         transcript.absorb_nonnative(P);
         let x = transcript.get_challenge(); // challenge value at which we evaluate
@@ -238,8 +244,8 @@ impl<C: CurveGroup, const H: bool> CommitmentScheme<C, H> for IPA<C, H> {
         let U = C::generator().mul(s);
         let mut u: Vec<C::ScalarField> = vec![C::ScalarField::zero(); k];
         for i in (0..k).rev() {
-            transcript.absorb_nonnative(&p.L[i]);
-            transcript.absorb_nonnative(&p.R[i]);
+            transcript.absorb_nonnative(&proof.0.L[i]);
+            transcript.absorb_nonnative(&proof.0.R[i]);
             u[i] = transcript.get_challenge();
         }
         let challenge = (x, U, u);
@@ -247,6 +253,7 @@ impl<C: CurveGroup, const H: bool> CommitmentScheme<C, H> for IPA<C, H> {
         Self::verify_with_challenge(params, challenge, P, proof)
     }
 
+    // TODO (autoparallel): Can remove cloning of `proof.0` as we did in the `verify` method
     fn verify_with_challenge(
         params: &Self::VerifierParams,
         challenge: Self::Challenge,
@@ -284,9 +291,10 @@ impl<C: CurveGroup, const H: bool> CommitmentScheme<C, H> for IPA<C, H> {
         }
 
         // compute b & G from s
-        let s = build_s(&u, &u_invs, k)?;
+        let s = build_s(&u, &u_invs, k);
         // b = <s, b_vec> = <s, [1, x, x^2, ..., x^d-1]>
         let b = s_b_inner(&u, &x)?;
+        // TODO (autoparallel): Casting this back into `usize` could be dangerous in 32bit systems (e.g., wasm32)
         let d: usize = 2_u64.pow(k as u32) as usize;
         if params.generators.len() < d {
             return Err(Error::PedersenParamsLen(params.generators.len(), d));
@@ -316,7 +324,10 @@ impl<C: CurveGroup, const H: bool> CommitmentScheme<C, H> for IPA<C, H> {
     }
 }
 
-/// Computes s such that
+/// Computes the s vector used in IPA verification
+///
+/// The resulting s vector has the form:
+/// ```text
 /// s = (
 ///   u₁⁻¹ u₂⁻¹ … uₖ⁻¹,
 ///   u₁   u₂⁻¹ … uₖ⁻¹,
@@ -325,10 +336,15 @@ impl<C: CurveGroup, const H: bool> CommitmentScheme<C, H> for IPA<C, H> {
 ///   ⋮    ⋮      ⋮
 ///   u₁   u₂   … uₖ
 /// )
-/// Uses Halo2 approach computing $g(X) = \prod\limits_{i=0}^{k-1} (1 + u_{k - 1 - i} X^{2^i})$,
-/// taking 2^{k+1}-2.
-/// src: https://github.com/zcash/halo2/blob/81729eca91ba4755e247f49c3a72a4232864ec9e/halo2_proofs/src/poly/commitment/verifier.rs#L156
-fn build_s<F: PrimeField>(u: &[F], u_invs: &[F], k: usize) -> Result<Vec<F>, Error> {
+/// ```
+/// Uses the Halo2 approach computing $g(X) = \prod\limits_{i=0}^{k-1} (1 + u_{k - 1 - i} X^{2^i})$,
+/// which takes 2^{k+1}-2 steps.
+/// src: <https://github.com/zcash/halo2/blob/81729eca91ba4755e247f49c3a72a4232864ec9e/halo2_proofs/src/poly/commitment/verifier.rs#L156>
+///
+/// # Errors
+///
+/// Returns an error if the vector construction fails.
+fn build_s<F: PrimeField>(u: &[F], u_invs: &[F], k: usize) -> Vec<F> {
     let d: usize = 2_u64.pow(k as u32) as usize;
     let mut s: Vec<F> = vec![F::one(); d];
     for (len, (u_j, u_j_inv)) in u
@@ -347,7 +363,7 @@ fn build_s<F: PrimeField>(u: &[F], u_invs: &[F], k: usize) -> Result<Vec<F>, Err
             *s *= u_j;
         }
     }
-    Ok(s)
+    s
 }
 
 /// Computes (in-circuit) s such that
@@ -361,12 +377,12 @@ fn build_s<F: PrimeField>(u: &[F], u_invs: &[F], k: usize) -> Result<Vec<F>, Err
 /// )
 /// Uses Halo2 approach computing $g(X) = \prod\limits_{i=0}^{k-1} (1 + u_{k - 1 - i} X^{2^i})$,
 /// taking 2^{k+1}-2.
-/// src: https://github.com/zcash/halo2/blob/81729eca91ba4755e247f49c3a72a4232864ec9e/halo2_proofs/src/poly/commitment/verifier.rs#L156
+/// src: <https://github.com/zcash/halo2/blob/81729eca91ba4755e247f49c3a72a4232864ec9e/halo2_proofs/src/poly/commitment/verifier.rs#L156>
 fn build_s_gadget<F: PrimeField, CF: PrimeField>(
     u: &[EmulatedFpVar<F, CF>],
     u_invs: &[EmulatedFpVar<F, CF>],
     k: usize,
-) -> Result<Vec<EmulatedFpVar<F, CF>>, SynthesisError> {
+) -> Vec<EmulatedFpVar<F, CF>> {
     let d: usize = 2_u64.pow(k as u32) as usize;
     let mut s: Vec<EmulatedFpVar<F, CF>> = vec![EmulatedFpVar::one(); d];
     for (len, (u_j, u_j_inv)) in u
@@ -385,9 +401,15 @@ fn build_s_gadget<F: PrimeField, CF: PrimeField>(
             *s *= u_j;
         }
     }
-    Ok(s)
+    s
 }
 
+/// Computes the inner product of two vectors
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The vectors have different lengths
 fn inner_prod<F: PrimeField>(a: &[F], b: &[F]) -> Result<F, Error> {
     if a.len() != b.len() {
         return Err(Error::NotSameLength(
@@ -404,12 +426,19 @@ fn inner_prod<F: PrimeField>(a: &[F], b: &[F]) -> Result<F, Error> {
     Ok(c)
 }
 
-// g(x, u_1, u_2, ..., u_k) = <s, b>, naively takes linear, but can compute in log time through
-// g(x, u_1, u_2, ..., u_k) = \Prod u_i x^{2^i} + u_i^-1
+/// Computes g(x, u_1, u_2, ..., u_k) = <s, b> efficiently in log time
+///
+/// Rather than computing naively, this uses the formula:
+/// g(x, u_1, u_2, ..., u_k) = \Prod u_i x^{2^i} + u_i^-1
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Computing any inverse fails
 fn s_b_inner<F: PrimeField>(u: &[F], x: &F) -> Result<F, Error> {
     let mut c: F = F::one();
     let mut x_2_i = *x; // x_2_i is x^{2^i}, starting from x^{2^0}=x
-    for u_i in u.iter() {
+    for u_i in u {
         c *= (*u_i * x_2_i)
             + u_i
                 .inverse()
@@ -419,30 +448,54 @@ fn s_b_inner<F: PrimeField>(u: &[F], x: &F) -> Result<F, Error> {
     Ok(c)
 }
 
-// g(x, u_1, u_2, ..., u_k) = <s, b>, naively takes linear, but can compute in log time through
-// g(x, u_1, u_2, ..., u_k) = \Prod u_i x^{2^i} + u_i^-1
+/// In-circuit implementation of s_b_inner function for verifying IPA proofs
+///
+/// Computes g(x, u_1, u_2, ..., u_k) = <s, b> in logarithmic time using the formula:
+/// g(x, u_1, u_2, ..., u_k) = \Prod u_i x^{2^i} + u_i^-1
+///
+/// # Errors
+///
+/// Returns a `SynthesisError` if:
+/// - Computing any inverse fails
+/// - Operations on emulated field variables fail
 fn s_b_inner_gadget<F: PrimeField, CF: PrimeField>(
     u: &[EmulatedFpVar<F, CF>],
     x: &EmulatedFpVar<F, CF>,
 ) -> Result<EmulatedFpVar<F, CF>, SynthesisError> {
     let mut c: EmulatedFpVar<F, CF> = EmulatedFpVar::<F, CF>::one();
     let mut x_2_i = x.clone(); // x_2_i is x^{2^i}, starting from x^{2^0}=x
-    for u_i in u.iter() {
+    for u_i in u {
         c *= u_i.clone() * x_2_i.clone() + u_i.inverse()?;
         x_2_i *= x_2_i.clone();
     }
     Ok(c)
 }
 
+/// Type alias for the constraint field of a curve group
+///
+/// This represents the base prime field of the base field of the curve group.
+/// Used for constraint generation in circuit implementations.
 pub type CF<C> = <<C as CurveGroup>::BaseField as Field>::BasePrimeField;
 
+/// In-circuit variable holding an IPA proof
+///
+/// Contains the circuit variable representations of all components needed for IPA proof verification.
+/// The type parameters are:
+/// - `C`: The curve group for the commitment scheme
+/// - `GC`: The variable representation of curve group elements
 pub struct ProofVar<C: CurveGroup, GC: CurveVar<C, CF<C>>> {
-    a: EmulatedFpVar<C::ScalarField, CF<C>>,
-    l: Vec<EmulatedFpVar<C::ScalarField, CF<C>>>,
-    r: Vec<EmulatedFpVar<C::ScalarField, CF<C>>>,
-    L: Vec<GC>,
-    R: Vec<GC>,
+    /// Final value of vector a after folding
+    pub a: EmulatedFpVar<C::ScalarField, CF<C>>,
+    /// Left blinding factors used in each round
+    pub l: Vec<EmulatedFpVar<C::ScalarField, CF<C>>>,
+    /// Right blinding factors used in each round
+    pub r: Vec<EmulatedFpVar<C::ScalarField, CF<C>>>,
+    /// Left commitments for each round
+    pub L: Vec<GC>,
+    /// Right commitments for each round
+    pub R: Vec<GC>,
 }
+
 impl<C, GC> AllocVar<Proof<C>, CF<C>> for ProofVar<C, GC>
 where
     C: CurveGroup,
@@ -467,16 +520,17 @@ where
             let r: Vec<EmulatedFpVar<C::ScalarField, CF<C>>> =
                 Vec::new_variable(cs.clone(), || Ok(val.borrow().r.clone()), mode)?;
             let L: Vec<GC> = Vec::new_variable(cs.clone(), || Ok(val.borrow().L.clone()), mode)?;
-            let R: Vec<GC> = Vec::new_variable(cs.clone(), || Ok(val.borrow().R.clone()), mode)?;
+            let R: Vec<GC> = Vec::new_variable(cs, || Ok(val.borrow().R.clone()), mode)?;
 
             Ok(Self { a, l, r, L, R })
         })
     }
 }
 
-/// IPAGadget implements the circuit that verifies an IPA Proof. The `H` parameter indicates if to
-/// use the commitment in hiding mode or not, reducing a bit the number of constraints needed in
-/// the later case.
+/// In-circuit IPA verification gadget implementation
+///
+/// Provides constraint generation for verifying IPA proofs. The `H` parameter indicates if the
+/// commitment is in hiding mode, which affects the number of constraints needed.
 pub struct IPAGadget<C, GC, const H: bool = false>
 where
     C: CurveGroup,
@@ -495,6 +549,28 @@ where
     /// Verify the IPA opening proof, K=log2(d), where d is the degree of the committed polynomial,
     /// and H indicates if the commitment is in hiding mode and thus uses blinding factors, if not,
     /// there are some constraints saved.
+    ///
+    /// # Arguments
+    ///
+    /// * `g` - Commitment scheme generators
+    /// * `h` - Commitment scheme hiding generator
+    /// * `x` - Evaluation point challenge
+    /// * `v` - Value at evaluation point
+    /// * `P` - Original commitment
+    /// * `p` - IPA proof
+    /// * `r` - Blinding factor
+    /// * `u` - Array of K challenges
+    /// * `U` - Additional challenge point
+    ///
+    /// # Errors
+    ///
+    /// Returns a `SynthesisError` if:
+    /// - The proof's L or R vectors' length does not match K
+    /// - The number of generators is less than K
+    /// - Converting field elements to bits fails
+    /// - Computing inverses fails
+    /// - Scalar multiplication fails
+    /// - Field operations like square/multiply fail
     #[allow(clippy::too_many_arguments)]
     pub fn verify<const K: usize>(
         g: &[GC],                                 // params.generators
@@ -522,7 +598,7 @@ where
         }
 
         // compute b & G from s
-        let s = build_s_gadget(u, &u_invs, K)?;
+        let s = build_s_gadget(u, &u_invs, K);
         // b = <s, b_vec> = <s, [1, x, x^2, ..., x^K-1]>
         let b = s_b_inner_gadget(u, x)?;
         // ensure that generators.len() === s.len():
@@ -574,15 +650,16 @@ mod tests {
 
     #[test]
     fn test_ipa() -> Result<(), Error> {
-        let _ = test_ipa_opt::<false>()?;
-        let _ = test_ipa_opt::<true>()?;
+        test_ipa_opt::<false>()?;
+        test_ipa_opt::<true>()?;
         Ok(())
     }
     fn test_ipa_opt<const hiding: bool>() -> Result<(), Error> {
-        let mut rng = ark_std::test_rng();
-
         const k: usize = 4;
+        // TODO (autoparallel): Casting into `usize` may be dangerous on 32bit systems (e.g., wasm32)
         const d: usize = 2_u64.pow(k as u32) as usize;
+
+        let mut rng = ark_std::test_rng();
 
         // setup params
         let (params, _) = IPA::<Projective, hiding>::setup(&mut rng, d)?;
@@ -619,15 +696,16 @@ mod tests {
 
     #[test]
     fn test_ipa_gadget() -> Result<(), Error> {
-        let _ = test_ipa_gadget_opt::<false>()?;
-        let _ = test_ipa_gadget_opt::<true>()?;
+        test_ipa_gadget_opt::<false>()?;
+        test_ipa_gadget_opt::<true>()?;
         Ok(())
     }
     fn test_ipa_gadget_opt<const hiding: bool>() -> Result<(), Error> {
-        let mut rng = ark_std::test_rng();
-
         const k: usize = 3;
+        // TODO (autoparallel): Casting into `usize` may be dangerous on 32bit systems (e.g., wasm32)
         const d: usize = 2_u64.pow(k as u32) as usize;
+
+        let mut rng = ark_std::test_rng();
 
         // setup params
         let (params, _) = IPA::<Projective, hiding>::setup(&mut rng, d)?;

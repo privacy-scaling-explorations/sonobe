@@ -1,6 +1,51 @@
+//! Sonobe is a library implementing various folding schemes for recursive SNARKs (Succinct Non-interactive ARguments of Knowledge)
+//! and IVC (Incremental Verifiable Computation). It provides a modular, extensible framework for working with different folding
+//! schemes including Nova, HyperNova, and other variants.
+//!
+//! # Overview
+//!
+//! The library is built around a core [`FoldingScheme`] trait that defines the interface for implementing different folding
+//! schemes. Key features include:
+//!
+//! * Multiple folding scheme implementations including HyperNova and variants
+//! * Support for both single-fold and multi-fold operations
+//! * Flexible commitment schemes including Pedersen and KZG commitments
+//! * CycleFold support for cross-curve folding operations
+//! * Customizable arithmetic backends via the [`Arith`] trait
+//! * Support for both R1CS and CCS (Customizable Constraint Systems)
+//!
+//! # Architecture
+//!
+//! The library is organized into several key modules:
+//!
+//! * `arith` - Core arithmetic abstractions including R1CS and CCS implementations
+//! * `commitment` - Commitment scheme implementations like Pedersen and KZG
+//! * `folding` - Main folding scheme implementations and associated traits
+//! * `frontend` - User-facing circuit building interfaces
+//! * `transcript` - Transcript handling for Fiat-Shamir transformations
+//!
+//! # Usage
+//!
+//! To use a folding scheme, you typically:
+//!
+//! 1. Define your computation circuit implementing [`FCircuit`]
+//! 2. Choose and configure a folding scheme implementation
+//! 3. Set up the necessary commitment scheme parameters
+//! 4. Initialize the folding scheme with initial state
+//! 5. Perform folding operations via `prove_step`
+//!
+//! # References
+//!
+//! The library implements protocols from several academic works:
+//!
+//! * [Nova: Recursive Zero-Knowledge Arguments from Folding Schemes](https://eprint.iacr.org/2021/370)
+//! * [HyperNova: Recursive Arguments for Customizable Constraint Systems](https://eprint.iacr.org/2023/573)
+//! * [CycleFold: Folding-scheme-based Recursive Arguments over Different Curves](https://eprint.iacr.org/2023/1192)
+
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
+#![warn(missing_docs, clippy::missing_docs_in_private_items)]
 
 use ark_ec::{pairing::Pairing, CurveGroup};
 use ark_ff::PrimeField;

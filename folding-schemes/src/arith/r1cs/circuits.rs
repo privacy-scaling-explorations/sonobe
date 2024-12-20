@@ -1,3 +1,9 @@
+//! Circuit implementations for Rank-1 Constraint Systems (R1CS).
+//!
+//! This module provides an in-circuit representation of R1CS for use within other circuits.
+//! It includes support for both native field operations and non-native field arithmetic
+//! through generic matrix and vector operations.
+
 use crate::{
     arith::ArithGadget,
     utils::gadgets::{EquivalenceGadget, MatrixGadget, SparseMatrixVar, VectorGadget},
@@ -11,19 +17,44 @@ use super::R1CS;
 
 /// An in-circuit representation of the `R1CS` struct.
 ///
-/// `M` is for the modulo operation involved in the satisfiability check when
-/// the underlying `FVar` is `NonNativeUintVar`.
+/// This gadget allows R1CS operations to be performed within another constraint system.
+///
+/// # Type Parameters
+///
+/// * `M` - Type for the modulo operation in satisfiability checks when `FVar` is `NonNativeUintVar`
+/// * `FVar` - Variable type representing field elements in the circuit
 #[derive(Debug, Clone)]
 pub struct R1CSMatricesVar<M, FVar> {
+    /// Phantom data for the modulo type
     _m: PhantomData<M>,
+    /// In-circuit representation of matrix A
     pub A: SparseMatrixVar<FVar>,
+    /// In-circuit representation of matrix B
     pub B: SparseMatrixVar<FVar>,
+    /// In-circuit representation of matrix C
     pub C: SparseMatrixVar<FVar>,
 }
 
 impl<F: PrimeField, ConstraintF: PrimeField, FVar: AllocVar<F, ConstraintF>>
     AllocVar<R1CS<F>, ConstraintF> for R1CSMatricesVar<F, FVar>
 {
+    /// Creates a new circuit representation of R1CS matrices
+    ///
+    /// # Type Parameters
+    ///
+    /// * `T` - Type that can be borrowed as `R1CS<F>`
+    ///
+    /// # Arguments
+    ///
+    /// * `cs` - Constraint system handle
+    /// * `f` - Function that returns the R1CS to be converted to circuit form
+    /// * `_mode` - Allocation mode (unused as matrices are allocated as constants)
+    ///
+    /// # Errors
+    ///
+    /// Returns a `SynthesisError` if:
+    /// * Matrix conversion to circuit form fails
+    /// * Circuit variable allocation fails
     fn new_variable<T: Borrow<R1CS<F>>>(
         cs: impl Into<Namespace<ConstraintF>>,
         f: impl FnOnce() -> Result<T, SynthesisError>,
@@ -32,11 +63,12 @@ impl<F: PrimeField, ConstraintF: PrimeField, FVar: AllocVar<F, ConstraintF>>
         f().and_then(|val| {
             let cs = cs.into();
 
+            // TODO (autoparallel): How expensive are these clones? Is there a cheaper way to do this?
             Ok(Self {
                 _m: PhantomData,
                 A: SparseMatrixVar::<FVar>::new_constant(cs.clone(), &val.borrow().A)?,
                 B: SparseMatrixVar::<FVar>::new_constant(cs.clone(), &val.borrow().B)?,
-                C: SparseMatrixVar::<FVar>::new_constant(cs.clone(), &val.borrow().C)?,
+                C: SparseMatrixVar::<FVar>::new_constant(cs, &val.borrow().C)?,
             })
         })
     }
@@ -47,6 +79,24 @@ where
     SparseMatrixVar<FVar>: MatrixGadget<FVar>,
     [FVar]: VectorGadget<FVar>,
 {
+    /// Evaluates the R1CS matrices at given circuit variable assignments
+    ///
+    /// # Arguments
+    ///
+    /// * `z` - Vector of circuit variables to evaluate at
+    ///
+    /// # Returns
+    ///
+    /// Returns a tuple (AzBz, uCz) where:
+    /// * AzBz is the Hadamard product of Az and Bz
+    /// * uCz is Cz scaled by z[0]
+    ///
+    /// # Errors
+    ///
+    /// Returns a `SynthesisError` if:
+    /// * Matrix-vector multiplication fails
+    /// * Hadamard product computation fails
+    /// * Vector operations fail
     pub fn eval_at_z(&self, z: &[FVar]) -> Result<(Vec<FVar>, Vec<FVar>), SynthesisError> {
         // Multiply Cz by z[0] (u) here, allowing this method to be reused for
         // both relaxed and unrelaxed R1CS.
@@ -225,7 +275,7 @@ pub mod tests {
     impl<F: PrimeField> ConstraintSynthesizer<F> for Sha256TestCircuit<F> {
         fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> Result<(), SynthesisError> {
             let x = Vec::<UInt8<F>>::new_witness(cs.clone(), || Ok(self.x))?;
-            let y = Vec::<UInt8<F>>::new_input(cs.clone(), || Ok(self.y))?;
+            let y = Vec::<UInt8<F>>::new_input(cs, || Ok(self.y))?;
 
             let unitVar = UnitVar::default();
             let comp_y = <Sha256Gadget<F> as CRHSchemeGadget<Sha256, F>>::evaluate(&unitVar, &x)?;
@@ -289,15 +339,14 @@ pub mod tests {
         let cs = ConstraintSystem::<Fq>::new_ref();
         let wVar = WitnessVar::new_witness(cs.clone(), || Ok(&w))?;
         let uVar = CommittedInstanceVar::new_witness(cs.clone(), || Ok(&u))?;
-        let r1csVar = R1CSMatricesVar::<Fq, FpVar<Fq>>::new_witness(cs.clone(), || Ok(&r1cs))?;
+        let r1csVar = R1CSMatricesVar::<Fq, FpVar<Fq>>::new_witness(cs, || Ok(&r1cs))?;
         r1csVar.enforce_relation(&wVar, &uVar)?;
 
         // non-natively
         let cs = ConstraintSystem::<Fr>::new_ref();
         let wVar = CycleFoldWitnessVar::new_witness(cs.clone(), || Ok(w))?;
         let uVar = CycleFoldCommittedInstanceVar::<_, GVar2>::new_witness(cs.clone(), || Ok(u))?;
-        let r1csVar =
-            R1CSMatricesVar::<Fq, NonNativeUintVar<Fr>>::new_witness(cs.clone(), || Ok(r1cs))?;
+        let r1csVar = R1CSMatricesVar::<Fq, NonNativeUintVar<Fr>>::new_witness(cs, || Ok(r1cs))?;
         r1csVar.enforce_relation(&wVar, &uVar)?;
         Ok(())
     }

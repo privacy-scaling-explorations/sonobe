@@ -17,8 +17,8 @@ impl<F: PrimeField + Absorb> Transcript<F> for PoseidonSponge<F> {
         self.absorb(&x);
         self.absorb(&y);
     }
-    fn absorb_nonnative<V: AbsorbNonNative<F>>(&mut self, v: &V) {
-        self.absorb(&v.to_native_sponge_field_elements_as_vec());
+    fn absorb_nonnative<V: AbsorbNonNative>(&mut self, v: &V) {
+        self.absorb(&v.to_native_sponge_field_elements_as_vec::<F>());
     }
     fn get_challenge(&mut self) -> F {
         let c = self.squeeze_field_elements(1);

@@ -1,10 +1,10 @@
 use criterion::*;
 use pprof::criterion::{Output, PProfProfiler};
 
-use ark_bn254::{constraints::GVar as bn_GVar, Fr as bn_Fr, G1Projective as bn_G};
-use ark_grumpkin::{constraints::GVar as grumpkin_GVar, Projective as grumpkin_G};
-use ark_pallas::{constraints::GVar as pallas_GVar, Fr as pallas_Fr, Projective as pallas_G};
-use ark_vesta::{constraints::GVar as vesta_GVar, Projective as vesta_G};
+use ark_bn254::{Fr as bn_Fr, G1Projective as bn_G};
+use ark_grumpkin::Projective as grumpkin_G;
+use ark_pallas::{Fr as pallas_Fr, Projective as pallas_G};
+use ark_vesta::Projective as vesta_G;
 
 use folding_schemes::{
     commitment::pedersen::Pedersen,
@@ -30,9 +30,7 @@ fn bench_protogalaxy_ivc(c: &mut Criterion) {
             vesta_G,
             ProtoGalaxy<
                 pallas_G,
-                pallas_GVar,
                 vesta_G,
-                vesta_GVar,
                 CustomFCircuit<pallas_Fr>,
                 Pedersen<pallas_G>,
                 Pedersen<vesta_G>,
@@ -57,9 +55,7 @@ fn bench_protogalaxy_ivc(c: &mut Criterion) {
             grumpkin_G,
             ProtoGalaxy<
                 bn_G,
-                bn_GVar,
                 grumpkin_G,
-                grumpkin_GVar,
                 CustomFCircuit<bn_Fr>,
                 Pedersen<bn_G>,
                 Pedersen<grumpkin_G>,

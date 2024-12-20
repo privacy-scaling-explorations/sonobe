@@ -1,5 +1,4 @@
 use ark_crypto_primitives::sponge::Absorb;
-use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_poly::{DenseMultilinearExtension, Polynomial};
 use ark_serialize::CanonicalDeserialize;
@@ -15,14 +14,13 @@ use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::CF1;
 use crate::folding::traits::Inputize;
 use crate::folding::traits::{CommittedInstanceOps, Dummy};
-use crate::transcript::AbsorbNonNative;
 use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::utils::vec::mat_vec_mul;
-use crate::Error;
+use crate::{Error, SonobeCurve};
 
 /// Linearized Committed CCS instance
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct LCCCS<C: CurveGroup> {
+pub struct LCCCS<C: SonobeCurve> {
     // Commitment to witness
     pub C: C,
     // Relaxation factor of z for folded LCCCS
@@ -40,22 +38,22 @@ impl<F: PrimeField> CCS<F> {
         &self,
         rng: &mut R,
         cs_params: &CS::ProverParams,
-        z: &[C::ScalarField],
-    ) -> Result<(LCCCS<C>, Witness<C::ScalarField>), Error>
+        z: &[F],
+    ) -> Result<(LCCCS<C>, Witness<F>), Error>
     where
         // enforce that CCS's F is the C::ScalarField
-        C: CurveGroup<ScalarField = F>,
+        C: SonobeCurve<ScalarField = F>,
     {
-        let w: Vec<C::ScalarField> = z[(1 + self.l)..].to_vec();
+        let w: Vec<F> = z[(1 + self.l)..].to_vec();
         // if the commitment scheme is set to be hiding, set the random blinding parameter
         let r_w = if CS::is_hiding() {
-            C::ScalarField::rand(rng)
+            F::rand(rng)
         } else {
-            C::ScalarField::zero()
+            F::zero()
         };
         let C = CS::commit(cs_params, &w, &r_w)?;
 
-        let r_x: Vec<C::ScalarField> = (0..self.s).map(|_| C::ScalarField::rand(rng)).collect();
+        let r_x: Vec<F> = (0..self.s).map(|_| F::rand(rng)).collect();
 
         let Mzs: Vec<DenseMultilinearExtension<F>> = self
             .M
@@ -74,12 +72,12 @@ impl<F: PrimeField> CCS<F> {
                 r_x,
                 v,
             },
-            Witness::<C::ScalarField> { w, r_w },
+            Witness::<F> { w, r_w },
         ))
     }
 }
 
-impl<C: CurveGroup> Dummy<&CCS<CF1<C>>> for LCCCS<C> {
+impl<C: SonobeCurve> Dummy<&CCS<CF1<C>>> for LCCCS<C> {
     fn dummy(ccs: &CCS<CF1<C>>) -> Self {
         Self {
             C: C::zero(),
@@ -91,7 +89,7 @@ impl<C: CurveGroup> Dummy<&CCS<CF1<C>>> for LCCCS<C> {
     }
 }
 
-impl<C: CurveGroup> Arith<Witness<CF1<C>>, LCCCS<C>> for CCS<CF1<C>> {
+impl<C: SonobeCurve> Arith<Witness<CF1<C>>, LCCCS<C>> for CCS<CF1<C>> {
     type Evaluation = Vec<CF1<C>>;
 
     /// Perform the check of the LCCCS instance described at section 4.2,
@@ -117,21 +115,13 @@ impl<C: CurveGroup> Arith<Witness<CF1<C>>, LCCCS<C>> for CCS<CF1<C>> {
     }
 }
 
-impl<C: CurveGroup> Absorb for LCCCS<C>
-where
-    C::ScalarField: Absorb,
-{
+impl<C: SonobeCurve> Absorb for LCCCS<C> {
     fn to_sponge_bytes(&self, dest: &mut Vec<u8>) {
         C::ScalarField::batch_to_sponge_bytes(&self.to_sponge_field_elements_as_vec(), dest);
     }
 
     fn to_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
-        // We cannot call `to_native_sponge_field_elements(dest)` directly, as
-        // `to_native_sponge_field_elements` needs `F` to be `C::ScalarField`,
-        // but here `F` is a generic `PrimeField`.
-        self.C
-            .to_native_sponge_field_elements_as_vec()
-            .to_sponge_field_elements(dest);
+        self.C.to_native_sponge_field_elements(dest);
         self.u.to_sponge_field_elements(dest);
         self.x.to_sponge_field_elements(dest);
         self.r_x.to_sponge_field_elements(dest);
@@ -139,7 +129,7 @@ where
     }
 }
 
-impl<C: CurveGroup> CommittedInstanceOps<C> for LCCCS<C> {
+impl<C: SonobeCurve> CommittedInstanceOps<C> for LCCCS<C> {
     type Var = LCCCSVar<C>;
 
     fn get_commitments(&self) -> Vec<C> {
@@ -151,7 +141,7 @@ impl<C: CurveGroup> CommittedInstanceOps<C> for LCCCS<C> {
     }
 }
 
-impl<C: CurveGroup> Inputize<C::ScalarField, LCCCSVar<C>> for LCCCS<C> {
+impl<C: SonobeCurve> Inputize<C::ScalarField, LCCCSVar<C>> for LCCCS<C> {
     fn inputize(&self) -> Vec<C::ScalarField> {
         [
             &self.C.inputize(),
@@ -183,7 +173,7 @@ pub mod tests {
     use crate::utils::virtual_polynomial::{build_eq_x_r_vec, VirtualPolynomial};
 
     // method for testing
-    pub fn compute_Ls<C: CurveGroup>(
+    pub fn compute_Ls<C: SonobeCurve>(
         ccs: &CCS<C::ScalarField>,
         lcccs: &LCCCS<C>,
         z: &[C::ScalarField],

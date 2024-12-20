@@ -2,14 +2,26 @@
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 
-use ark_ec::{pairing::Pairing, CurveGroup};
-use ark_ff::PrimeField;
+use ark_crypto_primitives::sponge::Absorb;
+use ark_ec::{
+    pairing::Pairing,
+    short_weierstrass::{Projective, SWCurveConfig},
+    CurveGroup,
+};
+use ark_ff::{Fp, FpConfig, PrimeField};
+use ark_r1cs_std::{
+    fields::{fp::FpVar, FieldVar},
+    groups::{curves::short_weierstrass::ProjectiveVar, CurveVar},
+};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::rand::CryptoRng;
-use ark_std::{fmt::Debug, rand::RngCore};
+use ark_std::{
+    fmt::Debug,
+    rand::{CryptoRng, RngCore},
+};
 use thiserror::Error;
 
 use crate::frontend::FCircuit;
+use crate::transcript::AbsorbNonNative;
 
 pub mod arith;
 pub mod commitment;
@@ -131,11 +143,11 @@ pub enum Error {
 ///   coordinates) are in the C1::ScalarField.
 ///
 /// In other words, C1.Fq == C2.Fr, and C1.Fr == C2.Fq.
-pub trait FoldingScheme<C1: CurveGroup, C2: CurveGroup, FC>: Clone + Debug
-where
-    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2::BaseField: PrimeField,
+pub trait FoldingScheme<
+    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: SonobeCurve,
     FC: FCircuit<C1::ScalarField>,
+>: Clone + Debug
 {
     type PreprocessorParam: Debug + Clone;
     type ProverParam: Debug + Clone + CanonicalSerialize;
@@ -209,11 +221,11 @@ where
 
 /// Trait with auxiliary methods for multi-folding schemes (ie. HyperNova, ProtoGalaxy, etc),
 /// allowing to create new instances for the multifold.
-pub trait MultiFolding<C1: CurveGroup, C2: CurveGroup, FC>: Clone + Debug
-where
-    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2::BaseField: PrimeField,
+pub trait MultiFolding<
+    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: SonobeCurve,
     FC: FCircuit<C1::ScalarField>,
+>: Clone + Debug
 {
     type RunningInstance: Debug;
     type IncomingInstance: Debug;
@@ -237,13 +249,11 @@ where
 }
 
 pub trait Decider<
-    C1: CurveGroup,
-    C2: CurveGroup,
+    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: SonobeCurve,
     FC: FCircuit<C1::ScalarField>,
     FS: FoldingScheme<C1, C2, FC>,
-> where
-    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2::BaseField: PrimeField,
+>
 {
     type PreprocessorParam: Debug;
     type ProverParam: Clone;
@@ -278,10 +288,11 @@ pub trait Decider<
 }
 
 /// DeciderOnchain extends the Decider into preparing the calldata
-pub trait DeciderOnchain<E: Pairing, C1: CurveGroup, C2: CurveGroup>
-where
-    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2::BaseField: PrimeField,
+pub trait DeciderOnchain<
+    E: Pairing,
+    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: SonobeCurve,
+>
 {
     type Proof;
     type CommittedInstance: Clone + Debug;
@@ -294,4 +305,24 @@ where
         incoming_instance: &Self::CommittedInstance,
         proof: Self::Proof,
     ) -> Result<Vec<u8>, Error>;
+}
+
+pub trait SonobeField: PrimeField<BasePrimeField = Self> + Absorb + AbsorbNonNative {
+    type Var: FieldVar<Self, Self>;
+}
+
+impl<P: FpConfig<N>, const N: usize> SonobeField for Fp<P, N> {
+    type Var = FpVar<Self>;
+}
+
+pub trait SonobeCurve:
+    CurveGroup<ScalarField: SonobeField, BaseField: SonobeField> + AbsorbNonNative
+{
+    type Var: CurveVar<Self, Self::BaseField>;
+}
+
+impl<P: SWCurveConfig<ScalarField: SonobeField, BaseField: SonobeField>> SonobeCurve
+    for Projective<P>
+{
+    type Var = ProjectiveVar<P, FpVar<P::BaseField>>;
 }

@@ -1,8 +1,10 @@
-use ark_ec::{short_weierstrass::SWFlags, AffineRepr, CurveGroup};
+use ark_ec::{
+    short_weierstrass::{Projective, SWCurveConfig, SWFlags},
+    AffineRepr, CurveGroup,
+};
 use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
-    convert::ToConstraintFieldGadget,
     eq::EqGadget,
     fields::fp::FpVar,
     prelude::Boolean,
@@ -15,23 +17,21 @@ use ark_std::{borrow::Borrow, Zero};
 use crate::{
     folding::traits::Inputize,
     transcript::{AbsorbNonNative, AbsorbNonNativeGadget},
+    SonobeCurve, SonobeField,
 };
 
-use super::uint::{nonnative_field_to_field_elements, NonNativeUintVar};
+use super::uint::NonNativeUintVar;
 
 /// NonNativeAffineVar represents an elliptic curve point in Affine representation in the non-native
 /// field, over the constraint field. It is not intended to perform operations, but just to contain
 /// the affine coordinates in order to perform hash operations of the point.
 #[derive(Debug, Clone)]
-pub struct NonNativeAffineVar<C: CurveGroup> {
+pub struct NonNativeAffineVar<C: SonobeCurve> {
     pub x: NonNativeUintVar<C::ScalarField>,
     pub y: NonNativeUintVar<C::ScalarField>,
 }
 
-impl<C> AllocVar<C, C::ScalarField> for NonNativeAffineVar<C>
-where
-    C: CurveGroup,
-{
+impl<C: SonobeCurve> AllocVar<C, C::ScalarField> for NonNativeAffineVar<C> {
     fn new_variable<T: Borrow<C>>(
         cs: impl Into<Namespace<C::ScalarField>>,
         f: impl FnOnce() -> Result<T, SynthesisError>,
@@ -51,7 +51,7 @@ where
     }
 }
 
-impl<C: CurveGroup> R1CSVar<C::ScalarField> for NonNativeAffineVar<C> {
+impl<C: SonobeCurve> R1CSVar<C::ScalarField> for NonNativeAffineVar<C> {
     type Value = C;
 
     fn cs(&self) -> ConstraintSystemRef<C::ScalarField> {
@@ -68,7 +68,7 @@ impl<C: CurveGroup> R1CSVar<C::ScalarField> for NonNativeAffineVar<C> {
             &self.y.value()?.to_bytes_le(),
         );
         // Below is a workaround to convert the `x` and `y` coordinates to a
-        // point. This is because the `CurveGroup` trait does not provide a
+        // point. This is because the `SonobeCurve` trait does not provide a
         // method to construct a point from `BaseField` elements.
         let mut bytes = vec![];
         // `unwrap` below is safe because serialization of a `PrimeField` value
@@ -89,22 +89,12 @@ impl<C: CurveGroup> R1CSVar<C::ScalarField> for NonNativeAffineVar<C> {
         .unwrap();
         // `unwrap` below is safe because `bytes` is constructed from the `x`
         // and `y` coordinates of a valid point, and these coordinates are
-        // serialized in the same way as the `CurveGroup` implementation.
+        // serialized in the same way as the `SonobeCurve` implementation.
         Ok(C::deserialize_uncompressed_unchecked(&bytes[..]).unwrap())
     }
 }
 
-impl<C: CurveGroup> ToConstraintFieldGadget<C::ScalarField> for NonNativeAffineVar<C> {
-    // Used for converting `NonNativeAffineVar` to a vector of `FpVar` with minimum length in
-    // the circuit.
-    fn to_constraint_field(&self) -> Result<Vec<FpVar<C::ScalarField>>, SynthesisError> {
-        let x = self.x.to_constraint_field()?;
-        let y = self.y.to_constraint_field()?;
-        Ok([x, y].concat())
-    }
-}
-
-impl<C: CurveGroup> EqGadget<C::ScalarField> for NonNativeAffineVar<C> {
+impl<C: SonobeCurve> EqGadget<C::ScalarField> for NonNativeAffineVar<C> {
     fn is_eq(&self, other: &Self) -> Result<Boolean<C::ScalarField>, SynthesisError> {
         let mut result = Boolean::TRUE;
         if self.x.0.len() != other.x.0.len() {
@@ -151,20 +141,7 @@ impl<C: CurveGroup> EqGadget<C::ScalarField> for NonNativeAffineVar<C> {
     }
 }
 
-/// The out-circuit counterpart of `NonNativeAffineVar::to_constraint_field`
-#[allow(clippy::type_complexity)]
-pub(crate) fn nonnative_affine_to_field_elements<C: CurveGroup>(
-    p: C,
-) -> (Vec<C::ScalarField>, Vec<C::ScalarField>) {
-    let affine = p.into_affine();
-    let (x, y) = affine.xy().unwrap_or_default();
-
-    let x = nonnative_field_to_field_elements(&x);
-    let y = nonnative_field_to_field_elements(&y);
-    (x, y)
-}
-
-impl<C: CurveGroup> Inputize<C::ScalarField, NonNativeAffineVar<C>> for C {
+impl<C: SonobeCurve> Inputize<C::ScalarField, NonNativeAffineVar<C>> for C {
     fn inputize(&self) -> Vec<C::ScalarField> {
         let affine = self.into_affine();
         let (x, y) = affine.xy().unwrap_or_default();
@@ -175,7 +152,7 @@ impl<C: CurveGroup> Inputize<C::ScalarField, NonNativeAffineVar<C>> for C {
     }
 }
 
-impl<C: CurveGroup> NonNativeAffineVar<C> {
+impl<C: SonobeCurve> NonNativeAffineVar<C> {
     pub fn zero() -> Self {
         // `unwrap` below is safe because we are allocating a constant value,
         // which is guaranteed to succeed.
@@ -183,19 +160,25 @@ impl<C: CurveGroup> NonNativeAffineVar<C> {
     }
 }
 
-impl<C: CurveGroup> AbsorbNonNative<C::ScalarField> for C {
-    fn to_native_sponge_field_elements(&self, dest: &mut Vec<C::ScalarField>) {
-        let (x, y) = nonnative_affine_to_field_elements(*self);
-        dest.extend(x);
-        dest.extend(y);
+impl<P: SWCurveConfig<ScalarField: SonobeField, BaseField: SonobeField>> AbsorbNonNative
+    for Projective<P>
+{
+    fn to_native_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
+        let affine = self.into_affine();
+        let (x, y) = affine.xy().unwrap_or_default();
+
+        x.to_native_sponge_field_elements(dest);
+        y.to_native_sponge_field_elements(dest);
     }
 }
 
-impl<C: CurveGroup> AbsorbNonNativeGadget<C::ScalarField> for NonNativeAffineVar<C> {
+impl<C: SonobeCurve> AbsorbNonNativeGadget<C::ScalarField> for NonNativeAffineVar<C> {
     fn to_native_sponge_field_elements(
         &self,
     ) -> Result<Vec<FpVar<C::ScalarField>>, SynthesisError> {
-        self.to_constraint_field()
+        let x = self.x.to_native_sponge_field_elements()?;
+        let y = self.y.to_native_sponge_field_elements()?;
+        Ok([x, y].concat())
     }
 }
 
@@ -218,15 +201,17 @@ mod tests {
     }
 
     #[test]
-    fn test_improved_to_constraint_field() -> Result<(), Error> {
+    fn test_improved_to_hash_preimage() -> Result<(), Error> {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         // check that point_to_nonnative_limbs returns the expected values
         let mut rng = ark_std::test_rng();
         let p = Projective::rand(&mut rng);
         let pVar = NonNativeAffineVar::<Projective>::new_witness(cs.clone(), || Ok(p))?;
-        let (x, y) = nonnative_affine_to_field_elements(p);
-        assert_eq!(pVar.to_constraint_field()?.value()?, [x, y].concat());
+        assert_eq!(
+            pVar.to_native_sponge_field_elements()?.value()?,
+            p.to_native_sponge_field_elements_as_vec()
+        );
         Ok(())
     }
 

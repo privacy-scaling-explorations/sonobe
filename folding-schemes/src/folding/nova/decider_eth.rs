@@ -3,15 +3,15 @@
 /// More details can be found at the documentation page:
 /// https://privacy-scaling-explorations.github.io/sonobe-docs/design/nova-decider-onchain.html
 use ark_bn254::Bn254;
-use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{BigInteger, PrimeField};
 use ark_groth16::Groth16;
-use ark_r1cs_std::prelude::CurveVar;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_snark::SNARK;
-use ark_std::rand::{CryptoRng, RngCore};
-use ark_std::{One, Zero};
+use ark_std::{
+    rand::{CryptoRng, RngCore},
+    One, Zero,
+};
 use core::marker::PhantomData;
 
 pub use super::decider_eth_circuit::DeciderEthCircuit;
@@ -22,16 +22,16 @@ use crate::commitment::{
     pedersen::Params as PedersenParams,
     CommitmentScheme,
 };
-use crate::folding::circuits::{decider::DeciderEnabledNIFS, CF2};
+use crate::folding::circuits::decider::DeciderEnabledNIFS;
 use crate::folding::traits::{Inputize, WitnessOps};
 use crate::frontend::FCircuit;
-use crate::Error;
 use crate::{Decider as DeciderTrait, FoldingScheme};
+use crate::{Error, SonobeCurve};
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<C, CS, S>
 where
-    C: CurveGroup,
+    C: SonobeCurve,
     CS: CommitmentScheme<C, ProverChallenge = C::ScalarField, Challenge = C::ScalarField>,
     S: SNARK<C::ScalarField>,
 {
@@ -49,7 +49,7 @@ where
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct VerifierParam<C1, CS_VerifyingKey, S_VerifyingKey>
 where
-    C1: CurveGroup,
+    C1: SonobeCurve,
     CS_VerifyingKey: Clone + CanonicalSerialize + CanonicalDeserialize,
     S_VerifyingKey: Clone + CanonicalSerialize + CanonicalDeserialize,
 {
@@ -60,11 +60,9 @@ where
 
 /// Onchain Decider, for ethereum use cases
 #[derive(Clone, Debug)]
-pub struct Decider<C1, GC1, C2, GC2, FC, CS1, CS2, S, FS> {
+pub struct Decider<C1, C2, FC, CS1, CS2, S, FS> {
     _c1: PhantomData<C1>,
-    _gc1: PhantomData<GC1>,
     _c2: PhantomData<C2>,
-    _gc2: PhantomData<GC2>,
     _fc: PhantomData<FC>,
     _cs1: PhantomData<CS1>,
     _cs2: PhantomData<CS2>,
@@ -72,13 +70,11 @@ pub struct Decider<C1, GC1, C2, GC2, FC, CS1, CS2, S, FS> {
     _fs: PhantomData<FS>,
 }
 
-impl<C1, GC1, C2, GC2, FC, CS1, CS2, S, FS> DeciderTrait<C1, C2, FC, FS>
-    for Decider<C1, GC1, C2, GC2, FC, CS1, CS2, S, FS>
+impl<C1, C2, FC, CS1, CS2, S, FS> DeciderTrait<C1, C2, FC, FS>
+    for Decider<C1, C2, FC, CS1, CS2, S, FS>
 where
-    C1: CurveGroup,
-    GC1: CurveVar<C1, CF2<C1>>,
-    C2: CurveGroup,
-    GC2: CurveVar<C2, CF2<C2>>,
+    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: SonobeCurve,
     FC: FCircuit<C1::ScalarField>,
     // CS1 is a KZG commitment, where challenge is C1::Fr elem
     CS1: CommitmentScheme<
@@ -91,13 +87,8 @@ where
     CS2: CommitmentScheme<C2, ProverParams = PedersenParams<C2>>,
     S: SNARK<C1::ScalarField>,
     FS: FoldingScheme<C1, C2, FC>,
-    <C1 as CurveGroup>::BaseField: PrimeField,
-    <C2 as CurveGroup>::BaseField: PrimeField,
-    C1::ScalarField: Absorb,
-    C2::ScalarField: Absorb,
-    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     // constrain FS into Nova, since this is a Decider specifically for Nova
-    Nova<C1, GC1, C2, GC2, FC, CS1, CS2, false>: From<FS>,
+    Nova<C1, C2, FC, CS1, CS2, false>: From<FS>,
     crate::folding::nova::ProverParams<C1, C2, CS1, CS2, false>:
         From<<FS as FoldingScheme<C1, C2, FC>>::ProverParam>,
     crate::folding::nova::VerifierParams<C1, C2, CS1, CS2, false>:
@@ -115,7 +106,7 @@ where
         prep_param: Self::PreprocessorParam,
         fs: FS,
     ) -> Result<(Self::ProverParam, Self::VerifierParam), Error> {
-        let circuit = DeciderEthCircuit::<C1, C2, GC2>::try_from(Nova::from(fs))?;
+        let circuit = DeciderEthCircuit::<C1, C2>::try_from(Nova::from(fs))?;
 
         // get the Groth16 specific setup for the circuit
         let (g16_pk, g16_vk) = S::circuit_specific_setup(circuit, &mut rng)
@@ -123,13 +114,13 @@ where
 
         // get the FoldingScheme prover & verifier params from Nova
         #[allow(clippy::type_complexity)]
-        let nova_pp: <Nova<C1, GC1, C2, GC2, FC, CS1, CS2, false> as FoldingScheme<
+        let nova_pp: <Nova<C1, C2, FC, CS1, CS2, false> as FoldingScheme<
             C1,
             C2,
             FC,
         >>::ProverParam = prep_param.0.clone().into();
         #[allow(clippy::type_complexity)]
-        let nova_vp: <Nova<C1, GC1, C2, GC2, FC, CS1, CS2, false> as FoldingScheme<
+        let nova_vp: <Nova<C1, C2, FC, CS1, CS2, false> as FoldingScheme<
             C1,
             C2,
             FC,
@@ -152,7 +143,7 @@ where
     ) -> Result<Self::Proof, Error> {
         let (snark_pk, cs_pk): (S::ProvingKey, CS1::ProverParams) = pp;
 
-        let circuit = DeciderEthCircuit::<C1, C2, GC2>::try_from(Nova::from(folding_scheme))?;
+        let circuit = DeciderEthCircuit::<C1, C2>::try_from(Nova::from(folding_scheme))?;
 
         let cmT = circuit.proof;
         let r = circuit.randomness;
@@ -311,8 +302,8 @@ fn point2_to_eth_format(p: ark_bn254::G2Affine) -> Result<Vec<u8>, Error> {
 
 #[cfg(test)]
 pub mod tests {
-    use ark_bn254::{constraints::GVar, Fr, G1Projective as Projective};
-    use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
+    use ark_bn254::{Fr, G1Projective as Projective};
+    use ark_grumpkin::Projective as Projective2;
     use std::time::Instant;
 
     use super::*;
@@ -327,9 +318,7 @@ pub mod tests {
         // use Nova as FoldingScheme
         type N = Nova<
             Projective,
-            GVar,
             Projective2,
-            GVar2,
             CubicFCircuit<Fr>,
             KZG<'static, Bn254>,
             Pedersen<Projective2>,
@@ -337,9 +326,7 @@ pub mod tests {
         >;
         type D = Decider<
             Projective,
-            GVar,
             Projective2,
-            GVar2,
             CubicFCircuit<Fr>,
             KZG<'static, Bn254>,
             Pedersen<Projective2>,
@@ -409,9 +396,7 @@ pub mod tests {
         // use Nova as FoldingScheme
         type N = Nova<
             Projective,
-            GVar,
             Projective2,
-            GVar2,
             CubicFCircuit<Fr>,
             KZG<'static, Bn254>,
             Pedersen<Projective2>,
@@ -419,9 +404,7 @@ pub mod tests {
         >;
         type D = Decider<
             Projective,
-            GVar,
             Projective2,
-            GVar2,
             CubicFCircuit<Fr>,
             KZG<'static, Bn254>,
             Pedersen<Projective2>,

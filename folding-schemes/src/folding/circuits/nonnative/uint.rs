@@ -3,12 +3,11 @@ use std::{
     cmp::{max, min},
 };
 
-use ark_ff::{BigInteger, Field, One, PrimeField, Zero};
+use ark_ff::{BigInteger, Field, Fp, FpConfig, One, PrimeField, Zero};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
     convert::ToBitsGadget,
-    convert::ToConstraintFieldGadget,
     fields::{fp::FpVar, FieldVar},
     prelude::EqGadget,
     select::CondSelectGadget,
@@ -520,20 +519,6 @@ impl<F: PrimeField> ToBitsGadget<F> for NonNativeUintVar<F> {
     }
 }
 
-impl<F: PrimeField> ToConstraintFieldGadget<F> for NonNativeUintVar<F> {
-    fn to_constraint_field(&self) -> Result<Vec<FpVar<F>>, SynthesisError> {
-        let bits_per_limb = F::MODULUS_BIT_SIZE as usize - 1;
-
-        let limbs = self
-            .to_bits_le()?
-            .chunks(bits_per_limb)
-            .map(Boolean::le_bits_to_fp)
-            .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(limbs)
-    }
-}
-
 impl<F: PrimeField> CondSelectGadget<F> for NonNativeUintVar<F> {
     fn conditionally_select(
         cond: &Boolean<F>,
@@ -830,59 +815,43 @@ impl<F: PrimeField, B: AsRef<[Boolean<F>]>> From<B> for NonNativeUintVar<F> {
     }
 }
 
-// If we impl `AbsorbNonNative` directly for `PrimeField`, rustc will complain
-// that this impl conflicts with the impl for `CurveGroup`.
-// Therefore, we instead impl `AbsorbNonNative` for a slice of `PrimeField` as a
-// workaround.
-impl<TargetField: PrimeField, BaseField: PrimeField> AbsorbNonNative<BaseField>
-    for [TargetField]
-{
-    fn to_native_sponge_field_elements(&self, dest: &mut Vec<BaseField>) {
-        self.iter()
-            .for_each(|x| dest.extend(&nonnative_field_to_field_elements(x)));
+impl<P: FpConfig<N>, const N: usize> AbsorbNonNative for Fp<P, N> {
+    fn to_native_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
+        let bits_per_limb = F::MODULUS_BIT_SIZE as usize - 1;
+        let num_limbs = (Fp::<P, N>::MODULUS_BIT_SIZE as usize).div_ceil(bits_per_limb);
+
+        let mut limbs = self
+            .into_bigint()
+            .to_bits_le()
+            .chunks(bits_per_limb)
+            .map(|chunk| {
+                let mut limb = F::zero();
+                let mut w = F::one();
+                for &b in chunk.iter() {
+                    limb += F::from(b) * w;
+                    w.double_in_place();
+                }
+                limb
+            })
+            .collect::<Vec<F>>();
+        limbs.resize(num_limbs, F::zero());
+
+        dest.extend(&limbs)
     }
 }
 
 impl<F: PrimeField> AbsorbNonNativeGadget<F> for NonNativeUintVar<F> {
     fn to_native_sponge_field_elements(&self) -> Result<Vec<FpVar<F>>, SynthesisError> {
-        self.to_constraint_field()
+        let bits_per_limb = F::MODULUS_BIT_SIZE as usize - 1;
+
+        let limbs = self
+            .to_bits_le()?
+            .chunks(bits_per_limb)
+            .map(Boolean::le_bits_to_fp)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(limbs)
     }
-}
-
-/// The out-circuit counterpart of `NonNativeUintVar::to_constraint_field`
-pub(super) fn nonnative_field_to_field_elements<TargetField: Field, BaseField: PrimeField>(
-    f: &TargetField,
-) -> Vec<BaseField> {
-    assert_eq!(TargetField::extension_degree(), 1);
-    // `unwrap` is safe because `TargetField` is a field with extension degree
-    // 1, and thus `TargetField::to_base_prime_field_elements` should return an
-    // iterator with exactly one element.
-    let bits = f
-        .to_base_prime_field_elements()
-        .next()
-        .unwrap()
-        .into_bigint()
-        .to_bits_le();
-
-    let bits_per_limb = BaseField::MODULUS_BIT_SIZE as usize - 1;
-    let num_limbs =
-        (TargetField::BasePrimeField::MODULUS_BIT_SIZE as usize).div_ceil(bits_per_limb);
-
-    let mut limbs = bits
-        .chunks(bits_per_limb)
-        .map(|chunk| {
-            let mut limb = BaseField::zero();
-            let mut w = BaseField::one();
-            for &b in chunk.iter() {
-                limb += BaseField::from(b) * w;
-                w.double_in_place();
-            }
-            limb
-        })
-        .collect::<Vec<BaseField>>();
-    limbs.resize(num_limbs, BaseField::zero());
-
-    limbs
 }
 
 impl<F: PrimeField> VectorGadget<NonNativeUintVar<F>> for [NonNativeUintVar<F>] {

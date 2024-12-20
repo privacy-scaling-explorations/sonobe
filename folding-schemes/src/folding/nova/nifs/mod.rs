@@ -7,7 +7,6 @@
 /// - [Ova](https://hackmd.io/V4838nnlRKal9ZiTHiGYzw)
 /// - [Mova](https://eprint.iacr.org/2024/1220.pdf)
 use ark_crypto_primitives::sponge::{constraints::AbsorbGadget, Absorb, CryptographicSponge};
-use ark_ec::CurveGroup;
 use ark_r1cs_std::{alloc::AllocVar, boolean::Boolean, fields::fp::FpVar};
 use ark_relations::r1cs::SynthesisError;
 use ark_std::fmt::Debug;
@@ -18,7 +17,7 @@ use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::CF1;
 use crate::folding::traits::{CommittedInstanceOps, CommittedInstanceVarOps};
 use crate::transcript::{Transcript, TranscriptVar};
-use crate::Error;
+use crate::{Error, SonobeCurve};
 
 pub mod mova;
 pub mod nova;
@@ -33,7 +32,7 @@ pub mod pointvsline;
 /// [Mova](https://eprint.iacr.org/2024/1220.pdf).
 /// `H` specifies whether the NIFS will use a blinding factor.
 pub trait NIFSTrait<
-    C: CurveGroup,
+    C: SonobeCurve,
     CS: CommitmentScheme<C, H>,
     T: Transcript<C::ScalarField>,
     const H: bool = false,
@@ -99,7 +98,7 @@ pub trait NIFSTrait<
 /// logic of the NIFS.Verify defined in [Nova](https://eprint.iacr.org/2021/370.pdf) and it's
 /// variants [Ova](https://hackmd.io/V4838nnlRKal9ZiTHiGYzw) and
 /// [Mova](https://eprint.iacr.org/2024/1220.pdf).
-pub trait NIFSGadgetTrait<C: CurveGroup, S: CryptographicSponge, T: TranscriptVar<CF1<C>, S>> {
+pub trait NIFSGadgetTrait<C: SonobeCurve, S: CryptographicSponge, T: TranscriptVar<CF1<C>, S>> {
     type CommittedInstance: Debug + Clone + Absorb + CommittedInstanceOps<C>;
     type CommittedInstanceVar: Debug
         + Clone

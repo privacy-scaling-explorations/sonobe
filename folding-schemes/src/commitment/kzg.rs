@@ -24,17 +24,17 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use super::CommitmentScheme;
 use crate::transcript::Transcript;
 use crate::utils::vec::poly_from_vec;
-use crate::Error;
+use crate::{Error, SonobeCurve};
 
 /// ProverKey defines a similar struct as in ark_poly_commit::kzg10::Powers, but instead of
-/// depending on the Pairing trait it depends on the CurveGroup trait.
+/// depending on the Pairing trait it depends on the SonobeCurve trait.
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
-pub struct ProverKey<'a, C: CurveGroup> {
+pub struct ProverKey<'a, C: SonobeCurve> {
     /// Group elements of the form `β^i G`, for different values of `i`.
     pub powers_of_g: Cow<'a, [C::Affine]>,
 }
 
-impl<'a, C: CurveGroup> CanonicalSerialize for ProverKey<'a, C> {
+impl<'a, C: SonobeCurve> CanonicalSerialize for ProverKey<'a, C> {
     fn serialize_with_mode<W: std::io::prelude::Write>(
         &self,
         mut writer: W,
@@ -48,7 +48,7 @@ impl<'a, C: CurveGroup> CanonicalSerialize for ProverKey<'a, C> {
     }
 }
 
-impl<'a, C: CurveGroup> CanonicalDeserialize for ProverKey<'a, C> {
+impl<'a, C: SonobeCurve> CanonicalDeserialize for ProverKey<'a, C> {
     fn deserialize_with_mode<R: std::io::prelude::Read>(
         reader: R,
         compress: ark_serialize::Compress,
@@ -61,7 +61,7 @@ impl<'a, C: CurveGroup> CanonicalDeserialize for ProverKey<'a, C> {
     }
 }
 
-impl<'a, C: CurveGroup> Valid for ProverKey<'a, C> {
+impl<'a, C: SonobeCurve> Valid for ProverKey<'a, C> {
     fn check(&self) -> Result<(), ark_serialize::SerializationError> {
         match self.powers_of_g.clone() {
             Cow::Borrowed(powers) => powers.to_vec().check(),
@@ -71,7 +71,7 @@ impl<'a, C: CurveGroup> Valid for ProverKey<'a, C> {
 }
 
 #[derive(Debug, Clone, Default, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Proof<C: CurveGroup> {
+pub struct Proof<C: SonobeCurve> {
     pub eval: C::ScalarField,
     pub proof: C,
 }
@@ -83,10 +83,7 @@ pub struct KZG<'a, E: Pairing, const H: bool = false> {
     _e: PhantomData<E>,
 }
 
-impl<'a, E, const H: bool> CommitmentScheme<E::G1, H> for KZG<'a, E, H>
-where
-    E: Pairing,
-{
+impl<'a, E: Pairing<G1: SonobeCurve>, const H: bool> CommitmentScheme<E::G1, H> for KZG<'a, E, H> {
     type ProverParams = ProverKey<'a, E::G1>;
     type VerifierParams = VerifierKey<E>;
     type Proof = Proof<E::G1>;

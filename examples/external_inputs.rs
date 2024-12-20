@@ -3,7 +3,7 @@
 #![allow(non_camel_case_types)]
 #![allow(clippy::upper_case_acronyms)]
 
-use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as Projective};
+use ark_bn254::{Bn254, Fr, G1Projective as Projective};
 use ark_crypto_primitives::{
     crh::{
         poseidon::constraints::{CRHGadget, CRHParametersVar},
@@ -12,7 +12,7 @@ use ark_crypto_primitives::{
     sponge::{poseidon::PoseidonConfig, Absorb},
 };
 use ark_ff::PrimeField;
-use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
+use ark_grumpkin::Projective as Projective2;
 use ark_r1cs_std::alloc::AllocVar;
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
@@ -169,9 +169,7 @@ fn main() -> Result<(), Error> {
     /// trait, and the rest of our code would be working without needing to be updated.
     type N = Nova<
         Projective,
-        GVar,
         Projective2,
-        GVar2,
         ExternalInputsCircuit<Fr>,
         KZG<'static, Bn254>,
         Pedersen<Projective2>,

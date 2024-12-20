@@ -1,5 +1,4 @@
 use ark_crypto_primitives::sponge::Absorb;
-use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
@@ -12,15 +11,14 @@ use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::CF1;
 use crate::folding::traits::Inputize;
 use crate::folding::traits::{CommittedInstanceOps, Dummy};
-use crate::transcript::AbsorbNonNative;
 use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::utils::vec::{is_zero_vec, mat_vec_mul};
 use crate::utils::virtual_polynomial::{build_eq_x_r_vec, VirtualPolynomial};
-use crate::Error;
+use crate::{Error, SonobeCurve};
 
 /// Committed CCS instance
 #[derive(Debug, Clone, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CCCS<C: CurveGroup> {
+pub struct CCCS<C: SonobeCurve> {
     // Commitment to witness
     pub C: C,
     // Public input/output
@@ -32,19 +30,19 @@ impl<F: PrimeField> CCS<F> {
         &self,
         rng: &mut R,
         cs_params: &CS::ProverParams,
-        z: &[C::ScalarField],
-    ) -> Result<(CCCS<C>, Witness<C::ScalarField>), Error>
+        z: &[F],
+    ) -> Result<(CCCS<C>, Witness<F>), Error>
     where
         // enforce that CCS's F is the C::ScalarField
-        C: CurveGroup<ScalarField = F>,
+        C: SonobeCurve<ScalarField = F>,
     {
-        let w: Vec<C::ScalarField> = z[(1 + self.l)..].to_vec();
+        let w: Vec<F> = z[(1 + self.l)..].to_vec();
 
         // if the commitment scheme is set to be hiding, set the random blinding parameter
         let r_w = if CS::is_hiding() {
-            C::ScalarField::rand(rng)
+            F::rand(rng)
         } else {
-            C::ScalarField::zero()
+            F::zero()
         };
         let C = CS::commit(cs_params, &w, &r_w)?;
 
@@ -53,7 +51,7 @@ impl<F: PrimeField> CCS<F> {
                 C,
                 x: z[1..(1 + self.l)].to_vec(),
             },
-            Witness::<C::ScalarField> { w, r_w },
+            Witness::<F> { w, r_w },
         ))
     }
 
@@ -91,7 +89,7 @@ impl<F: PrimeField> CCS<F> {
     }
 }
 
-impl<C: CurveGroup> Dummy<&CCS<CF1<C>>> for CCCS<C> {
+impl<C: SonobeCurve> Dummy<&CCS<CF1<C>>> for CCCS<C> {
     fn dummy(ccs: &CCS<CF1<C>>) -> Self {
         Self {
             C: C::zero(),
@@ -100,7 +98,7 @@ impl<C: CurveGroup> Dummy<&CCS<CF1<C>>> for CCCS<C> {
     }
 }
 
-impl<C: CurveGroup> Arith<Witness<CF1<C>>, CCCS<C>> for CCS<CF1<C>> {
+impl<C: SonobeCurve> Arith<Witness<CF1<C>>, CCCS<C>> for CCS<CF1<C>> {
     type Evaluation = Vec<CF1<C>>;
 
     fn eval_relation(&self, w: &Witness<CF1<C>>, u: &CCCS<C>) -> Result<Self::Evaluation, Error> {
@@ -122,26 +120,18 @@ impl<C: CurveGroup> Arith<Witness<CF1<C>>, CCCS<C>> for CCS<CF1<C>> {
     }
 }
 
-impl<C: CurveGroup> Absorb for CCCS<C>
-where
-    C::ScalarField: Absorb,
-{
+impl<C: SonobeCurve> Absorb for CCCS<C> {
     fn to_sponge_bytes(&self, dest: &mut Vec<u8>) {
         C::ScalarField::batch_to_sponge_bytes(&self.to_sponge_field_elements_as_vec(), dest);
     }
 
     fn to_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
-        // We cannot call `to_native_sponge_field_elements(dest)` directly, as
-        // `to_native_sponge_field_elements` needs `F` to be `C::ScalarField`,
-        // but here `F` is a generic `PrimeField`.
-        self.C
-            .to_native_sponge_field_elements_as_vec()
-            .to_sponge_field_elements(dest);
+        self.C.to_native_sponge_field_elements(dest);
         self.x.to_sponge_field_elements(dest);
     }
 }
 
-impl<C: CurveGroup> CommittedInstanceOps<C> for CCCS<C> {
+impl<C: SonobeCurve> CommittedInstanceOps<C> for CCCS<C> {
     type Var = CCCSVar<C>;
 
     fn get_commitments(&self) -> Vec<C> {
@@ -153,7 +143,7 @@ impl<C: CurveGroup> CommittedInstanceOps<C> for CCCS<C> {
     }
 }
 
-impl<C: CurveGroup> Inputize<C::ScalarField, CCCSVar<C>> for CCCS<C> {
+impl<C: SonobeCurve> Inputize<C::ScalarField, CCCSVar<C>> for CCCS<C> {
     fn inputize(&self) -> Vec<C::ScalarField> {
         [&self.C.inputize()[..], &self.x].concat()
     }

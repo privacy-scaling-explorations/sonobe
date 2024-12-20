@@ -3,10 +3,8 @@
 use ark_crypto_primitives::sponge::{
     constraints::{AbsorbGadget, CryptographicSpongeVar},
     poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig},
-    Absorb,
 };
-use ark_ec::CurveGroup;
-use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, fields::fp::FpVar, prelude::CurveVar};
+use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, fields::fp::FpVar};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use ark_std::{marker::PhantomData, Zero};
 
@@ -24,6 +22,7 @@ use crate::{
         },
         traits::{CommittedInstanceOps, CommittedInstanceVarOps, Dummy, WitnessOps, WitnessVarOps},
     },
+    SonobeCurve,
 };
 
 use super::DeciderEnabledNIFS;
@@ -60,9 +59,8 @@ use super::DeciderEnabledNIFS;
 ///
 /// For more details, see [https://privacy-scaling-explorations.github.io/sonobe-docs/design/nova-decider-onchain.html].
 pub struct GenericOnchainDeciderCircuit<
-    C1: CurveGroup,
-    C2: CurveGroup,
-    GC2: CurveVar<C2, CF2<C2>>,
+    C1: SonobeCurve,
+    C2: SonobeCurve,
     RU: CommittedInstanceOps<C1>,       // Running instance
     IU: CommittedInstanceOps<C1>,       // Incoming instance
     W: WitnessOps<CF1<C1>>,             // Witness
@@ -70,7 +68,6 @@ pub struct GenericOnchainDeciderCircuit<
     AVar: ArithGadget<W::Var, RU::Var>, // In-circuit representation of `A`
     D: DeciderEnabledNIFS<C1, RU, IU, W, A>,
 > {
-    pub _gc2: PhantomData<GC2>,
     pub _avar: PhantomData<AVar>,
     /// Constraint system of the Augmented Function circuit
     pub arith: A,
@@ -108,9 +105,8 @@ pub struct GenericOnchainDeciderCircuit<
 }
 
 impl<
-        C1: CurveGroup,
-        C2: CurveGroup<ScalarField = CF2<C1>, BaseField = CF1<C1>>,
-        GC2: CurveVar<C2, CF2<C2>>,
+        C1: SonobeCurve,
+        C2: SonobeCurve<ScalarField = CF2<C1>, BaseField = CF1<C1>>,
         RU: CommittedInstanceOps<C1> + for<'a> Dummy<&'a A>,
         IU: CommittedInstanceOps<C1> + for<'a> Dummy<&'a A>,
         W: WitnessOps<CF1<C1>> + for<'a> Dummy<&'a A>,
@@ -127,7 +123,7 @@ impl<
         D::RandomnessDummyCfg,
         usize,
         usize,
-    )> for GenericOnchainDeciderCircuit<C1, C2, GC2, RU, IU, W, A, AVar, D>
+    )> for GenericOnchainDeciderCircuit<C1, C2, RU, IU, W, A, AVar, D>
 {
     fn dummy(
         (
@@ -151,7 +147,6 @@ impl<
         ),
     ) -> Self {
         Self {
-            _gc2: PhantomData,
             _avar: PhantomData,
             cf_pedersen_params,
             poseidon_config,
@@ -178,20 +173,17 @@ impl<
 }
 
 impl<
-        C1: CurveGroup,
-        C2: CurveGroup<ScalarField = CF2<C1>, BaseField = CF1<C1>>,
-        GC2: CurveVar<C2, CF2<C2>>,
+        C1: SonobeCurve,
+        C2: SonobeCurve<ScalarField = CF2<C1>, BaseField = CF1<C1>>,
         RU: CommittedInstanceOps<C1>,
         IU: CommittedInstanceOps<C1>,
         W: WitnessOps<CF1<C1>>,
         A: Arith<W, RU>,
         AVar: ArithGadget<W::Var, RU::Var> + AllocVar<A, CF1<C1>>,
         D: DeciderEnabledNIFS<C1, RU, IU, W, A>,
-    > ConstraintSynthesizer<CF1<C1>>
-    for GenericOnchainDeciderCircuit<C1, C2, GC2, RU, IU, W, A, AVar, D>
+    > ConstraintSynthesizer<CF1<C1>> for GenericOnchainDeciderCircuit<C1, C2, RU, IU, W, A, AVar, D>
 where
     RU::Var: AbsorbGadget<CF1<C1>> + CommittedInstanceVarOps<C1, PointVar = NonNativeAffineVar<C1>>,
-    CF1<C1>: Absorb,
 {
     fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
         let arith = AVar::new_witness(cs.clone(), || Ok(&self.arith))?;
@@ -212,7 +204,7 @@ where
         U_i1.get_commitments().enforce_equal(&U_i1_commitments)?;
 
         let cf_U_i =
-            CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || Ok(self.cf_U_i))?;
+            CycleFoldCommittedInstanceVar::<C2>::new_witness(cs.clone(), || Ok(self.cf_U_i))?;
 
         // allocate the inputs for the check 7.1 and 7.2
         let kzg_challenges = Vec::new_input(cs.clone(), || Ok(self.kzg_challenges))?;
@@ -256,15 +248,15 @@ where
                     cyclefold::CycleFoldWitnessVar, nonnative::uint::NonNativeUintVar,
                 },
             };
-            use ark_r1cs_std::convert::ToBitsGadget;
+            use ark_r1cs_std::{convert::ToBitsGadget, groups::CurveVar};
             let cf_W_i = CycleFoldWitnessVar::<C2>::new_witness(cs.clone(), || Ok(self.cf_W_i))?;
             // 4. check Pedersen commitments of cf_U_i.{cmE, cmW}
-            let H = GC2::constant(self.cf_pedersen_params.h);
+            let H = C2::Var::constant(self.cf_pedersen_params.h);
             let G = self
                 .cf_pedersen_params
                 .generators
                 .iter()
-                .map(|&g| GC2::constant(g.into()))
+                .map(|&g| C2::Var::constant(g.into()))
                 .collect::<Vec<_>>();
             let cf_W_i_E_bits = cf_W_i
                 .E
@@ -276,9 +268,9 @@ where
                 .iter()
                 .map(|W_i| W_i.to_bits_le())
                 .collect::<Result<Vec<_>, _>>()?;
-            PedersenGadget::<C2, GC2>::commit(&H, &G, &cf_W_i_E_bits, &cf_W_i.rE.to_bits_le()?)?
+            PedersenGadget::<C2>::commit(&H, &G, &cf_W_i_E_bits, &cf_W_i.rE.to_bits_le()?)?
                 .enforce_equal(&cf_U_i.cmE)?;
-            PedersenGadget::<C2, GC2>::commit(&H, &G, &cf_W_i_W_bits, &cf_W_i.rW.to_bits_le()?)?
+            PedersenGadget::<C2>::commit(&H, &G, &cf_W_i_W_bits, &cf_W_i.rW.to_bits_le()?)?
                 .enforce_equal(&cf_U_i.cmW)?;
 
             let cf_r1cs = R1CSMatricesVar::<CF1<C2>, NonNativeUintVar<CF2<C2>>>::new_constant(

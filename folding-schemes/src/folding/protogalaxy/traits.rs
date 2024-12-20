@@ -1,8 +1,6 @@
 use ark_crypto_primitives::sponge::{constraints::AbsorbGadget, Absorb};
-use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_r1cs_std::{
-    convert::ToConstraintFieldGadget,
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
     uint8::UInt8,
@@ -22,24 +20,19 @@ use crate::{
         Arith, ArithGadget,
     },
     folding::circuits::CF1,
-    transcript::AbsorbNonNative,
+    transcript::AbsorbNonNativeGadget,
     utils::vec::is_zero_vec,
-    Error,
+    Error, SonobeCurve,
 };
 
 // Implements the trait for absorbing ProtoGalaxy's CommittedInstance.
-impl<C: CurveGroup, const TYPE: bool> Absorb for CommittedInstance<C, TYPE>
-where
-    C::ScalarField: Absorb,
-{
+impl<C: SonobeCurve, const TYPE: bool> Absorb for CommittedInstance<C, TYPE> {
     fn to_sponge_bytes(&self, dest: &mut Vec<u8>) {
         C::ScalarField::batch_to_sponge_bytes(&self.to_sponge_field_elements_as_vec(), dest);
     }
 
     fn to_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
-        self.phi
-            .to_native_sponge_field_elements_as_vec()
-            .to_sponge_field_elements(dest);
+        self.phi.to_native_sponge_field_elements(dest);
         self.betas.to_sponge_field_elements(dest);
         self.e.to_sponge_field_elements(dest);
         self.x.to_sponge_field_elements(dest);
@@ -47,7 +40,7 @@ where
 }
 
 // Implements the trait for absorbing ProtoGalaxy's CommittedInstanceVar in-circuit.
-impl<C: CurveGroup, const TYPE: bool> AbsorbGadget<C::ScalarField>
+impl<C: SonobeCurve, const TYPE: bool> AbsorbGadget<C::ScalarField>
     for CommittedInstanceVar<C, TYPE>
 {
     fn to_sponge_bytes(&self) -> Result<Vec<UInt8<C::ScalarField>>, SynthesisError> {
@@ -56,7 +49,7 @@ impl<C: CurveGroup, const TYPE: bool> AbsorbGadget<C::ScalarField>
 
     fn to_sponge_field_elements(&self) -> Result<Vec<FpVar<C::ScalarField>>, SynthesisError> {
         Ok([
-            self.phi.to_constraint_field()?,
+            self.phi.to_native_sponge_field_elements()?,
             self.betas.to_sponge_field_elements()?,
             self.e.to_sponge_field_elements()?,
             self.x.to_sponge_field_elements()?,
@@ -72,7 +65,7 @@ impl<C: CurveGroup, const TYPE: bool> AbsorbGadget<C::ScalarField>
 /// relaxed R1CS.
 ///
 /// See `nova/traits.rs` for the rationale behind the design.
-impl<C: CurveGroup, const TYPE: bool> Arith<Witness<CF1<C>>, CommittedInstance<C, TYPE>>
+impl<C: SonobeCurve, const TYPE: bool> Arith<Witness<CF1<C>>, CommittedInstance<C, TYPE>>
     for R1CS<CF1<C>>
 {
     type Evaluation = Vec<CF1<C>>;
@@ -113,7 +106,7 @@ impl<C: CurveGroup, const TYPE: bool> Arith<Witness<CF1<C>>, CommittedInstance<C
 
 /// Unlike its native counterpart, we only need to support running instances in
 /// circuit, as the decider circuit only checks running instance satisfiability.
-impl<C: CurveGroup> ArithGadget<WitnessVar<CF1<C>>, CommittedInstanceVar<C, RUNNING>>
+impl<C: SonobeCurve> ArithGadget<WitnessVar<CF1<C>>, CommittedInstanceVar<C, RUNNING>>
     for R1CSMatricesVar<CF1<C>, FpVar<CF1<C>>>
 {
     type Evaluation = (Vec<FpVar<CF1<C>>>, Vec<FpVar<CF1<C>>>);

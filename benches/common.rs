@@ -1,26 +1,20 @@
-use ark_ec::CurveGroup;
-use ark_ff::PrimeField;
 use criterion::*;
 
 use folding_schemes::{
     frontend::{utils::CustomFCircuit, FCircuit},
-    Error, FoldingScheme,
+    Error, FoldingScheme, SonobeCurve,
 };
 
 pub(crate) fn bench_ivc_opt<
-    C1: CurveGroup,
-    C2: CurveGroup,
+    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: SonobeCurve,
     FS: FoldingScheme<C1, C2, CustomFCircuit<C1::ScalarField>>,
 >(
     c: &mut Criterion,
     name: String,
     n: usize,
     prep_param: FS::PreprocessorParam,
-) -> Result<(), Error>
-where
-    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2::BaseField: PrimeField,
-{
+) -> Result<(), Error> {
     let fcircuit_size = 1 << n; // 2^n
 
     let f_circuit = CustomFCircuit::<C1::ScalarField>::new(fcircuit_size)?;

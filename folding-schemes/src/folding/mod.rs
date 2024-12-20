@@ -6,11 +6,10 @@ pub mod traits;
 
 #[cfg(test)]
 pub mod tests {
-    use ark_ec::CurveGroup;
-    use ark_ff::PrimeField;
-    use ark_pallas::{constraints::GVar as GVar1, Fr, Projective as G1};
+
+    use ark_pallas::{Fr, Projective as G1};
     use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-    use ark_vesta::{constraints::GVar as GVar2, Projective as G2};
+    use ark_vesta::Projective as G2;
     use std::io::Write;
 
     use crate::commitment::pedersen::Pedersen;
@@ -22,8 +21,8 @@ pub mod tests {
     use crate::frontend::utils::CubicFCircuit;
     use crate::frontend::FCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
-    use crate::Error;
     use crate::FoldingScheme;
+    use crate::{Error, SonobeCurve};
 
     /// tests the IVC proofs and its serializers for the 3 implemented IVCs: Nova, HyperNova and
     /// ProtoGalaxy.
@@ -34,16 +33,14 @@ pub mod tests {
         let f_circuit = FC::new(())?;
 
         // test Nova
-        type N = Nova<G1, GVar1, G2, GVar2, FC, Pedersen<G1>, Pedersen<G2>, false>;
+        type N = Nova<G1, G2, FC, Pedersen<G1>, Pedersen<G2>, false>;
         let prep_param = NovaPreprocessorParam::new(poseidon_config.clone(), f_circuit);
         test_serialize_ivc_opt::<G1, G2, FC, N>("nova".to_string(), prep_param.clone())?;
 
         // test HyperNova
         type HN = HyperNova<
             G1,
-            GVar1,
             G2,
-            GVar2,
             FC,
             Pedersen<G1>,
             Pedersen<G2>,
@@ -54,26 +51,21 @@ pub mod tests {
         test_serialize_ivc_opt::<G1, G2, FC, HN>("hypernova".to_string(), prep_param)?;
 
         // test ProtoGalaxy
-        type P = ProtoGalaxy<G1, GVar1, G2, GVar2, FC, Pedersen<G1>, Pedersen<G2>>;
+        type P = ProtoGalaxy<G1, G2, FC, Pedersen<G1>, Pedersen<G2>>;
         let prep_param = (poseidon_config, f_circuit);
         test_serialize_ivc_opt::<G1, G2, FC, P>("protogalaxy".to_string(), prep_param)?;
         Ok(())
     }
 
     fn test_serialize_ivc_opt<
-        C1: CurveGroup,
-        C2: CurveGroup,
+        C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+        C2: SonobeCurve,
         FC: FCircuit<C1::ScalarField, Params = ()>,
         FS: FoldingScheme<C1, C2, FC>,
     >(
         name: String,
         prep_param: FS::PreprocessorParam,
-    ) -> Result<(), Error>
-    where
-        C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-        C2::BaseField: PrimeField,
-        FC: FCircuit<C1::ScalarField>,
-    {
+    ) -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
         let F_circuit = FC::new(())?;
 

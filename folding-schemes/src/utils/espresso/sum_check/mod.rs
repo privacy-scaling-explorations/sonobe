@@ -59,10 +59,7 @@ pub trait SumCheck<F: PrimeField> {
 }
 
 /// Trait for sum check protocol prover side APIs.
-pub trait SumCheckProver<F: PrimeField>
-where
-    Self: Sized,
-{
+pub trait SumCheckProver<F: PrimeField>: Sized {
     type VirtualPolynomial;
     type ProverMessage;
 

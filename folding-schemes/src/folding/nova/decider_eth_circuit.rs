@@ -5,14 +5,12 @@
 use ark_crypto_primitives::sponge::{
     constraints::CryptographicSpongeVar,
     poseidon::{constraints::PoseidonSpongeVar, PoseidonSponge},
-    Absorb, CryptographicSponge,
+    CryptographicSponge,
 };
-use ark_ec::CurveGroup;
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     fields::fp::FpVar,
-    prelude::CurveVar,
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
 use ark_std::{borrow::Borrow, marker::PhantomData};
@@ -25,31 +23,27 @@ use super::{
 use crate::commitment::{pedersen::Params as PedersenParams, CommitmentScheme};
 use crate::folding::{
     circuits::{
-        decider::on_chain::GenericOnchainDeciderCircuit, nonnative::affine::NonNativeAffineVar,
-        CF1, CF2,
+        decider::on_chain::GenericOnchainDeciderCircuit, nonnative::affine::NonNativeAffineVar, CF1,
     },
     traits::{WitnessOps, WitnessVarOps},
 };
 use crate::frontend::FCircuit;
-use crate::Error;
 use crate::{
     arith::r1cs::{circuits::R1CSMatricesVar, R1CS},
     folding::circuits::decider::{DeciderEnabledNIFS, EvalGadget, KZGChallengesGadget},
 };
+use crate::{Error, SonobeCurve};
 
 /// In-circuit representation of the Witness associated to the CommittedInstance.
 #[derive(Debug, Clone)]
-pub struct WitnessVar<C: CurveGroup> {
+pub struct WitnessVar<C: SonobeCurve> {
     pub E: Vec<FpVar<C::ScalarField>>,
     pub rE: FpVar<C::ScalarField>,
     pub W: Vec<FpVar<C::ScalarField>>,
     pub rW: FpVar<C::ScalarField>,
 }
 
-impl<C> AllocVar<Witness<C>, CF1<C>> for WitnessVar<C>
-where
-    C: CurveGroup,
-{
+impl<C: SonobeCurve> AllocVar<Witness<C>, CF1<C>> for WitnessVar<C> {
     fn new_variable<T: Borrow<Witness<C>>>(
         cs: impl Into<Namespace<CF1<C>>>,
         f: impl FnOnce() -> Result<T, SynthesisError>,
@@ -73,16 +67,15 @@ where
     }
 }
 
-impl<C: CurveGroup> WitnessVarOps<C::ScalarField> for WitnessVar<C> {
+impl<C: SonobeCurve> WitnessVarOps<C::ScalarField> for WitnessVar<C> {
     fn get_openings(&self) -> Vec<(&[FpVar<C::ScalarField>], FpVar<C::ScalarField>)> {
         vec![(&self.W, self.rW.clone()), (&self.E, self.rE.clone())]
     }
 }
 
-pub type DeciderEthCircuit<C1, C2, GC2> = GenericOnchainDeciderCircuit<
+pub type DeciderEthCircuit<C1, C2> = GenericOnchainDeciderCircuit<
     C1,
     C2,
-    GC2,
     CommittedInstance<C1>,
     CommittedInstance<C1>,
     Witness<C1>,
@@ -93,23 +86,18 @@ pub type DeciderEthCircuit<C1, C2, GC2> = GenericOnchainDeciderCircuit<
 
 /// returns an instance of the DeciderEthCircuit from the given Nova struct
 impl<
-        C1: CurveGroup,
-        GC1: CurveVar<C1, CF2<C1>>,
-        C2: CurveGroup,
-        GC2: CurveVar<C2, CF2<C2>>,
+        C1: SonobeCurve,
+        C2: SonobeCurve,
         FC: FCircuit<C1::ScalarField>,
         CS1: CommitmentScheme<C1, H>,
         // enforce that the CS2 is Pedersen commitment scheme, since we're at Ethereum's EVM decider
         CS2: CommitmentScheme<C2, H, ProverParams = PedersenParams<C2>>,
         const H: bool,
-    > TryFrom<Nova<C1, GC1, C2, GC2, FC, CS1, CS2, H>> for DeciderEthCircuit<C1, C2, GC2>
-where
-    CF1<C1>: Absorb,
-    <C1 as CurveGroup>::BaseField: PrimeField,
+    > TryFrom<Nova<C1, C2, FC, CS1, CS2, H>> for DeciderEthCircuit<C1, C2>
 {
     type Error = Error;
 
-    fn try_from(nova: Nova<C1, GC1, C2, GC2, FC, CS1, CS2, H>) -> Result<Self, Error> {
+    fn try_from(nova: Nova<C1, C2, FC, CS1, CS2, H>) -> Result<Self, Error> {
         let mut transcript = PoseidonSponge::<C1::ScalarField>::new(&nova.poseidon_config);
 
         // compute the U_{i+1}, W_{i+1}
@@ -138,7 +126,6 @@ where
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Self {
-            _gc2: PhantomData,
             _avar: PhantomData,
             arith: nova.r1cs,
             cf_arith: nova.cf_r1cs,
@@ -166,11 +153,9 @@ where
 
 pub struct DeciderNovaGadget;
 
-impl<C: CurveGroup>
+impl<C: SonobeCurve>
     DeciderEnabledNIFS<C, CommittedInstance<C>, CommittedInstance<C>, Witness<C>, R1CS<CF1<C>>>
     for DeciderNovaGadget
-where
-    CF1<C>: Absorb,
 {
     type ProofDummyCfg = ();
     type Proof = C;
@@ -215,9 +200,9 @@ where
 
 #[cfg(test)]
 pub mod tests {
-    use ark_pallas::{constraints::GVar, Fr, Projective};
+    use ark_pallas::{Fr, Projective};
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
-    use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
+    use ark_vesta::Projective as Projective2;
 
     use super::*;
     use crate::commitment::pedersen::Pedersen;
@@ -236,9 +221,7 @@ pub mod tests {
 
         type N = Nova<
             Projective,
-            GVar,
             Projective2,
-            GVar2,
             CubicFCircuit<Fr>,
             Pedersen<Projective>,
             Pedersen<Projective2>,
@@ -262,7 +245,7 @@ pub mod tests {
         N::verify(nova_params.1, ivc_proof)?;
 
         // load the DeciderEthCircuit from the generated Nova instance
-        let decider_circuit = DeciderEthCircuit::<Projective, Projective2, GVar2>::try_from(nova)?;
+        let decider_circuit = DeciderEthCircuit::<Projective, Projective2>::try_from(nova)?;
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 

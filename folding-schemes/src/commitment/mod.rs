@@ -1,10 +1,9 @@
-use ark_ec::CurveGroup;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::fmt::Debug;
 use ark_std::rand::RngCore;
 
 use crate::transcript::Transcript;
-use crate::Error;
+use crate::{Error, SonobeCurve};
 
 pub mod ipa;
 pub mod kzg;
@@ -12,7 +11,7 @@ pub mod pedersen;
 
 /// CommitmentScheme defines the vector commitment scheme trait. Where `H` indicates if to use the
 /// commitment in hiding mode or not.
-pub trait CommitmentScheme<C: CurveGroup, const H: bool = false>: Clone + Debug {
+pub trait CommitmentScheme<C: SonobeCurve, const H: bool = false>: Clone + Debug {
     type ProverParams: Clone + Debug + CanonicalSerialize + CanonicalDeserialize;
     type VerifierParams: Clone + Debug + CanonicalSerialize + CanonicalDeserialize;
     type Proof: Clone + Debug + CanonicalSerialize + CanonicalDeserialize;
@@ -74,7 +73,7 @@ mod tests {
     use ark_bn254::{Bn254, Fr, G1Projective as G1};
     use ark_crypto_primitives::sponge::{
         poseidon::{PoseidonConfig, PoseidonSponge},
-        Absorb, CryptographicSponge,
+        CryptographicSponge,
     };
     use ark_poly_commit::kzg10::VerifierKey;
     use ark_std::Zero;
@@ -132,7 +131,7 @@ mod tests {
     }
 
     fn test_homomorphic_property_using_Commitment_trait_opt<
-        C: CurveGroup,
+        C: SonobeCurve,
         CS: CommitmentScheme<C>,
     >(
         poseidon_config: &PoseidonConfig<C::ScalarField>,
@@ -141,10 +140,7 @@ mod tests {
         r: C::ScalarField,
         v_1: &[C::ScalarField],
         v_2: &[C::ScalarField],
-    ) -> Result<(), Error>
-    where
-        C::ScalarField: Absorb,
-    {
+    ) -> Result<(), Error> {
         // compute the commitment of the two vectors using the given CommitmentScheme
         let cm_1 = CS::commit(prover_params, v_1, &C::ScalarField::zero())?;
         let cm_2 = CS::commit(prover_params, v_2, &C::ScalarField::zero())?;

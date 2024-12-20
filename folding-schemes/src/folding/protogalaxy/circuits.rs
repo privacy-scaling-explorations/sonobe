@@ -1,9 +1,8 @@
 use ark_crypto_primitives::sponge::{
     constraints::CryptographicSpongeVar,
     poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig, PoseidonSponge},
-    Absorb, CryptographicSponge,
+    CryptographicSponge,
 };
-use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_poly::{univariate::DensePolynomial, EvaluationDomain, GeneralEvaluationDomain};
 use ark_r1cs_std::{
@@ -17,7 +16,7 @@ use ark_r1cs_std::{
     R1CSVar,
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-use ark_std::{fmt::Debug, marker::PhantomData, One, Zero};
+use ark_std::{fmt::Debug, One, Zero};
 
 use super::{
     folding::lagrange_polys,
@@ -32,20 +31,21 @@ use crate::{
                 CycleFoldCommittedInstanceVar, CycleFoldConfig, NIFSFullGadget,
             },
             nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
-            CF1, CF2,
+            CF1,
         },
         traits::{CommittedInstanceVarOps, Dummy},
     },
     frontend::FCircuit,
     transcript::{AbsorbNonNativeGadget, TranscriptVar},
     utils::gadgets::VectorGadget,
+    SonobeCurve,
 };
 
 pub struct FoldingGadget {}
 
 impl FoldingGadget {
     #[allow(clippy::type_complexity)]
-    pub fn fold_committed_instance<C: CurveGroup, S: CryptographicSponge>(
+    pub fn fold_committed_instance<C: SonobeCurve, S: CryptographicSponge>(
         transcript: &mut impl TranscriptVar<C::ScalarField, S>,
         // running instance
         instance: &CommittedInstanceVar<C, true>,
@@ -135,7 +135,7 @@ pub struct AugmentationGadget;
 
 impl AugmentationGadget {
     #[allow(clippy::type_complexity)]
-    pub fn prepare_and_fold_primary<C: CurveGroup, S: CryptographicSponge>(
+    pub fn prepare_and_fold_primary<C: SonobeCurve, S: CryptographicSponge>(
         transcript: &mut impl TranscriptVar<CF1<C>, S>,
         U: CommittedInstanceVar<C, true>,
         u_phis: Vec<NonNativeAffineVar<C>>,
@@ -171,21 +171,17 @@ impl AugmentationGadget {
     }
 
     pub fn prepare_and_fold_cyclefold<
-        C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-        C2: CurveGroup,
-        GC2: CurveVar<C2, CF2<C2>>,
+        C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+        C2: SonobeCurve,
         S: CryptographicSponge,
     >(
         transcript: &mut PoseidonSpongeVar<CF1<C1>>,
         pp_hash: FpVar<CF1<C1>>,
-        mut cf_U: CycleFoldCommittedInstanceVar<C2, GC2>,
-        cf_u_cmWs: Vec<GC2>,
+        mut cf_U: CycleFoldCommittedInstanceVar<C2>,
+        cf_u_cmWs: Vec<C2::Var>,
         cf_u_xs: Vec<Vec<NonNativeUintVar<CF1<C1>>>>,
-        cf_cmTs: Vec<GC2>,
-    ) -> Result<CycleFoldCommittedInstanceVar<C2, GC2>, SynthesisError>
-    where
-        C2::BaseField: PrimeField + Absorb,
-    {
+        cf_cmTs: Vec<C2::Var>,
+    ) -> Result<CycleFoldCommittedInstanceVar<C2>, SynthesisError> {
         assert_eq!(cf_u_cmWs.len(), cf_u_xs.len());
         assert_eq!(cf_u_xs.len(), cf_cmTs.len());
 
@@ -198,7 +194,7 @@ impl AugmentationGadget {
             // For each CycleFold instance `cf_u`, we have `cf_u.cmE = 0`, and
             // `cf_u.u = 1`.
             let cf_u = CycleFoldCommittedInstanceVar {
-                cmE: GC2::zero(),
+                cmE: C2::Var::zero(),
                 u: NonNativeUintVar::new_constant(ConstraintSystemRef::None, C1::BaseField::one())?,
                 cmW,
                 x,
@@ -235,13 +231,7 @@ impl AugmentationGadget {
 /// defined in [CycleFold](https://eprint.iacr.org/2023/1192.pdf). These extra
 /// constraints verify the correct folding of CycleFold instances.
 #[derive(Debug, Clone)]
-pub struct AugmentedFCircuit<
-    C1: CurveGroup,
-    C2: CurveGroup,
-    GC2: CurveVar<C2, CF2<C2>>,
-    FC: FCircuit<CF1<C1>>,
-> {
-    pub(super) _gc2: PhantomData<GC2>,
+pub struct AugmentedFCircuit<C1: SonobeCurve, C2: SonobeCurve, FC: FCircuit<CF1<C1>>> {
     pub(super) poseidon_config: PoseidonConfig<CF1<C1>>,
     pub(super) pp_hash: CF1<C1>,
     pub(super) i: CF1<C1>,
@@ -265,9 +255,7 @@ pub struct AugmentedFCircuit<
     pub(super) cf2_cmT: C2,
 }
 
-impl<C1: CurveGroup, C2: CurveGroup, GC2: CurveVar<C2, CF2<C2>>, FC: FCircuit<CF1<C1>>>
-    AugmentedFCircuit<C1, C2, GC2, FC>
-{
+impl<C1: SonobeCurve, C2: SonobeCurve, FC: FCircuit<CF1<C1>>> AugmentedFCircuit<C1, C2, FC> {
     pub fn empty(
         poseidon_config: &PoseidonConfig<CF1<C1>>,
         F_circuit: FC,
@@ -280,7 +268,6 @@ impl<C1: CurveGroup, C2: CurveGroup, GC2: CurveVar<C2, CF2<C2>>, FC: FCircuit<CF
             CycleFoldCommittedInstance::dummy(ProtoGalaxyCycleFoldConfig::<C1>::IO_LEN);
 
         Self {
-            _gc2: PhantomData,
             poseidon_config: poseidon_config.clone(),
             pp_hash: CF1::<C1>::zero(),
             i: CF1::<C1>::zero(),
@@ -305,13 +292,11 @@ impl<C1: CurveGroup, C2: CurveGroup, GC2: CurveVar<C2, CF2<C2>>, FC: FCircuit<CF
     }
 }
 
-impl<C1, C2, GC2, FC> AugmentedFCircuit<C1, C2, GC2, FC>
+impl<C1, C2, FC> AugmentedFCircuit<C1, C2, FC>
 where
-    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2: CurveGroup,
-    GC2: CurveVar<C2, CF2<C2>>,
+    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: SonobeCurve,
     FC: FCircuit<CF1<C1>>,
-    C2::BaseField: PrimeField + Absorb,
 {
     pub fn compute_next_state(
         self,
@@ -334,9 +319,9 @@ where
         let cf_u_dummy =
             CycleFoldCommittedInstance::dummy(ProtoGalaxyCycleFoldConfig::<C1>::IO_LEN);
         let cf_U_i =
-            CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || Ok(self.cf_U_i))?;
-        let cf1_cmT = GC2::new_witness(cs.clone(), || Ok(self.cf1_cmT))?;
-        let cf2_cmT = GC2::new_witness(cs.clone(), || Ok(self.cf2_cmT))?;
+            CycleFoldCommittedInstanceVar::<C2>::new_witness(cs.clone(), || Ok(self.cf_U_i))?;
+        let cf1_cmT = C2::Var::new_witness(cs.clone(), || Ok(self.cf1_cmT))?;
+        let cf2_cmT = C2::Var::new_witness(cs.clone(), || Ok(self.cf2_cmT))?;
 
         let F_coeffs = Vec::new_witness(cs.clone(), || Ok(self.F_coeffs))?;
         let K_coeffs = Vec::new_witness(cs.clone(), || Ok(self.K_coeffs))?;
@@ -450,13 +435,13 @@ where
         // C.2. Prepare incoming CycleFold instances
         // C.3. Fold incoming CycleFold instances into the running instance
         let cf_U_i1 =
-            AugmentationGadget::prepare_and_fold_cyclefold::<C1, C2, GC2, PoseidonSponge<CF1<C1>>>(
+            AugmentationGadget::prepare_and_fold_cyclefold::<C1, C2, PoseidonSponge<CF1<C1>>>(
                 &mut transcript,
                 pp_hash.clone(),
                 cf_U_i,
                 vec![
-                    GC2::new_witness(cs.clone(), || Ok(self.cf1_u_i_cmW))?,
-                    GC2::new_witness(cs.clone(), || Ok(self.cf2_u_i_cmW))?,
+                    C2::Var::new_witness(cs.clone(), || Ok(self.cf1_u_i_cmW))?,
+                    C2::Var::new_witness(cs.clone(), || Ok(self.cf2_u_i_cmW))?,
                 ],
                 vec![cf1_x, cf2_x],
                 vec![cf1_cmT, cf2_cmT],
@@ -468,7 +453,7 @@ where
         // Non-base case: u_{i+1}.x[1] == H(cf_U_{i+1})
         let (cf_u_i1_x, _) = cf_U_i1.clone().hash(&sponge, pp_hash.clone())?;
         let (cf_u_i1_x_base, _) =
-            CycleFoldCommittedInstanceVar::<C2, GC2>::new_constant(cs.clone(), cf_u_dummy)?
+            CycleFoldCommittedInstanceVar::<C2>::new_constant(cs.clone(), cf_u_dummy)?
                 .hash(&sponge, pp_hash.clone())?;
         let cf_x = is_basecase.select(&cf_u_i1_x_base, &cf_u_i1_x)?;
         // This line "converts" `cf_x` from a witness to a public input.
@@ -486,13 +471,11 @@ where
     }
 }
 
-impl<C1, C2, GC2, FC> ConstraintSynthesizer<CF1<C1>> for AugmentedFCircuit<C1, C2, GC2, FC>
+impl<C1, C2, FC> ConstraintSynthesizer<CF1<C1>> for AugmentedFCircuit<C1, C2, FC>
 where
-    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2: CurveGroup,
-    GC2: CurveVar<C2, CF2<C2>>,
+    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: SonobeCurve,
     FC: FCircuit<CF1<C1>>,
-    C2::BaseField: PrimeField + Absorb,
 {
     fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
         self.compute_next_state(cs).map(|_| ())

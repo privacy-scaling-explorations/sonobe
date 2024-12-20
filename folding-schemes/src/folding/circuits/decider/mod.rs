@@ -1,11 +1,9 @@
 use ark_crypto_primitives::sponge::{
     poseidon::constraints::PoseidonSpongeVar, CryptographicSponge,
 };
-use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_poly::Polynomial;
 use ark_r1cs_std::{
-    convert::ToConstraintFieldGadget,
     fields::{fp::FpVar, FieldVar},
     poly::{domain::Radix2DomainVar, evaluations::univariate::EvaluationsVar},
 };
@@ -15,8 +13,8 @@ use ark_std::log2;
 use crate::folding::traits::{CommittedInstanceOps, CommittedInstanceVarOps, Dummy, WitnessOps};
 use crate::transcript::{Transcript, TranscriptVar};
 use crate::utils::vec::poly_from_vec;
-use crate::Error;
 use crate::{arith::Arith, folding::circuits::CF1};
+use crate::{Error, SonobeCurve};
 
 pub mod off_chain;
 pub mod on_chain;
@@ -27,7 +25,7 @@ pub struct KZGChallengesGadget {}
 
 impl KZGChallengesGadget {
     pub fn get_challenges_native<
-        C: CurveGroup,
+        C: SonobeCurve,
         T: Transcript<CF1<C>>,
         U: CommittedInstanceOps<C>,
     >(
@@ -43,7 +41,7 @@ impl KZGChallengesGadget {
     }
 
     pub fn get_challenges_gadget<
-        C: CurveGroup,
+        C: SonobeCurve,
         S: CryptographicSponge,
         T: TranscriptVar<CF1<C>, S>,
         U: CommittedInstanceVarOps<C>,
@@ -53,7 +51,7 @@ impl KZGChallengesGadget {
     ) -> Result<Vec<FpVar<CF1<C>>>, SynthesisError> {
         let mut challenges = vec![];
         for cm in U_i.get_commitments() {
-            transcript.absorb(&cm.to_constraint_field()?)?;
+            transcript.absorb_nonnative(&cm)?;
             challenges.push(transcript.get_challenge()?);
         }
         Ok(challenges)
@@ -101,7 +99,7 @@ impl EvalGadget {
 /// In the future, we may introduce a better solution that uses a trait for all
 /// folding schemes that specifies their native and in-circuit behaviors.
 pub trait DeciderEnabledNIFS<
-    C: CurveGroup,
+    C: SonobeCurve,
     RU: CommittedInstanceOps<C>, // Running instance
     IU: CommittedInstanceOps<C>, // Incoming instance
     W: WitnessOps<CF1<C>>,

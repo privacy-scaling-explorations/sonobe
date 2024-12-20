@@ -140,7 +140,7 @@ pub fn custom_step_native<F: PrimeField>(z_i: Vec<F>, n_constraints: usize) -> V
 /// is used to test the `FCircuit.generate_step_constraints` method. This is a similar wrapping
 /// than the one done in the `AugmentedFCircuit`, but without adding all the extra constraints
 /// of the AugmentedF circuit logic, in order to run lighter tests when we're not interested in
-/// the the AugmentedF logic but in the wrapping of the circuits.
+/// the AugmentedF logic but in the wrapping of the circuits.
 pub struct WrapperCircuit<F: PrimeField, FC: FCircuit<F>> {
     pub FC: FC, // F circuit
     pub z_i: Option<Vec<F>>,

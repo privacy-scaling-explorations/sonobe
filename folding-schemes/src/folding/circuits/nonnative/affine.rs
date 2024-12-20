@@ -154,8 +154,7 @@ impl<P: SWCurveConfig<BaseField: SonobeField>> AbsorbNonNative for Projective<P>
         let affine = self.into_affine();
         let (x, y) = affine.xy().unwrap_or_default();
 
-        x.to_native_sponge_field_elements(dest);
-        y.to_native_sponge_field_elements(dest);
+        [x, y].to_native_sponge_field_elements(dest);
     }
 }
 
@@ -163,9 +162,7 @@ impl<C: SonobeCurve> AbsorbNonNativeGadget<C::ScalarField> for NonNativeAffineVa
     fn to_native_sponge_field_elements(
         &self,
     ) -> Result<Vec<FpVar<C::ScalarField>>, SynthesisError> {
-        let x = self.x.to_native_sponge_field_elements()?;
-        let y = self.y.to_native_sponge_field_elements()?;
-        Ok([x, y].concat())
+        [&self.x, &self.y].to_native_sponge_field_elements()
     }
 }
 
@@ -188,9 +185,7 @@ impl<P: SWCurveConfig<BaseField: SonobeField>> InputizeNonNative<P::ScalarField>
         let affine = self.into_affine();
         let (x, y) = affine.xy().unwrap_or_default();
 
-        let x = x.inputize_nonnative();
-        let y = y.inputize_nonnative();
-        [x, y].concat()
+        [x, y].inputize_nonnative()
     }
 }
 

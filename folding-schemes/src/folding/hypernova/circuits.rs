@@ -97,6 +97,16 @@ impl<C: SonobeCurve> CommittedInstanceVarOps<C> for CCCSVar<C> {
     }
 }
 
+impl<C: SonobeCurve> AbsorbGadget<C::ScalarField> for CCCSVar<C> {
+    fn to_sponge_bytes(&self) -> Result<Vec<UInt8<C::ScalarField>>, SynthesisError> {
+        FpVar::batch_to_sponge_bytes(&self.to_sponge_field_elements()?)
+    }
+
+    fn to_sponge_field_elements(&self) -> Result<Vec<FpVar<C::ScalarField>>, SynthesisError> {
+        Ok([&self.C.to_native_sponge_field_elements()?, &self.x[..]].concat())
+    }
+}
+
 /// Linearized Committed CCS instance
 #[derive(Debug, Clone)]
 pub struct LCCCSVar<C: SonobeCurve> {
@@ -239,21 +249,8 @@ impl<C: SonobeCurve> NIMFSGadget<C> {
         enabled: Boolean<C::ScalarField>,
     ) -> Result<(LCCCSVar<C>, Vec<Boolean<CF1<C>>>), SynthesisError> {
         // absorb instances to transcript
-        for U_i in running_instances {
-            let v = [
-                U_i.C.to_native_sponge_field_elements()?,
-                vec![U_i.u.clone()],
-                U_i.x.clone(),
-                U_i.r_x.clone(),
-                U_i.v.clone(),
-            ]
-            .concat();
-            transcript.absorb(&v)?;
-        }
-        for u_i in new_instances {
-            let v = [u_i.C.to_native_sponge_field_elements()?, u_i.x.clone()].concat();
-            transcript.absorb(&v)?;
-        }
+        transcript.absorb(&running_instances)?;
+        transcript.absorb(&new_instances)?;
 
         // get the challenges
         let gamma_scalar_raw = C::ScalarField::from_le_bytes_mod_order(b"gamma");

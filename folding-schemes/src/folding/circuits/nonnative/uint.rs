@@ -807,15 +807,7 @@ impl<P: FpConfig<N>, const N: usize> AbsorbNonNative for Fp<P, N> {
             .into_bigint()
             .to_bits_le()
             .chunks(bits_per_limb)
-            .map(|chunk| {
-                let mut limb = F::zero();
-                let mut w = F::one();
-                for &b in chunk.iter() {
-                    limb += F::from(b) * w;
-                    w.double_in_place();
-                }
-                limb
-            })
+            .map(|chunk| F::from(F::BigInt::from_bits_le(chunk)))
             .collect::<Vec<F>>();
         limbs.resize(num_limbs, F::zero());
 

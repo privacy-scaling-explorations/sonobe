@@ -40,6 +40,12 @@ impl<T: AbsorbNonNative> AbsorbNonNative for [T] {
     }
 }
 
+impl<F: PrimeField, T: AbsorbNonNativeGadget<F>> AbsorbNonNativeGadget<F> for &T {
+    fn to_native_sponge_field_elements(&self) -> Result<Vec<FpVar<F>>, SynthesisError> {
+        T::to_native_sponge_field_elements(self)
+    }
+}
+
 impl<F: PrimeField, T: AbsorbNonNativeGadget<F>> AbsorbNonNativeGadget<F> for [T] {
     fn to_native_sponge_field_elements(&self) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let mut result = Vec::new();

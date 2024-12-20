@@ -352,7 +352,9 @@ where
 pub mod tests {
     use super::*;
     use ark_bn254::{Fr, G1Projective as Projective};
-    use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, CryptographicSponge};
+    use ark_crypto_primitives::sponge::{
+        constraints::AbsorbGadget, poseidon::PoseidonSponge, CryptographicSponge,
+    };
     use ark_ff::BigInteger;
 
     use ark_relations::r1cs::ConstraintSystem;
@@ -406,18 +408,11 @@ pub mod tests {
         let mut transcriptVar = PoseidonSpongeVar::<Fr>::new(cs.clone(), &poseidon_config);
 
         // compute the challenge in-circuit
-        let U_iVar_vec = [
-            vec![U_iVar.u.clone()],
-            U_iVar.x.clone(),
-            U_iVar.cmE.to_native_sponge_field_elements()?,
-            U_iVar.cmW.to_native_sponge_field_elements()?,
-        ]
-        .concat();
         let r_bitsVar =
             ChallengeGadget::<Projective, CommittedInstance<Projective>>::get_challenge_gadget(
                 &mut transcriptVar,
                 pp_hashVar,
-                U_iVar_vec,
+                U_iVar.to_sponge_field_elements()?,
                 u_iVar,
                 Some(cmTVar),
             )?;

@@ -1,3 +1,9 @@
+//! Circuit implementations for Customizable Constraint Systems (CCS).
+//!
+//! This module provides the circuit (gadget) variants of CCS components for use in
+//! constraint system implementations. These are used when CCS operations need to
+//! be performed inside another constraint system.
+
 use super::CCS;
 use crate::utils::gadgets::SparseMatrixVar;
 use ark_ff::PrimeField;
@@ -8,10 +14,11 @@ use ark_r1cs_std::{
 use ark_relations::r1cs::{Namespace, SynthesisError};
 use ark_std::borrow::Borrow;
 
-/// CCSMatricesVar contains the matrices 'M' of the CCS without the rest of CCS parameters.
+/// [`CCSMatricesVar`] contains the matrices 'M' of the CCS without the rest of CCS parameters.
 #[derive(Debug, Clone)]
 pub struct CCSMatricesVar<F: PrimeField> {
-    // we only need native representation, so the constraint field==F
+    /// Vector of sparse matrices in their circuit representation
+    /// We only need native representation, so the constraint field equals F
     pub M: Vec<SparseMatrixVar<FpVar<F>>>,
 }
 

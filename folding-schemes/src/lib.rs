@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
+#![warn(missing_docs, clippy::missing_docs_in_private_items)]
 
 use ark_ec::{pairing::Pairing, CurveGroup};
 use ark_ff::PrimeField;

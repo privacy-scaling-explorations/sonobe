@@ -57,6 +57,7 @@ pub struct CubicFCircuit<F: PrimeField> {
 #[cfg(test)]
 impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
     type Params = ();
+
     fn new(_params: Self::Params) -> Result<Self, Error> {
         Ok(Self { _f: PhantomData })
     }

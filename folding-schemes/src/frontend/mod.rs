@@ -6,11 +6,22 @@ use ark_std::fmt::Debug;
 
 pub mod utils;
 
+pub trait ToVec<F: PrimeField>: Clone + Debug {
+    fn to_vec(self) -> Vec<FpVar<F>>;
+}
+
+// implement the trait ToVec for the default type `Vec<FpVar<F>>`
+impl<F: PrimeField> ToVec<F> for Vec<FpVar<F>> {
+    fn to_vec(self) -> Vec<FpVar<F>> {
+        self
+    }
+}
+
 /// FCircuit defines the trait of the circuit of the F function, which is the one being folded (ie.
 /// inside the agmented F' function).
 /// The parameter z_i denotes the current state, and z_{i+1} denotes the next state after applying
 /// the step.
-pub trait FCircuit<F: PrimeField>: Clone + Debug {
+pub trait FCircuit<F: PrimeField, E: ToVec<F> = Vec<FpVar<F>>>: Clone + Debug {
     type Params: Debug;
 
     /// returns a new FCircuit instance
@@ -32,7 +43,7 @@ pub trait FCircuit<F: PrimeField>: Clone + Debug {
         cs: ConstraintSystemRef<F>,
         i: usize,
         z_i: Vec<FpVar<F>>,
-        external_inputs: Vec<FpVar<F>>, // inputs that are not part of the state
+        external_inputs: E, // inputs that are not part of the state
     ) -> Result<Vec<FpVar<F>>, SynthesisError>;
 }
 

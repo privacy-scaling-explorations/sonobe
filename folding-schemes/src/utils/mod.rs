@@ -11,6 +11,7 @@ use crate::arith::ArithSerializer;
 use crate::commitment::CommitmentScheme;
 use crate::{Error, SonobeCurve};
 
+pub mod eth;
 pub mod gadgets;
 pub mod hypercube;
 pub mod lagrange_poly;

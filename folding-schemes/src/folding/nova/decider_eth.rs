@@ -3,8 +3,6 @@
 /// More details can be found at the documentation page:
 /// https://privacy-scaling-explorations.github.io/sonobe-docs/design/nova-decider-onchain.html
 use ark_bn254::Bn254;
-use ark_ec::{AffineRepr, CurveGroup};
-use ark_ff::{BigInteger, PrimeField};
 use ark_groth16::Groth16;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_snark::SNARK;
@@ -25,6 +23,7 @@ use crate::commitment::{
 use crate::folding::circuits::decider::DeciderEnabledNIFS;
 use crate::folding::traits::{Inputize, WitnessOps};
 use crate::frontend::FCircuit;
+use crate::utils::eth::ToEth;
 use crate::{Decider as DeciderTrait, FoldingScheme};
 use crate::{Error, SonobeCurve};
 
@@ -253,49 +252,21 @@ pub fn prepare_calldata(
     proof: Proof<ark_bn254::G1Projective, KZG<'static, Bn254>, Groth16<Bn254>>,
 ) -> Result<Vec<u8>, Error> {
     Ok(vec![
-        function_signature_check.to_vec(),
-        i.into_bigint().to_bytes_be(), // i
-        z_0.iter()
-            .flat_map(|v| v.into_bigint().to_bytes_be())
-            .collect::<Vec<u8>>(), // z_0
-        z_i.iter()
-            .flat_map(|v| v.into_bigint().to_bytes_be())
-            .collect::<Vec<u8>>(), // z_i
-        point_to_eth_format(running_instance.cmW.into_affine())?,
-        point_to_eth_format(running_instance.cmE.into_affine())?,
-        point_to_eth_format(incoming_instance.cmW.into_affine())?,
-        point_to_eth_format(proof.cmT.into_affine())?, // cmT
-        proof.r.into_bigint().to_bytes_be(),           // r
-        point_to_eth_format(proof.snark_proof.a)?,     // pA
-        point2_to_eth_format(proof.snark_proof.b)?,    // pB
-        point_to_eth_format(proof.snark_proof.c)?,     // pC
-        proof.kzg_challenges[0].into_bigint().to_bytes_be(), // challenge_W
-        proof.kzg_challenges[1].into_bigint().to_bytes_be(), // challenge_E
-        proof.kzg_proofs[0].eval.into_bigint().to_bytes_be(), // eval W
-        proof.kzg_proofs[1].eval.into_bigint().to_bytes_be(), // eval E
-        point_to_eth_format(proof.kzg_proofs[0].proof.into_affine())?, // W kzg_proof
-        point_to_eth_format(proof.kzg_proofs[1].proof.into_affine())?, // E kzg_proof
-    ]
-    .concat())
-}
-
-fn point_to_eth_format<C: AffineRepr>(p: C) -> Result<Vec<u8>, Error>
-where
-    C::BaseField: PrimeField,
-{
-    // the encoding of the additive identity is [0, 0] on the EVM
-    let (x, y) = p.xy().unwrap_or_default();
-
-    Ok([x.into_bigint().to_bytes_be(), y.into_bigint().to_bytes_be()].concat())
-}
-fn point2_to_eth_format(p: ark_bn254::G2Affine) -> Result<Vec<u8>, Error> {
-    let (x, y) = p.xy().unwrap_or_default();
-
-    Ok([
-        x.c1.into_bigint().to_bytes_be(),
-        x.c0.into_bigint().to_bytes_be(),
-        y.c1.into_bigint().to_bytes_be(),
-        y.c0.into_bigint().to_bytes_be(),
+        function_signature_check.to_eth(),
+        i.to_eth(),   // i
+        z_0.to_eth(), // z_0
+        z_i.to_eth(), // z_i
+        running_instance.cmW.to_eth(),
+        running_instance.cmE.to_eth(),
+        incoming_instance.cmW.to_eth(),
+        proof.cmT.to_eth(),                 // cmT
+        proof.r.to_eth(),                   // r
+        proof.snark_proof.to_eth(),         // pA, pB, pC
+        proof.kzg_challenges.to_eth(),      // challenge_W, challenge_E
+        proof.kzg_proofs[0].eval.to_eth(),  // eval W
+        proof.kzg_proofs[1].eval.to_eth(),  // eval E
+        proof.kzg_proofs[0].proof.to_eth(), // W kzg_proof
+        proof.kzg_proofs[1].proof.to_eth(), // E kzg_proof
     ]
     .concat())
 }

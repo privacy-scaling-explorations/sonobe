@@ -13,12 +13,9 @@ use super::decider_circuits::{DeciderCircuit1, DeciderCircuit2};
 use super::decider_eth_circuit::DeciderNovaGadget;
 use super::Nova;
 use crate::commitment::CommitmentScheme;
+use crate::folding::circuits::cyclefold::CycleFoldCommittedInstance;
 use crate::folding::circuits::decider::DeciderEnabledNIFS;
-use crate::folding::circuits::{
-    cyclefold::{CycleFoldCommittedInstance, CycleFoldCommittedInstanceVar},
-    CF2,
-};
-use crate::folding::traits::{CommittedInstanceOps, Inputize, WitnessOps};
+use crate::folding::traits::{CommittedInstanceOps, Inputize, InputizeNonNative, WitnessOps};
 use crate::frontend::FCircuit;
 use crate::{Decider as DeciderTrait, FoldingScheme};
 use crate::{Error, SonobeCurve};
@@ -266,14 +263,11 @@ where
             &[vp.pp_hash, i][..],
             &z_0,
             &z_i,
-            &U_final_commitments
-                .iter()
-                .flat_map(|c| c.inputize())
-                .collect::<Vec<_>>(),
-            &Inputize::<CF2<C2>, CycleFoldCommittedInstanceVar<C2>>::inputize(&cf_U),
+            &U_final_commitments.inputize_nonnative(),
+            &cf_U.inputize_nonnative(),
             &proof.cs1_challenges,
             &proof.cs1_proofs.iter().map(|p| p.eval).collect::<Vec<_>>(),
-            &proof.cmT.inputize(),
+            &proof.cmT.inputize_nonnative(),
         ]
         .concat();
 

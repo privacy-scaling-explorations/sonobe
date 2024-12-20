@@ -18,9 +18,9 @@ use num_bigint::BigUint;
 use num_integer::Integer;
 
 use crate::{
-    folding::traits::Inputize,
+    folding::traits::{Inputize, InputizeNonNative},
     transcript::{AbsorbNonNative, AbsorbNonNativeGadget},
-    utils::gadgets::{EquivalenceGadget, MatrixGadget, SparseMatrixVar, VectorGadget},
+    utils::gadgets::{EquivalenceGadget, MatrixGadget, SparseMatrixVar, VectorGadget}, SonobeField,
 };
 
 /// `LimbVar` represents a single limb of a non-native unsigned integer in the
@@ -266,23 +266,6 @@ impl<F: PrimeField, G: Field> AllocVar<G, F> for NonNativeUintVar<F> {
         }
 
         Ok(Self(limbs))
-    }
-}
-
-impl<F: PrimeField, T: Field> Inputize<F, NonNativeUintVar<F>> for T {
-    fn inputize(&self) -> Vec<F> {
-        assert_eq!(T::extension_degree(), 1);
-        // `unwrap` is safe because `T` is a field with extension degree 1, and
-        // thus `T::to_base_prime_field_elements` should return an iterator with
-        // exactly one element.
-        self.to_base_prime_field_elements()
-            .next()
-            .unwrap()
-            .into_bigint()
-            .to_bits_le()
-            .chunks(NonNativeUintVar::<F>::bits_per_limb())
-            .map(|chunk| F::from(F::BigInt::from_bits_le(chunk)))
-            .collect()
     }
 }
 
@@ -851,6 +834,26 @@ impl<F: PrimeField> AbsorbNonNativeGadget<F> for NonNativeUintVar<F> {
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(limbs)
+    }
+}
+
+impl<P: FpConfig<N>, const N: usize> Inputize<Self> for Fp<P, N> {
+    /// Returns the internal representation in the same order as how the value
+    /// is allocated in `FpVar::new_input`.
+    fn inputize(&self) -> Vec<Self> {
+        vec![*self]
+    }
+}
+
+impl<F: PrimeField, P: SonobeField> InputizeNonNative<F> for P {
+    /// Returns the internal representation in the same order as how the value
+    /// is allocated in `NonNativeUintVar::new_input`.
+    fn inputize_nonnative(&self) -> Vec<F> {
+        self.into_bigint()
+            .to_bits_le()
+            .chunks(NonNativeUintVar::<F>::bits_per_limb())
+            .map(|chunk| F::from(F::BigInt::from_bits_le(chunk)))
+            .collect()
     }
 }
 

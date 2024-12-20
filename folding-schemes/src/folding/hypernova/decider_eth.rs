@@ -13,7 +13,7 @@ use crate::commitment::{
 };
 use crate::folding::circuits::decider::DeciderEnabledNIFS;
 use crate::folding::nova::decider_eth::VerifierParam;
-use crate::folding::traits::{Inputize, WitnessOps};
+use crate::folding::traits::WitnessOps;
 use crate::frontend::FCircuit;
 use crate::{Decider as DeciderTrait, FoldingScheme};
 use crate::{Error, SonobeCurve};
@@ -188,7 +188,7 @@ where
             &[pp_hash, i][..],
             &z_0,
             &z_i,
-            &C.inputize(),
+            &C.inputize_nonnative(),
             &[proof.kzg_challenge, proof.kzg_proof.eval, proof.rho],
         ]
         .concat();

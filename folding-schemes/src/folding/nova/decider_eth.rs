@@ -21,7 +21,7 @@ use crate::commitment::{
     CommitmentScheme,
 };
 use crate::folding::circuits::decider::DeciderEnabledNIFS;
-use crate::folding::traits::{Inputize, WitnessOps};
+use crate::folding::traits::{InputizeNonNative, WitnessOps};
 use crate::frontend::FCircuit;
 use crate::utils::eth::ToEth;
 use crate::{Decider as DeciderTrait, FoldingScheme};
@@ -210,13 +210,10 @@ where
             &[pp_hash, i][..],
             &z_0,
             &z_i,
-            &U_final_commitments
-                .iter()
-                .flat_map(|c| c.inputize())
-                .collect::<Vec<_>>(),
+            &U_final_commitments.inputize_nonnative(),
             &proof.kzg_challenges,
             &proof.kzg_proofs.iter().map(|p| p.eval).collect::<Vec<_>>(),
-            &proof.cmT.inputize(),
+            &proof.cmT.inputize_nonnative(),
         ]
         .concat();
 

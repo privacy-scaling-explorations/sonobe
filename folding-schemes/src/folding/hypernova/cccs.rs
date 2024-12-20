@@ -143,9 +143,11 @@ impl<C: SonobeCurve> CommittedInstanceOps<C> for CCCS<C> {
     }
 }
 
-impl<C: SonobeCurve> Inputize<C::ScalarField, CCCSVar<C>> for CCCS<C> {
-    fn inputize(&self) -> Vec<C::ScalarField> {
-        [&self.C.inputize()[..], &self.x].concat()
+impl<C: SonobeCurve> Inputize<CF1<C>> for CCCS<C> {
+    /// Returns the internal representation in the same order as how the value
+    /// is allocated in `CCCSVar::new_input`.
+    fn inputize(&self) -> Vec<CF1<C>> {
+        [&self.C.inputize_nonnative()[..], &self.x].concat()
     }
 }
 

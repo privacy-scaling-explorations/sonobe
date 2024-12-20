@@ -55,9 +55,11 @@ impl<C: SonobeCurve> CommittedInstanceOps<C> for CommittedInstance<C> {
     }
 }
 
-impl<C: SonobeCurve> Inputize<C::ScalarField, CommittedInstanceVar<C>> for CommittedInstance<C> {
-    fn inputize(&self) -> Vec<C::ScalarField> {
-        [&[self.u][..], &self.x, &self.cmWE.inputize()].concat()
+impl<C: SonobeCurve> Inputize<CF1<C>> for CommittedInstance<C> {
+    /// Returns the internal representation in the same order as how the value
+    /// is allocated in `CommittedInstanceVar::new_input`.
+    fn inputize(&self) -> Vec<CF1<C>> {
+        [&[self.u][..], &self.x, &self.cmWE.inputize_nonnative()].concat()
     }
 }
 

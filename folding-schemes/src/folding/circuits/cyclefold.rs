@@ -1,8 +1,8 @@
 /// Contains [CycleFold](https://eprint.iacr.org/2023/1192.pdf) related circuits and functions that
 /// are shared across the different folding schemes
-use ark_crypto_primitives::sponge::{Absorb, CryptographicSponge};
+use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, Absorb, CryptographicSponge};
 use ark_ec::AffineRepr;
-use ark_ff::{BigInteger, Field, PrimeField};
+use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
@@ -17,7 +17,7 @@ use ark_relations::r1cs::{
 };
 use ark_std::fmt::Debug;
 use ark_std::rand::RngCore;
-use ark_std::{One, Zero};
+use ark_std::Zero;
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::{nonnative::uint::NonNativeUintVar, CF1, CF2};
@@ -32,10 +32,9 @@ use crate::{
         r1cs::{circuits::R1CSMatricesVar, extract_w_x, R1CS},
         ArithGadget,
     },
-    folding::traits::Inputize,
+    folding::traits::InputizeNonNative,
     SonobeCurve,
 };
-use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
 
 /// Re-export the Nova committed instance as `CycleFoldCommittedInstance` and
 /// witness as `CycleFoldWitness`, for clarity and consistency
@@ -43,31 +42,17 @@ pub use crate::folding::nova::{
     CommittedInstance as CycleFoldCommittedInstance, Witness as CycleFoldWitness,
 };
 
-impl<C: SonobeCurve> Inputize<CF2<C>, CycleFoldCommittedInstanceVar<C>>
-    for CycleFoldCommittedInstance<C>
-{
-    fn inputize(&self) -> Vec<CF2<C>> {
-        let cmE = self.cmE.into_affine();
-        let cmW = self.cmW.into_affine();
-        let (cmE_x, cmE_y) = cmE.xy().unwrap_or_default();
-        let (cmW_x, cmW_y) = cmW.xy().unwrap_or_default();
-        self.u
-            .inputize()
-            .into_iter()
-            .chain(self.x.iter().flat_map(|x| x.inputize()))
-            .chain(
-                [
-                    cmE_x,
-                    cmE_y,
-                    C::BaseField::one(),
-                    cmW_x,
-                    cmW_y,
-                    C::BaseField::one(),
-                ]
-                .into_iter()
-                .flat_map(|x| x.to_base_prime_field_elements().collect::<Vec<_>>()),
-            )
-            .collect()
+impl<C: SonobeCurve> InputizeNonNative<CF2<C>> for CycleFoldCommittedInstance<C> {
+    /// Returns the internal representation in the same order as how the value
+    /// is allocated in `CycleFoldCommittedInstanceVar::new_input`.
+    fn inputize_nonnative(&self) -> Vec<CF2<C>> {
+        [
+            self.u.inputize_nonnative(),
+            self.x.inputize_nonnative(),
+            self.cmE.inputize(),
+            self.cmW.inputize(),
+        ]
+        .concat()
     }
 }
 

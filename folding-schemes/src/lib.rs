@@ -20,6 +20,7 @@ use ark_std::{
 };
 use thiserror::Error;
 
+use crate::folding::traits::{Inputize, InputizeNonNative};
 use crate::frontend::FCircuit;
 use crate::transcript::AbsorbNonNative;
 
@@ -307,7 +308,9 @@ pub trait DeciderOnchain<
     ) -> Result<Vec<u8>, Error>;
 }
 
-pub trait SonobeField: PrimeField<BasePrimeField = Self> + Absorb + AbsorbNonNative {
+pub trait SonobeField:
+    PrimeField<BasePrimeField = Self> + Absorb + AbsorbNonNative + Inputize<Self>
+{
     type Var: FieldVar<Self, Self>;
 }
 
@@ -316,7 +319,10 @@ impl<P: FpConfig<N>, const N: usize> SonobeField for Fp<P, N> {
 }
 
 pub trait SonobeCurve:
-    CurveGroup<ScalarField: SonobeField, BaseField: SonobeField> + AbsorbNonNative
+    CurveGroup<ScalarField: SonobeField, BaseField: SonobeField>
+    + AbsorbNonNative
+    + Inputize<Self::BaseField>
+    + InputizeNonNative<Self::ScalarField>
 {
     type Var: CurveVar<Self, Self::BaseField>;
 }

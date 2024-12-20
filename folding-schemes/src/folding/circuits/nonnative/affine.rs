@@ -12,10 +12,10 @@ use ark_r1cs_std::{
 };
 use ark_relations::r1cs::{ConstraintSystemRef, Namespace, SynthesisError};
 use ark_serialize::{CanonicalSerialize, CanonicalSerializeWithFlags};
-use ark_std::{borrow::Borrow, Zero};
+use ark_std::{borrow::Borrow, One, Zero};
 
 use crate::{
-    folding::traits::Inputize,
+    folding::traits::{Inputize, InputizeNonNative},
     transcript::{AbsorbNonNative, AbsorbNonNativeGadget},
     SonobeCurve, SonobeField,
 };
@@ -141,17 +141,6 @@ impl<C: SonobeCurve> EqGadget<C::ScalarField> for NonNativeAffineVar<C> {
     }
 }
 
-impl<C: SonobeCurve> Inputize<C::ScalarField, NonNativeAffineVar<C>> for C {
-    fn inputize(&self) -> Vec<C::ScalarField> {
-        let affine = self.into_affine();
-        let (x, y) = affine.xy().unwrap_or_default();
-
-        let x = x.inputize();
-        let y = y.inputize();
-        [x, y].concat()
-    }
-}
-
 impl<C: SonobeCurve> NonNativeAffineVar<C> {
     pub fn zero() -> Self {
         // `unwrap` below is safe because we are allocating a constant value,
@@ -160,9 +149,7 @@ impl<C: SonobeCurve> NonNativeAffineVar<C> {
     }
 }
 
-impl<P: SWCurveConfig<ScalarField: SonobeField, BaseField: SonobeField>> AbsorbNonNative
-    for Projective<P>
-{
+impl<P: SWCurveConfig<BaseField: SonobeField>> AbsorbNonNative for Projective<P> {
     fn to_native_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
         let affine = self.into_affine();
         let (x, y) = affine.xy().unwrap_or_default();
@@ -182,9 +169,35 @@ impl<C: SonobeCurve> AbsorbNonNativeGadget<C::ScalarField> for NonNativeAffineVa
     }
 }
 
+impl<P: SWCurveConfig<BaseField: SonobeField>> Inputize<P::BaseField> for Projective<P> {
+    /// Returns the internal representation in the same order as how the value
+    /// is allocated in `ProjectiveVar::new_input`.
+    fn inputize(&self) -> Vec<P::BaseField> {
+        let affine = self.into_affine();
+        match affine.xy() {
+            Some((x, y)) => vec![x, y, One::one()],
+            None => vec![Zero::zero(), One::one(), Zero::zero()],
+        }
+    }
+}
+
+impl<P: SWCurveConfig<BaseField: SonobeField>> InputizeNonNative<P::ScalarField> for Projective<P> {
+    /// Returns the internal representation in the same order as how the value
+    /// is allocated in `NonNativeAffineVar::new_input`.
+    fn inputize_nonnative(&self) -> Vec<P::ScalarField> {
+        let affine = self.into_affine();
+        let (x, y) = affine.xy().unwrap_or_default();
+
+        let x = x.inputize_nonnative();
+        let y = y.inputize_nonnative();
+        [x, y].concat()
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use ark_pallas::{Fr, Projective};
+    use ark_pallas::{Fq, Fr, PallasConfig, Projective};
+    use ark_r1cs_std::groups::curves::short_weierstrass::ProjectiveVar;
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::UniformRand;
 
@@ -217,15 +230,23 @@ mod tests {
 
     #[test]
     fn test_inputize() -> Result<(), Error> {
-        let cs = ConstraintSystem::<Fr>::new_ref();
-
         // check that point_to_nonnative_limbs returns the expected values
         let mut rng = ark_std::test_rng();
         let p = Projective::rand(&mut rng);
-        let pVar = NonNativeAffineVar::<Projective>::new_witness(cs.clone(), || Ok(p))?;
-        let xy = p.inputize();
 
-        assert_eq!([pVar.x.0.value()?, pVar.y.0.value()?].concat(), xy);
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        let pVar = NonNativeAffineVar::<Projective>::new_witness(cs.clone(), || Ok(p))?;
+        assert_eq!(
+            [pVar.x.0.value()?, pVar.y.0.value()?].concat(),
+            p.inputize_nonnative()
+        );
+
+        let cs = ConstraintSystem::<Fq>::new_ref();
+        let pVar = ProjectiveVar::<PallasConfig, FpVar<Fq>>::new_witness(cs.clone(), || Ok(p))?;
+        assert_eq!(
+            vec![pVar.x.value()?, pVar.y.value()?, pVar.z.value()?],
+            p.inputize()
+        );
         Ok(())
     }
 }

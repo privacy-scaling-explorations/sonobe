@@ -141,10 +141,12 @@ impl<C: SonobeCurve> CommittedInstanceOps<C> for LCCCS<C> {
     }
 }
 
-impl<C: SonobeCurve> Inputize<C::ScalarField, LCCCSVar<C>> for LCCCS<C> {
-    fn inputize(&self) -> Vec<C::ScalarField> {
+impl<C: SonobeCurve> Inputize<CF1<C>> for LCCCS<C> {
+    /// Returns the internal representation in the same order as how the value
+    /// is allocated in `LCCCS::new_input`.
+    fn inputize(&self) -> Vec<CF1<C>> {
         [
-            &self.C.inputize(),
+            &self.C.inputize_nonnative(),
             &[self.u][..],
             &self.x,
             &self.r_x,

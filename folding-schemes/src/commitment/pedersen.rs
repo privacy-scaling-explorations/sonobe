@@ -1,3 +1,12 @@
+//! Pedersen commitment scheme implementation.
+//!
+//! A Pedersen commitment allows committing to a vector of values with properties like:
+//! - **Binding**: The committer cannot change the committed values after committing
+//! - **Hiding** (optional): The commitment reveals no information about the committed values
+//!
+//! This module provides both a basic commitment scheme implementation and circuit-friendly gadgets
+//! for verifying commitments inside other proofs.
+
 use ark_ec::CurveGroup;
 use ark_r1cs_std::{boolean::Boolean, convert::ToBitsGadget, prelude::CurveVar};
 use ark_relations::r1cs::SynthesisError;
@@ -10,38 +19,44 @@ use crate::transcript::Transcript;
 use crate::utils::vec::{vec_add, vec_scalar_mul};
 use crate::Error;
 
+/// Pedersen proof structure containing commitment opening information
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<C: CurveGroup> {
+    /// The R commitment value computed during the proof
     pub R: C,
+    /// Opening values u = d + v⋅e
     pub u: Vec<C::ScalarField>,
-    pub r_u: C::ScalarField, // blind
+    /// Blinding factor for hiding
+    pub r_u: C::ScalarField,
 }
 
+/// Parameters for the Pedersen commitment scheme
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Params<C: CurveGroup> {
+    /// Generator for blinding factor
     pub h: C,
+    /// Generators for committing to values
     pub generators: Vec<C::Affine>,
 }
 
+/// Pedersen commitment scheme with optional hiding
+///
+/// The type parameter H controls whether commitments are hiding:
+/// - When H=true, commitments are hiding and use randomness
+/// - When H=false, commitments are not hiding and use no randomness
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Pedersen<C: CurveGroup, const H: bool = false> {
+    /// The inner [`CurveGroup`]
     _c: PhantomData<C>,
 }
 
-/// Implements the CommitmentScheme trait for Pedersen commitments
+/// Implements the [`CommitmentScheme`] trait for Pedersen commitments
 impl<C: CurveGroup, const H: bool> CommitmentScheme<C, H> for Pedersen<C, H> {
     type ProverParams = Params<C>;
     type VerifierParams = Params<C>;
     type Proof = Proof<C>;
     type ProverChallenge = (C::ScalarField, Vec<C::ScalarField>, C, C::ScalarField);
     type Challenge = C::ScalarField;
-
-    fn is_hiding() -> bool {
-        if H {
-            return true;
-        }
-        false
-    }
 
     fn setup(
         mut rng: impl RngCore,
@@ -77,6 +92,7 @@ impl<C: CurveGroup, const H: bool> CommitmentScheme<C, H> for Pedersen<C, H> {
         Ok(params.h.mul(r) + C::msm_unchecked(&params.generators[..v.len()], v))
     }
 
+    // TODO (autoparallel): I'm guessing `_rng` is marked with prefix `_` because it goes unused always and it is planned for the future? Otherwise we should remove that prefix.
     fn prove(
         params: &Self::ProverParams,
         transcript: &mut impl Transcript<C::ScalarField>,
@@ -175,13 +191,17 @@ impl<C: CurveGroup, const H: bool> CommitmentScheme<C, H> for Pedersen<C, H> {
     }
 }
 
+/// Gadget for verifying Pedersen commitments in circuits
 pub struct PedersenGadget<C, GC, const H: bool = false>
 where
     C: CurveGroup,
     GC: CurveVar<C, CF2<C>>,
 {
+    /// The inner constraint field [`CF2`]
     _cf: PhantomData<CF2<C>>,
+    /// The inner [`CurveGroup`]
     _c: PhantomData<C>,
+    /// The inner [`CurveVar`]
     _gc: PhantomData<GC>,
 }
 
@@ -190,6 +210,20 @@ where
     C: CurveGroup,
     GC: CurveVar<C, CF2<C>>,
 {
+    /// Creates a Pedersen commitment inside a circuit
+    ///
+    /// # Arguments
+    ///
+    /// * `h` - Generator for blinding factor
+    /// * `g` - Generators for values
+    /// * `v` - Values to commit to, as boolean vectors
+    /// * `r` - Blinding factor as boolean vector
+    ///
+    /// # Errors
+    ///
+    /// Returns a `SynthesisError` if:
+    /// - Converting any vectors to field elements fails
+    /// - Scalar multiplication fails
     pub fn commit(
         h: &GC,
         g: &[GC],
@@ -220,8 +254,8 @@ mod tests {
 
     #[test]
     fn test_pedersen() -> Result<(), Error> {
-        let _ = test_pedersen_opt::<false>()?;
-        let _ = test_pedersen_opt::<true>()?;
+        test_pedersen_opt::<false>()?;
+        test_pedersen_opt::<true>()?;
         Ok(())
     }
     fn test_pedersen_opt<const hiding: bool>() -> Result<(), Error> {
@@ -255,8 +289,8 @@ mod tests {
 
     #[test]
     fn test_pedersen_circuit() -> Result<(), Error> {
-        let _ = test_pedersen_circuit_opt::<false>()?;
-        let _ = test_pedersen_circuit_opt::<true>()?;
+        test_pedersen_circuit_opt::<false>()?;
+        test_pedersen_circuit_opt::<true>()?;
         Ok(())
     }
     fn test_pedersen_circuit_opt<const hiding: bool>() -> Result<(), Error> {
@@ -291,7 +325,7 @@ mod tests {
         let rVar = Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(r_bits))?;
         let gVar = Vec::<GVar>::new_witness(cs.clone(), || Ok(params.generators))?;
         let hVar = GVar::new_witness(cs.clone(), || Ok(params.h))?;
-        let expected_cmVar = GVar::new_witness(cs.clone(), || Ok(cm))?;
+        let expected_cmVar = GVar::new_witness(cs, || Ok(cm))?;
 
         // use the gadget
         let cmVar = PedersenGadget::<Projective, GVar, hiding>::commit(&hVar, &gVar, &vVar, &rVar)?;

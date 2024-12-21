@@ -52,7 +52,11 @@ impl<C: CurveGroup, GC: CurveVar<C, CF2<C>>> Inputize<CF2<C>, CycleFoldCommitted
         self.u
             .inputize()
             .into_iter()
-            .chain(self.x.iter().flat_map(|x| x.inputize()))
+            .chain(
+                self.x
+                    .iter()
+                    .flat_map(super::super::traits::Inputize::inputize),
+            )
             .chain(
                 [
                     cmE_x,
@@ -96,7 +100,7 @@ where
             let x: Vec<NonNativeUintVar<CF2<C>>> =
                 Vec::new_variable(cs.clone(), || Ok(val.borrow().x.clone()), mode)?;
             let cmE = GC::new_variable(cs.clone(), || Ok(val.borrow().cmE), mode)?;
-            let cmW = GC::new_variable(cs.clone(), || Ok(val.borrow().cmW), mode)?;
+            let cmW = GC::new_variable(cs, || Ok(val.borrow().cmW), mode)?;
 
             Ok(Self { cmE, u, cmW, x })
         })
@@ -142,7 +146,7 @@ where
             self.u.to_native_sponge_field_elements()?,
             self.x
                 .iter()
-                .map(|i| i.to_native_sponge_field_elements())
+                .map(crate::transcript::AbsorbNonNativeGadget::to_native_sponge_field_elements)
                 .collect::<Result<Vec<_>, _>>()?
                 .concat(),
             cmE_elems,
@@ -188,7 +192,7 @@ where
     pub fn hash<S: CryptographicSponge, T: TranscriptVar<CF2<C>, S>>(
         &self,
         sponge: &T,
-        pp_hash: FpVar<CF2<C>>, // public params hash
+        pp_hash: &FpVar<CF2<C>>, // public params hash
     ) -> Result<(FpVar<CF2<C>>, Vec<FpVar<CF2<C>>>), SynthesisError> {
         let mut sponge = sponge.clone();
         let U_vec = self.to_native_sponge_field_elements()?;
@@ -918,7 +922,7 @@ pub mod tests {
         let pp_hashVar = FpVar::<Fq>::new_witness(cs.clone(), || Ok(pp_hash))?;
         let (hVar, _) = U_iVar.hash(
             &PoseidonSpongeVar::new(cs.clone(), &poseidon_config),
-            pp_hashVar,
+            &pp_hashVar,
         )?;
         hVar.enforce_equal(&FpVar::new_witness(cs.clone(), || Ok(h))?)?;
         assert!(cs.is_satisfied()?);

@@ -20,7 +20,8 @@ use num_integer::Integer;
 use crate::{
     folding::traits::{Inputize, InputizeNonNative},
     transcript::{AbsorbNonNative, AbsorbNonNativeGadget},
-    utils::gadgets::{EquivalenceGadget, MatrixGadget, SparseMatrixVar, VectorGadget}, SonobeField,
+    utils::gadgets::{EquivalenceGadget, MatrixGadget, SparseMatrixVar, VectorGadget},
+    SonobeField,
 };
 
 /// `LimbVar` represents a single limb of a non-native unsigned integer in the

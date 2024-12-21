@@ -155,7 +155,7 @@ pub trait Inputize<F> {
 /// the circuit.
 ///
 /// This is useful for the verifier to compute the public inputs.
-/// 
+///
 /// Note that we require this trait because we need to distinguish between some
 /// data types that are represented both natively and non-natively in-circuit
 /// (e.g., field elements can have type `FpVar` and `NonNativeUintVar`).

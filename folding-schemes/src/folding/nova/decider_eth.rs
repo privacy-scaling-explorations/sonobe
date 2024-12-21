@@ -248,7 +248,7 @@ pub fn prepare_calldata(
     incoming_instance: &CommittedInstance<ark_bn254::G1Projective>,
     proof: Proof<ark_bn254::G1Projective, KZG<'static, Bn254>, Groth16<Bn254>>,
 ) -> Result<Vec<u8>, Error> {
-    Ok(vec![
+    Ok([
         function_signature_check.to_eth(),
         i.to_eth(),   // i
         z_0.to_eth(), // z_0

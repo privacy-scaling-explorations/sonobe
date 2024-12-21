@@ -884,7 +884,7 @@ where
             };
 
             // fold self.cf_U_i + cf1_U -> folded running with cf1
-            let (_cf1_w_i, cf1_u_i, cf1_W_i1, cf1_U_i1, cf1_cmT, _) = self.fold_cyclefold_circuit(
+            let (cf1_u_i, cf1_W_i1, cf1_U_i1, cf1_cmT) = self.fold_cyclefold_circuit(
                 &mut transcript_prover,
                 self.cf_W_i.clone(), // CycleFold running instance witness
                 self.cf_U_i.clone(), // CycleFold running instance
@@ -892,7 +892,7 @@ where
                 &mut rng,
             )?;
             // fold [the output from folding self.cf_U_i + cf1_U] + cf2_U = folded_running_with_cf1 + cf2
-            let (_cf2_w_i, cf2_u_i, cf_W_i1, cf_U_i1, cf2_cmT, _) = self.fold_cyclefold_circuit(
+            let (cf2_u_i, cf_W_i1, cf_U_i1, cf2_cmT) = self.fold_cyclefold_circuit(
                 &mut transcript_prover,
                 cf1_W_i1,
                 cf1_U_i1.clone(),
@@ -935,11 +935,6 @@ where
                     )?,
                     U_i1
                 );
-                cf1_u_i.check_incoming()?;
-                cf2_u_i.check_incoming()?;
-                self.cf_r1cs.check_relation(&_cf1_w_i, &cf1_u_i)?;
-                self.cf_r1cs.check_relation(&_cf2_w_i, &cf2_u_i)?;
-                self.cf_r1cs.check_relation(&self.cf_W_i, &self.cf_U_i)?;
             }
 
             self.W_i = W_i1;
@@ -1106,16 +1101,14 @@ where
         rng: &mut impl RngCore,
     ) -> Result<
         (
-            CycleFoldWitness<C2>,
             CycleFoldCommittedInstance<C2>, // u_i
             CycleFoldWitness<C2>,           // W_i1
             CycleFoldCommittedInstance<C2>, // U_i1
             C2,                             // cmT
-            C2::ScalarField,                // r_Fq
         ),
         Error,
     > {
-        fold_cyclefold_circuit::<ProtoGalaxyCycleFoldConfig<C1>, C1, C2, CS2, false>(
+        fold_cyclefold_circuit::<ProtoGalaxyCycleFoldConfig<C1>, C2, CS2, false>(
             transcript,
             self.cf_r1cs.clone(),
             self.cf_cs_params.clone(),

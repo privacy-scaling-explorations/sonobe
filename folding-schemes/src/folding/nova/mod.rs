@@ -746,7 +746,7 @@ where
             };
 
             // fold self.cf_U_i + cfW_U -> folded running with cfW
-            let (_cfW_w_i, cfW_u_i, cfW_W_i1, cfW_U_i1, cfW_cmT, _) = self.fold_cyclefold_circuit(
+            let (cfW_u_i, cfW_W_i1, cfW_U_i1, cfW_cmT) = self.fold_cyclefold_circuit(
                 &mut transcript,
                 self.cf_W_i.clone(), // CycleFold running instance witness
                 self.cf_U_i.clone(), // CycleFold running instance
@@ -754,7 +754,7 @@ where
                 &mut rng,
             )?;
             // fold [the output from folding self.cf_U_i + cfW_U] + cfE_U = folded_running_with_cfW + cfE
-            let (_cfE_w_i, cfE_u_i, cf_W_i1, cf_U_i1, cf_cmT, _) = self.fold_cyclefold_circuit(
+            let (cfE_u_i, cf_W_i1, cf_U_i1, cf_cmT) = self.fold_cyclefold_circuit(
                 &mut transcript,
                 cfW_W_i1,
                 cfW_U_i1.clone(),
@@ -786,15 +786,6 @@ where
 
             self.cf_W_i = cf_W_i1;
             self.cf_U_i = cf_U_i1;
-
-            #[cfg(test)]
-            {
-                cfW_u_i.check_incoming()?;
-                cfE_u_i.check_incoming()?;
-                self.cf_r1cs.check_relation(&_cfW_w_i, &cfW_u_i)?;
-                self.cf_r1cs.check_relation(&_cfE_w_i, &cfE_u_i)?;
-                self.cf_r1cs.check_relation(&self.cf_W_i, &self.cf_U_i)?;
-            }
         }
 
         let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
@@ -981,16 +972,14 @@ where
         rng: &mut impl RngCore,
     ) -> Result<
         (
-            CycleFoldWitness<C2>,
             CycleFoldCommittedInstance<C2>, // u_i
             CycleFoldWitness<C2>,           // W_i1
             CycleFoldCommittedInstance<C2>, // U_i1
             C2,                             // cmT
-            C2::ScalarField,                // r_Fq
         ),
         Error,
     > {
-        fold_cyclefold_circuit::<NovaCycleFoldConfig<C1>, C1, C2, CS2, H>(
+        fold_cyclefold_circuit::<NovaCycleFoldConfig<C1>, C2, CS2, H>(
             transcript,
             self.cf_r1cs.clone(),
             self.cf_cs_pp.clone(),

@@ -1333,9 +1333,8 @@ mod tests {
                     HyperNovaCycleFoldConfig::<Projective, MU, NU>::N_INPUT_POINTS
                 );
 
-                let (_cf_w_i, cf_u_i, cf_W_i1, cf_U_i1, cf_cmT, _) = fold_cyclefold_circuit::<
+                let (cf_u_i, cf_W_i1, cf_U_i1, cf_cmT) = fold_cyclefold_circuit::<
                     HyperNovaCycleFoldConfig<Projective, MU, NU>,
-                    Projective,
                     Projective2,
                     Pedersen<Projective2>,
                     false,

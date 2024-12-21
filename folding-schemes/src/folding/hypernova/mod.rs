@@ -763,8 +763,8 @@ where
                 ),
             };
 
-            let (_cf_w_i, cf_u_i, cf_W_i1, cf_U_i1, cf_cmT, _) =
-                fold_cyclefold_circuit::<HyperNovaCycleFoldConfig<C1, MU, NU>, C1, C2, CS2, H>(
+            let (cf_u_i, cf_W_i1, cf_U_i1, cf_cmT) =
+                fold_cyclefold_circuit::<HyperNovaCycleFoldConfig<C1, MU, NU>, C2, CS2, H>(
                     &mut transcript_p,
                     self.cf_r1cs.clone(),
                     self.cf_cs_pp.clone(),

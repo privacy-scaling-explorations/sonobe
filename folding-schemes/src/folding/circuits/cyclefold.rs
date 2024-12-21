@@ -171,35 +171,6 @@ impl<C: SonobeCurve> CycleFoldCommittedInstanceVar<C> {
     }
 }
 
-/// CommittedInstanceInCycleFoldVar represents the Nova CommittedInstance in the CycleFold circuit,
-/// where the commitments to E and W (cmW and cmW) from the CommittedInstance on the E2,
-/// represented as native points, which are folded on the auxiliary curve constraints field (E2::Fr
-/// = E1::Fq).
-#[derive(Debug, Clone)]
-pub struct CommittedInstanceInCycleFoldVar<C: SonobeCurve> {
-    pub cmE: C::Var,
-    pub cmW: C::Var,
-}
-
-impl<C: SonobeCurve> AllocVar<CycleFoldCommittedInstance<C>, CF2<C>>
-    for CommittedInstanceInCycleFoldVar<C>
-{
-    fn new_variable<T: Borrow<CycleFoldCommittedInstance<C>>>(
-        cs: impl Into<Namespace<CF2<C>>>,
-        f: impl FnOnce() -> Result<T, SynthesisError>,
-        mode: AllocationMode,
-    ) -> Result<Self, SynthesisError> {
-        f().and_then(|val| {
-            let cs = cs.into();
-
-            let cmE = C::Var::new_variable(cs.clone(), || Ok(val.borrow().cmE), mode)?;
-            let cmW = C::Var::new_variable(cs.clone(), || Ok(val.borrow().cmW), mode)?;
-
-            Ok(Self { cmE, cmW })
-        })
-    }
-}
-
 /// In-circuit representation of the Witness associated to the CommittedInstance, but with
 /// non-native representation, since it is used to represent the CycleFold witness. This struct is
 /// used in the Decider circuit.
@@ -483,21 +454,11 @@ impl<CFG: CycleFoldConfig> ConstraintSynthesizer<CF2<CFG::C>> for CycleFoldCircu
 /// different fields than the main NIFS impls (Nova, Mova, Ova). Could be abstracted, but it's a
 /// tradeoff between overcomplexity at the NIFSTrait and the (not much) need of generalization at
 /// the CycleFoldNIFS.
-pub struct CycleFoldNIFS<
-    C1: SonobeCurve,
-    C2: SonobeCurve,
-    CS2: CommitmentScheme<C2, H>,
-    const H: bool = false,
-> {
-    _c1: PhantomData<C1>,
+pub struct CycleFoldNIFS<C2: SonobeCurve, CS2: CommitmentScheme<C2, H>, const H: bool = false> {
     _c2: PhantomData<C2>,
     _cs: PhantomData<CS2>,
 }
-impl<C1: SonobeCurve, C2: SonobeCurve, CS2: CommitmentScheme<C2, H>, const H: bool>
-    CycleFoldNIFS<C1, C2, CS2, H>
-where
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-{
+impl<C2: SonobeCurve, CS2: CommitmentScheme<C2, H>, const H: bool> CycleFoldNIFS<C2, CS2, H> {
     fn prove(
         cf_r_Fq: C2::ScalarField, // C2::Fr==C1::Fq
         cf_W_i: &CycleFoldWitness<C2>,
@@ -534,73 +495,75 @@ where
 /// scheme struct because it is used both by Nova & HyperNova's CycleFold.
 #[allow(clippy::type_complexity)]
 #[allow(clippy::too_many_arguments)]
-pub fn fold_cyclefold_circuit<CFG, C1, C2, CS2, const H: bool>(
-    transcript: &mut impl Transcript<C1::ScalarField>,
+pub fn fold_cyclefold_circuit<CFG, C2, CS2, const H: bool>(
+    transcript: &mut impl Transcript<CF2<C2>>,
     cf_r1cs: R1CS<C2::ScalarField>,
     cf_cs_params: CS2::ProverParams,
-    pp_hash: C1::ScalarField,               // public params hash
+    pp_hash: CF2<C2>,                       // public params hash
     cf_W_i: CycleFoldWitness<C2>,           // witness of the running instance
     cf_U_i: CycleFoldCommittedInstance<C2>, // running instance
     cf_circuit: CycleFoldCircuit<CFG>,
     mut rng: impl RngCore,
 ) -> Result<
     (
-        CycleFoldWitness<C2>,
         CycleFoldCommittedInstance<C2>, // u_i
         CycleFoldWitness<C2>,           // W_i1
         CycleFoldCommittedInstance<C2>, // U_i1
         C2,                             // cmT
-        C2::ScalarField,                // r_Fq
     ),
     Error,
 >
 where
-    CFG: CycleFoldConfig<C = C1>,
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2: SonobeCurve,
+    CFG: CycleFoldConfig,
+    C2: SonobeCurve<ScalarField = CF2<CFG::C>, BaseField = CF1<CFG::C>>,
     CS2: CommitmentScheme<C2, H>,
 {
-    let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
+    let cs2 = ConstraintSystem::new_ref();
     cf_circuit.generate_constraints(cs2.clone())?;
 
     let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
-    let (cf_w_i, cf_x_i) = extract_w_x::<C1::BaseField>(&cs2);
+    let (cf_w_i, cf_x_i) = extract_w_x(&cs2);
 
     #[cfg(test)]
     assert_eq!(cf_x_i.len(), CFG::IO_LEN);
 
     // fold cyclefold instances
     let cf_w_i = CycleFoldWitness::<C2>::new::<H>(cf_w_i.clone(), cf_r1cs.A.n_rows, &mut rng);
-    let cf_u_i: CycleFoldCommittedInstance<C2> =
-        cf_w_i.commit::<CS2, H>(&cf_cs_params, cf_x_i.clone())?;
+    let cf_u_i = cf_w_i.commit::<CS2, H>(&cf_cs_params, cf_x_i.clone())?;
 
     // compute T* and cmT* for CycleFoldCircuit
-    let (cf_T, cf_cmT) =
-        NIFS::<C2, CS2, PoseidonSponge<C2::ScalarField>, H>::compute_cyclefold_cmT(
-            &cf_cs_params,
-            &cf_r1cs,
-            &cf_w_i,
-            &cf_u_i,
-            &cf_W_i,
-            &cf_U_i,
-        )?;
+    let (cf_T, cf_cmT) = NIFS::<C2, CS2, PoseidonSponge<CF1<C2>>, H>::compute_cyclefold_cmT(
+        &cf_cs_params,
+        &cf_r1cs,
+        &cf_w_i,
+        &cf_u_i,
+        &cf_W_i,
+        &cf_U_i,
+    )?;
 
-    let cf_r_bits = CycleFoldChallengeGadget::<C2>::get_challenge_native(
+    let cf_r_bits = CycleFoldChallengeGadget::get_challenge_native(
         transcript,
         pp_hash,
         cf_U_i.clone(),
         cf_u_i.clone(),
         cf_cmT,
     );
-    let cf_r_Fq = C1::BaseField::from_bigint(BigInteger::from_bits_le(&cf_r_bits))
+    let cf_r_Fq = CF1::<C2>::from_bigint(BigInteger::from_bits_le(&cf_r_bits))
         .expect("cf_r_bits out of bounds");
 
-    let (cf_W_i1, cf_U_i1) = CycleFoldNIFS::<C1, C2, CS2, H>::prove(
+    let (cf_W_i1, cf_U_i1) = CycleFoldNIFS::<C2, CS2, H>::prove(
         cf_r_Fq, &cf_W_i, &cf_U_i, &cf_w_i, &cf_u_i, &cf_T, cf_cmT,
     )?;
-    let cf_r_Fq = C1::BaseField::from_bigint(BigInteger::from_bits_le(&cf_r_bits))
-        .expect("cf_r_bits out of bounds");
-    Ok((cf_w_i, cf_u_i, cf_W_i1, cf_U_i1, cf_cmT, cf_r_Fq))
+
+    #[cfg(test)]
+    {
+        use crate::{arith::Arith, folding::traits::CommittedInstanceOps};
+        cf_u_i.check_incoming()?;
+        cf_r1cs.check_relation(&cf_w_i, &cf_u_i)?;
+        cf_r1cs.check_relation(&cf_W_i1, &cf_U_i1)?;
+    }
+
+    Ok((cf_u_i, cf_W_i1, cf_U_i1, cf_cmT))
 }
 
 #[cfg(test)]
@@ -627,27 +590,6 @@ pub mod tests {
         const RANDOMNESS_BIT_LENGTH: usize = NOVA_N_BITS_RO;
         const N_INPUT_POINTS: usize = N;
         type C = C;
-    }
-
-    #[test]
-    fn test_committed_instance_cyclefold_var() -> Result<(), Error> {
-        let mut rng = ark_std::test_rng();
-
-        let ci = CycleFoldCommittedInstance::<Projective> {
-            cmE: Projective::rand(&mut rng),
-            u: Fr::rand(&mut rng),
-            cmW: Projective::rand(&mut rng),
-            x: vec![Fr::rand(&mut rng); 1],
-        };
-
-        // check the instantiation of the CycleFold side:
-        let cs = ConstraintSystem::<Fq>::new_ref();
-        let ciVar = CommittedInstanceInCycleFoldVar::<Projective>::new_witness(cs.clone(), || {
-            Ok(ci.clone())
-        })?;
-        assert_eq!(ciVar.cmE.value()?, ci.cmE);
-        assert_eq!(ciVar.cmW.value()?, ci.cmW);
-        Ok(())
     }
 
     #[test]

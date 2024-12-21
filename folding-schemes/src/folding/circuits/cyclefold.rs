@@ -293,7 +293,7 @@ where
     C::BaseField: PrimeField,
 {
     pub fn fold_committed_instance(
-        r_bits: Vec<Boolean<CF2<C>>>,
+        r_bits: &[Boolean<CF2<C>>],
         cmT: &GC,
         ci1: CycleFoldCommittedInstanceVar<C, GC>,
         // ci2 is assumed to be always with cmE=0, u=1 (checks done previous to this method)
@@ -301,7 +301,8 @@ where
     ) -> Result<CycleFoldCommittedInstanceVar<C, GC>, SynthesisError> {
         // r_nonnat is equal to r_bits just that in a different format
         let r_nonnat = {
-            let mut bits = r_bits.clone();
+            let mut bits = Vec::with_capacity(CF1::<C>::MODULUS_BIT_SIZE as usize);
+            bits.extend_from_slice(r_bits);
             bits.resize(CF1::<C>::MODULUS_BIT_SIZE as usize, Boolean::FALSE);
             NonNativeUintVar::from(&bits)
         };
@@ -323,7 +324,7 @@ where
 
     pub fn verify(
         // assumes that r_bits is equal to r_nonnat just that in a different format
-        r_bits: Vec<Boolean<CF2<C>>>,
+        r_bits: &[Boolean<CF2<C>>],
         cmT: &GC,
         ci1: CycleFoldCommittedInstanceVar<C, GC>,
         // ci2 is assumed to be always with cmE=0, u=1 (checks done previous to this method)
@@ -610,11 +611,11 @@ where
 #[allow(clippy::too_many_arguments)]
 pub fn fold_cyclefold_circuit<CFG, C1, GC1, C2, GC2, CS2, const H: bool>(
     transcript: &mut impl Transcript<C1::ScalarField>,
-    cf_r1cs: R1CS<C2::ScalarField>,
-    cf_cs_params: CS2::ProverParams,
-    pp_hash: C1::ScalarField,               // public params hash
-    cf_W_i: CycleFoldWitness<C2>,           // witness of the running instance
-    cf_U_i: CycleFoldCommittedInstance<C2>, // running instance
+    cf_r1cs: &R1CS<C2::ScalarField>,
+    cf_cs_params: &CS2::ProverParams,
+    pp_hash: C1::ScalarField,                // public params hash
+    cf_W_i: &CycleFoldWitness<C2>,           // witness of the running instance
+    cf_U_i: &CycleFoldCommittedInstance<C2>, // running instance
     cf_circuit: CycleFoldCircuit<CFG, GC1>,
     mut rng: impl RngCore,
 ) -> Result<
@@ -630,7 +631,7 @@ pub fn fold_cyclefold_circuit<CFG, C1, GC1, C2, GC2, CS2, const H: bool>(
 >
 where
     CFG: CycleFoldConfig<C = C1>,
-    C1: CurveGroup,
+    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     GC1: CurveVar<C1, CF2<C1>>,
     C2: CurveGroup,
     GC2: CurveVar<C2, CF2<C2>>,
@@ -639,7 +640,6 @@ where
     <C2 as CurveGroup>::BaseField: PrimeField,
     C1::ScalarField: Absorb,
     C2::ScalarField: Absorb,
-    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
 {
     let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
     cf_circuit.generate_constraints(cs2.clone())?;
@@ -752,7 +752,7 @@ pub mod tests {
         let mut res = Projective::zero();
         use ark_std::One;
         let mut rho_i = Fr::one();
-        for point_i in points.iter() {
+        for point_i in &points {
             res += point_i.mul(rho_i);
             rho_i *= rho_Fr;
         }
@@ -789,7 +789,6 @@ pub mod tests {
 
         // prepare the committed instances to test in-circuit
         let ci: Vec<CommittedInstance<Projective>> = (0..2)
-            .into_iter()
             .map(|_| CommittedInstance::<Projective> {
                 cmE: Projective::rand(&mut rng),
                 u: Fr::rand(&mut rng),
@@ -827,7 +826,7 @@ pub mod tests {
             })?;
         let cmTVar = GVar::new_witness(cs.clone(), || Ok(cmT))?;
 
-        NIFSFullGadget::<Projective, GVar>::verify(r_bitsVar, &cmTVar, ci1Var, ci2Var, &ci3Var)?;
+        NIFSFullGadget::<Projective, GVar>::verify(&r_bitsVar, &cmTVar, ci1Var, ci2Var, &ci3Var)?;
         assert!(cs.is_satisfied()?);
         Ok(())
     }

@@ -523,7 +523,7 @@ where
         let f_circuit = FC::new(fc_params)?;
         let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
         let augmented_F_circuit =
-            AugmentedFCircuit::<C1, C2, GC2, FC>::empty(&poseidon_config, f_circuit.clone());
+            AugmentedFCircuit::<C1, C2, GC2, FC>::empty(&poseidon_config, f_circuit);
         augmented_F_circuit.generate_constraints(cs.clone())?;
         cs.finalize();
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
@@ -568,8 +568,8 @@ where
 
         let prover_params = ProverParams::<C1, C2, CS1, CS2, H> {
             poseidon_config: prep_param.poseidon_config.clone(),
-            cs_pp: cs_pp.clone(),
-            cf_cs_pp: cf_cs_pp.clone(),
+            cs_pp,
+            cf_cs_pp,
         };
         let verifier_params = VerifierParams::<C1, C2, CS1, CS2, H> {
             poseidon_config: prep_param.poseidon_config.clone(),
@@ -737,7 +737,7 @@ where
                 i_usize: Some(0),
                 z_0: Some(self.z_0.clone()), // = z_i
                 z_i: Some(self.z_i.clone()),
-                external_inputs: Some(external_inputs.clone()),
+                external_inputs: Some(external_inputs),
                 u_i_cmW: Some(self.u_i.cmW), // = dummy
                 U_i: Some(self.U_i.clone()), // = dummy
                 U_i1_cmE: Some(U_i1.cmE),
@@ -770,23 +770,23 @@ where
             };
             let cfE_circuit = NovaCycleFoldCircuit::<C1, GC1> {
                 _gc: PhantomData,
-                r_bits: Some(r_bits.clone()),
+                r_bits: Some(r_bits),
                 points: Some(vec![self.U_i.clone().cmE, cmT]),
             };
 
             // fold self.cf_U_i + cfW_U -> folded running with cfW
             let (_cfW_w_i, cfW_u_i, cfW_W_i1, cfW_U_i1, cfW_cmT, _) = self.fold_cyclefold_circuit(
                 &mut transcript,
-                self.cf_W_i.clone(), // CycleFold running instance witness
-                self.cf_U_i.clone(), // CycleFold running instance
+                &self.cf_W_i, // CycleFold running instance witness
+                &self.cf_U_i, // CycleFold running instance
                 cfW_circuit,
                 &mut rng,
             )?;
             // fold [the output from folding self.cf_U_i + cfW_U] + cfE_U = folded_running_with_cfW + cfE
             let (_cfE_w_i, cfE_u_i, cf_W_i1, cf_U_i1, cf_cmT, _) = self.fold_cyclefold_circuit(
                 &mut transcript,
-                cfW_W_i1,
-                cfW_U_i1.clone(),
+                &cfW_W_i1,
+                &cfW_U_i1,
                 cfE_circuit,
                 &mut rng,
             )?;
@@ -996,7 +996,7 @@ where
 
 impl<C1, GC1, C2, GC2, FC, CS1, CS2, const H: bool> Nova<C1, GC1, C2, GC2, FC, CS1, CS2, H>
 where
-    C1: CurveGroup,
+    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     GC1: CurveVar<C1, CF2<C1>>,
     C2: CurveGroup,
     GC2: CurveVar<C2, CF2<C2>>,
@@ -1007,15 +1007,14 @@ where
     <C2 as CurveGroup>::BaseField: PrimeField,
     C1::ScalarField: Absorb,
     C2::ScalarField: Absorb,
-    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
 {
     // folds the given cyclefold circuit and its instances
     #[allow(clippy::type_complexity)]
     fn fold_cyclefold_circuit<T: Transcript<C1::ScalarField>>(
         &self,
         transcript: &mut T,
-        cf_W_i: CycleFoldWitness<C2>, // witness of the running instance
-        cf_U_i: CycleFoldCommittedInstance<C2>, // running instance
+        cf_W_i: &CycleFoldWitness<C2>, // witness of the running instance
+        cf_U_i: &CycleFoldCommittedInstance<C2>, // running instance
         cf_circuit: NovaCycleFoldCircuit<C1, GC1>,
         rng: &mut impl RngCore,
     ) -> Result<
@@ -1031,8 +1030,8 @@ where
     > {
         fold_cyclefold_circuit::<NovaCycleFoldConfig<C1>, C1, GC1, C2, GC2, CS2, H>(
             transcript,
-            self.cf_r1cs.clone(),
-            self.cf_cs_pp.clone(),
+            &self.cf_r1cs,
+            &self.cf_cs_pp,
             self.pp_hash,
             cf_W_i,
             cf_U_i,

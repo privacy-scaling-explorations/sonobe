@@ -213,7 +213,7 @@ impl AugmentationGadget {
             )?;
             // Fold the current incoming CycleFold instance `cf_u` into the
             // running CycleFold instance `cf_U`.
-            cf_U = NIFSFullGadget::fold_committed_instance(cf_r_bits, &cmT, cf_U, cf_u)?;
+            cf_U = NIFSFullGadget::fold_committed_instance(&cf_r_bits, &cmT, cf_U, cf_u)?;
         }
 
         Ok(cf_U)

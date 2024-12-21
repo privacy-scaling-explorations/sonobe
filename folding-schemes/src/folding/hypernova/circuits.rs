@@ -867,8 +867,9 @@ where
             cf_cmT.clone(),
         )?;
         // Fold cf1_u_i & cf_U_i into cf1_U_{i+1}
-        let cf_U_i1 =
-            NIFSFullGadget::<C2, GC2>::fold_committed_instance(cf_r_bits, &cf_cmT, cf_U_i, cf_u_i)?;
+        let cf_U_i1 = NIFSFullGadget::<C2, GC2>::fold_committed_instance(
+            &cf_r_bits, &cf_cmT, cf_U_i, cf_u_i,
+        )?;
 
         // Back to Primary Part
         // P.4.b compute and check the second output of F'
@@ -1384,11 +1385,11 @@ mod tests {
                     false,
                 >(
                     &mut transcript_p,
-                    cf_r1cs.clone(),
-                    cf_pedersen_params.clone(),
+                    &cf_r1cs,
+                    &cf_pedersen_params,
                     pp_hash,
-                    cf_W_i.clone(), // CycleFold running instance witness
-                    cf_U_i.clone(), // CycleFold running instance
+                    &cf_W_i, // CycleFold running instance witness
+                    &cf_U_i, // CycleFold running instance
                     cf_circuit,
                     &mut rng,
                 )?;

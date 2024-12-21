@@ -232,7 +232,7 @@ where
             let cs = cs.into();
 
             let cmE = GC::new_variable(cs.clone(), || Ok(val.borrow().cmE), mode)?;
-            let cmW = GC::new_variable(cs.clone(), || Ok(val.borrow().cmW), mode)?;
+            let cmW = GC::new_variable(cs, || Ok(val.borrow().cmW), mode)?;
 
             Ok(Self {
                 _c: PhantomData,
@@ -286,7 +286,7 @@ pub struct NIFSFullGadget<C: CurveGroup, GC: CurveVar<C, CF2<C>>> {
     _gc: PhantomData<GC>,
 }
 
-impl<C: CurveGroup, GC: CurveVar<C, CF2<C>>> NIFSFullGadget<C, GC>
+impl<C, GC> NIFSFullGadget<C, GC>
 where
     C: CurveGroup,
     GC: CurveVar<C, CF2<C>>,
@@ -294,7 +294,7 @@ where
 {
     pub fn fold_committed_instance(
         r_bits: Vec<Boolean<CF2<C>>>,
-        cmT: GC,
+        cmT: &GC,
         ci1: CycleFoldCommittedInstanceVar<C, GC>,
         // ci2 is assumed to be always with cmE=0, u=1 (checks done previous to this method)
         ci2: CycleFoldCommittedInstanceVar<C, GC>,
@@ -324,11 +324,11 @@ where
     pub fn verify(
         // assumes that r_bits is equal to r_nonnat just that in a different format
         r_bits: Vec<Boolean<CF2<C>>>,
-        cmT: GC,
+        cmT: &GC,
         ci1: CycleFoldCommittedInstanceVar<C, GC>,
         // ci2 is assumed to be always with cmE=0, u=1 (checks done previous to this method)
         ci2: CycleFoldCommittedInstanceVar<C, GC>,
-        ci3: CycleFoldCommittedInstanceVar<C, GC>,
+        ci3: &CycleFoldCommittedInstanceVar<C, GC>,
     ) -> Result<(), SynthesisError> {
         let ci = Self::fold_committed_instance(r_bits, cmT, ci1, ci2)?;
 
@@ -534,7 +534,7 @@ impl<CFG: CycleFoldConfig, GC: CurveVar<CFG::C, CF2<CFG::C>>> ConstraintSynthesi
         //   computing them outside the circuit.
         // - `.enforce_equal()` prevents a malicious prover from claiming wrong
         //   public inputs that are not the honest `x` computed in-circuit.
-        Vec::new_input(cs.clone(), || x.value())?.enforce_equal(&x)?;
+        Vec::new_input(cs, || x.value())?.enforce_equal(&x)?;
 
         Ok(())
     }
@@ -827,7 +827,7 @@ pub mod tests {
             })?;
         let cmTVar = GVar::new_witness(cs.clone(), || Ok(cmT))?;
 
-        NIFSFullGadget::<Projective, GVar>::verify(r_bitsVar, cmTVar, ci1Var, ci2Var, ci3Var)?;
+        NIFSFullGadget::<Projective, GVar>::verify(r_bitsVar, &cmTVar, ci1Var, ci2Var, &ci3Var)?;
         assert!(cs.is_satisfied()?);
         Ok(())
     }

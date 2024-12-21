@@ -111,6 +111,14 @@ pub struct KZG<'a, E: Pairing, const H: bool = false> {
     _e: PhantomData<E>,
 }
 
+/*
+TODO (autoparallel): Okay, I'm noticing something here, basically I think that there should likely be two implementations for `CommitmentScheme<G>`,
+one that is hiding, and one that is not (as opposed to the const generic `H` in the trait itself). We could have `HidingCommitmentScheme: CommitmentScheme`.
+If impl `CommitmentScheme<G> for KZG<'a, E, H>`, then we can impl `HidingCommitmentScheme for KZG<'a, E, true>`. The implementation of `HidingCommitmentScheme`
+would be super straight forward as it would just add the blinding factor to the output of the "super" `CommitmentScheme` `commit` and `prove` methods. Then those
+methods on `CommitmentScheme` do not have to take in `blind: Option<E::ScalarField>` or the `dyn Rng`.
+*/
+
 impl<'a, E, const H: bool> CommitmentScheme<E::G1, H> for KZG<'a, E, H>
 where
     E: Pairing,
@@ -145,7 +153,7 @@ where
         Ok((powers, vk))
     }
 
-    /// commit implements the CommitmentScheme commit interface, adapting the implementation from
+    /// commit implements the [`CommitmentScheme`] commit interface, adapting the implementation from
     /// https://github.com/arkworks-rs/poly-commit/tree/c724fa666e935bbba8db5a1421603bab542e15ab/poly-commit/src/kzg10/mod.rs#L178
     /// with the main difference being the removal of the blinding factors and the no-dependency to
     /// the Pairing trait.
@@ -154,6 +162,7 @@ where
         v: &[E::ScalarField],
         _blind: &E::ScalarField,
     ) -> Result<E::G1, Error> {
+        // TODO (autoparallel): awk to use `_` prefix here.
         if !_blind.is_zero() || H {
             return Err(Error::NotSupportedYet("hiding".to_string()));
         }
@@ -170,8 +179,8 @@ where
         Ok(commitment)
     }
 
-    /// prove implements the CommitmentScheme prove interface, adapting the implementation from
-    /// https://github.com/arkworks-rs/poly-commit/tree/c724fa666e935bbba8db5a1421603bab542e15ab/poly-commit/src/kzg10/mod.rs#L307
+    /// prove implements the [`CommitmentScheme`] prove interface, adapting the implementation from
+    /// <https://github.com/arkworks-rs/poly-commit/tree/c724fa666e935bbba8db5a1421603bab542e15ab/poly-commit/src/kzg10/mod.rs#L307>
     /// with the main difference being the removal of the blinding factors and the no-dependency to
     /// the Pairing trait.
     fn prove(
@@ -184,6 +193,7 @@ where
     ) -> Result<Self::Proof, Error> {
         transcript.absorb_nonnative(cm);
         let challenge = transcript.get_challenge();
+        // TODO (autoparallel): awk to use `_` prefix here.
         Self::prove_with_challenge(params, challenge, v, _blind, _rng)
     }
 
@@ -194,6 +204,7 @@ where
         _blind: &E::ScalarField,
         _rng: Option<&mut dyn RngCore>,
     ) -> Result<Self::Proof, Error> {
+        // TODO (autoparallel): awk to use `_` prefix here.
         if !_blind.is_zero() || H {
             return Err(Error::NotSupportedYet("hiding".to_string()));
         }

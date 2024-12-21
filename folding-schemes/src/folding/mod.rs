@@ -1,3 +1,38 @@
+//! The folding module provides implementations of various folding schemes for recursive SNARKs
+//! (Succinct Non-interactive ARguments of Knowledge) and IVC (Incremental Verifiable Computation).
+//!
+//! # Overview
+//!
+//! This module contains implementations of different folding schemes including:
+//!
+//! - [`nova`] - Implementation of the Nova folding scheme
+//! - [`hypernova`] - Implementation of the HyperNova folding scheme, which extends Nova to support
+//!   customizable constraint systems
+//! - [`protogalaxy`] - Implementation of the ProtoGalaxy folding scheme
+//!
+//! The module also provides:
+//!
+//! - [`circuits`] - Core circuit implementations and gadgets used across different folding schemes
+//! - [`traits`] - Common traits and interfaces that folding schemes must implement
+//!
+//! # Architecture
+//!
+//! Each folding scheme follows a similar architecture:
+//!
+//! - Implements the [`FoldingScheme`](crate::FoldingScheme) trait which defines the core
+//!   interface for initialization, proving steps, and verification
+//! - Uses commitment schemes from the [`commitment`](crate::commitment) module
+//! - Builds upon the arithmetic backends defined in [`arith`](crate::arith)
+//! - Leverages common circuit gadgets from the [`circuits`] module
+//!
+//! # References
+//!
+//! The implementations are based on the following academic works:
+//!
+//! - [Nova: Recursive Zero-Knowledge Arguments from Folding Schemes](https://eprint.iacr.org/2021/370)
+//! - [HyperNova: Recursive Arguments for Customizable Constraint Systems](https://eprint.iacr.org/2023/573)
+//! - [CycleFold: Folding-scheme-based Recursive Arguments over Different Curves](https://eprint.iacr.org/2023/1192)
+
 pub mod circuits;
 pub mod hypernova;
 pub mod nova;
@@ -29,15 +64,9 @@ pub mod tests {
     /// ProtoGalaxy.
     #[test]
     fn test_serialize_ivc_nova_hypernova_protogalaxy() -> Result<(), Error> {
-        let poseidon_config = poseidon_canonical_config::<Fr>();
         type FC = CubicFCircuit<Fr>;
-        let f_circuit = FC::new(())?;
-
         // test Nova
         type N = Nova<G1, GVar1, G2, GVar2, FC, Pedersen<G1>, Pedersen<G2>, false>;
-        let prep_param = NovaPreprocessorParam::new(poseidon_config.clone(), f_circuit);
-        test_serialize_ivc_opt::<G1, G2, FC, N>("nova".to_string(), prep_param.clone())?;
-
         // test HyperNova
         type HN = HyperNova<
             G1,
@@ -51,36 +80,41 @@ pub mod tests {
             1, // nu
             false,
         >;
-        test_serialize_ivc_opt::<G1, G2, FC, HN>("hypernova".to_string(), prep_param)?;
-
         // test ProtoGalaxy
         type P = ProtoGalaxy<G1, GVar1, G2, GVar2, FC, Pedersen<G1>, Pedersen<G2>>;
+
+        let poseidon_config = poseidon_canonical_config::<Fr>();
+
+        let f_circuit = FC::new(())?;
+
+        let prep_param = NovaPreprocessorParam::new(poseidon_config.clone(), f_circuit);
+        test_serialize_ivc_opt::<G1, G2, FC, N>("nova", &prep_param)?;
+        test_serialize_ivc_opt::<G1, G2, FC, HN>("hypernova", &prep_param)?;
+
         let prep_param = (poseidon_config, f_circuit);
-        test_serialize_ivc_opt::<G1, G2, FC, P>("protogalaxy".to_string(), prep_param)?;
+        test_serialize_ivc_opt::<G1, G2, FC, P>("protogalaxy", &prep_param)?;
         Ok(())
     }
 
     fn test_serialize_ivc_opt<
-        C1: CurveGroup,
+        C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
         C2: CurveGroup,
         FC: FCircuit<C1::ScalarField, Params = ()>,
         FS: FoldingScheme<C1, C2, FC>,
     >(
-        name: String,
-        prep_param: FS::PreprocessorParam,
+        name: &str,
+        prep_param: &FS::PreprocessorParam,
     ) -> Result<(), Error>
     where
-        C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
         C2::BaseField: PrimeField,
-        FC: FCircuit<C1::ScalarField>,
     {
         let mut rng = ark_std::test_rng();
         let F_circuit = FC::new(())?;
 
-        let fs_params = FS::preprocess(&mut rng, &prep_param)?;
+        let fs_params = FS::preprocess(&mut rng, prep_param)?;
 
         let z_0 = vec![C1::ScalarField::from(3_u32)];
-        let mut fs = FS::init(&fs_params, F_circuit, z_0.clone())?;
+        let mut fs = FS::init(&fs_params, F_circuit, z_0)?;
 
         // perform multiple IVC steps (internally folding)
         let num_steps: usize = 3;
@@ -99,11 +133,11 @@ pub mod tests {
         let mut file = std::fs::OpenOptions::new()
             .create(true)
             .write(true)
-            .open(format!("./ivc_proof-{}.serialized", name))?;
+            .open(format!("./ivc_proof-{name}.serialized"))?;
         file.write_all(&writer)?;
 
         // read the IVCProof from the file deserializing it
-        let bytes = std::fs::read(format!("./ivc_proof-{}.serialized", name))?;
+        let bytes = std::fs::read(format!("./ivc_proof-{name}.serialized"))?;
         let deserialized_ivc_proof = FS::IVCProof::deserialize_compressed(bytes.as_slice())?;
         // verify deserialized IVCProof
         FS::verify(fs_params.1.clone(), deserialized_ivc_proof.clone())?;
@@ -156,7 +190,7 @@ pub mod tests {
             FS::IVCProof::deserialize_compressed(ivc_proof_serialized.as_slice())?;
 
         // verify the last IVCProof from the recovered from serialization FS
-        FS::verify(fs_vp_deserialized.clone(), ivc_proof_deserialized)?;
+        FS::verify(fs_vp_deserialized, ivc_proof_deserialized)?;
 
         Ok(())
     }

@@ -754,7 +754,7 @@ where
         // u_i.x[0] = H(i, z_0, z_i, U_i)
         let (u_i_x, _) = U_i.clone().hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
         // u_i.x[1] = H(cf_U_i)
-        let (cf_u_i_x, cf_U_i_vec) = cf_U_i.clone().hash(&sponge, pp_hash.clone())?;
+        let (cf_u_i_x, cf_U_i_vec) = cf_U_i.clone().hash(&sponge, &pp_hash)?;
 
         // P.2. Construct u_i
         let u_i = CCCSVar::<C1> {
@@ -861,23 +861,24 @@ where
         // cf_r_bits is denoted by rho* in the paper.
         let cf_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_gadget(
             &mut transcript,
-            pp_hash.clone(),
-            cf_U_i_vec,
-            cf_u_i.clone(),
-            cf_cmT.clone(),
+            &pp_hash,
+            &cf_U_i_vec,
+            &cf_u_i,
+            &cf_cmT,
         )?;
         // Fold cf1_u_i & cf_U_i into cf1_U_{i+1}
-        let cf_U_i1 =
-            NIFSFullGadget::<C2, GC2>::fold_committed_instance(cf_r_bits, cf_cmT, cf_U_i, cf_u_i)?;
+        let cf_U_i1 = NIFSFullGadget::<C2, GC2>::fold_committed_instance(
+            &cf_r_bits, &cf_cmT, cf_U_i, cf_u_i,
+        )?;
 
         // Back to Primary Part
         // P.4.b compute and check the second output of F'
         // Base case: u_{i+1}.x[1] == H(cf_U_{\bot})
         // Non-base case: u_{i+1}.x[1] == H(cf_U_{i+1})
-        let (cf_u_i1_x, _) = cf_U_i1.clone().hash(&sponge, pp_hash.clone())?;
+        let (cf_u_i1_x, _) = cf_U_i1.clone().hash(&sponge, &pp_hash)?;
         let (cf_u_i1_x_base, _) =
             CycleFoldCommittedInstanceVar::<C2, GC2>::new_constant(cs.clone(), cf_u_dummy)?
-                .hash(&sponge, pp_hash)?;
+                .hash(&sponge, &pp_hash)?;
         let cf_x = is_basecase.select(&cf_u_i1_x_base, &cf_u_i1_x)?;
         // This line "converts" `cf_x` from a witness to a public input.
         // Instead of directly modifying the constraint system, we explicitly
@@ -1384,11 +1385,11 @@ mod tests {
                     false,
                 >(
                     &mut transcript_p,
-                    cf_r1cs.clone(),
-                    cf_pedersen_params.clone(),
-                    pp_hash,
-                    cf_W_i.clone(), // CycleFold running instance witness
-                    cf_U_i.clone(), // CycleFold running instance
+                    &cf_r1cs,
+                    &cf_pedersen_params,
+                    &pp_hash,
+                    &cf_W_i, // CycleFold running instance witness
+                    &cf_U_i, // CycleFold running instance
                     cf_circuit,
                     &mut rng,
                 )?;

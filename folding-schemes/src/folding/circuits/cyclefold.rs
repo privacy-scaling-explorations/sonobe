@@ -52,7 +52,11 @@ impl<C: CurveGroup, GC: CurveVar<C, CF2<C>>> Inputize<CF2<C>, CycleFoldCommitted
         self.u
             .inputize()
             .into_iter()
-            .chain(self.x.iter().flat_map(|x| x.inputize()))
+            .chain(
+                self.x
+                    .iter()
+                    .flat_map(super::super::traits::Inputize::inputize),
+            )
             .chain(
                 [
                     cmE_x,
@@ -96,7 +100,7 @@ where
             let x: Vec<NonNativeUintVar<CF2<C>>> =
                 Vec::new_variable(cs.clone(), || Ok(val.borrow().x.clone()), mode)?;
             let cmE = GC::new_variable(cs.clone(), || Ok(val.borrow().cmE), mode)?;
-            let cmW = GC::new_variable(cs.clone(), || Ok(val.borrow().cmW), mode)?;
+            let cmW = GC::new_variable(cs, || Ok(val.borrow().cmW), mode)?;
 
             Ok(Self { cmE, u, cmW, x })
         })
@@ -142,7 +146,7 @@ where
             self.u.to_native_sponge_field_elements()?,
             self.x
                 .iter()
-                .map(|i| i.to_native_sponge_field_elements())
+                .map(crate::transcript::AbsorbNonNativeGadget::to_native_sponge_field_elements)
                 .collect::<Result<Vec<_>, _>>()?
                 .concat(),
             cmE_elems,
@@ -188,7 +192,7 @@ where
     pub fn hash<S: CryptographicSponge, T: TranscriptVar<CF2<C>, S>>(
         &self,
         sponge: &T,
-        pp_hash: FpVar<CF2<C>>, // public params hash
+        pp_hash: &FpVar<CF2<C>>, // public params hash
     ) -> Result<(FpVar<CF2<C>>, Vec<FpVar<CF2<C>>>), SynthesisError> {
         let mut sponge = sponge.clone();
         let U_vec = self.to_native_sponge_field_elements()?;
@@ -228,7 +232,7 @@ where
             let cs = cs.into();
 
             let cmE = GC::new_variable(cs.clone(), || Ok(val.borrow().cmE), mode)?;
-            let cmW = GC::new_variable(cs.clone(), || Ok(val.borrow().cmW), mode)?;
+            let cmW = GC::new_variable(cs, || Ok(val.borrow().cmW), mode)?;
 
             Ok(Self {
                 _c: PhantomData,
@@ -267,7 +271,7 @@ where
             let rE = NonNativeUintVar::new_variable(cs.clone(), || Ok(val.borrow().rE), mode)?;
 
             let W = Vec::new_variable(cs.clone(), || Ok(val.borrow().W.clone()), mode)?;
-            let rW = NonNativeUintVar::new_variable(cs.clone(), || Ok(val.borrow().rW), mode)?;
+            let rW = NonNativeUintVar::new_variable(cs, || Ok(val.borrow().rW), mode)?;
 
             Ok(Self { E, rE, W, rW })
         })
@@ -282,22 +286,23 @@ pub struct NIFSFullGadget<C: CurveGroup, GC: CurveVar<C, CF2<C>>> {
     _gc: PhantomData<GC>,
 }
 
-impl<C: CurveGroup, GC: CurveVar<C, CF2<C>>> NIFSFullGadget<C, GC>
+impl<C, GC> NIFSFullGadget<C, GC>
 where
     C: CurveGroup,
     GC: CurveVar<C, CF2<C>>,
     C::BaseField: PrimeField,
 {
     pub fn fold_committed_instance(
-        r_bits: Vec<Boolean<CF2<C>>>,
-        cmT: GC,
+        r_bits: &[Boolean<CF2<C>>],
+        cmT: &GC,
         ci1: CycleFoldCommittedInstanceVar<C, GC>,
         // ci2 is assumed to be always with cmE=0, u=1 (checks done previous to this method)
         ci2: CycleFoldCommittedInstanceVar<C, GC>,
     ) -> Result<CycleFoldCommittedInstanceVar<C, GC>, SynthesisError> {
         // r_nonnat is equal to r_bits just that in a different format
         let r_nonnat = {
-            let mut bits = r_bits.clone();
+            let mut bits = Vec::with_capacity(CF1::<C>::MODULUS_BIT_SIZE as usize);
+            bits.extend_from_slice(r_bits);
             bits.resize(CF1::<C>::MODULUS_BIT_SIZE as usize, Boolean::FALSE);
             NonNativeUintVar::from(&bits)
         };
@@ -319,12 +324,12 @@ where
 
     pub fn verify(
         // assumes that r_bits is equal to r_nonnat just that in a different format
-        r_bits: Vec<Boolean<CF2<C>>>,
-        cmT: GC,
+        r_bits: &[Boolean<CF2<C>>],
+        cmT: &GC,
         ci1: CycleFoldCommittedInstanceVar<C, GC>,
         // ci2 is assumed to be always with cmE=0, u=1 (checks done previous to this method)
         ci2: CycleFoldCommittedInstanceVar<C, GC>,
-        ci3: CycleFoldCommittedInstanceVar<C, GC>,
+        ci3: &CycleFoldCommittedInstanceVar<C, GC>,
     ) -> Result<(), SynthesisError> {
         let ci = Self::fold_committed_instance(r_bits, cmT, ci1, ci2)?;
 
@@ -376,30 +381,30 @@ where
 {
     pub fn get_challenge_native<T: Transcript<C::BaseField>>(
         transcript: &mut T,
-        pp_hash: C::BaseField, // public params hash
-        U_i: CycleFoldCommittedInstance<C>,
-        u_i: CycleFoldCommittedInstance<C>,
-        cmT: C,
+        pp_hash: &C::BaseField, // public params hash
+        U_i: &CycleFoldCommittedInstance<C>,
+        u_i: &CycleFoldCommittedInstance<C>,
+        cmT: &C,
     ) -> Vec<bool> {
-        transcript.absorb(&pp_hash);
-        transcript.absorb_nonnative(&U_i);
-        transcript.absorb_nonnative(&u_i);
-        transcript.absorb_point(&cmT);
+        transcript.absorb(pp_hash);
+        transcript.absorb_nonnative(U_i);
+        transcript.absorb_nonnative(u_i);
+        transcript.absorb_point(cmT);
         transcript.squeeze_bits(NOVA_N_BITS_RO)
     }
 
     // compatible with the native get_challenge_native
     pub fn get_challenge_gadget<S: CryptographicSponge, T: TranscriptVar<C::BaseField, S>>(
         transcript: &mut T,
-        pp_hash: FpVar<C::BaseField>, // public params hash
-        U_i_vec: Vec<FpVar<C::BaseField>>,
-        u_i: CycleFoldCommittedInstanceVar<C, GC>,
-        cmT: GC,
+        pp_hash: &FpVar<C::BaseField>, // public params hash
+        U_i_vec: &[FpVar<C::BaseField>],
+        u_i: &CycleFoldCommittedInstanceVar<C, GC>,
+        cmT: &GC,
     ) -> Result<Vec<Boolean<C::BaseField>>, SynthesisError> {
-        transcript.absorb(&pp_hash)?;
+        transcript.absorb(pp_hash)?;
         transcript.absorb(&U_i_vec)?;
-        transcript.absorb_nonnative(&u_i)?;
-        transcript.absorb_point(&cmT)?;
+        transcript.absorb_nonnative(u_i)?;
+        transcript.absorb_point(cmT)?;
         transcript.squeeze_bits(NOVA_N_BITS_RO)
     }
 }
@@ -530,7 +535,7 @@ impl<CFG: CycleFoldConfig, GC: CurveVar<CFG::C, CF2<CFG::C>>> ConstraintSynthesi
         //   computing them outside the circuit.
         // - `.enforce_equal()` prevents a malicious prover from claiming wrong
         //   public inputs that are not the honest `x` computed in-circuit.
-        Vec::new_input(cs.clone(), || x.value())?.enforce_equal(&x)?;
+        Vec::new_input(cs, || x.value())?.enforce_equal(&x)?;
 
         Ok(())
     }
@@ -606,11 +611,11 @@ where
 #[allow(clippy::too_many_arguments)]
 pub fn fold_cyclefold_circuit<CFG, C1, GC1, C2, GC2, CS2, const H: bool>(
     transcript: &mut impl Transcript<C1::ScalarField>,
-    cf_r1cs: R1CS<C2::ScalarField>,
-    cf_cs_params: CS2::ProverParams,
-    pp_hash: C1::ScalarField,               // public params hash
-    cf_W_i: CycleFoldWitness<C2>,           // witness of the running instance
-    cf_U_i: CycleFoldCommittedInstance<C2>, // running instance
+    cf_r1cs: &R1CS<C2::ScalarField>,
+    cf_cs_params: &CS2::ProverParams,
+    pp_hash: &C1::ScalarField,               // public params hash
+    cf_W_i: &CycleFoldWitness<C2>,           // witness of the running instance
+    cf_U_i: &CycleFoldCommittedInstance<C2>, // running instance
     cf_circuit: CycleFoldCircuit<CFG, GC1>,
     mut rng: impl RngCore,
 ) -> Result<
@@ -626,7 +631,7 @@ pub fn fold_cyclefold_circuit<CFG, C1, GC1, C2, GC2, CS2, const H: bool>(
 >
 where
     CFG: CycleFoldConfig<C = C1>,
-    C1: CurveGroup,
+    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     GC1: CurveVar<C1, CF2<C1>>,
     C2: CurveGroup,
     GC2: CurveVar<C2, CF2<C2>>,
@@ -635,7 +640,6 @@ where
     <C2 as CurveGroup>::BaseField: PrimeField,
     C1::ScalarField: Absorb,
     C2::ScalarField: Absorb,
-    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
 {
     let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
     cf_circuit.generate_constraints(cs2.clone())?;
@@ -647,27 +651,22 @@ where
     assert_eq!(cf_x_i.len(), CFG::IO_LEN);
 
     // fold cyclefold instances
-    let cf_w_i = CycleFoldWitness::<C2>::new::<H>(cf_w_i.clone(), cf_r1cs.A.n_rows, &mut rng);
-    let cf_u_i: CycleFoldCommittedInstance<C2> =
-        cf_w_i.commit::<CS2, H>(&cf_cs_params, cf_x_i.clone())?;
+    let cf_w_i = CycleFoldWitness::<C2>::new::<H>(cf_w_i, cf_r1cs.A.n_rows, &mut rng);
+    let cf_u_i: CycleFoldCommittedInstance<C2> = cf_w_i.commit::<CS2, H>(cf_cs_params, cf_x_i)?;
 
     // compute T* and cmT* for CycleFoldCircuit
     let (cf_T, cf_cmT) =
         NIFS::<C2, CS2, PoseidonSponge<C2::ScalarField>, H>::compute_cyclefold_cmT(
-            &cf_cs_params,
-            &cf_r1cs,
+            cf_cs_params,
+            cf_r1cs,
             &cf_w_i,
             &cf_u_i,
-            &cf_W_i,
-            &cf_U_i,
+            cf_W_i,
+            cf_U_i,
         )?;
 
     let cf_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_native(
-        transcript,
-        pp_hash,
-        cf_U_i.clone(),
-        cf_u_i.clone(),
-        cf_cmT,
+        transcript, &pp_hash, cf_U_i, &cf_u_i, &cf_cmT,
     );
     let cf_r_Fq = C1::BaseField::from_bigint(BigInteger::from_bits_le(&cf_r_bits))
         .expect("cf_r_bits out of bounds");
@@ -748,7 +747,7 @@ pub mod tests {
         let mut res = Projective::zero();
         use ark_std::One;
         let mut rho_i = Fr::one();
-        for point_i in points.iter() {
+        for point_i in &points {
             res += point_i.mul(rho_i);
             rho_i *= rho_Fr;
         }
@@ -785,7 +784,6 @@ pub mod tests {
 
         // prepare the committed instances to test in-circuit
         let ci: Vec<CommittedInstance<Projective>> = (0..2)
-            .into_iter()
             .map(|_| CommittedInstance::<Projective> {
                 cmE: Projective::rand(&mut rng),
                 u: Fr::rand(&mut rng),
@@ -823,7 +821,7 @@ pub mod tests {
             })?;
         let cmTVar = GVar::new_witness(cs.clone(), || Ok(cmT))?;
 
-        NIFSFullGadget::<Projective, GVar>::verify(r_bitsVar, cmTVar, ci1Var, ci2Var, ci3Var)?;
+        NIFSFullGadget::<Projective, GVar>::verify(&r_bitsVar, &cmTVar, ci1Var, ci2Var, &ci3Var)?;
         assert!(cs.is_satisfied()?);
         Ok(())
     }
@@ -856,10 +854,10 @@ pub mod tests {
         let pp_hash = Fq::from(42u32); // only for test
         let r_bits = CycleFoldChallengeGadget::<Projective, GVar>::get_challenge_native(
             &mut transcript,
-            pp_hash,
-            U_i.clone(),
-            u_i.clone(),
-            cmT,
+            &pp_hash,
+            &U_i,
+            &u_i,
+            &cmT,
         );
 
         let cs = ConstraintSystem::<Fq>::new_ref();
@@ -878,10 +876,10 @@ pub mod tests {
         let pp_hashVar = FpVar::<Fq>::new_witness(cs.clone(), || Ok(pp_hash))?;
         let r_bitsVar = CycleFoldChallengeGadget::<Projective, GVar>::get_challenge_gadget(
             &mut transcript_var,
-            pp_hashVar,
-            U_iVar.to_native_sponge_field_elements()?,
-            u_iVar,
-            cmTVar,
+            &pp_hashVar,
+            &U_iVar.to_native_sponge_field_elements()?,
+            &u_iVar,
+            &cmTVar,
         )?;
         assert!(cs.is_satisfied()?);
 
@@ -918,7 +916,7 @@ pub mod tests {
         let pp_hashVar = FpVar::<Fq>::new_witness(cs.clone(), || Ok(pp_hash))?;
         let (hVar, _) = U_iVar.hash(
             &PoseidonSpongeVar::new(cs.clone(), &poseidon_config),
-            pp_hashVar,
+            &pp_hashVar,
         )?;
         hVar.enforce_equal(&FpVar::new_witness(cs.clone(), || Ok(h))?)?;
         assert!(cs.is_satisfied()?);

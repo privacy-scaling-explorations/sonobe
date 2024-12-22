@@ -914,16 +914,16 @@ where
             // fold self.cf_U_i + cf1_U -> folded running with cf1
             let (_cf1_w_i, cf1_u_i, cf1_W_i1, cf1_U_i1, cf1_cmT, _) = self.fold_cyclefold_circuit(
                 &mut transcript_prover,
-                self.cf_W_i.clone(), // CycleFold running instance witness
-                self.cf_U_i.clone(), // CycleFold running instance
+                &self.cf_W_i, // CycleFold running instance witness
+                &self.cf_U_i, // CycleFold running instance
                 cf1_circuit,
                 &mut rng,
             )?;
             // fold [the output from folding self.cf_U_i + cf1_U] + cf2_U = folded_running_with_cf1 + cf2
             let (_cf2_w_i, cf2_u_i, cf_W_i1, cf_U_i1, cf2_cmT, _) = self.fold_cyclefold_circuit(
                 &mut transcript_prover,
-                cf1_W_i1,
-                cf1_U_i1.clone(),
+                &cf1_W_i1,
+                &cf1_U_i1,
                 cf2_circuit,
                 &mut rng,
             )?;
@@ -1121,7 +1121,7 @@ where
 
 impl<C1, GC1, C2, GC2, FC, CS1, CS2> ProtoGalaxy<C1, GC1, C2, GC2, FC, CS1, CS2>
 where
-    C1: CurveGroup,
+    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     GC1: CurveVar<C1, CF2<C1>>,
     C2: CurveGroup,
     GC2: CurveVar<C2, CF2<C2>>,
@@ -1132,15 +1132,14 @@ where
     <C2 as CurveGroup>::BaseField: PrimeField,
     C1::ScalarField: Absorb,
     C2::ScalarField: Absorb,
-    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
 {
     // folds the given cyclefold circuit and its instances
     #[allow(clippy::type_complexity)]
     fn fold_cyclefold_circuit(
         &self,
         transcript: &mut PoseidonSponge<C1::ScalarField>,
-        cf_W_i: CycleFoldWitness<C2>, // witness of the running instance
-        cf_U_i: CycleFoldCommittedInstance<C2>, // running instance
+        cf_W_i: &CycleFoldWitness<C2>, // witness of the running instance
+        cf_U_i: &CycleFoldCommittedInstance<C2>, // running instance
         cf_circuit: ProtoGalaxyCycleFoldCircuit<C1, GC1>,
         rng: &mut impl RngCore,
     ) -> Result<
@@ -1156,9 +1155,9 @@ where
     > {
         fold_cyclefold_circuit::<ProtoGalaxyCycleFoldConfig<C1>, C1, GC1, C2, GC2, CS2, false>(
             transcript,
-            self.cf_r1cs.clone(),
-            self.cf_cs_params.clone(),
-            self.pp_hash,
+            &self.cf_r1cs,
+            &self.cf_cs_params,
+            &self.pp_hash,
             cf_W_i,
             cf_U_i,
             cf_circuit,

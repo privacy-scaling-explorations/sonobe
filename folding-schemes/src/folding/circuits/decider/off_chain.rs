@@ -197,7 +197,7 @@ where
 
         // 3. u_i.x[0] == H(i, z_0, z_i, U_i), u_i.x[1] == H(cf_U_i)
         let (u_i_x, U_i_vec) = U_i.hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
-        let (cf_u_i_x, _) = cf_U_i.hash(&sponge, pp_hash.clone())?;
+        let (cf_u_i_x, _) = cf_U_i.hash(&sponge, &pp_hash)?;
         u_i.get_public_inputs().enforce_equal(&[u_i_x, cf_u_i_x])?;
 
         // 6.1. partially enforce `NIFS.V(U_i, u_i) = U_{i+1}`.

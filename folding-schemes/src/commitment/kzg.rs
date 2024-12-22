@@ -1,10 +1,18 @@
-/// Adaptation of the prover methods and structs from arkworks/poly-commit's KZG10 implementation
-/// into the CommitmentScheme trait.
-///
-/// The motivation to do so, is that we want to be able to use KZG / Pedersen for committing to
-/// vectors indistinctly, and the arkworks KZG10 implementation contains all the methods under the
-/// same trait, which requires the Pairing trait, where the prover does not need access to the
-/// Pairing but only to G1.
+//! KZG polynomial commitment scheme implementation.
+//!
+//! This module provides an implementation of the KZG polynomial commitment scheme that implements
+//! the [`CommitmentScheme`] trait. The implementation is adapted from arkworks' KZG10 implementation
+//! to work with just `CurveGroup` rather than requiring full pairing operations for the prover.
+//!
+//! # Overview
+//!
+//! The KZG polynomial commitment scheme allows proving evaluations of committed polynomials.
+//! This implementation:
+//!
+//! - Adapts the arkworks KZG10 implementation to work with the [`CommitmentScheme`] trait
+//! - Separates prover operations to only require `CurveGroup` operations, not full pairings  
+//! - Currently only supports non-hiding commitments
+
 use ark_ec::{pairing::Pairing, CurveGroup, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_poly::{
@@ -26,11 +34,14 @@ use crate::transcript::Transcript;
 use crate::utils::vec::poly_from_vec;
 use crate::Error;
 
-/// ProverKey defines a similar struct as in ark_poly_commit::kzg10::Powers, but instead of
-/// depending on the Pairing trait it depends on the CurveGroup trait.
+/// Prover key containing powers of group elements needed for KZG polynomial commitments.
+///
+/// This is similar to `ark_poly_commit::kzg10::Powers` but depends only on `CurveGroup`
+/// rather than requiring pairing operations.
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub struct ProverKey<'a, C: CurveGroup> {
     /// Group elements of the form `β^i G`, for different values of `i`.
+    /// These are used to commit to polynomial coefficients.
     pub powers_of_g: Cow<'a, [C::Affine]>,
 }
 
@@ -70,18 +81,43 @@ impl<'a, C: CurveGroup> Valid for ProverKey<'a, C> {
     }
 }
 
+/// Proof of polynomial evaluation at a point.
+///
+/// Contains both the claimed evaluation and a KZG proof element.
 #[derive(Debug, Clone, Default, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<C: CurveGroup> {
+    /// The claimed evaluation value f(z)
     pub eval: C::ScalarField,
+
+    /// The proof element π = (f(X) - f(z))/(X - z)
     pub proof: C,
 }
 
-/// KZG implements the CommitmentScheme trait for the KZG commitment scheme.
+/// KZG polynomial commitment scheme implementation.
+///
+/// This implements the [`CommitmentScheme`] trait for KZG polynomial commitments.
+/// The type parameter `H` controls whether hiding commitments are used (currently unsupported).
+///
+/// # Type Parameters
+///
+/// * `'a` - Lifetime of the prover parameters
+/// * `E` - The pairing engine
+/// * `H` - Whether hiding commitments are used (must be false currently)
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub struct KZG<'a, E: Pairing, const H: bool = false> {
+    /// Inner lifetime accounting
     _a: PhantomData<&'a ()>,
+    /// Inner [`Pairing`] friendly curve
     _e: PhantomData<E>,
 }
+
+/*
+TODO (autoparallel): Okay, I'm noticing something here, basically I think that there should likely be two implementations for `CommitmentScheme<G>`,
+one that is hiding, and one that is not (as opposed to the const generic `H` in the trait itself). We could have `HidingCommitmentScheme: CommitmentScheme`.
+If impl `CommitmentScheme<G> for KZG<'a, E, H>`, then we can impl `HidingCommitmentScheme for KZG<'a, E, true>`. The implementation of `HidingCommitmentScheme`
+would be super straight forward as it would just add the blinding factor to the output of the "super" `CommitmentScheme` `commit` and `prove` methods. Then those
+methods on `CommitmentScheme` do not have to take in `blind: Option<E::ScalarField>` or the `dyn Rng`.
+*/
 
 impl<'a, E, const H: bool> CommitmentScheme<E::G1, H> for KZG<'a, E, H>
 where
@@ -93,20 +129,12 @@ where
     type ProverChallenge = E::ScalarField;
     type Challenge = E::ScalarField;
 
-    fn is_hiding() -> bool {
-        if H {
-            return true;
-        }
-        false
-    }
-
-    /// setup returns the tuple (ProverKey, VerifierKey). For real world deployments the setup must
-    /// be computed in the most trustless way possible, usually through a MPC ceremony.
     fn setup(
         mut rng: impl RngCore,
         len: usize,
     ) -> Result<(Self::ProverParams, Self::VerifierParams), Error> {
         let len = len.next_power_of_two();
+        // TODO (autoparallel): This `expect` will panic when the function itself is capable of returning an error.
         let universal_params =
             KZG10::<E, DensePolynomial<E::ScalarField>>::setup(len, false, &mut rng)
                 .expect("Setup failed");
@@ -125,7 +153,7 @@ where
         Ok((powers, vk))
     }
 
-    /// commit implements the CommitmentScheme commit interface, adapting the implementation from
+    /// commit implements the [`CommitmentScheme`] commit interface, adapting the implementation from
     /// https://github.com/arkworks-rs/poly-commit/tree/c724fa666e935bbba8db5a1421603bab542e15ab/poly-commit/src/kzg10/mod.rs#L178
     /// with the main difference being the removal of the blinding factors and the no-dependency to
     /// the Pairing trait.
@@ -134,6 +162,7 @@ where
         v: &[E::ScalarField],
         _blind: &E::ScalarField,
     ) -> Result<E::G1, Error> {
+        // TODO (autoparallel): awk to use `_` prefix here.
         if !_blind.is_zero() || H {
             return Err(Error::NotSupportedYet("hiding".to_string()));
         }
@@ -150,8 +179,8 @@ where
         Ok(commitment)
     }
 
-    /// prove implements the CommitmentScheme prove interface, adapting the implementation from
-    /// https://github.com/arkworks-rs/poly-commit/tree/c724fa666e935bbba8db5a1421603bab542e15ab/poly-commit/src/kzg10/mod.rs#L307
+    /// prove implements the [`CommitmentScheme`] prove interface, adapting the implementation from
+    /// <https://github.com/arkworks-rs/poly-commit/tree/c724fa666e935bbba8db5a1421603bab542e15ab/poly-commit/src/kzg10/mod.rs#L307>
     /// with the main difference being the removal of the blinding factors and the no-dependency to
     /// the Pairing trait.
     fn prove(
@@ -164,6 +193,7 @@ where
     ) -> Result<Self::Proof, Error> {
         transcript.absorb_nonnative(cm);
         let challenge = transcript.get_challenge();
+        // TODO (autoparallel): awk to use `_` prefix here.
         Self::prove_with_challenge(params, challenge, v, _blind, _rng)
     }
 
@@ -174,6 +204,7 @@ where
         _blind: &E::ScalarField,
         _rng: Option<&mut dyn RngCore>,
     ) -> Result<Self::Proof, Error> {
+        // TODO (autoparallel): awk to use `_` prefix here.
         if !_blind.is_zero() || H {
             return Err(Error::NotSupportedYet("hiding".to_string()));
         }
@@ -251,7 +282,8 @@ where
     }
 }
 
-fn check_degree_is_too_large(
+/// Helper function to check if polynomial degree exceeds supported length
+const fn check_degree_is_too_large(
     degree: usize,
     num_powers: usize,
 ) -> Result<(), ark_poly_commit::error::Error> {
@@ -266,6 +298,7 @@ fn check_degree_is_too_large(
     }
 }
 
+/// Helper function to skip leading zero coefficients and convert to bigints
 fn skip_first_zero_coeffs_and_convert_to_bigints<F: PrimeField, P: DenseUVPolynomial<F>>(
     p: &P,
 ) -> (usize, Vec<F::BigInt>) {
@@ -277,6 +310,7 @@ fn skip_first_zero_coeffs_and_convert_to_bigints<F: PrimeField, P: DenseUVPolyno
     (num_leading_zeros, coeffs)
 }
 
+/// Helper function to convert coefficients to bigints
 fn convert_to_bigints<F: PrimeField>(p: &[F]) -> Vec<F::BigInt> {
     ark_std::cfg_iter!(p)
         .map(|s| s.into_bigint())

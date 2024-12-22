@@ -1,3 +1,23 @@
+//! Implementation of Rank-1 Constraint Systems (R1CS).
+//!
+//! This module provides an implementation of R1CS, which represents arithmetic circuits
+//! as a system of bilinear constraints. An R1CS consists of three sparse matrices A, B, C
+//! and defines relations of the form:
+//!
+//! (Az) ∘ (Bz) = Cz
+//!
+//! where z is a vector containing all circuit variables including:
+//! * A constant 1
+//! * Public inputs
+//! * Private witness values
+//!
+//! # Features
+//!
+//! * Standard R1CS constraint system
+//! * Conversion to/from CCS format
+//! * Support for relaxed R1CS variants
+//! * Extraction from arkworks constraint systems
+
 use ark_ff::PrimeField;
 use ark_relations::r1cs::ConstraintSystem;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -12,16 +32,27 @@ use crate::Error;
 
 pub mod circuits;
 
+/// Represents a Rank-1 Constraint System with three sparse matrices A, B, C.
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct R1CS<F: PrimeField> {
-    pub l: usize, // io len
+    /// Number of public inputs/outputs
+    pub l: usize,
+    /// Left matrix A
     pub A: SparseMatrix<F>,
+    /// Right matrix B
     pub B: SparseMatrix<F>,
+    /// Output matrix C
     pub C: SparseMatrix<F>,
 }
 
 impl<F: PrimeField> R1CS<F> {
     /// Evaluates the CCS relation at a given vector of variables `z`
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// * The length of z doesn't match the number of columns in the matrices
+    /// * Matrix operations fail due to dimension mismatches
     pub fn eval_at_z(&self, z: &[F]) -> Result<Vec<F>, Error> {
         if z.len() != self.A.n_cols {
             return Err(Error::NotSameLength(
@@ -66,15 +97,19 @@ impl<F: PrimeField> ArithSerializer for R1CS<F> {
     }
 }
 
+// TODO (autoparallel): Many of these functions could be marked with `#[must_use]`(i.e., just like functions that return `Result<T,E>` do).
 impl<F: PrimeField> R1CS<F> {
+    /// Creates an empty R1CS
     pub fn empty() -> Self {
-        R1CS {
+        Self {
             l: 0,
             A: SparseMatrix::empty(),
             B: SparseMatrix::empty(),
             C: SparseMatrix::empty(),
         }
     }
+
+    /// Creates a random R1CS with given dimensions
     pub fn rand<R: Rng>(rng: &mut R, n_rows: usize, n_cols: usize) -> Self {
         Self {
             l: 1,
@@ -84,35 +119,39 @@ impl<F: PrimeField> R1CS<F> {
         }
     }
 
+    /// Returns the number of constraints
     #[inline]
-    pub fn num_constraints(&self) -> usize {
+    pub const fn num_constraints(&self) -> usize {
         self.A.n_rows
     }
 
+    /// Returns the number of public inputs
     #[inline]
-    pub fn num_public_inputs(&self) -> usize {
+    pub const fn num_public_inputs(&self) -> usize {
         self.l
     }
 
+    /// Returns the total number of variables
     #[inline]
-    pub fn num_variables(&self) -> usize {
+    pub const fn num_variables(&self) -> usize {
         self.A.n_cols
     }
 
+    /// Returns the number of witness variables
     #[inline]
-    pub fn num_witnesses(&self) -> usize {
+    pub const fn num_witnesses(&self) -> usize {
         self.num_variables() - self.num_public_inputs() - 1
     }
 
     /// returns a tuple containing (w, x) (witness and public inputs respectively)
     pub fn split_z(&self, z: &[F]) -> (Vec<F>, Vec<F>) {
-        (z[self.l + 1..].to_vec(), z[1..self.l + 1].to_vec())
+        (z[self.l + 1..].to_vec(), z[1..=self.l].to_vec())
     }
 }
 
 impl<F: PrimeField> From<CCS<F>> for R1CS<F> {
     fn from(ccs: CCS<F>) -> Self {
-        R1CS::<F> {
+        Self {
             l: ccs.l,
             A: ccs.M[0].clone(),
             B: ccs.M[1].clone(),
@@ -121,8 +160,14 @@ impl<F: PrimeField> From<CCS<F>> for R1CS<F> {
     }
 }
 
-/// extracts arkworks ConstraintSystem matrices into crate::utils::vec::SparseMatrix format as R1CS
+/// extracts arkworks [`ConstraintSystem`] matrices into [`crate::utils::vec::SparseMatrix`] format as R1CS
 /// struct.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// * The constraint system matrices haven't been generated yet
+/// * The conversion between matrix formats fails
 pub fn extract_r1cs<F: PrimeField>(cs: &ConstraintSystem<F>) -> Result<R1CS<F>, Error> {
     let m = cs.to_matrices().ok_or_else(|| {
         Error::ConversionError(
@@ -160,6 +205,12 @@ pub fn extract_r1cs<F: PrimeField>(cs: &ConstraintSystem<F>) -> Result<R1CS<F>, 
 }
 
 /// extracts the witness and the public inputs from arkworks ConstraintSystem.
+///
+/// # Returns
+///
+/// Returns a tuple (w, x) containing:
+/// * w: The witness assignment vector
+/// * x: The public input vector (excluding the constant 1)
 pub fn extract_w_x<F: PrimeField>(cs: &ConstraintSystem<F>) -> (Vec<F>, Vec<F>) {
     (
         cs.witness_assignment.clone(),

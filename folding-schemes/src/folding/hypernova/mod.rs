@@ -819,11 +819,11 @@ where
                 H,
             >(
                 &mut transcript_p,
-                self.cf_r1cs.clone(),
-                self.cf_cs_pp.clone(),
-                self.pp_hash,
-                self.cf_W_i.clone(), // CycleFold running instance witness
-                self.cf_U_i.clone(), // CycleFold running instance
+                &self.cf_r1cs,
+                &self.cf_cs_pp,
+                &self.pp_hash,
+                &self.cf_W_i, // CycleFold running instance witness
+                &self.cf_U_i, // CycleFold running instance
                 cf_circuit,
                 &mut rng,
             )?;

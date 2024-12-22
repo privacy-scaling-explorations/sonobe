@@ -1,3 +1,29 @@
+//! Implementation of Customizable Constraint Systems (CCS).
+//!
+//! This module provides an implementation of CCS as defined in the
+//! [CCS paper](https://eprint.iacr.org/2023/552). CCS is a generalization
+//! of constraint systems that allows for flexible constraint expressions
+//! via configurable matrix operations.
+//!
+//! # Structure
+//!
+//! A CCS consists of:
+//! * A set of sparse matrices M₁...Mₜ ∈ F^{m×n}
+//! * A collection of multisets S₁...Sₘ containing indices into these matrices
+//! * A vector of coefficients c₁...cₘ
+//!
+//! # Example
+//!
+//! A simple R1CS constraint system can be represented as a CCS with:
+//! * Three matrices A, B, C
+//! * Two multisets S₁ = {0,1}, S₂ = {2}
+//! * Coefficients c₁ = 1, c₂ = -1
+//!
+//! # Organization
+//!
+//! * [`CCS`] - The main CCS type implementing the [`Arith`] trait
+//! * [`circuits`] - Circuit implementations for CCS operations
+
 use ark_ff::PrimeField;
 use ark_std::log2;
 
@@ -42,6 +68,13 @@ pub struct CCS<F: PrimeField> {
 
 impl<F: PrimeField> CCS<F> {
     /// Evaluates the CCS relation at a given vector of assignments `z`
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// * Vector operations fail due to mismatched dimensions
+    /// * Matrix-vector multiplication fails
+    /// * Vector addition or hadamard multiplication fails
     pub fn eval_at_z(&self, z: &[F]) -> Result<Vec<F>, Error> {
         let mut result = vec![F::zero(); self.m];
 
@@ -51,7 +84,7 @@ impl<F: PrimeField> CCS<F> {
 
             // complete the hadamard chain
             let mut hadamard_result = vec![F::one(); self.m];
-            for M_j in vec_M_j.into_iter() {
+            for M_j in vec_M_j {
                 hadamard_result = hadamard(&hadamard_result, &mat_vec_mul(M_j, z)?)?;
             }
 
@@ -67,7 +100,7 @@ impl<F: PrimeField> CCS<F> {
 
     /// returns a tuple containing (w, x) (witness and public inputs respectively)
     pub fn split_z(&self, z: &[F]) -> (Vec<F>, Vec<F>) {
-        (z[self.l + 1..].to_vec(), z[1..self.l + 1].to_vec())
+        (z[self.l + 1..].to_vec(), z[1..=self.l].to_vec())
     }
 }
 
@@ -101,7 +134,7 @@ impl<F: PrimeField> From<R1CS<F>> for CCS<F> {
     fn from(r1cs: R1CS<F>) -> Self {
         let m = r1cs.num_constraints();
         let n = r1cs.num_variables();
-        CCS {
+        Self {
             m,
             n,
             l: r1cs.num_public_inputs(),
@@ -130,6 +163,7 @@ pub mod tests {
     pub fn get_test_ccs<F: PrimeField>() -> CCS<F> {
         get_test_r1cs::<F>().into()
     }
+
     pub fn get_test_z<F: PrimeField>(input: usize) -> Vec<F> {
         r1cs_get_test_z(input)
     }

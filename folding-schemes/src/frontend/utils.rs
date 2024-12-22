@@ -10,6 +10,36 @@ use ark_std::{fmt::Debug, Zero};
 use super::FCircuit;
 use crate::Error;
 
+use ark_r1cs_std::alloc::AllocationMode;
+use ark_relations::r1cs::Namespace;
+use core::borrow::Borrow;
+// TODO document, explain reason of existence
+#[derive(Clone, Debug)]
+pub struct VecFpVar<F: PrimeField>(Vec<FpVar<F>>);
+impl<F: PrimeField> AllocVar<Vec<F>, F> for VecFpVar<F> {
+    fn new_variable<T: Borrow<Vec<F>>>(
+        cs: impl Into<Namespace<F>>,
+        f: impl FnOnce() -> Result<T, SynthesisError>,
+        mode: AllocationMode,
+    ) -> Result<Self, SynthesisError> {
+        f().and_then(|val| {
+            let cs = cs.into();
+
+            let v = Vec::<FpVar<F>>::new_variable(cs.clone(), || Ok(val.borrow().clone()), mode)?;
+
+            Ok(VecFpVar(v))
+        })
+    }
+}
+impl<F: PrimeField> Default for VecFpVar<F>
+// where
+//     FpVar<F>: Default,
+{
+    fn default() -> Self {
+        VecFpVar(Vec::default())
+    }
+}
+
 /// DummyCircuit is a circuit that has dummy state and external inputs whose
 /// lengths are specified in the `state_len` and `external_inputs_len`
 /// parameters, without any constraints.
@@ -20,6 +50,8 @@ pub struct DummyCircuit {
 }
 impl<F: PrimeField> FCircuit<F> for DummyCircuit {
     type Params = (usize, usize);
+    type E = Vec<F>;
+    type EV = VecFpVar<F>;
 
     fn new((state_len, external_inputs_len): Self::Params) -> Result<Self, Error> {
         Ok(Self {
@@ -38,7 +70,9 @@ impl<F: PrimeField> FCircuit<F> for DummyCircuit {
         cs: ConstraintSystemRef<F>,
         _i: usize,
         _z_i: Vec<FpVar<F>>,
-        _external_inputs: Vec<FpVar<F>>,
+        // _external_inputs: Vec<FpVar<F>>,
+        _external_inputs: Self::EV,
+        // _external_inputs: impl ToVec<F>,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         Vec::new_witness(cs.clone(), || Ok(vec![Zero::zero(); self.state_len]))
     }
@@ -57,6 +91,8 @@ pub struct CubicFCircuit<F: PrimeField> {
 #[cfg(test)]
 impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
     type Params = ();
+    type E = Vec<F>;
+    type EV = VecFpVar<F>;
 
     fn new(_params: Self::Params) -> Result<Self, Error> {
         Ok(Self { _f: PhantomData })
@@ -72,7 +108,9 @@ impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
         cs: ConstraintSystemRef<F>,
         _i: usize,
         z_i: Vec<FpVar<F>>,
-        _external_inputs: Vec<FpVar<F>>,
+        // _external_inputs: Vec<FpVar<F>>,
+        _external_inputs: Self::EV,
+        // _external_inputs: impl ToVec<F>,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let five = FpVar::<F>::new_constant(cs.clone(), F::from(5u32))?;
         let z_i = z_i[0].clone();
@@ -98,6 +136,8 @@ pub struct CustomFCircuit<F: PrimeField> {
 
 impl<F: PrimeField> FCircuit<F> for CustomFCircuit<F> {
     type Params = usize;
+    type E = Vec<F>;
+    type EV = VecFpVar<F>;
 
     fn new(params: Self::Params) -> Result<Self, Error> {
         Ok(Self {
@@ -116,7 +156,9 @@ impl<F: PrimeField> FCircuit<F> for CustomFCircuit<F> {
         _cs: ConstraintSystemRef<F>,
         _i: usize,
         z_i: Vec<FpVar<F>>,
-        _external_inputs: Vec<FpVar<F>>,
+        // _external_inputs: Vec<FpVar<F>>,
+        _external_inputs: Self::EV,
+        // _external_inputs: impl ToVec<F>,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let mut z_i1 = z_i[0].clone();
         for _ in 0..self.n_constraints - 1 {
@@ -160,7 +202,7 @@ where
             Vec::<FpVar<F>>::new_input(cs.clone(), || Ok(self.z_i1.unwrap_or(vec![F::zero()])))?;
         let computed_z_i1 =
             self.FC
-                .generate_step_constraints(cs.clone(), 0, z_i.clone(), vec![])?;
+                .generate_step_constraints(cs.clone(), 0, z_i.clone(), FC::EV::default())?;
 
         use ark_r1cs_std::eq::EqGadget;
         computed_z_i1.enforce_equal(&z_i1)?;

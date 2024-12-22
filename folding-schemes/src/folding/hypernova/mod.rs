@@ -305,7 +305,8 @@ where
         &self,
         mut rng: impl RngCore,
         state: Vec<C1::ScalarField>,
-        external_inputs: Vec<C1::ScalarField>,
+        // external_inputs: Vec<C1::ScalarField>,
+        external_inputs: FC::E,
     ) -> Result<Self::RunningInstance, Error> {
         let r1cs_z = self.new_instance_generic(state, external_inputs)?;
         // compute committed instances, w_{i+1}, u_{i+1}, which will be used as w_i, u_i, so we
@@ -327,7 +328,8 @@ where
         &self,
         mut rng: impl RngCore,
         state: Vec<C1::ScalarField>,
-        external_inputs: Vec<C1::ScalarField>,
+        // external_inputs: Vec<C1::ScalarField>,
+        external_inputs: FC::E,
     ) -> Result<Self::IncomingInstance, Error> {
         let r1cs_z = self.new_instance_generic(state, external_inputs)?;
         // compute committed instances, w_{i+1}, u_{i+1}, which will be used as w_i, u_i, so we
@@ -364,7 +366,8 @@ where
     fn new_instance_generic(
         &self,
         state: Vec<C1::ScalarField>,
-        external_inputs: Vec<C1::ScalarField>,
+        // external_inputs: Vec<C1::ScalarField>,
+        external_inputs: FC::E,
     ) -> Result<Vec<C1::ScalarField>, Error> {
         // prepare the initial dummy instances
         let U_i = LCCCS::<C1>::dummy(&self.ccs);
@@ -642,7 +645,8 @@ where
     fn prove_step(
         &mut self,
         mut rng: impl RngCore,
-        external_inputs: Vec<C1::ScalarField>,
+        // external_inputs: Vec<C1::ScalarField>,
+        external_inputs: FC::E,
         other_instances: Option<Self::MultiCommittedInstanceWithWitness>,
     ) -> Result<(), Error> {
         // ensure that commitments are blinding if user has specified so.
@@ -708,14 +712,15 @@ where
                 self.F.state_len(),
             ));
         }
-        if external_inputs.len() != self.F.external_inputs_len() {
-            return Err(Error::NotSameLength(
-                "F.external_inputs_len()".to_string(),
-                self.F.external_inputs_len(),
-                "external_inputs.len()".to_string(),
-                external_inputs.len(),
-            ));
-        }
+        // TODO review
+        // if external_inputs.len() != self.F.external_inputs_len() {
+        //     return Err(Error::NotSameLength(
+        //         "F.external_inputs_len()".to_string(),
+        //         self.F.external_inputs_len(),
+        //         "external_inputs.len()".to_string(),
+        //         external_inputs.len(),
+        //     ));
+        // }
 
         if self.i > C1::ScalarField::from_le_bytes_mod_order(&usize::MAX.to_le_bytes()) {
             return Err(Error::MaxStep);

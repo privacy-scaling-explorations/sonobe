@@ -1,28 +1,35 @@
 use crate::Error;
 use ark_ff::PrimeField;
-use ark_r1cs_std::fields::fp::FpVar;
+use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar};
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 use ark_std::fmt::Debug;
 
 pub mod utils;
 
-pub trait ToVec<F: PrimeField>: Clone + Debug {
-    fn to_vec(self) -> Vec<FpVar<F>>;
-}
+// pub trait ToVec<F: PrimeField>: Clone + Debug {
+//     fn to_vec(self) -> Vec<FpVar<F>>;
+// }
 
 // implement the trait ToVec for the default type `Vec<FpVar<F>>`
-impl<F: PrimeField> ToVec<F> for Vec<FpVar<F>> {
-    fn to_vec(self) -> Vec<FpVar<F>> {
-        self
-    }
-}
+// impl<F: PrimeField> ToVec<F> for Vec<FpVar<F>> {
+//     fn to_vec(self) -> Vec<FpVar<F>> {
+//         self
+//     }
+// }
 
 /// FCircuit defines the trait of the circuit of the F function, which is the one being folded (ie.
 /// inside the agmented F' function).
 /// The parameter z_i denotes the current state, and z_{i+1} denotes the next state after applying
 /// the step.
-pub trait FCircuit<F: PrimeField, E: ToVec<F> = Vec<FpVar<F>>>: Clone + Debug {
+// pub trait FCircuit<F: PrimeField, E: ToVec<F> = Vec<FpVar<F>>>: Clone + Debug {
+// pub trait FCircuit<F: PrimeField, E = Vec<FpVar<F>>>: Clone + Debug {
+pub trait FCircuit<F: PrimeField>: Clone + Debug {
     type Params: Debug;
+    type E: Clone + Default + Debug;
+    type EV: Clone + Default + Debug + AllocVar<Self::E, F>;
+    // type EV: Clone + Default + Debug + AllocVar<Self::E, F>;
+    // type E: Clone + Default + Debug = Vec<F>;
+    // type EV: Clone + Default + Debug + AllocVar<Self::E, F>;
 
     /// returns a new FCircuit instance
     fn new(params: Self::Params) -> Result<Self, Error>;
@@ -33,7 +40,7 @@ pub trait FCircuit<F: PrimeField, E: ToVec<F> = Vec<FpVar<F>>>: Clone + Debug {
 
     /// returns the number of elements in the external inputs used by the FCircuit. External inputs
     /// are optional, and in case no external inputs are used, this method should return 0.
-    fn external_inputs_len(&self) -> usize;
+    fn external_inputs_len(&self) -> usize; // TODO maybe remove
 
     /// generates the constraints for the step of F for the given z_i
     fn generate_step_constraints(
@@ -43,7 +50,8 @@ pub trait FCircuit<F: PrimeField, E: ToVec<F> = Vec<FpVar<F>>>: Clone + Debug {
         cs: ConstraintSystemRef<F>,
         i: usize,
         z_i: Vec<FpVar<F>>,
-        external_inputs: E, // inputs that are not part of the state
+        external_inputs: Self::EV, // inputs that are not part of the state
+                                   // external_inputs: impl ToVec<F>, // inputs that are not part of the state
     ) -> Result<Vec<FpVar<F>>, SynthesisError>;
 }
 

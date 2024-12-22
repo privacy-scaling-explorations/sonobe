@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
+#![feature(associated_type_defaults)]
 
 use ark_ec::{pairing::Pairing, CurveGroup};
 use ark_ff::PrimeField;
@@ -184,7 +185,8 @@ where
     fn prove_step(
         &mut self,
         rng: impl RngCore,
-        external_inputs: Vec<C1::ScalarField>,
+        // external_inputs: Vec<C1::ScalarField>,
+        external_inputs: FC::E,
         other_instances: Option<Self::MultiCommittedInstanceWithWitness>,
     ) -> Result<(), Error>;
 
@@ -224,7 +226,8 @@ where
         &self,
         rng: impl RngCore,
         state: Vec<C1::ScalarField>,
-        external_inputs: Vec<C1::ScalarField>,
+        // external_inputs: Vec<C1::ScalarField>,
+        external_inputs: FC::E,
     ) -> Result<Self::RunningInstance, Error>;
 
     /// Creates a new IncomingInstance for the given state, to be folded in the multi-folding step.
@@ -232,7 +235,8 @@ where
         &self,
         rng: impl RngCore,
         state: Vec<C1::ScalarField>,
-        external_inputs: Vec<C1::ScalarField>,
+        // external_inputs: Vec<C1::ScalarField>,
+        external_inputs: FC::E,
     ) -> Result<Self::IncomingInstance, Error>;
 }
 

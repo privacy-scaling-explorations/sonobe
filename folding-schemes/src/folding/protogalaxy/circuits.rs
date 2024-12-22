@@ -248,7 +248,8 @@ pub struct AugmentedFCircuit<
     pub(super) i_usize: usize,
     pub(super) z_0: Vec<CF1<C1>>,
     pub(super) z_i: Vec<CF1<C1>>,
-    pub(super) external_inputs: Vec<CF1<C1>>,
+    // pub(super) external_inputs: Vec<CF1<C1>>,
+    pub(super) external_inputs: FC::E,
     pub(super) F: FC, // F circuit
     pub(super) u_i_phi: C1,
     pub(super) U_i: CommittedInstance<C1, true>,
@@ -287,7 +288,8 @@ impl<C1: CurveGroup, C2: CurveGroup, GC2: CurveVar<C2, CF2<C2>>, FC: FCircuit<CF
             i_usize: 0,
             z_0: vec![CF1::<C1>::zero(); F_circuit.state_len()],
             z_i: vec![CF1::<C1>::zero(); F_circuit.state_len()],
-            external_inputs: vec![CF1::<C1>::zero(); F_circuit.external_inputs_len()],
+            // external_inputs: vec![CF1::<C1>::zero(); F_circuit.external_inputs_len()],
+            external_inputs: FC::E::default(),
             u_i_phi: C1::zero(),
             U_i: u_dummy,
             U_i1_phi: C1::zero(),
@@ -321,8 +323,9 @@ where
         let i = FpVar::<CF1<C1>>::new_witness(cs.clone(), || Ok(self.i))?;
         let z_0 = Vec::<FpVar<CF1<C1>>>::new_witness(cs.clone(), || Ok(self.z_0))?;
         let z_i = Vec::<FpVar<CF1<C1>>>::new_witness(cs.clone(), || Ok(self.z_i))?;
-        let external_inputs =
-            Vec::<FpVar<CF1<C1>>>::new_witness(cs.clone(), || Ok(self.external_inputs))?;
+        // let external_inputs =
+        //     Vec::<FpVar<CF1<C1>>>::new_witness(cs.clone(), || Ok(self.external_inputs))?;
+        let external_inputs = FC::EV::new_witness(cs.clone(), || Ok(self.external_inputs))?;
 
         let u_dummy = CommittedInstance::<C1, true>::dummy((2, self.U_i.betas.len()));
         let U_i = CommittedInstanceVar::<C1, true>::new_witness(cs.clone(), || Ok(self.U_i))?;

@@ -63,7 +63,7 @@ pub struct AugmentedFCircuit<
     pub(super) i_usize: Option<usize>,
     pub(super) z_0: Option<Vec<C1::ScalarField>>,
     pub(super) z_i: Option<Vec<C1::ScalarField>>,
-    pub(super) external_inputs: Option<Vec<C1::ScalarField>>,
+    pub(super) external_inputs: Option<FC::E>,
     pub(super) u_i_cmW: Option<C1>,
     pub(super) U_i: Option<CommittedInstance<C1>>,
     pub(super) U_i1_cmE: Option<C1>,
@@ -138,10 +138,14 @@ where
                 .z_i
                 .unwrap_or(vec![CF1::<C1>::zero(); self.F.state_len()]))
         })?;
-        let external_inputs = Vec::<FpVar<CF1<C1>>>::new_witness(cs.clone(), || {
-            Ok(self
-                .external_inputs
-                .unwrap_or(vec![CF1::<C1>::zero(); self.F.external_inputs_len()]))
+        // let external_inputs = Vec::<FpVar<CF1<C1>>>::new_witness(cs.clone(), || {
+        //     Ok(self
+        //         .external_inputs
+        //         .unwrap_or(vec![CF1::<C1>::zero(); self.F.external_inputs_len()]))
+        // })?;
+        let external_inputs = FC::EV::new_witness(cs.clone(), || {
+            Ok(self.external_inputs.unwrap_or(FC::E::default()))
+            // .unwrap_or(vec![CF1::<C1>::zero(); self.F.external_inputs_len()]))
         })?;
 
         let u_dummy = CommittedInstance::dummy(2);

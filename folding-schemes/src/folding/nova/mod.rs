@@ -646,7 +646,8 @@ where
     fn prove_step(
         &mut self,
         mut rng: impl RngCore,
-        external_inputs: Vec<C1::ScalarField>,
+        // external_inputs: Vec<C1::ScalarField>,
+        external_inputs: FC::E,
         // Nova does not support multi-instances folding
         _other_instances: Option<Self::MultiCommittedInstanceWithWitness>,
     ) -> Result<(), Error> {
@@ -685,14 +686,15 @@ where
                 self.F.state_len(),
             ));
         }
-        if external_inputs.len() != self.F.external_inputs_len() {
-            return Err(Error::NotSameLength(
-                "F.external_inputs_len()".to_string(),
-                self.F.external_inputs_len(),
-                "external_inputs.len()".to_string(),
-                external_inputs.len(),
-            ));
-        }
+        // TODO rm?
+        // if external_inputs.len() != self.F.external_inputs_len() {
+        //     return Err(Error::NotSameLength(
+        //         "F.external_inputs_len()".to_string(),
+        //         self.F.external_inputs_len(),
+        //         "external_inputs.len()".to_string(),
+        //         external_inputs.len(),
+        //     ));
+        // }
 
         if self.i > C1::ScalarField::from_le_bytes_mod_order(&usize::MAX.to_le_bytes()) {
             return Err(Error::MaxStep);

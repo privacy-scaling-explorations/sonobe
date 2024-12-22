@@ -581,7 +581,10 @@ where
             cs.clone(),
             0,
             Vec::new_witness(cs.clone(), || Ok(vec![Zero::zero(); state_len]))?,
-            Vec::new_witness(cs.clone(), || Ok(vec![Zero::zero(); external_inputs_len]))?,
+            // Vec::new_witness(cs.clone(), || Ok(vec![Zero::zero(); external_inputs_len]))?, //
+            // TODO
+            // Vec::new_witness(cs.clone(), || Ok(FC::E::default()))?,
+            FC::EV::default(),
         )?;
         let step_constraints = cs.num_constraints();
 
@@ -816,7 +819,8 @@ where
     fn prove_step(
         &mut self,
         mut rng: impl RngCore,
-        external_inputs: Vec<C1::ScalarField>,
+        // external_inputs: Vec<C1::ScalarField>,
+        external_inputs: FC::E,
         _other_instances: Option<Self::MultiCommittedInstanceWithWitness>,
     ) -> Result<(), Error> {
         // Multi-instances folding is not supported yet.
@@ -848,14 +852,15 @@ where
                 self.F.state_len(),
             ));
         }
-        if external_inputs.len() != self.F.external_inputs_len() {
-            return Err(Error::NotSameLength(
-                "F.external_inputs_len()".to_string(),
-                self.F.external_inputs_len(),
-                "external_inputs.len()".to_string(),
-                external_inputs.len(),
-            ));
-        }
+        // TODO rm?
+        // if external_inputs.len() != self.F.external_inputs_len() {
+        //     return Err(Error::NotSameLength(
+        //         "F.external_inputs_len()".to_string(),
+        //         self.F.external_inputs_len(),
+        //         "external_inputs.len()".to_string(),
+        //         external_inputs.len(),
+        //     ));
+        // }
 
         let i_bn: BigUint = self.i.into();
         let i_usize: usize = i_bn.try_into().map_err(|_| Error::MaxStep)?;
@@ -875,7 +880,7 @@ where
                 .external_inputs
                 .clone_from(&external_inputs);
 
-            // There is no need to update `self.U_i` etc. as they are unchanged.
+        // There is no need to update `self.U_i` etc. as they are unchanged.
         } else {
             // Primary part:
             // Compute `U_{i+1}` by folding `u_i` into `U_i`.

@@ -1,4 +1,4 @@
-use ::clap::Parser;
+use clap::Parser;
 use ark_serialize::Write;
 use settings::Cli;
 use std::path::Path;

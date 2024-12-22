@@ -1032,7 +1032,7 @@ where
             transcript,
             &self.cf_r1cs,
             &self.cf_cs_pp,
-            self.pp_hash,
+            &self.pp_hash,
             cf_W_i,
             cf_U_i,
             cf_circuit,

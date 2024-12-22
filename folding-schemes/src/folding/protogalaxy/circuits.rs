@@ -177,7 +177,7 @@ impl AugmentationGadget {
         S: CryptographicSponge,
     >(
         transcript: &mut PoseidonSpongeVar<CF1<C1>>,
-        pp_hash: FpVar<CF1<C1>>,
+        pp_hash: &FpVar<CF1<C1>>,
         mut cf_U: CycleFoldCommittedInstanceVar<C2, GC2>,
         cf_u_cmWs: Vec<GC2>,
         cf_u_xs: Vec<Vec<NonNativeUintVar<CF1<C1>>>>,
@@ -206,10 +206,10 @@ impl AugmentationGadget {
 
             let cf_r_bits = CycleFoldChallengeGadget::get_challenge_gadget(
                 transcript,
-                pp_hash.clone(),
-                cf_U.to_native_sponge_field_elements()?,
-                cf_u.clone(),
-                cmT.clone(),
+                &pp_hash,
+                &cf_U.to_native_sponge_field_elements()?,
+                &cf_u,
+                &cmT,
             )?;
             // Fold the current incoming CycleFold instance `cf_u` into the
             // running CycleFold instance `cf_U`.
@@ -351,9 +351,9 @@ where
         // Primary Part
         // P.1. Compute u_i.x
         // u_i.x[0] = H(i, z_0, z_i, U_i)
-        let (u_i_x, _) = U_i.clone().hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
+        let (u_i_x, _) = U_i.hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
         // u_i.x[1] = H(cf_U_i)
-        let (cf_u_i_x, _) = cf_U_i.clone().hash(&sponge, &pp_hash)?;
+        let (cf_u_i_x, _) = cf_U_i.hash(&sponge, &pp_hash)?;
 
         // P.2. Prepare incoming primary instances
         // P.3. Fold incoming primary instances into the running instance
@@ -421,7 +421,7 @@ where
                 NonNativeUintVar::new_constant(cs.clone(), C1::BaseField::zero())?,
                 NonNativeUintVar::new_constant(cs.clone(), C1::BaseField::zero())?,
                 U_i.phi.x.clone(),
-                U_i.phi.y.clone(),
+                U_i.phi.y,
                 phi_stars[0].x.clone(),
                 phi_stars[0].y.clone(),
             ],
@@ -440,9 +440,9 @@ where
                 phi_stars[0].x.clone(),
                 phi_stars[0].y.clone(),
                 u_i_phi.x.clone(),
-                u_i_phi.y.clone(),
+                u_i_phi.y,
                 U_i1.phi.x.clone(),
-                U_i1.phi.y.clone(),
+                U_i1.phi.y,
             ],
         ]
         .concat();
@@ -452,7 +452,7 @@ where
         let cf_U_i1 =
             AugmentationGadget::prepare_and_fold_cyclefold::<C1, C2, GC2, PoseidonSponge<CF1<C1>>>(
                 &mut transcript,
-                pp_hash.clone(),
+                &pp_hash,
                 cf_U_i,
                 vec![
                     GC2::new_witness(cs.clone(), || Ok(self.cf1_u_i_cmW))?,
@@ -480,7 +480,7 @@ where
         //   computing them outside the circuit.
         // - `.enforce_equal()` prevents a malicious prover from claiming wrong
         //   public inputs that are not the honest `cf_x` computed in-circuit.
-        FpVar::new_input(cs.clone(), || cf_x.value())?.enforce_equal(&cf_x)?;
+        FpVar::new_input(cs, || cf_x.value())?.enforce_equal(&cf_x)?;
 
         Ok(z_i1)
     }

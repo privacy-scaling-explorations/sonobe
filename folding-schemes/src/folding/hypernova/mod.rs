@@ -821,7 +821,7 @@ where
                 &mut transcript_p,
                 &self.cf_r1cs,
                 &self.cf_cs_pp,
-                self.pp_hash,
+                &self.pp_hash,
                 &self.cf_W_i, // CycleFold running instance witness
                 &self.cf_U_i, // CycleFold running instance
                 cf_circuit,

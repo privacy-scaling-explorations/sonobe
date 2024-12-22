@@ -861,10 +861,10 @@ where
         // cf_r_bits is denoted by rho* in the paper.
         let cf_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_gadget(
             &mut transcript,
-            pp_hash.clone(),
-            cf_U_i_vec,
-            cf_u_i.clone(),
-            cf_cmT.clone(),
+            &pp_hash,
+            &cf_U_i_vec,
+            &cf_u_i,
+            &cf_cmT,
         )?;
         // Fold cf1_u_i & cf_U_i into cf1_U_{i+1}
         let cf_U_i1 = NIFSFullGadget::<C2, GC2>::fold_committed_instance(
@@ -1387,7 +1387,7 @@ mod tests {
                     &mut transcript_p,
                     &cf_r1cs,
                     &cf_pedersen_params,
-                    pp_hash,
+                    &pp_hash,
                     &cf_W_i, // CycleFold running instance witness
                     &cf_U_i, // CycleFold running instance
                     cf_circuit,

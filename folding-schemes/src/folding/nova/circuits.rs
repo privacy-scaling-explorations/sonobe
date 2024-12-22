@@ -302,10 +302,10 @@ where
         // cf_r_bits is denoted by rho* in the paper.
         let cf1_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_gadget(
             &mut transcript,
-            pp_hash.clone(),
-            cf_U_i_vec,
-            cf1_u_i.clone(),
-            cf1_cmT.clone(),
+            &pp_hash,
+            &cf_U_i_vec,
+            &cf1_u_i,
+            &cf1_cmT,
         )?;
         // Fold cf1_u_i & cf_U_i into cf1_U_{i+1}
         let cf1_U_i1 = NIFSFullGadget::<C2, GC2>::fold_committed_instance(
@@ -318,10 +318,10 @@ where
         // same for cf2_r:
         let cf2_r_bits = CycleFoldChallengeGadget::<C2, GC2>::get_challenge_gadget(
             &mut transcript,
-            pp_hash.clone(),
-            cf1_U_i1.to_native_sponge_field_elements()?,
-            cf2_u_i.clone(),
-            cf2_cmT.clone(),
+            &pp_hash,
+            &cf1_U_i1.to_native_sponge_field_elements()?,
+            &cf2_u_i,
+            &cf2_cmT,
         )?;
         let cf_U_i1 = NIFSFullGadget::<C2, GC2>::fold_committed_instance(
             &cf2_r_bits,

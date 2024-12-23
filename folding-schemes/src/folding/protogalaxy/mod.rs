@@ -569,7 +569,7 @@ where
         // For `t_lower_bound`, we configure `F'` with `t = 1` and compute log2
         // of the size of `F'`.
         let state_len = F.state_len();
-        let external_inputs_len = F.external_inputs_len();
+        // let external_inputs_len = F.external_inputs_len();
 
         // `F'` includes `F` and `ProtoGalaxy.V`, where `F` might be costly.
         // Observing that the cost of `F` is constant with respect to `t`, we
@@ -591,7 +591,8 @@ where
         // Create a dummy circuit with the same state length and external inputs
         // length as `F`, which replaces `F` in the augmented circuit `F'`.
         let dummy_circuit: DummyCircuit =
-            FCircuit::<C1::ScalarField>::new((state_len, external_inputs_len))?;
+            // FCircuit::<C1::ScalarField>::new((state_len, external_inputs_len))?;
+            FCircuit::<C1::ScalarField>::new(state_len)?;
 
         // Compute `augmentation_constraints`, the size of `F'` without `F`.
         let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
@@ -1238,33 +1239,33 @@ mod tests {
 
         let poseidon_config = poseidon_canonical_config::<Fr>();
         for state_len in [1, 10, 100] {
-            for external_inputs_len in [1, 10, 100] {
-                let dummy_circuit: DummyCircuit =
-                    FCircuit::<Fr>::new((state_len, external_inputs_len))?;
+            // for external_inputs_len in [1, 10, 100] {
+            let dummy_circuit: DummyCircuit =
+                    // FCircuit::<Fr>::new((state_len, external_inputs_len))?;
+                    FCircuit::<Fr>::new(state_len)?;
 
-                let costs: Vec<usize> = (1..32)
-                    .into_par_iter()
-                    .map(|t| {
-                        let cs = ConstraintSystem::<Fr>::new_ref();
-                        AugmentedFCircuit::<Projective, Projective2, GVar2, DummyCircuit>::empty(
-                            &poseidon_config,
-                            dummy_circuit.clone(),
-                            t,
-                            d,
-                            k,
-                        )
-                        .generate_constraints(cs.clone())?;
-                        Ok(cs.num_constraints())
-                    })
-                    .collect::<Result<Vec<usize>, Error>>()?;
+            let costs: Vec<usize> = (1..32)
+                .into_par_iter()
+                .map(|t| {
+                    let cs = ConstraintSystem::<Fr>::new_ref();
+                    AugmentedFCircuit::<Projective, Projective2, GVar2, DummyCircuit>::empty(
+                        &poseidon_config,
+                        dummy_circuit.clone(),
+                        t,
+                        d,
+                        k,
+                    )
+                    .generate_constraints(cs.clone())?;
+                    Ok(cs.num_constraints())
+                })
+                .collect::<Result<Vec<usize>, Error>>()?;
 
-                for t_lower_bound in log2(costs[0]) as usize..32 {
-                    let num_constraints =
-                        (1 << t_lower_bound) - costs[0] + costs[t_lower_bound - 1];
-                    let t = log2(num_constraints) as usize;
-                    assert!(t == t_lower_bound || t == t_lower_bound + 1);
-                }
+            for t_lower_bound in log2(costs[0]) as usize..32 {
+                let num_constraints = (1 << t_lower_bound) - costs[0] + costs[t_lower_bound - 1];
+                let t = log2(num_constraints) as usize;
+                assert!(t == t_lower_bound || t == t_lower_bound + 1);
             }
+            // }
         }
         Ok(())
     }

@@ -46,15 +46,18 @@ pub struct CubicFCircuit<F: PrimeField> {
 }
 impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
     type Params = ();
+    type E = ();
+    type EV = ();
+
     fn new(_params: Self::Params) -> Result<Self, Error> {
         Ok(Self { _f: PhantomData })
     }
     fn state_len(&self) -> usize {
         1
     }
-    fn external_inputs_len(&self) -> usize {
-        0
-    }
+    // fn external_inputs_len(&self) -> usize {
+    //     0
+    // }
     fn generate_step_constraints(
         &self,
         cs: ConstraintSystemRef<F>,
@@ -106,7 +109,7 @@ fn main() -> Result<(), Error> {
     // run n steps of the folding iteration
     for i in 0..n_steps {
         let start = Instant::now();
-        nova.prove_step(rng, vec![], None)?;
+        nova.prove_step(rng, (), None)?;
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
 

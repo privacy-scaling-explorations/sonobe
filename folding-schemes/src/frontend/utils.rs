@@ -14,31 +14,28 @@ use ark_r1cs_std::alloc::AllocationMode;
 use ark_relations::r1cs::Namespace;
 use core::borrow::Borrow;
 // TODO document, explain reason of existence
-#[derive(Clone, Debug)]
-pub struct VecFpVar<F: PrimeField>(Vec<FpVar<F>>);
-impl<F: PrimeField> AllocVar<Vec<F>, F> for VecFpVar<F> {
-    fn new_variable<T: Borrow<Vec<F>>>(
-        cs: impl Into<Namespace<F>>,
-        f: impl FnOnce() -> Result<T, SynthesisError>,
-        mode: AllocationMode,
-    ) -> Result<Self, SynthesisError> {
-        f().and_then(|val| {
-            let cs = cs.into();
-
-            let v = Vec::<FpVar<F>>::new_variable(cs.clone(), || Ok(val.borrow().clone()), mode)?;
-
-            Ok(VecFpVar(v))
-        })
-    }
-}
-impl<F: PrimeField> Default for VecFpVar<F>
-// where
-//     FpVar<F>: Default,
-{
-    fn default() -> Self {
-        VecFpVar(Vec::default())
-    }
-}
+// #[derive(Clone, Debug)]
+// pub struct VecFpVar<F: PrimeField>(Vec<FpVar<F>>);
+// impl<F: PrimeField> AllocVar<Vec<F>, F> for VecFpVar<F> {
+//     fn new_variable<T: Borrow<Vec<F>>>(
+//         cs: impl Into<Namespace<F>>,
+//         f: impl FnOnce() -> Result<T, SynthesisError>,
+//         mode: AllocationMode,
+//     ) -> Result<Self, SynthesisError> {
+//         f().and_then(|val| {
+//             let cs = cs.into();
+//
+//             let v = Vec::<FpVar<F>>::new_variable(cs.clone(), || Ok(val.borrow().clone()), mode)?;
+//
+//             Ok(VecFpVar(v))
+//         })
+//     }
+// }
+// impl<F: PrimeField> Default for VecFpVar<F> {
+//     fn default() -> Self {
+//         VecFpVar(Vec::default())
+//     }
+// }
 
 /// DummyCircuit is a circuit that has dummy state and external inputs whose
 /// lengths are specified in the `state_len` and `external_inputs_len`
@@ -46,25 +43,29 @@ impl<F: PrimeField> Default for VecFpVar<F>
 #[derive(Clone, Debug)]
 pub struct DummyCircuit {
     state_len: usize,
-    external_inputs_len: usize,
+    // external_inputs_len: usize,
 }
 impl<F: PrimeField> FCircuit<F> for DummyCircuit {
-    type Params = (usize, usize);
-    type E = Vec<F>;
-    type EV = VecFpVar<F>;
+    // type Params = (usize, usize);
+    type Params = usize;
+    // type E = Vec<F>;
+    // type EV = VecFpVar<F>;
+    type E = ();
+    type EV = ();
 
-    fn new((state_len, external_inputs_len): Self::Params) -> Result<Self, Error> {
+    // fn new((state_len, external_inputs_len): Self::Params) -> Result<Self, Error> {
+    fn new(state_len: Self::Params) -> Result<Self, Error> {
         Ok(Self {
             state_len,
-            external_inputs_len,
+            // external_inputs_len,
         })
     }
     fn state_len(&self) -> usize {
         self.state_len
     }
-    fn external_inputs_len(&self) -> usize {
-        self.external_inputs_len
-    }
+    // fn external_inputs_len(&self) -> usize {
+    //     self.external_inputs_len
+    // }
     fn generate_step_constraints(
         &self,
         cs: ConstraintSystemRef<F>,
@@ -91,8 +92,10 @@ pub struct CubicFCircuit<F: PrimeField> {
 #[cfg(test)]
 impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
     type Params = ();
-    type E = Vec<F>;
-    type EV = VecFpVar<F>;
+    // type E = Vec<F>;
+    // type EV = VecFpVar<F>;
+    type E = ();
+    type EV = ();
 
     fn new(_params: Self::Params) -> Result<Self, Error> {
         Ok(Self { _f: PhantomData })
@@ -100,9 +103,9 @@ impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
     fn state_len(&self) -> usize {
         1
     }
-    fn external_inputs_len(&self) -> usize {
-        0
-    }
+    // fn external_inputs_len(&self) -> usize {
+    //     0
+    // }
     fn generate_step_constraints(
         &self,
         cs: ConstraintSystemRef<F>,
@@ -136,8 +139,10 @@ pub struct CustomFCircuit<F: PrimeField> {
 
 impl<F: PrimeField> FCircuit<F> for CustomFCircuit<F> {
     type Params = usize;
-    type E = Vec<F>;
-    type EV = VecFpVar<F>;
+    // type E = Vec<F>;
+    // type EV = VecFpVar<F>;
+    type E = ();
+    type EV = ();
 
     fn new(params: Self::Params) -> Result<Self, Error> {
         Ok(Self {
@@ -148,9 +153,9 @@ impl<F: PrimeField> FCircuit<F> for CustomFCircuit<F> {
     fn state_len(&self) -> usize {
         1
     }
-    fn external_inputs_len(&self) -> usize {
-        0
-    }
+    // fn external_inputs_len(&self) -> usize {
+    //     0
+    // }
     fn generate_step_constraints(
         &self,
         _cs: ConstraintSystemRef<F>,

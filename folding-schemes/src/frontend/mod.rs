@@ -37,10 +37,10 @@ pub trait FCircuit<F: PrimeField>: Clone + Debug {
     /// returns the number of elements in the state of the FCircuit, which corresponds to the
     /// FCircuit inputs.
     fn state_len(&self) -> usize;
-
-    /// returns the number of elements in the external inputs used by the FCircuit. External inputs
-    /// are optional, and in case no external inputs are used, this method should return 0.
-    fn external_inputs_len(&self) -> usize; // TODO maybe remove
+    //
+    // /// returns the number of elements in the external inputs used by the FCircuit. External inputs
+    // /// are optional, and in case no external inputs are used, this method should return 0.
+    // fn external_inputs_len(&self) -> usize; // TODO maybe remove
 
     /// generates the constraints for the step of F for the given z_i
     fn generate_step_constraints(

@@ -30,6 +30,8 @@ pub struct MultiInputsFCircuit<F: PrimeField> {
 }
 impl<F: PrimeField> FCircuit<F> for MultiInputsFCircuit<F> {
     type Params = ();
+    type E = ();
+    type EV = ();
 
     fn new(_params: Self::Params) -> Result<Self, Error> {
         Ok(Self { _f: PhantomData })
@@ -37,16 +39,16 @@ impl<F: PrimeField> FCircuit<F> for MultiInputsFCircuit<F> {
     fn state_len(&self) -> usize {
         5
     }
-    fn external_inputs_len(&self) -> usize {
-        0
-    }
+    // fn external_inputs_len(&self) -> usize {
+    //     0
+    // }
     /// generates the constraints for the step of F for the given z_i
     fn generate_step_constraints(
         &self,
         cs: ConstraintSystemRef<F>,
         _i: usize,
         z_i: Vec<FpVar<F>>,
-        _external_inputs: Vec<FpVar<F>>,
+        _external_inputs: Self::EV,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let four = FpVar::<F>::new_constant(cs.clone(), F::from(4u32))?;
         let forty = FpVar::<F>::new_constant(cs.clone(), F::from(40u32))?;
@@ -142,7 +144,7 @@ fn main() -> Result<(), Error> {
     // compute a step of the IVC
     for i in 0..num_steps {
         let start = Instant::now();
-        folding_scheme.prove_step(rng, vec![], None)?;
+        folding_scheme.prove_step(rng, (), None)?;
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
 

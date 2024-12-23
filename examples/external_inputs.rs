@@ -74,6 +74,8 @@ where
     F: Absorb,
 {
     type Params = PoseidonConfig<F>;
+    type E = VecF<F>;
+    type EV = VecFpVar<F>;
 
     fn new(params: Self::Params) -> Result<Self, Error> {
         Ok(Self {
@@ -84,9 +86,9 @@ where
     fn state_len(&self) -> usize {
         1
     }
-    fn external_inputs_len(&self) -> usize {
-        1
-    }
+    // fn external_inputs_len(&self) -> usize {
+    //     1
+    // }
     /// generates the constraints and returns the next state value for the step of F for the given
     /// z_i and external_inputs
     fn generate_step_constraints(
@@ -94,13 +96,48 @@ where
         cs: ConstraintSystemRef<F>,
         _i: usize,
         z_i: Vec<FpVar<F>>,
-        external_inputs: Vec<FpVar<F>>,
+        external_inputs: Self::EV,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
+        let ei: VecFpVar<F> = external_inputs.into();
         let crh_params =
             CRHParametersVar::<F>::new_constant(cs.clone(), self.poseidon_config.clone())?;
-        let hash_input: [FpVar<F>; 2] = [z_i[0].clone(), external_inputs[0].clone()];
+        let hash_input: [FpVar<F>; 2] = [z_i[0].clone(), ei.0[0].clone()];
         let h = CRHGadget::<F>::evaluate(&crh_params, &hash_input)?;
         Ok(vec![h])
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct VecF<F: PrimeField>(Vec<F>);
+impl<F: PrimeField> Default for VecF<F> {
+    fn default() -> Self {
+        VecF(vec![F::zero()])
+    }
+}
+
+use ark_r1cs_std::alloc::AllocationMode;
+use ark_relations::r1cs::Namespace;
+use core::borrow::Borrow;
+#[derive(Clone, Debug)]
+pub struct VecFpVar<F: PrimeField>(Vec<FpVar<F>>);
+impl<F: PrimeField> AllocVar<VecF<F>, F> for VecFpVar<F> {
+    fn new_variable<T: Borrow<VecF<F>>>(
+        cs: impl Into<Namespace<F>>,
+        f: impl FnOnce() -> Result<T, SynthesisError>,
+        mode: AllocationMode,
+    ) -> Result<Self, SynthesisError> {
+        f().and_then(|val| {
+            let cs = cs.into();
+
+            let v = Vec::<FpVar<F>>::new_variable(cs.clone(), || Ok(val.borrow().0.clone()), mode)?;
+
+            Ok(VecFpVar(v))
+        })
+    }
+}
+impl<F: PrimeField> Default for VecFpVar<F> {
+    fn default() -> Self {
+        VecFpVar(vec![FpVar::<F>::Constant(F::zero())])
     }
 }
 
@@ -153,11 +190,11 @@ fn main() -> Result<(), Error> {
 
     // prepare the external inputs to be used at each folding step
     let external_inputs = vec![
-        vec![Fr::from(3_u32)],
-        vec![Fr::from(33_u32)],
-        vec![Fr::from(73_u32)],
-        vec![Fr::from(103_u32)],
-        vec![Fr::from(125_u32)],
+        VecF(vec![Fr::from(3_u32)]),
+        VecF(vec![Fr::from(33_u32)]),
+        VecF(vec![Fr::from(73_u32)]),
+        VecF(vec![Fr::from(103_u32)]),
+        VecF(vec![Fr::from(125_u32)]),
     ];
     assert_eq!(external_inputs.len(), num_steps);
 

@@ -319,9 +319,9 @@ pub mod tests {
         let (decider_pp, decider_vp) = D::preprocess(&mut rng, nova_params, nova.clone())?;
 
         let start = Instant::now();
-        nova.prove_step(&mut rng, vec![], None)?;
+        nova.prove_step(&mut rng, (), None)?;
         println!("prove_step, {:?}", start.elapsed());
-        nova.prove_step(&mut rng, vec![], None)?; // do a 2nd step
+        nova.prove_step(&mut rng, (), None)?; // do a 2nd step
 
         // decider proof generation
         let start = Instant::now();
@@ -431,9 +431,9 @@ pub mod tests {
         let mut nova = N::init(&nova_params, F_circuit, z_0)?;
 
         let start = Instant::now();
-        nova.prove_step(&mut rng, vec![], None)?;
+        nova.prove_step(&mut rng, (), None)?;
         println!("prove_step, {:?}", start.elapsed());
-        nova.prove_step(&mut rng, vec![], None)?; // do a 2nd step
+        nova.prove_step(&mut rng, (), None)?; // do a 2nd step
 
         // decider proof generation
         let start = Instant::now();

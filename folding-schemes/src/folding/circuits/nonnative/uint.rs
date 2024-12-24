@@ -203,8 +203,8 @@ impl<F: PrimeField> NonNativeUintVar<F> {
         // Thus, 55 allows us to compute `Az∘Bz` without the expensive alignment
         // operation.
         //
-        // TODO (@winderica): either make it a global const, or compute an
-        // optimal value based on the modulus size
+        // TODO: either make it a global const, or compute an optimal value
+        // based on the modulus size.
         55
     }
 }

@@ -371,9 +371,9 @@ pub mod tests {
         let mut nova = N::init(&nova_params, F_circuit, z_0.clone())?;
         println!("Nova initialized, {:?}", start.elapsed());
         let start = Instant::now();
-        nova.prove_step(&mut rng, vec![], None)?;
+        nova.prove_step(&mut rng, (), None)?;
         println!("prove_step, {:?}", start.elapsed());
-        nova.prove_step(&mut rng, vec![], None)?; // do a 2nd step
+        nova.prove_step(&mut rng, (), None)?; // do a 2nd step
 
         let mut rng = rand::rngs::OsRng;
 

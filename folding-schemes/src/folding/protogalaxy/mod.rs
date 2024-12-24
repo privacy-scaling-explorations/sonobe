@@ -455,9 +455,8 @@ where
 {
     /// returns the hash of the public parameters of ProtoGalaxy
     pub fn pp_hash(&self) -> Result<C1::ScalarField, Error> {
-        // TODO (@winderica): support hiding commitments in ProtoGalaxy.
-        // For now, `H` is set to false.
-        // Tracking issue: https://github.com/privacy-scaling-explorations/sonobe/issues/82
+        // TODO: support hiding commitments in ProtoGalaxy. For now, `H` is set to false. Tracking
+        // issue: https://github.com/privacy-scaling-explorations/sonobe/issues/82
         pp_hash::<C1, C2, CS1, CS2, false>(
             &self.r1cs,
             &self.cf_r1cs,
@@ -557,7 +556,6 @@ where
         // For `t_lower_bound`, we configure `F'` with `t = 1` and compute log2
         // of the size of `F'`.
         let state_len = F.state_len();
-        let external_inputs_len = F.external_inputs_len();
 
         // `F'` includes `F` and `ProtoGalaxy.V`, where `F` might be costly.
         // Observing that the cost of `F` is constant with respect to `t`, we
@@ -569,14 +567,13 @@ where
             cs.clone(),
             0,
             Vec::new_witness(cs.clone(), || Ok(vec![Zero::zero(); state_len]))?,
-            Vec::new_witness(cs.clone(), || Ok(vec![Zero::zero(); external_inputs_len]))?,
+            FC::ExternalInputsVar::default(),
         )?;
         let step_constraints = cs.num_constraints();
 
         // Create a dummy circuit with the same state length and external inputs
         // length as `F`, which replaces `F` in the augmented circuit `F'`.
-        let dummy_circuit: DummyCircuit =
-            FCircuit::<C1::ScalarField>::new((state_len, external_inputs_len))?;
+        let dummy_circuit: DummyCircuit = FCircuit::<C1::ScalarField>::new(state_len)?;
 
         // Compute `augmentation_constraints`, the size of `F'` without `F`.
         let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
@@ -700,9 +697,9 @@ where
     ) -> Result<(Self::ProverParam, Self::VerifierParam), Error> {
         // We fix `k`, the number of incoming instances, to 1, because
         // multi-instances folding is not supported yet.
-        // TODO (@winderica): Support multi-instances folding and make `k` a
-        // constant generic parameter (as in HyperNova)
-        // Tracking issue: https://github.com/privacy-scaling-explorations/sonobe/issues/82
+        // TODO: Support multi-instances folding and make `k` a constant generic parameter (as in
+        // HyperNova). Tracking issue:
+        // https://github.com/privacy-scaling-explorations/sonobe/issues/82
         let k = 1;
         // `d`, the degree of the constraint system, is set to 2, as we only
         // support R1CS for now, whose highest degree is 2.
@@ -788,7 +785,7 @@ where
     fn prove_step(
         &mut self,
         mut rng: impl RngCore,
-        external_inputs: Vec<C1::ScalarField>,
+        external_inputs: FC::ExternalInputs,
         _other_instances: Option<Self::MultiCommittedInstanceWithWitness>,
     ) -> Result<(), Error> {
         // Multi-instances folding is not supported yet.
@@ -797,9 +794,9 @@ where
         }
         // We fix `k`, the number of incoming instances, to 1, because
         // multi-instances folding is not supported yet.
-        // TODO (@winderica): Support multi-instances folding and make `k` a
-        // constant generic parameter (as in HyperNova)
-        // Tracking issue: https://github.com/privacy-scaling-explorations/sonobe/issues/82
+        // TODO: Support multi-instances folding and make `k` a constant generic parameter (as in
+        // HyperNova). Tracking issue:
+        // https://github.com/privacy-scaling-explorations/sonobe/issues/82
         let k = 1;
         // `d`, the degree of the constraint system, is set to 2, as we only
         // support R1CS for now, whose highest degree is 2.
@@ -818,14 +815,6 @@ where
                 self.z_i.len(),
                 "F.state_len()".to_string(),
                 self.F.state_len(),
-            ));
-        }
-        if external_inputs.len() != self.F.external_inputs_len() {
-            return Err(Error::NotSameLength(
-                "F.external_inputs_len()".to_string(),
-                self.F.external_inputs_len(),
-                "external_inputs.len()".to_string(),
-                external_inputs.len(),
             ));
         }
 
@@ -847,7 +836,7 @@ where
                 .external_inputs
                 .clone_from(&external_inputs);
 
-            // There is no need to update `self.U_i` etc. as they are unchanged.
+        // There is no need to update `self.U_i` etc. as they are unchanged.
         } else {
             // Primary part:
             // Compute `U_{i+1}` by folding `u_i` into `U_i`.
@@ -1167,7 +1156,7 @@ mod tests {
 
         let num_steps: usize = 3;
         for _ in 0..num_steps {
-            protogalaxy.prove_step(&mut test_rng(), vec![], None)?;
+            protogalaxy.prove_step(&mut test_rng(), (), None)?;
         }
         assert_eq!(Fr::from(num_steps as u32), protogalaxy.i);
 
@@ -1184,32 +1173,28 @@ mod tests {
 
         let poseidon_config = poseidon_canonical_config::<Fr>();
         for state_len in [1, 10, 100] {
-            for external_inputs_len in [1, 10, 100] {
-                let dummy_circuit: DummyCircuit =
-                    FCircuit::<Fr>::new((state_len, external_inputs_len))?;
+            let dummy_circuit: DummyCircuit = FCircuit::<Fr>::new(state_len)?;
 
-                let costs: Vec<usize> = (1..32)
-                    .into_par_iter()
-                    .map(|t| {
-                        let cs = ConstraintSystem::<Fr>::new_ref();
-                        AugmentedFCircuit::<Projective, Projective2, DummyCircuit>::empty(
-                            &poseidon_config,
-                            dummy_circuit.clone(),
-                            t,
-                            d,
-                            k,
-                        )
-                        .generate_constraints(cs.clone())?;
-                        Ok(cs.num_constraints())
-                    })
-                    .collect::<Result<Vec<usize>, Error>>()?;
+            let costs: Vec<usize> = (1..32)
+                .into_par_iter()
+                .map(|t| {
+                    let cs = ConstraintSystem::<Fr>::new_ref();
+                    AugmentedFCircuit::<Projective, Projective2, DummyCircuit>::empty(
+                        &poseidon_config,
+                        dummy_circuit.clone(),
+                        t,
+                        d,
+                        k,
+                    )
+                    .generate_constraints(cs.clone())?;
+                    Ok(cs.num_constraints())
+                })
+                .collect::<Result<Vec<usize>, Error>>()?;
 
-                for t_lower_bound in log2(costs[0]) as usize..32 {
-                    let num_constraints =
-                        (1 << t_lower_bound) - costs[0] + costs[t_lower_bound - 1];
-                    let t = log2(num_constraints) as usize;
-                    assert!(t == t_lower_bound || t == t_lower_bound + 1);
-                }
+            for t_lower_bound in log2(costs[0]) as usize..32 {
+                let num_constraints = (1 << t_lower_bound) - costs[0] + costs[t_lower_bound - 1];
+                let t = log2(num_constraints) as usize;
+                assert!(t == t_lower_bound || t == t_lower_bound + 1);
             }
         }
         Ok(())

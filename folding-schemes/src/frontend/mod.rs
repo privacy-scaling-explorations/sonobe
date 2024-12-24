@@ -1,6 +1,6 @@
 use crate::Error;
 use ark_ff::PrimeField;
-use ark_r1cs_std::fields::fp::FpVar;
+use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar};
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 use ark_std::fmt::Debug;
 
@@ -10,8 +10,14 @@ pub mod utils;
 /// inside the agmented F' function).
 /// The parameter z_i denotes the current state, and z_{i+1} denotes the next state after applying
 /// the step.
+/// Note that the external inputs for the specific circuit are defined at the implementation of
+/// both `FCircuit::ExternalInputs` and `FCircuit::ExternalInputsVar`, where the `Default` trait
+/// implementation. For example if the external inputs are just an array of field elements, their
+/// `Default` trait implementation must return an array of the expected size.
 pub trait FCircuit<F: PrimeField>: Clone + Debug {
     type Params: Debug;
+    type ExternalInputs: Clone + Default + Debug;
+    type ExternalInputsVar: Clone + Default + Debug + AllocVar<Self::ExternalInputs, F>;
 
     /// returns a new FCircuit instance
     fn new(params: Self::Params) -> Result<Self, Error>;
@@ -19,10 +25,6 @@ pub trait FCircuit<F: PrimeField>: Clone + Debug {
     /// returns the number of elements in the state of the FCircuit, which corresponds to the
     /// FCircuit inputs.
     fn state_len(&self) -> usize;
-
-    /// returns the number of elements in the external inputs used by the FCircuit. External inputs
-    /// are optional, and in case no external inputs are used, this method should return 0.
-    fn external_inputs_len(&self) -> usize;
 
     /// generates the constraints for the step of F for the given z_i
     fn generate_step_constraints(
@@ -32,7 +34,7 @@ pub trait FCircuit<F: PrimeField>: Clone + Debug {
         cs: ConstraintSystemRef<F>,
         i: usize,
         z_i: Vec<FpVar<F>>,
-        external_inputs: Vec<FpVar<F>>, // inputs that are not part of the state
+        external_inputs: Self::ExternalInputsVar, // inputs that are not part of the state
     ) -> Result<Vec<FpVar<F>>, SynthesisError>;
 }
 

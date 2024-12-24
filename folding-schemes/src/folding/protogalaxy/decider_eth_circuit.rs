@@ -222,7 +222,7 @@ pub mod tests {
 
         // generate a Nova instance and do a step of it
         let mut protogalaxy = PG::init(&pg_params, F_circuit, z_0.clone())?;
-        protogalaxy.prove_step(&mut rng, vec![], None)?;
+        protogalaxy.prove_step(&mut rng, (), None)?;
 
         let ivc_proof = protogalaxy.ivc_proof();
         PG::verify(pg_params.1, ivc_proof)?;

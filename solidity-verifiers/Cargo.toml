@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 ark-groth16 = "^0.5.0"
-ark-bn254 = "^0.5.0"
+ark-bn254 = { version = "^0.5.0", default-features = false, features = ["r1cs"] }
 ark-poly-commit = "^0.5.0"
 ark-serialize = "^0.5.0"
 askama = { version = "0.12.0", features = ["config"], default-features = false }
@@ -22,7 +22,7 @@ ark-crypto-primitives = { version = "^0.5.0", default-features = false, features
 ark-snark = { version = "^0.5.0", default-features = false }
 ark-relations = { version = "^0.5.0", default-features = false }
 ark-r1cs-std = { version = "^0.5.0", default-features = false, features = ["parallel"] }
-ark-grumpkin = { version = "^0.5.0", default-features = false }
+ark-grumpkin = { version = "^0.5.0", default-features = false, features = ["r1cs"] }
 folding-schemes = { path = "../folding-schemes/", features=["light-test"]}
 experimental-frontends = { path = "../experimental-frontends/"}
 noname = { git = "https://github.com/dmpierre/noname" }

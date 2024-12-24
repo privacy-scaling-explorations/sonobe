@@ -10,35 +10,29 @@ use ark_std::{fmt::Debug, Zero};
 use super::FCircuit;
 use crate::Error;
 
-/// DummyCircuit is a circuit that has dummy state and external inputs whose
-/// lengths are specified in the `state_len` and `external_inputs_len`
-/// parameters, without any constraints.
+/// DummyCircuit is a circuit that has dummy state whose length is specified in the `state_len`
+/// parameter, without any constraints.
 #[derive(Clone, Debug)]
 pub struct DummyCircuit {
     state_len: usize,
-    external_inputs_len: usize,
 }
 impl<F: PrimeField> FCircuit<F> for DummyCircuit {
-    type Params = (usize, usize);
+    type Params = usize;
+    type ExternalInputs = ();
+    type ExternalInputsVar = ();
 
-    fn new((state_len, external_inputs_len): Self::Params) -> Result<Self, Error> {
-        Ok(Self {
-            state_len,
-            external_inputs_len,
-        })
+    fn new(state_len: Self::Params) -> Result<Self, Error> {
+        Ok(Self { state_len })
     }
     fn state_len(&self) -> usize {
         self.state_len
-    }
-    fn external_inputs_len(&self) -> usize {
-        self.external_inputs_len
     }
     fn generate_step_constraints(
         &self,
         cs: ConstraintSystemRef<F>,
         _i: usize,
         _z_i: Vec<FpVar<F>>,
-        _external_inputs: Vec<FpVar<F>>,
+        _external_inputs: Self::ExternalInputsVar,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         Vec::new_witness(cs.clone(), || Ok(vec![Zero::zero(); self.state_len]))
     }
@@ -57,21 +51,21 @@ pub struct CubicFCircuit<F: PrimeField> {
 #[cfg(test)]
 impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
     type Params = ();
+    type ExternalInputs = ();
+    type ExternalInputsVar = ();
+
     fn new(_params: Self::Params) -> Result<Self, Error> {
         Ok(Self { _f: PhantomData })
     }
     fn state_len(&self) -> usize {
         1
     }
-    fn external_inputs_len(&self) -> usize {
-        0
-    }
     fn generate_step_constraints(
         &self,
         cs: ConstraintSystemRef<F>,
         _i: usize,
         z_i: Vec<FpVar<F>>,
-        _external_inputs: Vec<FpVar<F>>,
+        _external_inputs: Self::ExternalInputsVar,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let five = FpVar::<F>::new_constant(cs.clone(), F::from(5u32))?;
         let z_i = z_i[0].clone();
@@ -97,6 +91,8 @@ pub struct CustomFCircuit<F: PrimeField> {
 
 impl<F: PrimeField> FCircuit<F> for CustomFCircuit<F> {
     type Params = usize;
+    type ExternalInputs = ();
+    type ExternalInputsVar = ();
 
     fn new(params: Self::Params) -> Result<Self, Error> {
         Ok(Self {
@@ -107,15 +103,12 @@ impl<F: PrimeField> FCircuit<F> for CustomFCircuit<F> {
     fn state_len(&self) -> usize {
         1
     }
-    fn external_inputs_len(&self) -> usize {
-        0
-    }
     fn generate_step_constraints(
         &self,
         _cs: ConstraintSystemRef<F>,
         _i: usize,
         z_i: Vec<FpVar<F>>,
-        _external_inputs: Vec<FpVar<F>>,
+        _external_inputs: Self::ExternalInputsVar,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let mut z_i1 = z_i[0].clone();
         for _ in 0..self.n_constraints - 1 {
@@ -153,9 +146,12 @@ impl<F: PrimeField, FC: FCircuit<F>> ConstraintSynthesizer<F> for WrapperCircuit
             Vec::<FpVar<F>>::new_witness(cs.clone(), || Ok(self.z_i.unwrap_or(vec![F::zero()])))?;
         let z_i1 =
             Vec::<FpVar<F>>::new_input(cs.clone(), || Ok(self.z_i1.unwrap_or(vec![F::zero()])))?;
-        let computed_z_i1 =
-            self.FC
-                .generate_step_constraints(cs.clone(), 0, z_i.clone(), vec![])?;
+        let computed_z_i1 = self.FC.generate_step_constraints(
+            cs.clone(),
+            0,
+            z_i.clone(),
+            FC::ExternalInputsVar::default(),
+        )?;
 
         use ark_r1cs_std::eq::EqGadget;
         computed_z_i1.enforce_equal(&z_i1)?;

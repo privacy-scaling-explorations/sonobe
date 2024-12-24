@@ -260,8 +260,8 @@ pub mod tests {
         let hypernova_params = HN::preprocess(&mut rng, &prep_param)?;
 
         let mut hypernova = HN::init(&hypernova_params, F_circuit, z_0.clone())?;
-        hypernova.prove_step(&mut rng, vec![], Some((vec![], vec![])))?;
-        hypernova.prove_step(&mut rng, vec![], Some((vec![], vec![])))?; // do a 2nd step
+        hypernova.prove_step(&mut rng, (), Some((vec![], vec![])))?;
+        hypernova.prove_step(&mut rng, (), Some((vec![], vec![])))?; // do a 2nd step
 
         // prepare the Decider prover & verifier params
         let (decider_pp, decider_vp) =
@@ -356,8 +356,8 @@ pub mod tests {
         let hypernova_params = (hypernova_pp_deserialized, hypernova_vp_deserialized);
         let mut hypernova = HN::init(&hypernova_params, F_circuit, z_0.clone())?;
 
-        hypernova.prove_step(&mut rng, vec![], Some((vec![], vec![])))?;
-        hypernova.prove_step(&mut rng, vec![], Some((vec![], vec![])))?;
+        hypernova.prove_step(&mut rng, (), Some((vec![], vec![])))?;
+        hypernova.prove_step(&mut rng, (), Some((vec![], vec![])))?;
 
         // decider proof generation
         let proof = D::prove(rng, decider_pp, hypernova.clone())?;

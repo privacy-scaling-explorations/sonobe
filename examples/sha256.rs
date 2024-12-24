@@ -36,6 +36,8 @@ pub struct Sha256FCircuit<F: PrimeField> {
 }
 impl<F: PrimeField> FCircuit<F> for Sha256FCircuit<F> {
     type Params = ();
+    type ExternalInputs = ();
+    type ExternalInputsVar = ();
 
     fn new(_params: Self::Params) -> Result<Self, Error> {
         Ok(Self { _f: PhantomData })
@@ -43,16 +45,13 @@ impl<F: PrimeField> FCircuit<F> for Sha256FCircuit<F> {
     fn state_len(&self) -> usize {
         1
     }
-    fn external_inputs_len(&self) -> usize {
-        0
-    }
     /// generates the constraints for the step of F for the given z_i
     fn generate_step_constraints(
         &self,
         _cs: ConstraintSystemRef<F>,
         _i: usize,
         z_i: Vec<FpVar<F>>,
-        _external_inputs: Vec<FpVar<F>>,
+        _external_inputs: Self::ExternalInputsVar,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let unit_var = UnitVar::default();
         let out_bytes = Sha256Gadget::evaluate(&unit_var, &z_i[0].to_bytes_le()?)?;
@@ -89,7 +88,7 @@ pub mod tests {
 
         let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i))?;
         let computed_z_i1Var =
-            circuit.generate_step_constraints(cs.clone(), 0, z_iVar.clone(), vec![])?;
+            circuit.generate_step_constraints(cs.clone(), 0, z_iVar.clone(), ())?;
         assert_eq!(computed_z_i1Var.value()?, z_i1);
         Ok(())
     }
@@ -126,7 +125,7 @@ fn main() -> Result<(), Error> {
     // compute a step of the IVC
     for i in 0..num_steps {
         let start = Instant::now();
-        folding_scheme.prove_step(rng, vec![], None)?;
+        folding_scheme.prove_step(rng, (), None)?;
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
 

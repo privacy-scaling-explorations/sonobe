@@ -139,10 +139,10 @@ impl NovaCycleFoldVerifierKey {
 
 #[cfg(test)]
 mod tests {
-    use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as G1};
+    use ark_bn254::{Bn254, Fr, G1Projective as G1};
     use ark_ff::PrimeField;
     use ark_groth16::Groth16;
-    use ark_grumpkin::{constraints::GVar as GVar2, Projective as G2};
+    use ark_grumpkin::Projective as G2;
     use ark_r1cs_std::alloc::AllocVar;
     use ark_r1cs_std::fields::fp::FpVar;
     use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
@@ -174,18 +174,9 @@ mod tests {
         NovaCycleFoldVerifierKey, ProtocolVerifierKey,
     };
 
-    type NOVA<FC> = Nova<G1, GVar, G2, GVar2, FC, KZG<'static, Bn254>, Pedersen<G2>, false>;
-    type DECIDER<FC> = DeciderEth<
-        G1,
-        GVar,
-        G2,
-        GVar2,
-        FC,
-        KZG<'static, Bn254>,
-        Pedersen<G2>,
-        Groth16<Bn254>,
-        NOVA<FC>,
-    >;
+    type NOVA<FC> = Nova<G1, G2, FC, KZG<'static, Bn254>, Pedersen<G2>, false>;
+    type DECIDER<FC> =
+        DeciderEth<G1, G2, FC, KZG<'static, Bn254>, Pedersen<G2>, Groth16<Bn254>, NOVA<FC>>;
 
     type FS_PP<FC> = <NOVA<FC> as FoldingScheme<G1, G2, FC>>::ProverParam;
     type FS_VP<FC> = <NOVA<FC> as FoldingScheme<G1, G2, FC>>::VerifierParam;

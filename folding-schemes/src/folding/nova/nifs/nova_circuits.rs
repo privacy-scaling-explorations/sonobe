@@ -1,10 +1,8 @@
 /// contains [Nova](https://eprint.iacr.org/2021/370.pdf) NIFS related circuits
-use ark_crypto_primitives::sponge::{constraints::AbsorbGadget, Absorb, CryptographicSponge};
-use ark_ec::CurveGroup;
+use ark_crypto_primitives::sponge::{constraints::AbsorbGadget, CryptographicSponge};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
-    convert::ToConstraintFieldGadget,
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
     uint8::UInt8,
@@ -14,13 +12,16 @@ use ark_std::{fmt::Debug, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::NIFSGadgetTrait;
-use crate::folding::circuits::{
-    nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
-    CF1, CF2,
-};
-use crate::folding::nova::CommittedInstance;
 use crate::folding::traits::CommittedInstanceVarOps;
 use crate::transcript::TranscriptVar;
+use crate::{
+    folding::circuits::{
+        nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
+        CF1, CF2,
+    },
+    Curve,
+};
+use crate::{folding::nova::CommittedInstance, transcript::AbsorbNonNativeGadget};
 
 use super::nova::ChallengeGadget;
 
@@ -28,17 +29,14 @@ use super::nova::ChallengeGadget;
 /// constraints field (E1::Fr, where E1 is the main curve). The peculiarity is that cmE and cmW are
 /// represented non-natively over the constraint field.
 #[derive(Debug, Clone)]
-pub struct CommittedInstanceVar<C: CurveGroup> {
+pub struct CommittedInstanceVar<C: Curve> {
     pub u: FpVar<C::ScalarField>,
     pub x: Vec<FpVar<C::ScalarField>>,
     pub cmE: NonNativeAffineVar<C>,
     pub cmW: NonNativeAffineVar<C>,
 }
 
-impl<C> AllocVar<CommittedInstance<C>, CF1<C>> for CommittedInstanceVar<C>
-where
-    C: CurveGroup,
-{
+impl<C: Curve> AllocVar<CommittedInstance<C>, CF1<C>> for CommittedInstanceVar<C> {
     fn new_variable<T: Borrow<CommittedInstance<C>>>(
         cs: impl Into<Namespace<CF1<C>>>,
         f: impl FnOnce() -> Result<T, SynthesisError>,
@@ -61,10 +59,7 @@ where
     }
 }
 
-impl<C> AbsorbGadget<C::ScalarField> for CommittedInstanceVar<C>
-where
-    C: CurveGroup,
-{
+impl<C: Curve> AbsorbGadget<C::ScalarField> for CommittedInstanceVar<C> {
     fn to_sponge_bytes(&self) -> Result<Vec<UInt8<C::ScalarField>>, SynthesisError> {
         FpVar::batch_to_sponge_bytes(&self.to_sponge_field_elements()?)
     }
@@ -73,14 +68,14 @@ where
         Ok([
             vec![self.u.clone()],
             self.x.clone(),
-            self.cmE.to_constraint_field()?,
-            self.cmW.to_constraint_field()?,
+            self.cmE.to_native_sponge_field_elements()?,
+            self.cmW.to_native_sponge_field_elements()?,
         ]
         .concat())
     }
 }
 
-impl<C: CurveGroup> CommittedInstanceVarOps<C> for CommittedInstanceVar<C> {
+impl<C: Curve> CommittedInstanceVarOps<C> for CommittedInstanceVar<C> {
     type PointVar = NonNativeAffineVar<C>;
 
     fn get_commitments(&self) -> Vec<Self::PointVar> {
@@ -107,7 +102,7 @@ impl<C: CurveGroup> CommittedInstanceVarOps<C> for CommittedInstanceVar<C> {
 /// Implements the circuit that does the checks of the Non-Interactive Folding Scheme Verifier
 /// described in section 4 of [Nova](https://eprint.iacr.org/2021/370.pdf), where the cmE & cmW checks are
 /// delegated to the NIFSCycleFoldGadget.
-pub struct NIFSGadget<C: CurveGroup, S: CryptographicSponge, T: TranscriptVar<CF1<C>, S>> {
+pub struct NIFSGadget<C: Curve, S: CryptographicSponge, T: TranscriptVar<CF1<C>, S>> {
     _c: PhantomData<C>,
     _s: PhantomData<S>,
     _t: PhantomData<T>,
@@ -115,10 +110,9 @@ pub struct NIFSGadget<C: CurveGroup, S: CryptographicSponge, T: TranscriptVar<CF
 
 impl<C, S, T> NIFSGadgetTrait<C, S, T> for NIFSGadget<C, S, T>
 where
-    C: CurveGroup,
+    C: Curve,
     S: CryptographicSponge,
     T: TranscriptVar<CF1<C>, S>,
-    C::ScalarField: Absorb,
 {
     type CommittedInstance = CommittedInstance<C>;
     type CommittedInstanceVar = CommittedInstanceVar<C>;

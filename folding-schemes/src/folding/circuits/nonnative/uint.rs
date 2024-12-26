@@ -3,12 +3,11 @@ use std::{
     cmp::{max, min},
 };
 
-use ark_ff::{BigInteger, Field, One, PrimeField, Zero};
+use ark_ff::{BigInteger, Fp, FpConfig, One, PrimeField, Zero};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
     convert::ToBitsGadget,
-    convert::ToConstraintFieldGadget,
     fields::{fp::FpVar, FieldVar},
     prelude::EqGadget,
     select::CondSelectGadget,
@@ -19,9 +18,10 @@ use num_bigint::BigUint;
 use num_integer::Integer;
 
 use crate::{
-    folding::traits::Inputize,
+    folding::traits::{Inputize, InputizeNonNative},
     transcript::{AbsorbNonNative, AbsorbNonNativeGadget},
     utils::gadgets::{EquivalenceGadget, MatrixGadget, SparseMatrixVar, VectorGadget},
+    Field,
 };
 
 /// `LimbVar` represents a single limb of a non-native unsigned integer in the
@@ -270,23 +270,6 @@ impl<F: PrimeField, G: Field> AllocVar<G, F> for NonNativeUintVar<F> {
     }
 }
 
-impl<F: PrimeField, T: Field> Inputize<F, NonNativeUintVar<F>> for T {
-    fn inputize(&self) -> Vec<F> {
-        assert_eq!(T::extension_degree(), 1);
-        // `unwrap` is safe because `T` is a field with extension degree 1, and
-        // thus `T::to_base_prime_field_elements` should return an iterator with
-        // exactly one element.
-        self.to_base_prime_field_elements()
-            .next()
-            .unwrap()
-            .into_bigint()
-            .to_bits_le()
-            .chunks(NonNativeUintVar::<F>::bits_per_limb())
-            .map(|chunk| F::from(F::BigInt::from_bits_le(chunk)))
-            .collect()
-    }
-}
-
 impl<F: PrimeField> R1CSVar<F> for NonNativeUintVar<F> {
     type Value = BigUint;
 
@@ -517,20 +500,6 @@ impl<F: PrimeField> ToBitsGadget<F> for NonNativeUintVar<F> {
             .map(|limb| limb.to_bits_le())
             .collect::<Result<Vec<_>, _>>()?
             .concat())
-    }
-}
-
-impl<F: PrimeField> ToConstraintFieldGadget<F> for NonNativeUintVar<F> {
-    fn to_constraint_field(&self) -> Result<Vec<FpVar<F>>, SynthesisError> {
-        let bits_per_limb = F::MODULUS_BIT_SIZE as usize - 1;
-
-        let limbs = self
-            .to_bits_le()?
-            .chunks(bits_per_limb)
-            .map(Boolean::le_bits_to_fp)
-            .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(limbs)
     }
 }
 
@@ -830,59 +799,55 @@ impl<F: PrimeField, B: AsRef<[Boolean<F>]>> From<B> for NonNativeUintVar<F> {
     }
 }
 
-// If we impl `AbsorbNonNative` directly for `PrimeField`, rustc will complain
-// that this impl conflicts with the impl for `CurveGroup`.
-// Therefore, we instead impl `AbsorbNonNative` for a slice of `PrimeField` as a
-// workaround.
-impl<TargetField: PrimeField, BaseField: PrimeField> AbsorbNonNative<BaseField>
-    for [TargetField]
-{
-    fn to_native_sponge_field_elements(&self, dest: &mut Vec<BaseField>) {
-        self.iter()
-            .for_each(|x| dest.extend(&nonnative_field_to_field_elements(x)));
+impl<P: FpConfig<N>, const N: usize> AbsorbNonNative for Fp<P, N> {
+    fn to_native_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
+        let bits_per_limb = F::MODULUS_BIT_SIZE as usize - 1;
+        let num_limbs = (Fp::<P, N>::MODULUS_BIT_SIZE as usize).div_ceil(bits_per_limb);
+
+        let mut limbs = self
+            .into_bigint()
+            .to_bits_le()
+            .chunks(bits_per_limb)
+            .map(|chunk| F::from(F::BigInt::from_bits_le(chunk)))
+            .collect::<Vec<F>>();
+        limbs.resize(num_limbs, F::zero());
+
+        dest.extend(&limbs)
     }
 }
 
 impl<F: PrimeField> AbsorbNonNativeGadget<F> for NonNativeUintVar<F> {
     fn to_native_sponge_field_elements(&self) -> Result<Vec<FpVar<F>>, SynthesisError> {
-        self.to_constraint_field()
+        let bits_per_limb = F::MODULUS_BIT_SIZE as usize - 1;
+
+        let limbs = self
+            .to_bits_le()?
+            .chunks(bits_per_limb)
+            .map(Boolean::le_bits_to_fp)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(limbs)
     }
 }
 
-/// The out-circuit counterpart of `NonNativeUintVar::to_constraint_field`
-pub(super) fn nonnative_field_to_field_elements<TargetField: Field, BaseField: PrimeField>(
-    f: &TargetField,
-) -> Vec<BaseField> {
-    assert_eq!(TargetField::extension_degree(), 1);
-    // `unwrap` is safe because `TargetField` is a field with extension degree
-    // 1, and thus `TargetField::to_base_prime_field_elements` should return an
-    // iterator with exactly one element.
-    let bits = f
-        .to_base_prime_field_elements()
-        .next()
-        .unwrap()
-        .into_bigint()
-        .to_bits_le();
+impl<P: FpConfig<N>, const N: usize> Inputize<Self> for Fp<P, N> {
+    /// Returns the internal representation in the same order as how the value
+    /// is allocated in `FpVar::new_input`.
+    fn inputize(&self) -> Vec<Self> {
+        vec![*self]
+    }
+}
 
-    let bits_per_limb = BaseField::MODULUS_BIT_SIZE as usize - 1;
-    let num_limbs =
-        (TargetField::BasePrimeField::MODULUS_BIT_SIZE as usize).div_ceil(bits_per_limb);
-
-    let mut limbs = bits
-        .chunks(bits_per_limb)
-        .map(|chunk| {
-            let mut limb = BaseField::zero();
-            let mut w = BaseField::one();
-            for &b in chunk.iter() {
-                limb += BaseField::from(b) * w;
-                w.double_in_place();
-            }
-            limb
-        })
-        .collect::<Vec<BaseField>>();
-    limbs.resize(num_limbs, BaseField::zero());
-
-    limbs
+impl<F: PrimeField, P: Field> InputizeNonNative<F> for P {
+    /// Returns the internal representation in the same order as how the value
+    /// is allocated in `NonNativeUintVar::new_input`.
+    fn inputize_nonnative(&self) -> Vec<F> {
+        self.into_bigint()
+            .to_bits_le()
+            .chunks(NonNativeUintVar::<F>::bits_per_limb())
+            .map(|chunk| F::from(F::BigInt::from_bits_le(chunk)))
+            .collect()
+    }
 }
 
 impl<F: PrimeField> VectorGadget<NonNativeUintVar<F>> for [NonNativeUintVar<F>] {
@@ -947,6 +912,7 @@ impl<CF: PrimeField> MatrixGadget<NonNativeUintVar<CF>> for SparseMatrixVar<NonN
 
 #[cfg(test)]
 mod tests {
+    use ark_ff::Field;
     use ark_pallas::{Fq, Fr};
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::{test_rng, UniformRand};

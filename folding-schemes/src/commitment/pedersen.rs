@@ -1,4 +1,3 @@
-use ark_ec::CurveGroup;
 use ark_r1cs_std::{boolean::Boolean, convert::ToBitsGadget, prelude::CurveVar};
 use ark_relations::r1cs::SynthesisError;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -8,28 +7,28 @@ use super::CommitmentScheme;
 use crate::folding::circuits::CF2;
 use crate::transcript::Transcript;
 use crate::utils::vec::{vec_add, vec_scalar_mul};
-use crate::Error;
+use crate::{Curve, Error};
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Proof<C: CurveGroup> {
+pub struct Proof<C: Curve> {
     pub R: C,
     pub u: Vec<C::ScalarField>,
     pub r_u: C::ScalarField, // blind
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Params<C: CurveGroup> {
+pub struct Params<C: Curve> {
     pub h: C,
     pub generators: Vec<C::Affine>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct Pedersen<C: CurveGroup, const H: bool = false> {
+pub struct Pedersen<C: Curve, const H: bool = false> {
     _c: PhantomData<C>,
 }
 
 /// Implements the CommitmentScheme trait for Pedersen commitments
-impl<C: CurveGroup, const H: bool> CommitmentScheme<C, H> for Pedersen<C, H> {
+impl<C: Curve, const H: bool> CommitmentScheme<C, H> for Pedersen<C, H> {
     type ProverParams = Params<C>;
     type VerifierParams = Params<C>;
     type Proof = Proof<C>;
@@ -175,28 +174,18 @@ impl<C: CurveGroup, const H: bool> CommitmentScheme<C, H> for Pedersen<C, H> {
     }
 }
 
-pub struct PedersenGadget<C, GC, const H: bool = false>
-where
-    C: CurveGroup,
-    GC: CurveVar<C, CF2<C>>,
-{
-    _cf: PhantomData<CF2<C>>,
+pub struct PedersenGadget<C: Curve, const H: bool = false> {
     _c: PhantomData<C>,
-    _gc: PhantomData<GC>,
 }
 
-impl<C, GC, const H: bool> PedersenGadget<C, GC, H>
-where
-    C: CurveGroup,
-    GC: CurveVar<C, CF2<C>>,
-{
+impl<C: Curve, const H: bool> PedersenGadget<C, H> {
     pub fn commit(
-        h: &GC,
-        g: &[GC],
+        h: &C::Var,
+        g: &[C::Var],
         v: &[Vec<Boolean<CF2<C>>>],
         r: &[Boolean<CF2<C>>],
-    ) -> Result<GC, SynthesisError> {
-        let mut res = GC::zero();
+    ) -> Result<C::Var, SynthesisError> {
+        let mut res = C::Var::zero();
         if H {
             res += h.scalar_mul_le(r.iter())?;
         }
@@ -294,7 +283,7 @@ mod tests {
         let expected_cmVar = GVar::new_witness(cs.clone(), || Ok(cm))?;
 
         // use the gadget
-        let cmVar = PedersenGadget::<Projective, GVar, hiding>::commit(&hVar, &gVar, &vVar, &rVar)?;
+        let cmVar = PedersenGadget::<Projective, hiding>::commit(&hVar, &gVar, &vVar, &rVar)?;
         cmVar.enforce_equal(&expected_cmVar)?;
         Ok(())
     }

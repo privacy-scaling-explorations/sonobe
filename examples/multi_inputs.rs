@@ -10,8 +10,8 @@ use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 use core::marker::PhantomData;
 use std::time::Instant;
 
-use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as Projective};
-use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
+use ark_bn254::{Bn254, Fr, G1Projective as Projective};
+use ark_grumpkin::Projective as Projective2;
 
 use folding_schemes::commitment::{kzg::KZG, pedersen::Pedersen};
 use folding_schemes::folding::nova::{Nova, PreprocessorParam};
@@ -123,9 +123,7 @@ fn main() -> Result<(), Error> {
     /// trait, and the rest of our code would be working without needing to be updated.
     type N = Nova<
         Projective,
-        GVar,
         Projective2,
-        GVar2,
         MultiInputsFCircuit<Fr>,
         KZG<'static, Bn254>,
         Pedersen<Projective2>,

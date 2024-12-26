@@ -1,11 +1,8 @@
 /// contains [Ova](https://hackmd.io/V4838nnlRKal9ZiTHiGYzw) NIFS related circuits
-use ark_crypto_primitives::sponge::{constraints::AbsorbGadget, Absorb, CryptographicSponge};
-use ark_ec::CurveGroup;
-use ark_ff::PrimeField;
+use ark_crypto_primitives::sponge::{constraints::AbsorbGadget, CryptographicSponge};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
-    convert::ToConstraintFieldGadget,
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
     uint8::UInt8,
@@ -16,23 +13,24 @@ use core::{borrow::Borrow, marker::PhantomData};
 
 use super::ova::CommittedInstance;
 use super::NIFSGadgetTrait;
-use crate::folding::circuits::{nonnative::affine::NonNativeAffineVar, CF1};
 use crate::folding::traits::CommittedInstanceVarOps;
 use crate::transcript::TranscriptVar;
+use crate::{
+    folding::circuits::{nonnative::affine::NonNativeAffineVar, CF1},
+    transcript::AbsorbNonNativeGadget,
+};
 
 use crate::folding::nova::nifs::nova::ChallengeGadget;
+use crate::Curve;
 
 #[derive(Debug, Clone)]
-pub struct CommittedInstanceVar<C: CurveGroup> {
+pub struct CommittedInstanceVar<C: Curve> {
     pub u: FpVar<C::ScalarField>,
     pub x: Vec<FpVar<C::ScalarField>>,
     pub cmWE: NonNativeAffineVar<C>,
 }
 
-impl<C> AllocVar<CommittedInstance<C>, CF1<C>> for CommittedInstanceVar<C>
-where
-    C: CurveGroup,
-{
+impl<C: Curve> AllocVar<CommittedInstance<C>, CF1<C>> for CommittedInstanceVar<C> {
     fn new_variable<T: Borrow<CommittedInstance<C>>>(
         cs: impl Into<Namespace<CF1<C>>>,
         f: impl FnOnce() -> Result<T, SynthesisError>,
@@ -53,11 +51,7 @@ where
     }
 }
 
-impl<C> AbsorbGadget<C::ScalarField> for CommittedInstanceVar<C>
-where
-    C: CurveGroup,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-{
+impl<C: Curve> AbsorbGadget<C::ScalarField> for CommittedInstanceVar<C> {
     fn to_sponge_bytes(&self) -> Result<Vec<UInt8<C::ScalarField>>, SynthesisError> {
         FpVar::batch_to_sponge_bytes(&self.to_sponge_field_elements()?)
     }
@@ -66,13 +60,13 @@ where
         Ok([
             vec![self.u.clone()],
             self.x.clone(),
-            self.cmWE.to_constraint_field()?,
+            self.cmWE.to_native_sponge_field_elements()?,
         ]
         .concat())
     }
 }
 
-impl<C: CurveGroup> CommittedInstanceVarOps<C> for CommittedInstanceVar<C> {
+impl<C: Curve> CommittedInstanceVarOps<C> for CommittedInstanceVar<C> {
     type PointVar = NonNativeAffineVar<C>;
 
     fn get_commitments(&self) -> Vec<Self::PointVar> {
@@ -95,7 +89,7 @@ impl<C: CurveGroup> CommittedInstanceVarOps<C> for CommittedInstanceVar<C> {
 
 /// Implements the circuit that does the checks of the Non-Interactive Folding Scheme Verifier
 /// described of the Ova variant, where the cmWE check is delegated to the NIFSCycleFoldGadget.
-pub struct NIFSGadget<C: CurveGroup, S: CryptographicSponge, T: TranscriptVar<CF1<C>, S>> {
+pub struct NIFSGadget<C: Curve, S: CryptographicSponge, T: TranscriptVar<CF1<C>, S>> {
     _c: PhantomData<C>,
     _s: PhantomData<S>,
     _t: PhantomData<T>,
@@ -103,13 +97,9 @@ pub struct NIFSGadget<C: CurveGroup, S: CryptographicSponge, T: TranscriptVar<CF
 
 impl<C, S, T> NIFSGadgetTrait<C, S, T> for NIFSGadget<C, S, T>
 where
-    C: CurveGroup,
+    C: Curve,
     S: CryptographicSponge,
     T: TranscriptVar<CF1<C>, S>,
-    <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-
-    C::ScalarField: Absorb,
-    <C as CurveGroup>::BaseField: PrimeField,
 {
     type CommittedInstance = CommittedInstance<C>;
     type CommittedInstanceVar = CommittedInstanceVar<C>;

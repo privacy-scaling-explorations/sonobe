@@ -7,12 +7,13 @@
 /// i. <s, b> computation is done in log time following a modification of the equation 3 in section
 /// 3.2 from the paper.
 /// ii. s computation is done in 2^{k+1}-2 instead of k*2^k.
-use ark_ec::{AffineRepr, CurveGroup};
+use ark_ec::AffineRepr;
 use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
     convert::ToBitsGadget,
+    eq::EqGadget,
     fields::{emulated_fp::EmulatedFpVar, FieldVar},
     prelude::CurveVar,
 };
@@ -23,15 +24,16 @@ use core::{borrow::Borrow, marker::PhantomData};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use super::{pedersen::Params as PedersenParams, CommitmentScheme};
+use crate::folding::circuits::CF2;
 use crate::transcript::Transcript;
 use crate::utils::{
     powers_of,
     vec::{vec_add, vec_scalar_mul},
 };
-use crate::Error;
+use crate::{Curve, Error};
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Proof<C: CurveGroup> {
+pub struct Proof<C: Curve> {
     a: C::ScalarField,
     l: Vec<C::ScalarField>,
     r: Vec<C::ScalarField>,
@@ -42,12 +44,12 @@ pub struct Proof<C: CurveGroup> {
 /// IPA implements the Inner Product Argument protocol following the CommitmentScheme trait. The
 /// `H` parameter indicates if to use the commitment in hiding mode or not.
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct IPA<C: CurveGroup, const H: bool = false> {
+pub struct IPA<C: Curve, const H: bool = false> {
     _c: PhantomData<C>,
 }
 
 /// Implements the CommitmentScheme trait for IPA
-impl<C: CurveGroup, const H: bool> CommitmentScheme<C, H> for IPA<C, H> {
+impl<C: Curve, const H: bool> CommitmentScheme<C, H> for IPA<C, H> {
     type ProverParams = PedersenParams<C>;
     type VerifierParams = PedersenParams<C>;
     type Proof = (Proof<C>, C::ScalarField, C::ScalarField); // (proof, v=p(x), r=blinding factor)
@@ -434,40 +436,35 @@ fn s_b_inner_gadget<F: PrimeField, CF: PrimeField>(
     Ok(c)
 }
 
-pub type CF<C> = <<C as CurveGroup>::BaseField as Field>::BasePrimeField;
-
-pub struct ProofVar<C: CurveGroup, GC: CurveVar<C, CF<C>>> {
-    a: EmulatedFpVar<C::ScalarField, CF<C>>,
-    l: Vec<EmulatedFpVar<C::ScalarField, CF<C>>>,
-    r: Vec<EmulatedFpVar<C::ScalarField, CF<C>>>,
-    L: Vec<GC>,
-    R: Vec<GC>,
+pub struct ProofVar<C: Curve> {
+    a: EmulatedFpVar<C::ScalarField, CF2<C>>,
+    l: Vec<EmulatedFpVar<C::ScalarField, CF2<C>>>,
+    r: Vec<EmulatedFpVar<C::ScalarField, CF2<C>>>,
+    L: Vec<C::Var>,
+    R: Vec<C::Var>,
 }
-impl<C, GC> AllocVar<Proof<C>, CF<C>> for ProofVar<C, GC>
-where
-    C: CurveGroup,
-    GC: CurveVar<C, CF<C>>,
-    <C as ark_ec::CurveGroup>::BaseField: PrimeField,
-{
+impl<C: Curve> AllocVar<Proof<C>, CF2<C>> for ProofVar<C> {
     fn new_variable<T: Borrow<Proof<C>>>(
-        cs: impl Into<Namespace<CF<C>>>,
+        cs: impl Into<Namespace<CF2<C>>>,
         f: impl FnOnce() -> Result<T, SynthesisError>,
         mode: AllocationMode,
     ) -> Result<Self, SynthesisError> {
         f().and_then(|val| {
             let cs = cs.into();
 
-            let a = EmulatedFpVar::<C::ScalarField, CF<C>>::new_variable(
+            let a = EmulatedFpVar::<C::ScalarField, CF2<C>>::new_variable(
                 cs.clone(),
                 || Ok(val.borrow().a),
                 mode,
             )?;
-            let l: Vec<EmulatedFpVar<C::ScalarField, CF<C>>> =
+            let l: Vec<EmulatedFpVar<C::ScalarField, CF2<C>>> =
                 Vec::new_variable(cs.clone(), || Ok(val.borrow().l.clone()), mode)?;
-            let r: Vec<EmulatedFpVar<C::ScalarField, CF<C>>> =
+            let r: Vec<EmulatedFpVar<C::ScalarField, CF2<C>>> =
                 Vec::new_variable(cs.clone(), || Ok(val.borrow().r.clone()), mode)?;
-            let L: Vec<GC> = Vec::new_variable(cs.clone(), || Ok(val.borrow().L.clone()), mode)?;
-            let R: Vec<GC> = Vec::new_variable(cs.clone(), || Ok(val.borrow().R.clone()), mode)?;
+            let L: Vec<C::Var> =
+                Vec::new_variable(cs.clone(), || Ok(val.borrow().L.clone()), mode)?;
+            let R: Vec<C::Var> =
+                Vec::new_variable(cs.clone(), || Ok(val.borrow().R.clone()), mode)?;
 
             Ok(Self { a, l, r, L, R })
         })
@@ -477,36 +474,26 @@ where
 /// IPAGadget implements the circuit that verifies an IPA Proof. The `H` parameter indicates if to
 /// use the commitment in hiding mode or not, reducing a bit the number of constraints needed in
 /// the later case.
-pub struct IPAGadget<C, GC, const H: bool = false>
-where
-    C: CurveGroup,
-    GC: CurveVar<C, CF<C>>,
-{
-    _cf: PhantomData<CF<C>>,
+pub struct IPAGadget<C: Curve, const H: bool = false> {
     _c: PhantomData<C>,
-    _gc: PhantomData<GC>,
 }
 
-impl<C, GC, const H: bool> IPAGadget<C, GC, H>
-where
-    C: CurveGroup,
-    GC: CurveVar<C, CF<C>>,
-{
+impl<C: Curve, const H: bool> IPAGadget<C, H> {
     /// Verify the IPA opening proof, K=log2(d), where d is the degree of the committed polynomial,
     /// and H indicates if the commitment is in hiding mode and thus uses blinding factors, if not,
     /// there are some constraints saved.
     #[allow(clippy::too_many_arguments)]
     pub fn verify<const K: usize>(
-        g: &[GC],                                 // params.generators
-        h: &GC,                                   // params.h
-        x: &EmulatedFpVar<C::ScalarField, CF<C>>, // evaluation point, challenge
-        v: &EmulatedFpVar<C::ScalarField, CF<C>>, // value at evaluation point
-        P: &GC,                                   // commitment
-        p: &ProofVar<C, GC>,
-        r: &EmulatedFpVar<C::ScalarField, CF<C>>, // blinding factor
-        u: &[EmulatedFpVar<C::ScalarField, CF<C>>; K], // challenges
-        U: &GC,                                   // challenge
-    ) -> Result<Boolean<CF<C>>, SynthesisError> {
+        g: &[C::Var],                              // params.generators
+        h: &C::Var,                                // params.h
+        x: &EmulatedFpVar<C::ScalarField, CF2<C>>, // evaluation point, challenge
+        v: &EmulatedFpVar<C::ScalarField, CF2<C>>, // value at evaluation point
+        P: &C::Var,                                // commitment
+        p: &ProofVar<C>,
+        r: &EmulatedFpVar<C::ScalarField, CF2<C>>, // blinding factor
+        u: &[EmulatedFpVar<C::ScalarField, CF2<C>>; K], // challenges
+        U: &C::Var,                                // challenge
+    ) -> Result<Boolean<CF2<C>>, SynthesisError> {
         if p.L.len() != K || p.R.len() != K {
             return Err(SynthesisError::Unsatisfiable);
         }
@@ -516,7 +503,7 @@ where
         let mut r = r.clone();
 
         // compute u[i]^-1 once
-        let mut u_invs = vec![EmulatedFpVar::<C::ScalarField, CF<C>>::zero(); u.len()];
+        let mut u_invs = vec![EmulatedFpVar::<C::ScalarField, CF2<C>>::zero(); u.len()];
         for (j, u_j) in u.iter().enumerate() {
             u_invs[j] = u_j.inverse()?;
         }
@@ -531,7 +518,7 @@ where
         }
 
         // msm: G=<G, s>
-        let mut G = GC::zero();
+        let mut G = C::Var::zero();
         for (i, s_i) in s.iter().enumerate() {
             G += g[i].scalar_mul_le(s_i.to_bits_le()?.iter())?;
         }
@@ -681,7 +668,7 @@ mod tests {
         let challengeVar = EmulatedFpVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(challenge))?;
         let vVar = EmulatedFpVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(proof.1))?;
         let cmVar = GVar::new_witness(cs.clone(), || Ok(cm))?;
-        let proofVar = ProofVar::<Projective, GVar>::new_witness(cs.clone(), || Ok(proof.0))?;
+        let proofVar = ProofVar::<Projective>::new_witness(cs.clone(), || Ok(proof.0))?;
         let r_blindVar = EmulatedFpVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(r_blind))?;
         let uVar_vec = Vec::<EmulatedFpVar<Fr, Fq>>::new_witness(cs.clone(), || Ok(u))?;
         let uVar: [EmulatedFpVar<Fr, Fq>; k] = uVar_vec.try_into().map_err(|_| {
@@ -693,7 +680,7 @@ mod tests {
         })?;
         let UVar = GVar::new_witness(cs.clone(), || Ok(U))?;
 
-        let v = IPAGadget::<Projective, GVar, hiding>::verify::<k>(
+        let v = IPAGadget::<Projective, hiding>::verify::<k>(
             &gVar,
             &hVar,
             &challengeVar,

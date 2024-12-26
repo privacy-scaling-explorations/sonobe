@@ -9,10 +9,10 @@
 /// - generate the Solidity contract that verifies the proof
 /// - verify the proof in the EVM
 ///
-use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as G1};
+use ark_bn254::{Bn254, Fr, G1Projective as G1};
 
 use ark_groth16::Groth16;
-use ark_grumpkin::{constraints::GVar as GVar2, Projective as G2};
+use ark_grumpkin::Projective as G2;
 
 use experimental_frontends::noir::NoirFCircuit;
 use folding_schemes::{
@@ -49,18 +49,9 @@ fn main() -> Result<(), Error> {
         0,
     ))?;
 
-    pub type N = Nova<G1, GVar, G2, GVar2, NoirFCircuit<Fr>, KZG<'static, Bn254>, Pedersen<G2>>;
-    pub type D = DeciderEth<
-        G1,
-        GVar,
-        G2,
-        GVar2,
-        NoirFCircuit<Fr>,
-        KZG<'static, Bn254>,
-        Pedersen<G2>,
-        Groth16<Bn254>,
-        N,
-    >;
+    pub type N = Nova<G1, G2, NoirFCircuit<Fr>, KZG<'static, Bn254>, Pedersen<G2>>;
+    pub type D =
+        DeciderEth<G1, G2, NoirFCircuit<Fr>, KZG<'static, Bn254>, Pedersen<G2>, Groth16<Bn254>, N>;
 
     let poseidon_config = poseidon_canonical_config::<Fr>();
     let mut rng = ark_std::rand::rngs::OsRng;

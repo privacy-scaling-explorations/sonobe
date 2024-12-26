@@ -3,7 +3,7 @@ use ark_r1cs_std::{
     alloc::AllocVar,
     fields::{fp::FpVar, FieldVar},
 };
-use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
+use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use ark_std::marker::PhantomData;
 use ark_std::{fmt::Debug, Zero};
 
@@ -147,11 +147,7 @@ pub struct WrapperCircuit<F: PrimeField, FC: FCircuit<F>> {
     pub z_i1: Option<Vec<F>>,
 }
 
-impl<F, FC> ark_relations::r1cs::ConstraintSynthesizer<F> for WrapperCircuit<F, FC>
-where
-    F: PrimeField,
-    FC: FCircuit<F>,
-{
+impl<F: PrimeField, FC: FCircuit<F>> ConstraintSynthesizer<F> for WrapperCircuit<F, FC> {
     fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> Result<(), SynthesisError> {
         let z_i =
             Vec::<FpVar<F>>::new_witness(cs.clone(), || Ok(self.z_i.unwrap_or(vec![F::zero()])))?;

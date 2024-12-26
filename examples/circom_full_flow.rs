@@ -9,10 +9,10 @@
 /// - generate the Solidity contract that verifies the proof
 /// - verify the proof in the EVM
 ///
-use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as G1};
+use ark_bn254::{Bn254, Fr, G1Projective as G1};
 
 use ark_groth16::Groth16;
-use ark_grumpkin::{constraints::GVar as GVar2, Projective as G2};
+use ark_grumpkin::Projective as G2;
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -67,13 +67,10 @@ fn main() -> Result<(), Error> {
     let f_circuit_params = (r1cs_path.into(), wasm_path.into(), 1, 2);
     let f_circuit = CircomFCircuit::<Fr>::new(f_circuit_params)?;
 
-    pub type N =
-        Nova<G1, GVar, G2, GVar2, CircomFCircuit<Fr>, KZG<'static, Bn254>, Pedersen<G2>, false>;
+    pub type N = Nova<G1, G2, CircomFCircuit<Fr>, KZG<'static, Bn254>, Pedersen<G2>, false>;
     pub type D = DeciderEth<
         G1,
-        GVar,
         G2,
-        GVar2,
         CircomFCircuit<Fr>,
         KZG<'static, Bn254>,
         Pedersen<G2>,

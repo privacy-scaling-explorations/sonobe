@@ -1,6 +1,4 @@
 /// Implements the scheme described in [ProtoGalaxy](https://eprint.iacr.org/2023/1106.pdf)
-use ark_crypto_primitives::sponge::Absorb;
-use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_poly::{
     univariate::{DensePolynomial, SparsePolynomial},
@@ -14,11 +12,11 @@ use super::utils::{all_powers, betas_star, exponential_powers, pow_i};
 use super::ProtoGalaxyError;
 use super::{CommittedInstance, Witness};
 
-use crate::arith::r1cs::R1CS;
 use crate::folding::traits::Dummy;
 use crate::transcript::Transcript;
 use crate::utils::vec::*;
 use crate::Error;
+use crate::{arith::r1cs::R1CS, Curve};
 
 #[derive(Debug, Clone)]
 pub struct ProtoGalaxyProof<F: PrimeField> {
@@ -36,7 +34,7 @@ impl<F: PrimeField> Dummy<(usize, usize, usize)> for ProtoGalaxyProof<F> {
 }
 
 #[derive(Debug, Clone)]
-pub struct ProtoGalaxyAux<C: CurveGroup> {
+pub struct ProtoGalaxyAux<C: Curve> {
     pub L_X_evals: Vec<C::ScalarField>,
     pub phi_stars: Vec<C>,
 }
@@ -44,13 +42,10 @@ pub struct ProtoGalaxyAux<C: CurveGroup> {
 #[derive(Clone, Debug)]
 /// Implements the protocol described in section 4 of
 /// [ProtoGalaxy](https://eprint.iacr.org/2023/1106.pdf)
-pub struct Folding<C: CurveGroup> {
+pub struct Folding<C: Curve> {
     _phantom: PhantomData<C>,
 }
-impl<C: CurveGroup> Folding<C>
-where
-    C::ScalarField: Absorb,
-{
+impl<C: Curve> Folding<C> {
     #![allow(clippy::type_complexity)]
     /// implements the non-interactive Prover from the folding scheme described in section 4
     pub fn prove(
@@ -434,7 +429,7 @@ pub mod tests {
 
     // k represents the number of instances to be fold, apart from the running instance
     #[allow(clippy::type_complexity)]
-    pub fn prepare_inputs<C: CurveGroup>(
+    pub fn prepare_inputs<C: Curve>(
         k: usize,
     ) -> Result<
         (

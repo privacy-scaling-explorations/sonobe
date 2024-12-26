@@ -98,7 +98,7 @@ impl<'a, E: Pairing<G1: Curve>, const H: bool> CommitmentScheme<E::G1, H> for KZ
     }
 
     /// setup returns the tuple (ProverKey, VerifierKey). For real world deployments the setup must
-    /// be computed in the most trustless way possible, usually through a MPC ceremony.
+    /// be computed in the most trustless way possible, usually through an MPC ceremony.
     fn setup(
         mut rng: impl RngCore,
         len: usize,

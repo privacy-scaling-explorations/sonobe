@@ -14,11 +14,11 @@ use crate::folding::traits::{CommittedInstanceOps, Dummy};
 use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::utils::vec::{is_zero_vec, mat_vec_mul};
 use crate::utils::virtual_polynomial::{build_eq_x_r_vec, VirtualPolynomial};
-use crate::{Error, SonobeCurve};
+use crate::{Curve, Error};
 
 /// Committed CCS instance
 #[derive(Debug, Clone, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CCCS<C: SonobeCurve> {
+pub struct CCCS<C: Curve> {
     // Commitment to witness
     pub C: C,
     // Public input/output
@@ -34,7 +34,7 @@ impl<F: PrimeField> CCS<F> {
     ) -> Result<(CCCS<C>, Witness<F>), Error>
     where
         // enforce that CCS's F is the C::ScalarField
-        C: SonobeCurve<ScalarField = F>,
+        C: Curve<ScalarField = F>,
     {
         let w: Vec<F> = z[(1 + self.l)..].to_vec();
 
@@ -89,7 +89,7 @@ impl<F: PrimeField> CCS<F> {
     }
 }
 
-impl<C: SonobeCurve> Dummy<&CCS<CF1<C>>> for CCCS<C> {
+impl<C: Curve> Dummy<&CCS<CF1<C>>> for CCCS<C> {
     fn dummy(ccs: &CCS<CF1<C>>) -> Self {
         Self {
             C: C::zero(),
@@ -98,7 +98,7 @@ impl<C: SonobeCurve> Dummy<&CCS<CF1<C>>> for CCCS<C> {
     }
 }
 
-impl<C: SonobeCurve> Arith<Witness<CF1<C>>, CCCS<C>> for CCS<CF1<C>> {
+impl<C: Curve> Arith<Witness<CF1<C>>, CCCS<C>> for CCS<CF1<C>> {
     type Evaluation = Vec<CF1<C>>;
 
     fn eval_relation(&self, w: &Witness<CF1<C>>, u: &CCCS<C>) -> Result<Self::Evaluation, Error> {
@@ -120,7 +120,7 @@ impl<C: SonobeCurve> Arith<Witness<CF1<C>>, CCCS<C>> for CCS<CF1<C>> {
     }
 }
 
-impl<C: SonobeCurve> Absorb for CCCS<C> {
+impl<C: Curve> Absorb for CCCS<C> {
     fn to_sponge_bytes(&self, dest: &mut Vec<u8>) {
         C::ScalarField::batch_to_sponge_bytes(&self.to_sponge_field_elements_as_vec(), dest);
     }
@@ -131,7 +131,7 @@ impl<C: SonobeCurve> Absorb for CCCS<C> {
     }
 }
 
-impl<C: SonobeCurve> CommittedInstanceOps<C> for CCCS<C> {
+impl<C: Curve> CommittedInstanceOps<C> for CCCS<C> {
     type Var = CCCSVar<C>;
 
     fn get_commitments(&self) -> Vec<C> {
@@ -143,7 +143,7 @@ impl<C: SonobeCurve> CommittedInstanceOps<C> for CCCS<C> {
     }
 }
 
-impl<C: SonobeCurve> Inputize<CF1<C>> for CCCS<C> {
+impl<C: Curve> Inputize<CF1<C>> for CCCS<C> {
     /// Returns the internal representation in the same order as how the value
     /// is allocated in `CCCSVar::new_input`.
     fn inputize(&self) -> Vec<CF1<C>> {

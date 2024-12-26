@@ -14,7 +14,7 @@ use crate::folding::traits::{CommittedInstanceOps, CommittedInstanceVarOps, Dumm
 use crate::transcript::{Transcript, TranscriptVar};
 use crate::utils::vec::poly_from_vec;
 use crate::{arith::Arith, folding::circuits::CF1};
-use crate::{Error, SonobeCurve};
+use crate::{Curve, Error};
 
 pub mod off_chain;
 pub mod on_chain;
@@ -24,11 +24,7 @@ pub mod on_chain;
 pub struct KZGChallengesGadget {}
 
 impl KZGChallengesGadget {
-    pub fn get_challenges_native<
-        C: SonobeCurve,
-        T: Transcript<CF1<C>>,
-        U: CommittedInstanceOps<C>,
-    >(
+    pub fn get_challenges_native<C: Curve, T: Transcript<CF1<C>>, U: CommittedInstanceOps<C>>(
         transcript: &mut T,
         U_i: &U,
     ) -> Vec<CF1<C>> {
@@ -41,7 +37,7 @@ impl KZGChallengesGadget {
     }
 
     pub fn get_challenges_gadget<
-        C: SonobeCurve,
+        C: Curve,
         S: CryptographicSponge,
         T: TranscriptVar<CF1<C>, S>,
         U: CommittedInstanceVarOps<C>,
@@ -99,7 +95,7 @@ impl EvalGadget {
 /// In the future, we may introduce a better solution that uses a trait for all
 /// folding schemes that specifies their native and in-circuit behaviors.
 pub trait DeciderEnabledNIFS<
-    C: SonobeCurve,
+    C: Curve,
     RU: CommittedInstanceOps<C>, // Running instance
     IU: CommittedInstanceOps<C>, // Incoming instance
     W: WitnessOps<CF1<C>>,

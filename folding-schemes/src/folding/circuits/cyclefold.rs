@@ -33,7 +33,7 @@ use crate::{
         ArithGadget,
     },
     folding::traits::InputizeNonNative,
-    SonobeCurve,
+    Curve,
 };
 
 /// Re-export the Nova committed instance as `CycleFoldCommittedInstance` and
@@ -42,7 +42,7 @@ pub use crate::folding::nova::{
     CommittedInstance as CycleFoldCommittedInstance, Witness as CycleFoldWitness,
 };
 
-impl<C: SonobeCurve> InputizeNonNative<CF2<C>> for CycleFoldCommittedInstance<C> {
+impl<C: Curve> InputizeNonNative<CF2<C>> for CycleFoldCommittedInstance<C> {
     /// Returns the internal representation in the same order as how the value
     /// is allocated in `CycleFoldCommittedInstanceVar::new_input`.
     fn inputize_nonnative(&self) -> Vec<CF2<C>> {
@@ -59,13 +59,13 @@ impl<C: SonobeCurve> InputizeNonNative<CF2<C>> for CycleFoldCommittedInstance<C>
 /// CycleFoldCommittedInstanceVar is the CycleFold CommittedInstance represented
 /// in folding verifier circuit
 #[derive(Debug, Clone)]
-pub struct CycleFoldCommittedInstanceVar<C: SonobeCurve> {
+pub struct CycleFoldCommittedInstanceVar<C: Curve> {
     pub cmE: C::Var,
     pub u: NonNativeUintVar<CF2<C>>,
     pub cmW: C::Var,
     pub x: Vec<NonNativeUintVar<CF2<C>>>,
 }
-impl<C: SonobeCurve> AllocVar<CycleFoldCommittedInstance<C>, CF2<C>>
+impl<C: Curve> AllocVar<CycleFoldCommittedInstance<C>, CF2<C>>
     for CycleFoldCommittedInstanceVar<C>
 {
     fn new_variable<T: Borrow<CycleFoldCommittedInstance<C>>>(
@@ -88,7 +88,7 @@ impl<C: SonobeCurve> AllocVar<CycleFoldCommittedInstance<C>, CF2<C>>
     }
 }
 
-impl<C: SonobeCurve> AbsorbNonNative for CycleFoldCommittedInstance<C> {
+impl<C: Curve> AbsorbNonNative for CycleFoldCommittedInstance<C> {
     // Compatible with the in-circuit `CycleFoldCommittedInstanceVar::to_native_sponge_field_elements`
     fn to_native_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
         self.u.to_native_sponge_field_elements(dest);
@@ -102,7 +102,7 @@ impl<C: SonobeCurve> AbsorbNonNative for CycleFoldCommittedInstance<C> {
     }
 }
 
-impl<C: SonobeCurve> AbsorbNonNativeGadget<C::BaseField> for CycleFoldCommittedInstanceVar<C> {
+impl<C: Curve> AbsorbNonNativeGadget<C::BaseField> for CycleFoldCommittedInstanceVar<C> {
     /// Extracts the underlying field elements from `CycleFoldCommittedInstanceVar`, in the order
     /// of `u`, `x`, `cmE.x`, `cmE.y`, `cmW.x`, `cmW.y`, `cmE.is_inf || cmW.is_inf` (|| is for
     /// concat).
@@ -129,7 +129,7 @@ impl<C: SonobeCurve> AbsorbNonNativeGadget<C::BaseField> for CycleFoldCommittedI
     }
 }
 
-impl<C: SonobeCurve> CycleFoldCommittedInstance<C> {
+impl<C: Curve> CycleFoldCommittedInstance<C> {
     /// hash_cyclefold implements the committed instance hash compatible with the
     /// in-circuit implementation `CycleFoldCommittedInstanceVar::hash`.
     /// Returns `H(U_i)`, where `U_i` is a `CycleFoldCommittedInstance`.
@@ -145,7 +145,7 @@ impl<C: SonobeCurve> CycleFoldCommittedInstance<C> {
     }
 }
 
-impl<C: SonobeCurve> CycleFoldCommittedInstanceVar<C> {
+impl<C: Curve> CycleFoldCommittedInstanceVar<C> {
     /// hash implements the committed instance hash compatible with the native
     /// implementation `CycleFoldCommittedInstance::hash_cyclefold`.
     /// Returns `H(U_i)`, where `U` is a `CycleFoldCommittedInstanceVar`.
@@ -175,14 +175,14 @@ impl<C: SonobeCurve> CycleFoldCommittedInstanceVar<C> {
 /// non-native representation, since it is used to represent the CycleFold witness. This struct is
 /// used in the Decider circuit.
 #[derive(Debug, Clone)]
-pub struct CycleFoldWitnessVar<C: SonobeCurve> {
+pub struct CycleFoldWitnessVar<C: Curve> {
     pub E: Vec<NonNativeUintVar<CF2<C>>>,
     pub rE: NonNativeUintVar<CF2<C>>,
     pub W: Vec<NonNativeUintVar<CF2<C>>>,
     pub rW: NonNativeUintVar<CF2<C>>,
 }
 
-impl<C: SonobeCurve> AllocVar<CycleFoldWitness<C>, CF2<C>> for CycleFoldWitnessVar<C> {
+impl<C: Curve> AllocVar<CycleFoldWitness<C>, CF2<C>> for CycleFoldWitnessVar<C> {
     fn new_variable<T: Borrow<CycleFoldWitness<C>>>(
         cs: impl Into<Namespace<CF2<C>>>,
         f: impl FnOnce() -> Result<T, SynthesisError>,
@@ -205,11 +205,11 @@ impl<C: SonobeCurve> AllocVar<CycleFoldWitness<C>, CF2<C>> for CycleFoldWitnessV
 /// This is the gadget used in the AugmentedFCircuit to verify the CycleFold instances folding,
 /// which checks the correct RLC of u,x,cmE,cmW (hence the name containing 'Full', since it checks
 /// all the RLC values, not only the native ones). It assumes that ci2.cmE=0, ci2.u=1.
-pub struct NIFSFullGadget<C: SonobeCurve> {
+pub struct NIFSFullGadget<C: Curve> {
     _c: PhantomData<C>,
 }
 
-impl<C: SonobeCurve> NIFSFullGadget<C> {
+impl<C: Curve> NIFSFullGadget<C> {
     pub fn fold_committed_instance(
         r_bits: Vec<Boolean<CF2<C>>>,
         cmT: C::Var,
@@ -261,7 +261,7 @@ impl<C: SonobeCurve> NIFSFullGadget<C> {
     }
 }
 
-impl<C: SonobeCurve> ArithGadget<CycleFoldWitnessVar<C>, CycleFoldCommittedInstanceVar<C>>
+impl<C: Curve> ArithGadget<CycleFoldWitnessVar<C>, CycleFoldCommittedInstanceVar<C>>
     for R1CSMatricesVar<CF1<C>, NonNativeUintVar<CF2<C>>>
 {
     type Evaluation = (Vec<NonNativeUintVar<CF2<C>>>, Vec<NonNativeUintVar<CF2<C>>>);
@@ -285,10 +285,10 @@ impl<C: SonobeCurve> ArithGadget<CycleFoldWitnessVar<C>, CycleFoldCommittedInsta
 
 /// CycleFoldChallengeGadget computes the RO challenge used for the CycleFold instances NIFS, it contains a
 /// rust-native and a in-circuit compatible versions.
-pub struct CycleFoldChallengeGadget<C: SonobeCurve> {
+pub struct CycleFoldChallengeGadget<C: Curve> {
     _c: PhantomData<C>, // Nova's Curve2, the one used for the CycleFold circuit
 }
-impl<C: SonobeCurve> CycleFoldChallengeGadget<C> {
+impl<C: Curve> CycleFoldChallengeGadget<C> {
     pub fn get_challenge_native<T: Transcript<C::BaseField>>(
         transcript: &mut T,
         pp_hash: C::BaseField, // public params hash
@@ -345,7 +345,7 @@ pub trait CycleFoldConfig {
         Self::RANDOMNESS_BIT_LENGTH.div_ceil(Self::FIELD_CAPACITY) + 2 * Self::N_INPUT_POINTS + 2
     };
 
-    type C: SonobeCurve;
+    type C: Curve;
 }
 
 /// CycleFoldCircuit contains the constraints that check the correct fold of the committed
@@ -380,7 +380,7 @@ impl<CFG: CycleFoldConfig> ConstraintSynthesizer<CF2<CFG::C>> for CycleFoldCircu
                 .r_bits
                 .unwrap_or(vec![false; CFG::RANDOMNESS_BIT_LENGTH]))
         })?;
-        let points = Vec::<<CFG::C as SonobeCurve>::Var>::new_witness(cs.clone(), || {
+        let points = Vec::<<CFG::C as Curve>::Var>::new_witness(cs.clone(), || {
             Ok(self
                 .points
                 .unwrap_or(vec![CFG::C::zero(); CFG::N_INPUT_POINTS]))
@@ -454,11 +454,11 @@ impl<CFG: CycleFoldConfig> ConstraintSynthesizer<CF2<CFG::C>> for CycleFoldCircu
 /// different fields than the main NIFS impls (Nova, Mova, Ova). Could be abstracted, but it's a
 /// tradeoff between overcomplexity at the NIFSTrait and the (not much) need of generalization at
 /// the CycleFoldNIFS.
-pub struct CycleFoldNIFS<C2: SonobeCurve, CS2: CommitmentScheme<C2, H>, const H: bool = false> {
+pub struct CycleFoldNIFS<C2: Curve, CS2: CommitmentScheme<C2, H>, const H: bool = false> {
     _c2: PhantomData<C2>,
     _cs: PhantomData<CS2>,
 }
-impl<C2: SonobeCurve, CS2: CommitmentScheme<C2, H>, const H: bool> CycleFoldNIFS<C2, CS2, H> {
+impl<C2: Curve, CS2: CommitmentScheme<C2, H>, const H: bool> CycleFoldNIFS<C2, CS2, H> {
     fn prove(
         cf_r_Fq: C2::ScalarField, // C2::Fr==C1::Fq
         cf_W_i: &CycleFoldWitness<C2>,
@@ -515,7 +515,7 @@ pub fn fold_cyclefold_circuit<CFG, C2, CS2, const H: bool>(
 >
 where
     CFG: CycleFoldConfig,
-    C2: SonobeCurve<ScalarField = CF2<CFG::C>, BaseField = CF1<CFG::C>>,
+    C2: Curve<ScalarField = CF2<CFG::C>, BaseField = CF1<CFG::C>>,
     CS2: CommitmentScheme<C2, H>,
 {
     let cs2 = ConstraintSystem::new_ref();
@@ -582,11 +582,11 @@ pub mod tests {
     use crate::transcript::poseidon::poseidon_canonical_config;
     use crate::utils::get_cm_coordinates;
 
-    struct TestCycleFoldConfig<C: SonobeCurve, const N: usize> {
+    struct TestCycleFoldConfig<C: Curve, const N: usize> {
         _c: PhantomData<C>,
     }
 
-    impl<C: SonobeCurve, const N: usize> CycleFoldConfig for TestCycleFoldConfig<C, N> {
+    impl<C: Curve, const N: usize> CycleFoldConfig for TestCycleFoldConfig<C, N> {
         const RANDOMNESS_BIT_LENGTH: usize = NOVA_N_BITS_RO;
         const N_INPUT_POINTS: usize = N;
         type C = C;

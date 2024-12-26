@@ -145,8 +145,8 @@ pub enum Error {
 ///
 /// In other words, C1.Fq == C2.Fr, and C1.Fr == C2.Fq.
 pub trait FoldingScheme<
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2: SonobeCurve,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: Curve,
     FC: FCircuit<C1::ScalarField>,
 >: Clone + Debug
 {
@@ -223,8 +223,8 @@ pub trait FoldingScheme<
 /// Trait with auxiliary methods for multi-folding schemes (ie. HyperNova, ProtoGalaxy, etc),
 /// allowing to create new instances for the multifold.
 pub trait MultiFolding<
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2: SonobeCurve,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: Curve,
     FC: FCircuit<C1::ScalarField>,
 >: Clone + Debug
 {
@@ -250,8 +250,8 @@ pub trait MultiFolding<
 }
 
 pub trait Decider<
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2: SonobeCurve,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: Curve,
     FC: FCircuit<C1::ScalarField>,
     FS: FoldingScheme<C1, C2, FC>,
 >
@@ -291,8 +291,8 @@ pub trait Decider<
 /// DeciderOnchain extends the Decider into preparing the calldata
 pub trait DeciderOnchain<
     E: Pairing,
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2: SonobeCurve,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: Curve,
 >
 {
     type Proof;
@@ -308,27 +308,31 @@ pub trait DeciderOnchain<
     ) -> Result<Vec<u8>, Error>;
 }
 
-pub trait SonobeField:
+/// `Field` trait is a wrapper around `PrimeField` that also includes the
+/// necessary bounds for the field to be used conveniently in folding schemes.
+pub trait Field:
     PrimeField<BasePrimeField = Self> + Absorb + AbsorbNonNative + Inputize<Self>
 {
+    /// The in-circuit variable type for this field.
     type Var: FieldVar<Self, Self>;
 }
 
-impl<P: FpConfig<N>, const N: usize> SonobeField for Fp<P, N> {
+impl<P: FpConfig<N>, const N: usize> Field for Fp<P, N> {
     type Var = FpVar<Self>;
 }
 
-pub trait SonobeCurve:
-    CurveGroup<ScalarField: SonobeField, BaseField: SonobeField>
+/// `Curve` trait is a wrapper around `CurveGroup` that also includes the
+/// necessary bounds for the curve to be used conveniently in folding schemes.
+pub trait Curve:
+    CurveGroup<ScalarField: Field, BaseField: Field>
     + AbsorbNonNative
     + Inputize<Self::BaseField>
     + InputizeNonNative<Self::ScalarField>
 {
+    /// The in-circuit variable type for this curve.
     type Var: CurveVar<Self, Self::BaseField>;
 }
 
-impl<P: SWCurveConfig<ScalarField: SonobeField, BaseField: SonobeField>> SonobeCurve
-    for Projective<P>
-{
+impl<P: SWCurveConfig<ScalarField: Field, BaseField: Field>> Curve for Projective<P> {
     type Var = ProjectiveVar<P, FpVar<P::BaseField>>;
 }

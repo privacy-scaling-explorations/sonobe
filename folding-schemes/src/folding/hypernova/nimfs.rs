@@ -17,19 +17,19 @@ use crate::transcript::Transcript;
 use crate::utils::sum_check::structs::{IOPProof as SumCheckProof, IOPProverMessage};
 use crate::utils::sum_check::{IOPSumCheck, SumCheck};
 use crate::utils::virtual_polynomial::VPAuxInfo;
-use crate::{Error, SonobeCurve};
+use crate::{Curve, Error};
 
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
 /// NIMFSProof defines a multifolding proof
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct NIMFSProof<C: SonobeCurve> {
+pub struct NIMFSProof<C: Curve> {
     pub sc_proof: SumCheckProof<C::ScalarField>,
     pub sigmas_thetas: SigmasThetas<C::ScalarField>,
 }
 
-impl<C: SonobeCurve> Dummy<(usize, usize, usize, usize)> for NIMFSProof<C> {
+impl<C: Curve> Dummy<(usize, usize, usize, usize)> for NIMFSProof<C> {
     fn dummy((s, t, mu, nu): (usize, usize, usize, usize)) -> Self {
         // use 'C::ScalarField::one()' instead of 'zero()' to enforce the NIMFSProof to have the
         // same in-circuit representation to match the number of constraints of an actual proof.
@@ -51,7 +51,7 @@ impl<C: SonobeCurve> Dummy<(usize, usize, usize, usize)> for NIMFSProof<C> {
     }
 }
 
-impl<C: SonobeCurve> Dummy<(&CCS<CF1<C>>, usize, usize)> for NIMFSProof<C> {
+impl<C: Curve> Dummy<(&CCS<CF1<C>>, usize, usize)> for NIMFSProof<C> {
     fn dummy((ccs, mu, nu): (&CCS<CF1<C>>, usize, usize)) -> Self {
         NIMFSProof::dummy((ccs.s, ccs.t, mu, nu))
     }
@@ -63,12 +63,12 @@ pub struct SigmasThetas<F: PrimeField>(pub Vec<Vec<F>>, pub Vec<Vec<F>>);
 #[derive(Debug)]
 /// Implements the Non-Interactive Multi Folding Scheme described in section 5 of
 /// [HyperNova](https://eprint.iacr.org/2023/573.pdf)
-pub struct NIMFS<C: SonobeCurve, T: Transcript<C::ScalarField>> {
+pub struct NIMFS<C: Curve, T: Transcript<C::ScalarField>> {
     pub _c: PhantomData<C>,
     pub _t: PhantomData<T>,
 }
 
-impl<C: SonobeCurve, T: Transcript<C::ScalarField>> NIMFS<C, T> {
+impl<C: Curve, T: Transcript<C::ScalarField>> NIMFS<C, T> {
     pub fn fold(
         lcccs: &[LCCCS<C>],
         cccs: &[CCCS<C>],

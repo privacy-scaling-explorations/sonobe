@@ -3,7 +3,7 @@ use std::{
     cmp::{max, min},
 };
 
-use ark_ff::{BigInteger, Field, Fp, FpConfig, One, PrimeField, Zero};
+use ark_ff::{BigInteger, Fp, FpConfig, One, PrimeField, Zero};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
@@ -21,7 +21,7 @@ use crate::{
     folding::traits::{Inputize, InputizeNonNative},
     transcript::{AbsorbNonNative, AbsorbNonNativeGadget},
     utils::gadgets::{EquivalenceGadget, MatrixGadget, SparseMatrixVar, VectorGadget},
-    SonobeField,
+    Field,
 };
 
 /// `LimbVar` represents a single limb of a non-native unsigned integer in the
@@ -838,7 +838,7 @@ impl<P: FpConfig<N>, const N: usize> Inputize<Self> for Fp<P, N> {
     }
 }
 
-impl<F: PrimeField, P: SonobeField> InputizeNonNative<F> for P {
+impl<F: PrimeField, P: Field> InputizeNonNative<F> for P {
     /// Returns the internal representation in the same order as how the value
     /// is allocated in `NonNativeUintVar::new_input`.
     fn inputize_nonnative(&self) -> Vec<F> {
@@ -912,6 +912,7 @@ impl<CF: PrimeField> MatrixGadget<NonNativeUintVar<CF>> for SparseMatrixVar<NonN
 
 #[cfg(test)]
 mod tests {
+    use ark_ff::Field;
     use ark_pallas::{Fq, Fr};
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::{test_rng, UniformRand};

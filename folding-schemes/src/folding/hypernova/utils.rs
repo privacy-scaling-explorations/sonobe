@@ -9,7 +9,7 @@ use crate::arith::ccs::CCS;
 use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::utils::vec::mat_vec_mul;
 use crate::utils::virtual_polynomial::{build_eq_x_r_vec, eq_eval, VirtualPolynomial};
-use crate::{Error, SonobeCurve};
+use crate::{Curve, Error};
 
 /// Compute the arrays of sigma_i and theta_i from step 4 corresponding to the LCCCS and CCCS
 /// instances
@@ -96,7 +96,7 @@ pub fn compute_c<F: PrimeField>(
 }
 
 /// Compute g(x) polynomial for the given inputs.
-pub fn compute_g<C: SonobeCurve>(
+pub fn compute_g<C: Curve>(
     ccs: &CCS<C::ScalarField>,
     running_instances: &[LCCCS<C>],
     z_lcccs: &[Vec<C::ScalarField>],

@@ -22,7 +22,7 @@ use crate::{
         },
         traits::{CommittedInstanceOps, CommittedInstanceVarOps, Dummy, WitnessOps, WitnessVarOps},
     },
-    SonobeCurve,
+    Curve,
 };
 
 use super::DeciderEnabledNIFS;
@@ -59,8 +59,8 @@ use super::DeciderEnabledNIFS;
 ///
 /// For more details, see [https://privacy-scaling-explorations.github.io/sonobe-docs/design/nova-decider-onchain.html].
 pub struct GenericOnchainDeciderCircuit<
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     RU: CommittedInstanceOps<C1>,       // Running instance
     IU: CommittedInstanceOps<C1>,       // Incoming instance
     W: WitnessOps<CF1<C1>>,             // Witness
@@ -105,8 +105,8 @@ pub struct GenericOnchainDeciderCircuit<
 }
 
 impl<
-        C1: SonobeCurve,
-        C2: SonobeCurve<ScalarField = CF2<C1>, BaseField = CF1<C1>>,
+        C1: Curve,
+        C2: Curve<ScalarField = CF2<C1>, BaseField = CF1<C1>>,
         RU: CommittedInstanceOps<C1> + for<'a> Dummy<&'a A>,
         IU: CommittedInstanceOps<C1> + for<'a> Dummy<&'a A>,
         W: WitnessOps<CF1<C1>> + for<'a> Dummy<&'a A>,
@@ -173,8 +173,8 @@ impl<
 }
 
 impl<
-        C1: SonobeCurve,
-        C2: SonobeCurve<ScalarField = CF2<C1>, BaseField = CF1<C1>>,
+        C1: Curve,
+        C2: Curve<ScalarField = CF2<C1>, BaseField = CF1<C1>>,
         RU: CommittedInstanceOps<C1>,
         IU: CommittedInstanceOps<C1>,
         W: WitnessOps<CF1<C1>>,

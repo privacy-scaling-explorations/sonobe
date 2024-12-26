@@ -27,7 +27,7 @@ use crate::{
         nova::{decider_eth_circuit::WitnessVar, nifs::nova_circuits::CommittedInstanceVar},
         traits::{CommittedInstanceOps, CommittedInstanceVarOps, Dummy, WitnessOps, WitnessVarOps},
     },
-    SonobeCurve,
+    Curve,
 };
 
 use super::DeciderEnabledNIFS;
@@ -35,8 +35,8 @@ use super::DeciderEnabledNIFS;
 /// Circuit that implements part of the in-circuit checks needed for the offchain verification over
 /// the Curve2's BaseField (=Curve1's ScalarField).
 pub struct GenericOffchainDeciderCircuit1<
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     RU: CommittedInstanceOps<C1>,       // Running instance
     IU: CommittedInstanceOps<C1>,       // Incoming instance
     W: WitnessOps<CF1<C1>>,             // Witness
@@ -76,8 +76,8 @@ pub struct GenericOffchainDeciderCircuit1<
 }
 
 impl<
-        C1: SonobeCurve,
-        C2: SonobeCurve<ScalarField = CF2<C1>, BaseField = CF1<C1>>,
+        C1: Curve,
+        C2: Curve<ScalarField = CF2<C1>, BaseField = CF1<C1>>,
         RU: CommittedInstanceOps<C1> + for<'a> Dummy<&'a A>,
         IU: CommittedInstanceOps<C1> + for<'a> Dummy<&'a A>,
         W: WitnessOps<CF1<C1>> + for<'a> Dummy<&'a A>,
@@ -138,8 +138,8 @@ impl<
 }
 
 impl<
-        C1: SonobeCurve,
-        C2: SonobeCurve<ScalarField = CF2<C1>, BaseField = CF1<C1>>,
+        C1: Curve,
+        C2: Curve<ScalarField = CF2<C1>, BaseField = CF1<C1>>,
         RU: CommittedInstanceOps<C1>,
         IU: CommittedInstanceOps<C1>,
         W: WitnessOps<CF1<C1>>,
@@ -227,7 +227,7 @@ where
 
 /// Circuit that implements part of the in-circuit checks needed for the offchain verification over
 /// the Curve1's BaseField (=Curve2's ScalarField).
-pub struct GenericOffchainDeciderCircuit2<C2: SonobeCurve> {
+pub struct GenericOffchainDeciderCircuit2<C2: Curve> {
     /// R1CS of the CycleFold circuit
     pub cf_arith: R1CS<CF1<C2>>,
     pub poseidon_config: PoseidonConfig<CF1<C2>>,
@@ -243,7 +243,7 @@ pub struct GenericOffchainDeciderCircuit2<C2: SonobeCurve> {
     pub kzg_evaluations: Vec<CF1<C2>>,
 }
 
-impl<C2: SonobeCurve> Dummy<(R1CS<CF1<C2>>, PoseidonConfig<CF1<C2>>, usize)>
+impl<C2: Curve> Dummy<(R1CS<CF1<C2>>, PoseidonConfig<CF1<C2>>, usize)>
     for GenericOffchainDeciderCircuit2<C2>
 {
     fn dummy(
@@ -265,7 +265,7 @@ impl<C2: SonobeCurve> Dummy<(R1CS<CF1<C2>>, PoseidonConfig<CF1<C2>>, usize)>
     }
 }
 
-impl<C2: SonobeCurve> ConstraintSynthesizer<CF1<C2>> for GenericOffchainDeciderCircuit2<C2> {
+impl<C2: Curve> ConstraintSynthesizer<CF1<C2>> for GenericOffchainDeciderCircuit2<C2> {
     fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C2>>) -> Result<(), SynthesisError> {
         let cf_r1cs = R1CSMatricesVar::<CF1<C2>, FpVar<CF1<C2>>>::new_witness(cs.clone(), || {
             Ok(self.cf_arith.clone())

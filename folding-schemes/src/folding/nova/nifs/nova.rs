@@ -20,15 +20,15 @@ use crate::folding::circuits::{
 use crate::folding::nova::{CommittedInstance, Witness};
 use crate::transcript::{Transcript, TranscriptVar};
 use crate::utils::vec::{hadamard, mat_vec_mul, vec_add, vec_scalar_mul, vec_sub};
-use crate::{Error, SonobeCurve};
+use crate::{Curve, Error};
 
 /// ChallengeGadget computes the RO challenge used for the Nova instances NIFS, it contains a
 /// rust-native and a in-circuit compatible versions.
-pub struct ChallengeGadget<C: SonobeCurve, CI: Absorb> {
+pub struct ChallengeGadget<C: Curve, CI: Absorb> {
     _c: PhantomData<C>,
     _ci: PhantomData<CI>,
 }
-impl<C: SonobeCurve, CI: Absorb> ChallengeGadget<C, CI> {
+impl<C: Curve, CI: Absorb> ChallengeGadget<C, CI> {
     pub fn get_challenge_native<T: Transcript<C::ScalarField>>(
         transcript: &mut T,
         pp_hash: C::ScalarField, // public params hash
@@ -73,7 +73,7 @@ impl<C: SonobeCurve, CI: Absorb> ChallengeGadget<C, CI> {
 /// [Nova](https://eprint.iacr.org/2021/370.pdf).
 /// `H` specifies whether the NIFS will use a blinding factor
 pub struct NIFS<
-    C: SonobeCurve,
+    C: Curve,
     CS: CommitmentScheme<C, H>,
     T: Transcript<C::ScalarField>,
     const H: bool = false,
@@ -83,7 +83,7 @@ pub struct NIFS<
     _t: PhantomData<T>,
 }
 
-impl<C: SonobeCurve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
+impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
     NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
 {
     type CommittedInstance = CommittedInstance<C>;
@@ -194,7 +194,7 @@ impl<C: SonobeCurve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, 
     }
 }
 
-impl<C: SonobeCurve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
+impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
     NIFS<C, CS, T, H>
 {
     /// compute_T: compute cross-terms T. We use the approach described in

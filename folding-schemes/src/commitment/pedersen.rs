@@ -7,28 +7,28 @@ use super::CommitmentScheme;
 use crate::folding::circuits::CF2;
 use crate::transcript::Transcript;
 use crate::utils::vec::{vec_add, vec_scalar_mul};
-use crate::{Error, SonobeCurve};
+use crate::{Curve, Error};
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Proof<C: SonobeCurve> {
+pub struct Proof<C: Curve> {
     pub R: C,
     pub u: Vec<C::ScalarField>,
     pub r_u: C::ScalarField, // blind
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Params<C: SonobeCurve> {
+pub struct Params<C: Curve> {
     pub h: C,
     pub generators: Vec<C::Affine>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct Pedersen<C: SonobeCurve, const H: bool = false> {
+pub struct Pedersen<C: Curve, const H: bool = false> {
     _c: PhantomData<C>,
 }
 
 /// Implements the CommitmentScheme trait for Pedersen commitments
-impl<C: SonobeCurve, const H: bool> CommitmentScheme<C, H> for Pedersen<C, H> {
+impl<C: Curve, const H: bool> CommitmentScheme<C, H> for Pedersen<C, H> {
     type ProverParams = Params<C>;
     type VerifierParams = Params<C>;
     type Proof = Proof<C>;
@@ -174,11 +174,11 @@ impl<C: SonobeCurve, const H: bool> CommitmentScheme<C, H> for Pedersen<C, H> {
     }
 }
 
-pub struct PedersenGadget<C: SonobeCurve, const H: bool = false> {
+pub struct PedersenGadget<C: Curve, const H: bool = false> {
     _c: PhantomData<C>,
 }
 
-impl<C: SonobeCurve, const H: bool> PedersenGadget<C, H> {
+impl<C: Curve, const H: bool> PedersenGadget<C, H> {
     pub fn commit(
         h: &C::Var,
         g: &[C::Var],

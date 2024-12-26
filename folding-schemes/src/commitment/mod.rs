@@ -3,7 +3,7 @@ use ark_std::fmt::Debug;
 use ark_std::rand::RngCore;
 
 use crate::transcript::Transcript;
-use crate::{Error, SonobeCurve};
+use crate::{Curve, Error};
 
 pub mod ipa;
 pub mod kzg;
@@ -11,7 +11,7 @@ pub mod pedersen;
 
 /// CommitmentScheme defines the vector commitment scheme trait. Where `H` indicates if to use the
 /// commitment in hiding mode or not.
-pub trait CommitmentScheme<C: SonobeCurve, const H: bool = false>: Clone + Debug {
+pub trait CommitmentScheme<C: Curve, const H: bool = false>: Clone + Debug {
     type ProverParams: Clone + Debug + CanonicalSerialize + CanonicalDeserialize;
     type VerifierParams: Clone + Debug + CanonicalSerialize + CanonicalDeserialize;
     type Proof: Clone + Debug + CanonicalSerialize + CanonicalDeserialize;
@@ -130,10 +130,7 @@ mod tests {
         Ok(())
     }
 
-    fn test_homomorphic_property_using_Commitment_trait_opt<
-        C: SonobeCurve,
-        CS: CommitmentScheme<C>,
-    >(
+    fn test_homomorphic_property_using_Commitment_trait_opt<C: Curve, CS: CommitmentScheme<C>>(
         poseidon_config: &PoseidonConfig<C::ScalarField>,
         prover_params: &CS::ProverParams,
         verifier_params: &CS::VerifierParams,

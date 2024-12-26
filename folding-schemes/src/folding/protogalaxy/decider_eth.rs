@@ -19,14 +19,14 @@ use crate::frontend::FCircuit;
 use crate::Error;
 use crate::{
     commitment::{kzg::Proof as KZGProof, pedersen::Params as PedersenParams, CommitmentScheme},
-    SonobeCurve,
+    Curve,
 };
 use crate::{Decider as DeciderTrait, FoldingScheme};
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<C, CS, S>
 where
-    C: SonobeCurve,
+    C: Curve,
     CS: CommitmentScheme<C, ProverChallenge = C::ScalarField, Challenge = C::ScalarField>,
     S: SNARK<C::ScalarField>,
 {
@@ -41,7 +41,7 @@ where
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct VerifierParam<C1, CS_VerifyingKey, S_VerifyingKey>
 where
-    C1: SonobeCurve,
+    C1: Curve,
     CS_VerifyingKey: Clone + CanonicalSerialize + CanonicalDeserialize,
     S_VerifyingKey: Clone + CanonicalSerialize + CanonicalDeserialize,
 {
@@ -65,8 +65,8 @@ pub struct Decider<C1, C2, FC, CS1, CS2, S, FS> {
 impl<C1, C2, FC, CS1, CS2, S, FS> DeciderTrait<C1, C2, FC, FS>
     for Decider<C1, C2, FC, CS1, CS2, S, FS>
 where
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2: SonobeCurve,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: Curve,
     FC: FCircuit<C1::ScalarField>,
     // CS1 is a KZG commitment, where challenge is C1::Fr elem
     CS1: CommitmentScheme<

@@ -32,7 +32,7 @@ use crate::{
     utils::pp_hash,
 };
 use crate::{arith::Arith, commitment::CommitmentScheme};
-use crate::{Error, SonobeCurve};
+use crate::{Curve, Error};
 use decider_eth_circuit::WitnessVar;
 
 pub mod circuits;
@@ -55,11 +55,11 @@ pub mod decider_eth_circuit;
 use super::traits::{CommittedInstanceOps, Inputize, WitnessOps};
 
 /// Configuration for Nova's CycleFold circuit
-pub struct NovaCycleFoldConfig<C: SonobeCurve> {
+pub struct NovaCycleFoldConfig<C: Curve> {
     _c: PhantomData<C>,
 }
 
-impl<C: SonobeCurve> CycleFoldConfig for NovaCycleFoldConfig<C> {
+impl<C: Curve> CycleFoldConfig for NovaCycleFoldConfig<C> {
     const RANDOMNESS_BIT_LENGTH: usize = NOVA_N_BITS_RO;
     // Number of points to be folded in the CycleFold circuit, in Nova's case, this is a fixed
     // amount:
@@ -73,14 +73,14 @@ impl<C: SonobeCurve> CycleFoldConfig for NovaCycleFoldConfig<C> {
 pub type NovaCycleFoldCircuit<C> = CycleFoldCircuit<NovaCycleFoldConfig<C>>;
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CommittedInstance<C: SonobeCurve> {
+pub struct CommittedInstance<C: Curve> {
     pub cmE: C,
     pub u: C::ScalarField,
     pub cmW: C,
     pub x: Vec<C::ScalarField>,
 }
 
-impl<C: SonobeCurve> Dummy<usize> for CommittedInstance<C> {
+impl<C: Curve> Dummy<usize> for CommittedInstance<C> {
     fn dummy(io_len: usize) -> Self {
         Self {
             cmE: C::zero(),
@@ -91,13 +91,13 @@ impl<C: SonobeCurve> Dummy<usize> for CommittedInstance<C> {
     }
 }
 
-impl<C: SonobeCurve> Dummy<&R1CS<CF1<C>>> for CommittedInstance<C> {
+impl<C: Curve> Dummy<&R1CS<CF1<C>>> for CommittedInstance<C> {
     fn dummy(r1cs: &R1CS<CF1<C>>) -> Self {
         Self::dummy(r1cs.l)
     }
 }
 
-impl<C: SonobeCurve> Absorb for CommittedInstance<C> {
+impl<C: Curve> Absorb for CommittedInstance<C> {
     fn to_sponge_bytes(&self, dest: &mut Vec<u8>) {
         C::ScalarField::batch_to_sponge_bytes(&self.to_sponge_field_elements_as_vec(), dest);
     }
@@ -110,7 +110,7 @@ impl<C: SonobeCurve> Absorb for CommittedInstance<C> {
     }
 }
 
-impl<C: SonobeCurve> CommittedInstanceOps<C> for CommittedInstance<C> {
+impl<C: Curve> CommittedInstanceOps<C> for CommittedInstance<C> {
     type Var = CommittedInstanceVar<C>;
 
     fn get_commitments(&self) -> Vec<C> {
@@ -122,7 +122,7 @@ impl<C: SonobeCurve> CommittedInstanceOps<C> for CommittedInstance<C> {
     }
 }
 
-impl<C: SonobeCurve> Inputize<CF1<C>> for CommittedInstance<C> {
+impl<C: Curve> Inputize<CF1<C>> for CommittedInstance<C> {
     /// Returns the internal representation in the same order as how the value
     /// is allocated in `CommittedInstanceVar::new_input`.
     fn inputize(&self) -> Vec<CF1<C>> {
@@ -137,14 +137,14 @@ impl<C: SonobeCurve> Inputize<CF1<C>> for CommittedInstance<C> {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Witness<C: SonobeCurve> {
+pub struct Witness<C: Curve> {
     pub E: Vec<C::ScalarField>,
     pub rE: C::ScalarField,
     pub W: Vec<C::ScalarField>,
     pub rW: C::ScalarField,
 }
 
-impl<C: SonobeCurve> Witness<C> {
+impl<C: Curve> Witness<C> {
     pub fn new<const H: bool>(w: Vec<C::ScalarField>, e_len: usize, mut rng: impl RngCore) -> Self {
         let (rW, rE) = if H {
             (
@@ -182,7 +182,7 @@ impl<C: SonobeCurve> Witness<C> {
     }
 }
 
-impl<C: SonobeCurve> Dummy<&R1CS<CF1<C>>> for Witness<C> {
+impl<C: Curve> Dummy<&R1CS<CF1<C>>> for Witness<C> {
     fn dummy(r1cs: &R1CS<CF1<C>>) -> Self {
         Self {
             E: vec![C::ScalarField::zero(); r1cs.A.n_rows],
@@ -193,7 +193,7 @@ impl<C: SonobeCurve> Dummy<&R1CS<CF1<C>>> for Witness<C> {
     }
 }
 
-impl<C: SonobeCurve> WitnessOps<C::ScalarField> for Witness<C> {
+impl<C: Curve> WitnessOps<C::ScalarField> for Witness<C> {
     type Var = WitnessVar<C>;
 
     fn get_openings(&self) -> Vec<(&[C::ScalarField], C::ScalarField)> {
@@ -204,8 +204,8 @@ impl<C: SonobeCurve> WitnessOps<C::ScalarField> for Witness<C> {
 #[derive(Debug, Clone)]
 pub struct PreprocessorParam<C1, C2, FC, CS1, CS2, const H: bool = false>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     FC: FCircuit<C1::ScalarField>,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
@@ -221,8 +221,8 @@ where
 
 impl<C1, C2, FC, CS1, CS2, const H: bool> PreprocessorParam<C1, C2, FC, CS1, CS2, H>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     FC: FCircuit<C1::ScalarField>,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
@@ -243,8 +243,8 @@ where
 #[derive(Debug, Clone)]
 pub struct ProverParams<C1, C2, CS1, CS2, const H: bool = false>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
 {
@@ -258,8 +258,8 @@ where
 
 impl<C1, C2, CS1, CS2, const H: bool> Valid for ProverParams<C1, C2, CS1, CS2, H>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
 {
@@ -278,8 +278,8 @@ where
 }
 impl<C1, C2, CS1, CS2, const H: bool> CanonicalSerialize for ProverParams<C1, C2, CS1, CS2, H>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
 {
@@ -298,8 +298,8 @@ where
 }
 impl<C1, C2, CS1, CS2, const H: bool> CanonicalDeserialize for ProverParams<C1, C2, CS1, CS2, H>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
 {
@@ -322,8 +322,8 @@ where
 #[derive(Debug, Clone)]
 pub struct VerifierParams<C1, C2, CS1, CS2, const H: bool = false>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
 {
@@ -341,8 +341,8 @@ where
 
 impl<C1, C2, CS1, CS2, const H: bool> Valid for VerifierParams<C1, C2, CS1, CS2, H>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
 {
@@ -354,8 +354,8 @@ where
 }
 impl<C1, C2, CS1, CS2, const H: bool> CanonicalSerialize for VerifierParams<C1, C2, CS1, CS2, H>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
 {
@@ -375,8 +375,8 @@ where
 
 impl<C1, C2, CS1, CS2, const H: bool> VerifierParams<C1, C2, CS1, CS2, H>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
 {
@@ -395,8 +395,8 @@ where
 #[derive(PartialEq, Eq, Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct IVCProof<C1, C2>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
 {
     // current step of the IVC
     pub i: C1::ScalarField,
@@ -421,8 +421,8 @@ where
 #[derive(Clone, Debug)]
 pub struct Nova<C1, C2, FC, CS1, CS2, const H: bool = false>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     FC: FCircuit<C1::ScalarField>,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
@@ -459,12 +459,12 @@ where
 impl<C1, C2, FC, CS1, CS2, const H: bool> FoldingScheme<C1, C2, FC>
     for Nova<C1, C2, FC, CS1, CS2, H>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     FC: FCircuit<C1::ScalarField>,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
 {
     type PreprocessorParam = PreprocessorParam<C1, C2, FC, CS1, CS2, H>;
     type ProverParam = ProverParams<C1, C2, CS1, CS2, H>;
@@ -954,12 +954,12 @@ where
 
 impl<C1, C2, FC, CS1, CS2, const H: bool> Nova<C1, C2, FC, CS1, CS2, H>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     FC: FCircuit<C1::ScalarField>,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
 {
     // folds the given cyclefold circuit and its instances
     #[allow(clippy::type_complexity)]
@@ -1011,10 +1011,10 @@ pub fn get_r1cs<C1, C2, FC>(
     F_circuit: FC,
 ) -> Result<(R1CS<C1::ScalarField>, R1CS<C2::ScalarField>), Error>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     FC: FCircuit<C1::ScalarField>,
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
 {
     let augmented_F_circuit = AugmentedFCircuit::<C1, C2, FC>::empty(poseidon_config, F_circuit);
     let cf_circuit = NovaCycleFoldCircuit::<C1>::empty();
@@ -1030,10 +1030,10 @@ pub fn get_cs_params_len<C1, C2, FC>(
     F_circuit: FC,
 ) -> Result<(usize, usize), Error>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     FC: FCircuit<C1::ScalarField>,
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
 {
     let (r1cs, cf_r1cs) = get_r1cs::<C1, C2, FC>(poseidon_config, F_circuit)?;
     Ok((r1cs.A.n_rows, cf_r1cs.A.n_rows))

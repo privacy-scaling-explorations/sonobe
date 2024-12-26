@@ -12,7 +12,7 @@ use crate::arith::{
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::CF1;
 use crate::utils::gadgets::{EquivalenceGadget, VectorGadget};
-use crate::{Error, SonobeCurve};
+use crate::{Curve, Error};
 
 /// Implements `Arith` for R1CS, where the witness is of type [`Witness`], and
 /// the committed instance is of type [`CommittedInstance`].
@@ -41,7 +41,7 @@ use crate::{Error, SonobeCurve};
 /// For R1CS, whether it is relaxed or not is now determined by the types of `W`
 /// and `U`: the satisfiability check is relaxed if `W` and `U` are defined by
 /// folding schemes, and plain if they are vectors of field elements.
-impl<C: SonobeCurve> Arith<Witness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
+impl<C: Curve> Arith<Witness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
     type Evaluation = Vec<CF1<C>>;
 
     fn eval_relation(
@@ -61,7 +61,7 @@ impl<C: SonobeCurve> Arith<Witness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
     }
 }
 
-impl<C: SonobeCurve> ArithSampler<C, Witness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
+impl<C: Curve> ArithSampler<C, Witness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
     fn sample_witness_instance<CS: CommitmentScheme<C, true>>(
         &self,
         params: &CS::ProverParams,
@@ -102,7 +102,7 @@ impl<C: SonobeCurve> ArithSampler<C, Witness<C>, CommittedInstance<C>> for R1CS<
     }
 }
 
-impl<C: SonobeCurve> ArithGadget<WitnessVar<C>, CommittedInstanceVar<C>>
+impl<C: Curve> ArithGadget<WitnessVar<C>, CommittedInstanceVar<C>>
     for R1CSMatricesVar<C::ScalarField, FpVar<C::ScalarField>>
 {
     type Evaluation = (Vec<FpVar<C::ScalarField>>, Vec<FpVar<C::ScalarField>>);

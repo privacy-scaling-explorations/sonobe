@@ -32,18 +32,18 @@ use crate::{
     arith::r1cs::{circuits::R1CSMatricesVar, R1CS},
     folding::circuits::decider::{DeciderEnabledNIFS, EvalGadget, KZGChallengesGadget},
 };
-use crate::{Error, SonobeCurve};
+use crate::{Curve, Error};
 
 /// In-circuit representation of the Witness associated to the CommittedInstance.
 #[derive(Debug, Clone)]
-pub struct WitnessVar<C: SonobeCurve> {
+pub struct WitnessVar<C: Curve> {
     pub E: Vec<FpVar<C::ScalarField>>,
     pub rE: FpVar<C::ScalarField>,
     pub W: Vec<FpVar<C::ScalarField>>,
     pub rW: FpVar<C::ScalarField>,
 }
 
-impl<C: SonobeCurve> AllocVar<Witness<C>, CF1<C>> for WitnessVar<C> {
+impl<C: Curve> AllocVar<Witness<C>, CF1<C>> for WitnessVar<C> {
     fn new_variable<T: Borrow<Witness<C>>>(
         cs: impl Into<Namespace<CF1<C>>>,
         f: impl FnOnce() -> Result<T, SynthesisError>,
@@ -67,7 +67,7 @@ impl<C: SonobeCurve> AllocVar<Witness<C>, CF1<C>> for WitnessVar<C> {
     }
 }
 
-impl<C: SonobeCurve> WitnessVarOps<C::ScalarField> for WitnessVar<C> {
+impl<C: Curve> WitnessVarOps<C::ScalarField> for WitnessVar<C> {
     fn get_openings(&self) -> Vec<(&[FpVar<C::ScalarField>], FpVar<C::ScalarField>)> {
         vec![(&self.W, self.rW.clone()), (&self.E, self.rE.clone())]
     }
@@ -86,8 +86,8 @@ pub type DeciderEthCircuit<C1, C2> = GenericOnchainDeciderCircuit<
 
 /// returns an instance of the DeciderEthCircuit from the given Nova struct
 impl<
-        C1: SonobeCurve,
-        C2: SonobeCurve,
+        C1: Curve,
+        C2: Curve,
         FC: FCircuit<C1::ScalarField>,
         CS1: CommitmentScheme<C1, H>,
         // enforce that the CS2 is Pedersen commitment scheme, since we're at Ethereum's EVM decider
@@ -153,7 +153,7 @@ impl<
 
 pub struct DeciderNovaGadget;
 
-impl<C: SonobeCurve>
+impl<C: Curve>
     DeciderEnabledNIFS<C, CommittedInstance<C>, CommittedInstance<C>, Witness<C>, R1CS<CF1<C>>>
     for DeciderNovaGadget
 {

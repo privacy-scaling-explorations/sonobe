@@ -21,16 +21,16 @@ use crate::{
 };
 
 use crate::folding::nova::nifs::nova::ChallengeGadget;
-use crate::SonobeCurve;
+use crate::Curve;
 
 #[derive(Debug, Clone)]
-pub struct CommittedInstanceVar<C: SonobeCurve> {
+pub struct CommittedInstanceVar<C: Curve> {
     pub u: FpVar<C::ScalarField>,
     pub x: Vec<FpVar<C::ScalarField>>,
     pub cmWE: NonNativeAffineVar<C>,
 }
 
-impl<C: SonobeCurve> AllocVar<CommittedInstance<C>, CF1<C>> for CommittedInstanceVar<C> {
+impl<C: Curve> AllocVar<CommittedInstance<C>, CF1<C>> for CommittedInstanceVar<C> {
     fn new_variable<T: Borrow<CommittedInstance<C>>>(
         cs: impl Into<Namespace<CF1<C>>>,
         f: impl FnOnce() -> Result<T, SynthesisError>,
@@ -51,7 +51,7 @@ impl<C: SonobeCurve> AllocVar<CommittedInstance<C>, CF1<C>> for CommittedInstanc
     }
 }
 
-impl<C: SonobeCurve> AbsorbGadget<C::ScalarField> for CommittedInstanceVar<C> {
+impl<C: Curve> AbsorbGadget<C::ScalarField> for CommittedInstanceVar<C> {
     fn to_sponge_bytes(&self) -> Result<Vec<UInt8<C::ScalarField>>, SynthesisError> {
         FpVar::batch_to_sponge_bytes(&self.to_sponge_field_elements()?)
     }
@@ -66,7 +66,7 @@ impl<C: SonobeCurve> AbsorbGadget<C::ScalarField> for CommittedInstanceVar<C> {
     }
 }
 
-impl<C: SonobeCurve> CommittedInstanceVarOps<C> for CommittedInstanceVar<C> {
+impl<C: Curve> CommittedInstanceVarOps<C> for CommittedInstanceVar<C> {
     type PointVar = NonNativeAffineVar<C>;
 
     fn get_commitments(&self) -> Vec<Self::PointVar> {
@@ -89,7 +89,7 @@ impl<C: SonobeCurve> CommittedInstanceVarOps<C> for CommittedInstanceVar<C> {
 
 /// Implements the circuit that does the checks of the Non-Interactive Folding Scheme Verifier
 /// described of the Ova variant, where the cmWE check is delegated to the NIFSCycleFoldGadget.
-pub struct NIFSGadget<C: SonobeCurve, S: CryptographicSponge, T: TranscriptVar<CF1<C>, S>> {
+pub struct NIFSGadget<C: Curve, S: CryptographicSponge, T: TranscriptVar<CF1<C>, S>> {
     _c: PhantomData<C>,
     _s: PhantomData<S>,
     _t: PhantomData<T>,
@@ -97,7 +97,7 @@ pub struct NIFSGadget<C: SonobeCurve, S: CryptographicSponge, T: TranscriptVar<C
 
 impl<C, S, T> NIFSGadgetTrait<C, S, T> for NIFSGadget<C, S, T>
 where
-    C: SonobeCurve,
+    C: Curve,
     S: CryptographicSponge,
     T: TranscriptVar<CF1<C>, S>,
 {

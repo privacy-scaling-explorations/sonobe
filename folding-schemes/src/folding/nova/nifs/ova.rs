@@ -17,7 +17,7 @@ use crate::folding::traits::{CommittedInstanceOps, Inputize};
 use crate::folding::{circuits::CF1, traits::Dummy};
 use crate::transcript::Transcript;
 use crate::utils::vec::{hadamard, mat_vec_mul, vec_scalar_mul, vec_sub};
-use crate::{Error, SonobeCurve};
+use crate::{Curve, Error};
 
 /// A CommittedInstance in [Ova](https://hackmd.io/V4838nnlRKal9ZiTHiGYzw) is represented by `W` or
 /// `W'`. It is the result of the commitment to a vector that contains the witness `w` concatenated
@@ -25,13 +25,13 @@ use crate::{Error, SonobeCurve};
 /// document `u` is denoted as `mu`, in this implementation we use `u` so it follows the original
 /// Nova notation, so code is easier to follow).
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CommittedInstance<C: SonobeCurve> {
+pub struct CommittedInstance<C: Curve> {
     pub u: C::ScalarField, // in the Ova document is denoted as `mu`
     pub x: Vec<C::ScalarField>,
     pub cmWE: C,
 }
 
-impl<C: SonobeCurve> Absorb for CommittedInstance<C> {
+impl<C: Curve> Absorb for CommittedInstance<C> {
     fn to_sponge_bytes(&self, dest: &mut Vec<u8>) {
         C::ScalarField::batch_to_sponge_bytes(&self.to_sponge_field_elements_as_vec(), dest);
     }
@@ -43,7 +43,7 @@ impl<C: SonobeCurve> Absorb for CommittedInstance<C> {
     }
 }
 
-impl<C: SonobeCurve> CommittedInstanceOps<C> for CommittedInstance<C> {
+impl<C: Curve> CommittedInstanceOps<C> for CommittedInstance<C> {
     type Var = CommittedInstanceVar<C>;
 
     fn get_commitments(&self) -> Vec<C> {
@@ -55,7 +55,7 @@ impl<C: SonobeCurve> CommittedInstanceOps<C> for CommittedInstance<C> {
     }
 }
 
-impl<C: SonobeCurve> Inputize<CF1<C>> for CommittedInstance<C> {
+impl<C: Curve> Inputize<CF1<C>> for CommittedInstance<C> {
     /// Returns the internal representation in the same order as how the value
     /// is allocated in `CommittedInstanceVar::new_input`.
     fn inputize(&self) -> Vec<CF1<C>> {
@@ -66,12 +66,12 @@ impl<C: SonobeCurve> Inputize<CF1<C>> for CommittedInstance<C> {
 /// A Witness in Ova is represented by `w`. It also contains a blinder which can or not be used
 /// when committing to the witness itself.
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Witness<C: SonobeCurve> {
+pub struct Witness<C: Curve> {
     pub w: Vec<C::ScalarField>,
     pub rW: C::ScalarField,
 }
 
-impl<C: SonobeCurve> Witness<C> {
+impl<C: Curve> Witness<C> {
     /// Generates a new `Witness` instance from a given witness vector.
     /// If `H = true`, then we assume we want to blind it at commitment time,
     /// hence sampling `rW` from the randomness passed.
@@ -104,7 +104,7 @@ impl<C: SonobeCurve> Witness<C> {
     }
 }
 
-impl<C: SonobeCurve> Dummy<&R1CS<CF1<C>>> for Witness<C> {
+impl<C: Curve> Dummy<&R1CS<CF1<C>>> for Witness<C> {
     fn dummy(r1cs: &R1CS<CF1<C>>) -> Self {
         Self {
             w: vec![C::ScalarField::zero(); r1cs.A.n_cols - 1 - r1cs.l],
@@ -115,7 +115,7 @@ impl<C: SonobeCurve> Dummy<&R1CS<CF1<C>>> for Witness<C> {
 
 /// Implements the NIFS (Non-Interactive Folding Scheme) trait for Ova.
 pub struct NIFS<
-    C: SonobeCurve,
+    C: Curve,
     CS: CommitmentScheme<C, H>,
     T: Transcript<C::ScalarField>,
     const H: bool = false,
@@ -125,7 +125,7 @@ pub struct NIFS<
     _t: PhantomData<T>,
 }
 
-impl<C: SonobeCurve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
+impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
     NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
 {
     type CommittedInstance = CommittedInstance<C>;
@@ -231,7 +231,7 @@ impl<C: SonobeCurve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, 
 
 /// Computes the E parameter (error terms) for the given R1CS and the instance's z and u. This
 /// method is used by the verifier to obtain E in order to check the RelaxedR1CS relation.
-pub fn compute_E<C: SonobeCurve>(
+pub fn compute_E<C: Curve>(
     r1cs: &R1CS<C::ScalarField>,
     z: &[C::ScalarField],
     u: C::ScalarField,
@@ -265,11 +265,11 @@ pub mod tests {
     // But since we don't hold `E` nor `e` within the NIFS, we create this structure to pass
     // `e` such that the check can be done.
     #[derive(Debug, Clone)]
-    pub(crate) struct TestingWitness<C: SonobeCurve> {
+    pub(crate) struct TestingWitness<C: Curve> {
         pub(crate) w: Vec<C::ScalarField>,
         pub(crate) e: Vec<C::ScalarField>,
     }
-    impl<C: SonobeCurve> Arith<TestingWitness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
+    impl<C: Curve> Arith<TestingWitness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
         type Evaluation = Vec<CF1<C>>;
 
         fn eval_relation(

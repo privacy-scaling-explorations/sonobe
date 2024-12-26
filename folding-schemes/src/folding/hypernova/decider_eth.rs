@@ -15,13 +15,13 @@ use crate::folding::circuits::decider::DeciderEnabledNIFS;
 use crate::folding::nova::decider_eth::VerifierParam;
 use crate::folding::traits::WitnessOps;
 use crate::frontend::FCircuit;
+use crate::{Curve, Error};
 use crate::{Decider as DeciderTrait, FoldingScheme};
-use crate::{Error, SonobeCurve};
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<C1, CS1, S>
 where
-    C1: SonobeCurve,
+    C1: Curve,
     CS1: CommitmentScheme<C1, ProverChallenge = C1::ScalarField, Challenge = C1::ScalarField>,
     S: SNARK<C1::ScalarField>,
 {
@@ -49,8 +49,8 @@ pub struct Decider<C1, C2, FC, CS1, CS2, S, FS, const MU: usize, const NU: usize
 impl<C1, C2, FC, CS1, CS2, S, FS, const MU: usize, const NU: usize> DeciderTrait<C1, C2, FC, FS>
     for Decider<C1, C2, FC, CS1, CS2, S, FS, MU, NU>
 where
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2: SonobeCurve,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: Curve,
     FC: FCircuit<C1::ScalarField>,
     // CS1 is a KZG commitment, where challenge is C1::Fr elem
     CS1: CommitmentScheme<

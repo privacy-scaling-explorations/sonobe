@@ -9,12 +9,12 @@ use ark_relations::r1cs::SynthesisError;
 
 use crate::{
     transcript::{AbsorbNonNativeGadget, Transcript},
-    Error, SonobeCurve,
+    Curve, Error,
 };
 
 use super::circuits::CF1;
 
-pub trait CommittedInstanceOps<C: SonobeCurve>: Inputize<CF1<C>> {
+pub trait CommittedInstanceOps<C: Curve>: Inputize<CF1<C>> {
     /// The in-circuit representation of the committed instance.
     type Var: AllocVar<Self, CF1<C>> + CommittedInstanceVarOps<C>;
     /// `hash` implements the committed instance hash compatible with the
@@ -57,7 +57,7 @@ pub trait CommittedInstanceOps<C: SonobeCurve>: Inputize<CF1<C>> {
     }
 }
 
-pub trait CommittedInstanceVarOps<C: SonobeCurve> {
+pub trait CommittedInstanceVarOps<C: Curve> {
     type PointVar: AbsorbNonNativeGadget<CF1<C>>;
     /// `hash` implements the in-circuit committed instance hash compatible with
     /// the native implementation from `CommittedInstanceOps::hash`.

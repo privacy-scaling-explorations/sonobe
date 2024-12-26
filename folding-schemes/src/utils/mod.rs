@@ -9,7 +9,7 @@ use sha3::{Digest, Sha3_256};
 
 use crate::arith::ArithSerializer;
 use crate::commitment::CommitmentScheme;
-use crate::{Error, SonobeCurve};
+use crate::{Curve, Error};
 
 pub mod eth;
 pub mod gadgets;
@@ -36,7 +36,7 @@ pub fn powers_of<F: PrimeField>(x: F, n: usize) -> Vec<F> {
 
 /// returns the coordinates of a commitment point. This is compatible with the arkworks
 /// GC.to_constraint_field()[..2]
-pub fn get_cm_coordinates<C: SonobeCurve>(cm: &C) -> Vec<C::BaseField> {
+pub fn get_cm_coordinates<C: Curve>(cm: &C) -> Vec<C::BaseField> {
     let (cm_x, cm_y) = cm.into_affine().xy().unwrap_or_default();
     vec![cm_x, cm_y]
 }
@@ -50,8 +50,8 @@ pub fn pp_hash<C1, C2, CS1, CS2, const H: bool>(
     poseidon_config: &PoseidonConfig<C1::ScalarField>,
 ) -> Result<C1::ScalarField, Error>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
 {

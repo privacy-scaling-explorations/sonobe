@@ -2,7 +2,7 @@ use ark_ec::{
     short_weierstrass::{Projective, SWCurveConfig, SWFlags},
     AffineRepr, CurveGroup,
 };
-use ark_ff::{Field, PrimeField};
+use ark_ff::PrimeField;
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     eq::EqGadget,
@@ -17,7 +17,7 @@ use ark_std::{borrow::Borrow, One, Zero};
 use crate::{
     folding::traits::{Inputize, InputizeNonNative},
     transcript::{AbsorbNonNative, AbsorbNonNativeGadget},
-    SonobeCurve, SonobeField,
+    Curve, Field,
 };
 
 use super::uint::NonNativeUintVar;
@@ -26,12 +26,12 @@ use super::uint::NonNativeUintVar;
 /// field, over the constraint field. It is not intended to perform operations, but just to contain
 /// the affine coordinates in order to perform hash operations of the point.
 #[derive(Debug, Clone)]
-pub struct NonNativeAffineVar<C: SonobeCurve> {
+pub struct NonNativeAffineVar<C: Curve> {
     pub x: NonNativeUintVar<C::ScalarField>,
     pub y: NonNativeUintVar<C::ScalarField>,
 }
 
-impl<C: SonobeCurve> AllocVar<C, C::ScalarField> for NonNativeAffineVar<C> {
+impl<C: Curve> AllocVar<C, C::ScalarField> for NonNativeAffineVar<C> {
     fn new_variable<T: Borrow<C>>(
         cs: impl Into<Namespace<C::ScalarField>>,
         f: impl FnOnce() -> Result<T, SynthesisError>,
@@ -51,7 +51,7 @@ impl<C: SonobeCurve> AllocVar<C, C::ScalarField> for NonNativeAffineVar<C> {
     }
 }
 
-impl<C: SonobeCurve> R1CSVar<C::ScalarField> for NonNativeAffineVar<C> {
+impl<C: Curve> R1CSVar<C::ScalarField> for NonNativeAffineVar<C> {
     type Value = C;
 
     fn cs(&self) -> ConstraintSystemRef<C::ScalarField> {
@@ -59,14 +59,8 @@ impl<C: SonobeCurve> R1CSVar<C::ScalarField> for NonNativeAffineVar<C> {
     }
 
     fn value(&self) -> Result<Self::Value, SynthesisError> {
-        debug_assert_eq!(C::BaseField::extension_degree(), 1);
-
-        let x = <C::BaseField as Field>::BasePrimeField::from_le_bytes_mod_order(
-            &self.x.value()?.to_bytes_le(),
-        );
-        let y = <C::BaseField as Field>::BasePrimeField::from_le_bytes_mod_order(
-            &self.y.value()?.to_bytes_le(),
-        );
+        let x = C::BaseField::from_le_bytes_mod_order(&self.x.value()?.to_bytes_le());
+        let y = C::BaseField::from_le_bytes_mod_order(&self.y.value()?.to_bytes_le());
         // Below is a workaround to convert the `x` and `y` coordinates to a
         // point. This is because the `SonobeCurve` trait does not provide a
         // method to construct a point from `BaseField` elements.
@@ -94,7 +88,7 @@ impl<C: SonobeCurve> R1CSVar<C::ScalarField> for NonNativeAffineVar<C> {
     }
 }
 
-impl<C: SonobeCurve> EqGadget<C::ScalarField> for NonNativeAffineVar<C> {
+impl<C: Curve> EqGadget<C::ScalarField> for NonNativeAffineVar<C> {
     fn is_eq(&self, other: &Self) -> Result<Boolean<C::ScalarField>, SynthesisError> {
         let mut result = Boolean::TRUE;
         if self.x.0.len() != other.x.0.len() {
@@ -141,7 +135,7 @@ impl<C: SonobeCurve> EqGadget<C::ScalarField> for NonNativeAffineVar<C> {
     }
 }
 
-impl<C: SonobeCurve> NonNativeAffineVar<C> {
+impl<C: Curve> NonNativeAffineVar<C> {
     pub fn zero() -> Self {
         // `unwrap` below is safe because we are allocating a constant value,
         // which is guaranteed to succeed.
@@ -149,7 +143,7 @@ impl<C: SonobeCurve> NonNativeAffineVar<C> {
     }
 }
 
-impl<P: SWCurveConfig<BaseField: SonobeField>> AbsorbNonNative for Projective<P> {
+impl<P: SWCurveConfig<BaseField: Field>> AbsorbNonNative for Projective<P> {
     fn to_native_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
         let affine = self.into_affine();
         let (x, y) = affine.xy().unwrap_or_default();
@@ -158,7 +152,7 @@ impl<P: SWCurveConfig<BaseField: SonobeField>> AbsorbNonNative for Projective<P>
     }
 }
 
-impl<C: SonobeCurve> AbsorbNonNativeGadget<C::ScalarField> for NonNativeAffineVar<C> {
+impl<C: Curve> AbsorbNonNativeGadget<C::ScalarField> for NonNativeAffineVar<C> {
     fn to_native_sponge_field_elements(
         &self,
     ) -> Result<Vec<FpVar<C::ScalarField>>, SynthesisError> {
@@ -166,7 +160,7 @@ impl<C: SonobeCurve> AbsorbNonNativeGadget<C::ScalarField> for NonNativeAffineVa
     }
 }
 
-impl<P: SWCurveConfig<BaseField: SonobeField>> Inputize<P::BaseField> for Projective<P> {
+impl<P: SWCurveConfig<BaseField: Field>> Inputize<P::BaseField> for Projective<P> {
     /// Returns the internal representation in the same order as how the value
     /// is allocated in `ProjectiveVar::new_input`.
     fn inputize(&self) -> Vec<P::BaseField> {
@@ -178,7 +172,7 @@ impl<P: SWCurveConfig<BaseField: SonobeField>> Inputize<P::BaseField> for Projec
     }
 }
 
-impl<P: SWCurveConfig<BaseField: SonobeField>> InputizeNonNative<P::ScalarField> for Projective<P> {
+impl<P: SWCurveConfig<BaseField: Field>> InputizeNonNative<P::ScalarField> for Projective<P> {
     /// Returns the internal representation in the same order as how the value
     /// is allocated in `NonNativeAffineVar::new_input`.
     fn inputize_nonnative(&self) -> Vec<P::ScalarField> {

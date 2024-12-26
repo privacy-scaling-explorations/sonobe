@@ -23,10 +23,10 @@ use crate::utils::{
     mle::dense_vec_to_dense_mle,
     vec::{is_zero_vec, vec_add, vec_scalar_mul},
 };
-use crate::{Error, SonobeCurve};
+use crate::{Curve, Error};
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CommittedInstance<C: SonobeCurve> {
+pub struct CommittedInstance<C: Curve> {
     // Random evaluation point for the E
     pub rE: Vec<C::ScalarField>,
     // mleE is the evaluation of the MLE of E at r_E
@@ -36,7 +36,7 @@ pub struct CommittedInstance<C: SonobeCurve> {
     pub x: Vec<C::ScalarField>,
 }
 
-impl<C: SonobeCurve> Absorb for CommittedInstance<C> {
+impl<C: Curve> Absorb for CommittedInstance<C> {
     fn to_sponge_bytes(&self, _dest: &mut Vec<u8>) {
         // This is never called
         unimplemented!()
@@ -51,7 +51,7 @@ impl<C: SonobeCurve> Absorb for CommittedInstance<C> {
     }
 }
 
-impl<C: SonobeCurve> Dummy<usize> for CommittedInstance<C> {
+impl<C: Curve> Dummy<usize> for CommittedInstance<C> {
     fn dummy(io_len: usize) -> Self {
         Self {
             rE: vec![C::ScalarField::zero(); io_len],
@@ -64,13 +64,13 @@ impl<C: SonobeCurve> Dummy<usize> for CommittedInstance<C> {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Witness<C: SonobeCurve> {
+pub struct Witness<C: Curve> {
     pub E: Vec<C::ScalarField>,
     pub W: Vec<C::ScalarField>,
     pub rW: C::ScalarField,
 }
 
-impl<C: SonobeCurve> Dummy<&R1CS<C::ScalarField>> for Witness<C> {
+impl<C: Curve> Dummy<&R1CS<C::ScalarField>> for Witness<C> {
     fn dummy(r1cs: &R1CS<C::ScalarField>) -> Self {
         Self {
             E: vec![C::ScalarField::zero(); r1cs.A.n_rows],
@@ -80,7 +80,7 @@ impl<C: SonobeCurve> Dummy<&R1CS<C::ScalarField>> for Witness<C> {
     }
 }
 
-impl<C: SonobeCurve> Witness<C> {
+impl<C: Curve> Witness<C> {
     pub fn new<const H: bool>(w: Vec<C::ScalarField>, e_len: usize, mut rng: impl RngCore) -> Self {
         let rW = if H {
             C::ScalarField::rand(&mut rng)
@@ -118,7 +118,7 @@ impl<C: SonobeCurve> Witness<C> {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Proof<C: SonobeCurve> {
+pub struct Proof<C: Curve> {
     pub h_proof: PointVsLineProof<C>,
     pub mleE1_prime: C::ScalarField,
     pub mleE2_prime: C::ScalarField,
@@ -129,7 +129,7 @@ pub struct Proof<C: SonobeCurve> {
 /// [Mova](https://eprint.iacr.org/2024/1220.pdf).
 /// `H` specifies whether the NIFS will use a blinding factor
 pub struct NIFS<
-    C: SonobeCurve,
+    C: Curve,
     CS: CommitmentScheme<C, H>,
     T: Transcript<C::ScalarField>,
     const H: bool = false,
@@ -139,7 +139,7 @@ pub struct NIFS<
     _ct: PhantomData<T>,
 }
 
-impl<C: SonobeCurve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
+impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
     NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
 {
     type CommittedInstance = CommittedInstance<C>;
@@ -320,7 +320,7 @@ impl<C: SonobeCurve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, 
     }
 }
 
-impl<C: SonobeCurve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
+impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
     NIFS<C, CS, T, H>
 {
     // Protocol 7 - point 3 (15)
@@ -354,7 +354,7 @@ impl<C: SonobeCurve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, 
     }
 }
 
-impl<C: SonobeCurve> Arith<Witness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
+impl<C: Curve> Arith<Witness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
     type Evaluation = Vec<CF1<C>>;
 
     fn eval_relation(

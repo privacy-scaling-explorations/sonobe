@@ -22,7 +22,7 @@ use crate::{
     },
 };
 use crate::{commitment::CommitmentScheme, transcript::poseidon::poseidon_canonical_config};
-use crate::{Error, SonobeCurve};
+use crate::{Curve, Error};
 
 /// Circuit that implements part of the in-circuit checks needed for the offchain verification over
 /// the Curve2's BaseField (=Curve1's ScalarField).
@@ -39,8 +39,8 @@ pub type DeciderCircuit1<C1, C2> = GenericOffchainDeciderCircuit1<
 >;
 
 impl<
-        C1: SonobeCurve,
-        C2: SonobeCurve,
+        C1: Curve,
+        C2: Curve,
         FC: FCircuit<C1::ScalarField>,
         CS1: CommitmentScheme<C1, H>,
         CS2: CommitmentScheme<C2, H>,
@@ -106,8 +106,8 @@ impl<
 pub type DeciderCircuit2<C2> = GenericOffchainDeciderCircuit2<C2>;
 
 impl<
-        C1: SonobeCurve,
-        C2: SonobeCurve,
+        C1: Curve,
+        C2: Curve,
         FC: FCircuit<C1::ScalarField>,
         CS1: CommitmentScheme<C1, H>,
         CS2: CommitmentScheme<C2, H>,

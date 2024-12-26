@@ -131,9 +131,9 @@ pub mod tests {
         },
         FCircuit,
     };
-    use crate::{Error, SonobeCurve};
+    use crate::{Curve, Error};
 
-    fn prepare_instances<C: SonobeCurve, CS: CommitmentScheme<C>, R: Rng>(
+    fn prepare_instances<C: Curve, CS: CommitmentScheme<C>, R: Rng>(
         mut rng: R,
         r1cs: &R1CS<C::ScalarField>,
         z: &[C::ScalarField],

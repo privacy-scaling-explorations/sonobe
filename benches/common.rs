@@ -2,12 +2,12 @@ use criterion::*;
 
 use folding_schemes::{
     frontend::{utils::CustomFCircuit, FCircuit},
-    Error, FoldingScheme, SonobeCurve,
+    Curve, Error, FoldingScheme,
 };
 
 pub(crate) fn bench_ivc_opt<
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2: SonobeCurve,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: Curve,
     FS: FoldingScheme<C1, C2, CustomFCircuit<C1::ScalarField>>,
 >(
     c: &mut Criterion,

@@ -33,7 +33,7 @@ use crate::folding::circuits::{
 use crate::folding::traits::{CommittedInstanceVarOps, Dummy};
 use crate::frontend::FCircuit;
 use crate::transcript::AbsorbNonNativeGadget;
-use crate::SonobeCurve;
+use crate::Curve;
 
 /// `AugmentedFCircuit` enhances the original step function `F`, so that it can
 /// be used in recursive arguments such as IVC.
@@ -48,7 +48,7 @@ use crate::SonobeCurve;
 /// defined in [CycleFold](https://eprint.iacr.org/2023/1192.pdf). These extra
 /// constraints verify the correct folding of CycleFold instances.
 #[derive(Debug, Clone)]
-pub struct AugmentedFCircuit<C1: SonobeCurve, C2: SonobeCurve, FC: FCircuit<CF1<C1>>> {
+pub struct AugmentedFCircuit<C1: Curve, C2: Curve, FC: FCircuit<CF1<C1>>> {
     pub(super) poseidon_config: PoseidonConfig<CF1<C1>>,
     pub(super) pp_hash: Option<CF1<C1>>,
     pub(super) i: Option<CF1<C1>>,
@@ -73,7 +73,7 @@ pub struct AugmentedFCircuit<C1: SonobeCurve, C2: SonobeCurve, FC: FCircuit<CF1<
     pub(super) cf2_cmT: Option<C2>,
 }
 
-impl<C1: SonobeCurve, C2: SonobeCurve, FC: FCircuit<CF1<C1>>> AugmentedFCircuit<C1, C2, FC> {
+impl<C1: Curve, C2: Curve, FC: FCircuit<CF1<C1>>> AugmentedFCircuit<C1, C2, FC> {
     pub fn empty(poseidon_config: &PoseidonConfig<CF1<C1>>, F_circuit: FC) -> Self {
         Self {
             poseidon_config: poseidon_config.clone(),
@@ -101,8 +101,8 @@ impl<C1: SonobeCurve, C2: SonobeCurve, FC: FCircuit<CF1<C1>>> AugmentedFCircuit<
 
 impl<C1, C2, FC> AugmentedFCircuit<C1, C2, FC>
 where
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2: SonobeCurve,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: Curve,
     FC: FCircuit<CF1<C1>>,
 {
     pub fn compute_next_state(
@@ -339,8 +339,8 @@ where
 
 impl<C1, C2, FC> ConstraintSynthesizer<CF1<C1>> for AugmentedFCircuit<C1, C2, FC>
 where
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2: SonobeCurve,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: Curve,
     FC: FCircuit<CF1<C1>>,
 {
     fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {

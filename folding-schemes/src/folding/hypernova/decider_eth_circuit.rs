@@ -35,10 +35,10 @@ use crate::{
 use crate::{
     commitment::{pedersen::Params as PedersenParams, CommitmentScheme},
     folding::circuits::decider::DeciderEnabledNIFS,
-    SonobeCurve,
+    Curve,
 };
 
-impl<C: SonobeCurve> ArithGadget<WitnessVar<CF1<C>>, LCCCSVar<C>> for CCSMatricesVar<CF1<C>> {
+impl<C: Curve> ArithGadget<WitnessVar<CF1<C>>, LCCCSVar<C>> for CCSMatricesVar<CF1<C>> {
     type Evaluation = Vec<FpVar<CF1<C>>>;
 
     fn eval_relation(
@@ -110,8 +110,8 @@ pub type DeciderEthCircuit<C1, C2> = GenericOnchainDeciderCircuit<
 >;
 
 impl<
-        C1: SonobeCurve,
-        C2: SonobeCurve,
+        C1: Curve,
+        C2: Curve,
         FC: FCircuit<C1::ScalarField>,
         CS1: CommitmentScheme<C1, H>,
         // enforce that the CS2 is Pedersen commitment scheme, since we're at Ethereum's EVM decider
@@ -175,7 +175,7 @@ impl<
 
 pub struct DeciderHyperNovaGadget;
 
-impl<C: SonobeCurve> DeciderEnabledNIFS<C, LCCCS<C>, CCCS<C>, Witness<C::ScalarField>, CCS<CF1<C>>>
+impl<C: Curve> DeciderEnabledNIFS<C, LCCCS<C>, CCCS<C>, Witness<C::ScalarField>, CCS<CF1<C>>>
     for DeciderHyperNovaGadget
 {
     type ProofDummyCfg = (usize, usize, usize, usize);

@@ -17,14 +17,14 @@ use crate::folding::circuits::cyclefold::CycleFoldCommittedInstance;
 use crate::folding::circuits::decider::DeciderEnabledNIFS;
 use crate::folding::traits::{CommittedInstanceOps, Inputize, InputizeNonNative, WitnessOps};
 use crate::frontend::FCircuit;
+use crate::{Curve, Error};
 use crate::{Decider as DeciderTrait, FoldingScheme};
-use crate::{Error, SonobeCurve};
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Proof<C1, C2, CS1, CS2, S1, S2>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     CS1: CommitmentScheme<C1>,
     CS2: CommitmentScheme<C2>,
     S1: SNARK<C1::ScalarField>,
@@ -63,7 +63,7 @@ where
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct VerifierParam<C1, CS1_VerifyingKey, S1_VerifyingKey, CS2_VerifyingKey, S2_VerifyingKey>
 where
-    C1: SonobeCurve,
+    C1: Curve,
     CS1_VerifyingKey: Clone + CanonicalSerialize + CanonicalDeserialize,
     S1_VerifyingKey: Clone + CanonicalSerialize + CanonicalDeserialize,
     CS2_VerifyingKey: Clone + CanonicalSerialize + CanonicalDeserialize,
@@ -92,8 +92,8 @@ pub struct Decider<C1, C2, FC, CS1, CS2, S1, S2, FS> {
 impl<C1, C2, FC, CS1, CS2, S1, S2, FS> DeciderTrait<C1, C2, FC, FS>
     for Decider<C1, C2, FC, CS1, CS2, S1, S2, FS>
 where
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2: SonobeCurve,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: Curve,
     FC: FCircuit<C1::ScalarField>,
     CS1: CommitmentScheme<
         C1,

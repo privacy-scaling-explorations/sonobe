@@ -30,10 +30,10 @@ use crate::utils::{
     powers_of,
     vec::{vec_add, vec_scalar_mul},
 };
-use crate::{Error, SonobeCurve};
+use crate::{Curve, Error};
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Proof<C: SonobeCurve> {
+pub struct Proof<C: Curve> {
     a: C::ScalarField,
     l: Vec<C::ScalarField>,
     r: Vec<C::ScalarField>,
@@ -44,12 +44,12 @@ pub struct Proof<C: SonobeCurve> {
 /// IPA implements the Inner Product Argument protocol following the CommitmentScheme trait. The
 /// `H` parameter indicates if to use the commitment in hiding mode or not.
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct IPA<C: SonobeCurve, const H: bool = false> {
+pub struct IPA<C: Curve, const H: bool = false> {
     _c: PhantomData<C>,
 }
 
 /// Implements the CommitmentScheme trait for IPA
-impl<C: SonobeCurve, const H: bool> CommitmentScheme<C, H> for IPA<C, H> {
+impl<C: Curve, const H: bool> CommitmentScheme<C, H> for IPA<C, H> {
     type ProverParams = PedersenParams<C>;
     type VerifierParams = PedersenParams<C>;
     type Proof = (Proof<C>, C::ScalarField, C::ScalarField); // (proof, v=p(x), r=blinding factor)
@@ -436,14 +436,14 @@ fn s_b_inner_gadget<F: PrimeField, CF: PrimeField>(
     Ok(c)
 }
 
-pub struct ProofVar<C: SonobeCurve> {
+pub struct ProofVar<C: Curve> {
     a: EmulatedFpVar<C::ScalarField, CF2<C>>,
     l: Vec<EmulatedFpVar<C::ScalarField, CF2<C>>>,
     r: Vec<EmulatedFpVar<C::ScalarField, CF2<C>>>,
     L: Vec<C::Var>,
     R: Vec<C::Var>,
 }
-impl<C: SonobeCurve> AllocVar<Proof<C>, CF2<C>> for ProofVar<C> {
+impl<C: Curve> AllocVar<Proof<C>, CF2<C>> for ProofVar<C> {
     fn new_variable<T: Borrow<Proof<C>>>(
         cs: impl Into<Namespace<CF2<C>>>,
         f: impl FnOnce() -> Result<T, SynthesisError>,
@@ -474,11 +474,11 @@ impl<C: SonobeCurve> AllocVar<Proof<C>, CF2<C>> for ProofVar<C> {
 /// IPAGadget implements the circuit that verifies an IPA Proof. The `H` parameter indicates if to
 /// use the commitment in hiding mode or not, reducing a bit the number of constraints needed in
 /// the later case.
-pub struct IPAGadget<C: SonobeCurve, const H: bool = false> {
+pub struct IPAGadget<C: Curve, const H: bool = false> {
     _c: PhantomData<C>,
 }
 
-impl<C: SonobeCurve, const H: bool> IPAGadget<C, H> {
+impl<C: Curve, const H: bool> IPAGadget<C, H> {
     /// Verify the IPA opening proof, K=log2(d), where d is the degree of the committed polynomial,
     /// and H indicates if the commitment is in hiding mode and thus uses blinding factors, if not,
     /// there are some constraints saved.

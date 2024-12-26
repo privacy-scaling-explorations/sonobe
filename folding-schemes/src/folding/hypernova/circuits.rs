@@ -47,18 +47,18 @@ use crate::{
     arith::{ccs::CCS, r1cs::extract_r1cs},
     transcript::{AbsorbNonNativeGadget, TranscriptVar},
 };
-use crate::{Error, SonobeCurve};
+use crate::{Curve, Error};
 
 /// Committed CCS instance
 #[derive(Debug, Clone)]
-pub struct CCCSVar<C: SonobeCurve> {
+pub struct CCCSVar<C: Curve> {
     // Commitment to witness
     pub C: NonNativeAffineVar<C>,
     // Public io
     pub x: Vec<FpVar<CF1<C>>>,
 }
 
-impl<C: SonobeCurve> AllocVar<CCCS<C>, CF1<C>> for CCCSVar<C> {
+impl<C: Curve> AllocVar<CCCS<C>, CF1<C>> for CCCSVar<C> {
     fn new_variable<T: Borrow<CCCS<C>>>(
         cs: impl Into<Namespace<CF1<C>>>,
         f: impl FnOnce() -> Result<T, SynthesisError>,
@@ -76,7 +76,7 @@ impl<C: SonobeCurve> AllocVar<CCCS<C>, CF1<C>> for CCCSVar<C> {
     }
 }
 
-impl<C: SonobeCurve> CommittedInstanceVarOps<C> for CCCSVar<C> {
+impl<C: Curve> CommittedInstanceVarOps<C> for CCCSVar<C> {
     type PointVar = NonNativeAffineVar<C>;
 
     fn get_commitments(&self) -> Vec<Self::PointVar> {
@@ -97,7 +97,7 @@ impl<C: SonobeCurve> CommittedInstanceVarOps<C> for CCCSVar<C> {
     }
 }
 
-impl<C: SonobeCurve> AbsorbGadget<C::ScalarField> for CCCSVar<C> {
+impl<C: Curve> AbsorbGadget<C::ScalarField> for CCCSVar<C> {
     fn to_sponge_bytes(&self) -> Result<Vec<UInt8<C::ScalarField>>, SynthesisError> {
         FpVar::batch_to_sponge_bytes(&self.to_sponge_field_elements()?)
     }
@@ -109,7 +109,7 @@ impl<C: SonobeCurve> AbsorbGadget<C::ScalarField> for CCCSVar<C> {
 
 /// Linearized Committed CCS instance
 #[derive(Debug, Clone)]
-pub struct LCCCSVar<C: SonobeCurve> {
+pub struct LCCCSVar<C: Curve> {
     // Commitment to witness
     pub C: NonNativeAffineVar<C>,
     // Relaxation factor of z for folded LCCCS
@@ -122,7 +122,7 @@ pub struct LCCCSVar<C: SonobeCurve> {
     pub v: Vec<FpVar<CF1<C>>>,
 }
 
-impl<C: SonobeCurve> AllocVar<LCCCS<C>, CF1<C>> for LCCCSVar<C> {
+impl<C: Curve> AllocVar<LCCCS<C>, CF1<C>> for LCCCSVar<C> {
     fn new_variable<T: Borrow<LCCCS<C>>>(
         cs: impl Into<Namespace<CF1<C>>>,
         f: impl FnOnce() -> Result<T, SynthesisError>,
@@ -145,7 +145,7 @@ impl<C: SonobeCurve> AllocVar<LCCCS<C>, CF1<C>> for LCCCSVar<C> {
     }
 }
 
-impl<C: SonobeCurve> AbsorbGadget<C::ScalarField> for LCCCSVar<C> {
+impl<C: Curve> AbsorbGadget<C::ScalarField> for LCCCSVar<C> {
     fn to_sponge_bytes(&self) -> Result<Vec<UInt8<C::ScalarField>>, SynthesisError> {
         FpVar::batch_to_sponge_bytes(&self.to_sponge_field_elements()?)
     }
@@ -162,7 +162,7 @@ impl<C: SonobeCurve> AbsorbGadget<C::ScalarField> for LCCCSVar<C> {
     }
 }
 
-impl<C: SonobeCurve> CommittedInstanceVarOps<C> for LCCCSVar<C> {
+impl<C: Curve> CommittedInstanceVarOps<C> for LCCCSVar<C> {
     type PointVar = NonNativeAffineVar<C>;
 
     fn get_commitments(&self) -> Vec<Self::PointVar> {
@@ -188,12 +188,12 @@ impl<C: SonobeCurve> CommittedInstanceVarOps<C> for LCCCSVar<C> {
 
 /// ProofVar defines a multifolding proof
 #[derive(Debug)]
-pub struct ProofVar<C: SonobeCurve> {
+pub struct ProofVar<C: Curve> {
     pub sc_proof: IOPProofVar<C::ScalarField>,
     #[allow(clippy::type_complexity)]
     pub sigmas_thetas: (Vec<Vec<FpVar<CF1<C>>>>, Vec<Vec<FpVar<CF1<C>>>>),
 }
-impl<C: SonobeCurve> AllocVar<NIMFSProof<C>, CF1<C>> for ProofVar<C> {
+impl<C: Curve> AllocVar<NIMFSProof<C>, CF1<C>> for ProofVar<C> {
     fn new_variable<T: Borrow<NIMFSProof<C>>>(
         cs: impl Into<Namespace<CF1<C>>>,
         f: impl FnOnce() -> Result<T, SynthesisError>,
@@ -230,10 +230,10 @@ impl<C: SonobeCurve> AllocVar<NIMFSProof<C>, CF1<C>> for ProofVar<C> {
     }
 }
 
-pub struct NIMFSGadget<C: SonobeCurve> {
+pub struct NIMFSGadget<C: Curve> {
     _c: PhantomData<C>,
 }
-impl<C: SonobeCurve> NIMFSGadget<C> {
+impl<C: Curve> NIMFSGadget<C> {
     /// Runs (in-circuit) the NIMFS.V, which outputs the new folded LCCCS instance together with
     /// the rho_powers, which will be used in other parts of the AugmentedFCircuit
     #[allow(clippy::type_complexity)]
@@ -466,8 +466,8 @@ fn compute_c_gadget<F: PrimeField>(
 /// * `NU` - the number of CCCS instances to be folded
 #[derive(Debug, Clone)]
 pub struct AugmentedFCircuit<
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     FC: FCircuit<CF1<C1>>,
     const MU: usize,
     const NU: usize,
@@ -496,8 +496,8 @@ pub struct AugmentedFCircuit<
 
 impl<C1, C2, FC, const MU: usize, const NU: usize> AugmentedFCircuit<C1, C2, FC, MU, NU>
 where
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2: SonobeCurve,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: Curve,
     FC: FCircuit<CF1<C1>>,
 {
     pub fn default(
@@ -657,8 +657,8 @@ where
 
 impl<C1, C2, FC, const MU: usize, const NU: usize> AugmentedFCircuit<C1, C2, FC, MU, NU>
 where
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2: SonobeCurve,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: Curve,
     FC: FCircuit<CF1<C1>>,
 {
     pub fn compute_next_state(
@@ -866,8 +866,8 @@ where
 impl<C1, C2, FC, const MU: usize, const NU: usize> ConstraintSynthesizer<CF1<C1>>
     for AugmentedFCircuit<C1, C2, FC, MU, NU>
 where
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2: SonobeCurve,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: Curve,
     FC: FCircuit<CF1<C1>>,
 {
     fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {

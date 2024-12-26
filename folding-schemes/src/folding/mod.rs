@@ -22,7 +22,7 @@ pub mod tests {
     use crate::frontend::FCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
     use crate::FoldingScheme;
-    use crate::{Error, SonobeCurve};
+    use crate::{Curve, Error};
 
     /// tests the IVC proofs and its serializers for the 3 implemented IVCs: Nova, HyperNova and
     /// ProtoGalaxy.
@@ -58,8 +58,8 @@ pub mod tests {
     }
 
     fn test_serialize_ivc_opt<
-        C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-        C2: SonobeCurve,
+        C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+        C2: Curve,
         FC: FCircuit<C1::ScalarField, Params = ()>,
         FS: FoldingScheme<C1, C2, FC>,
     >(

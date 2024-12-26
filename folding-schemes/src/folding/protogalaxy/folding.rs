@@ -16,7 +16,7 @@ use crate::folding::traits::Dummy;
 use crate::transcript::Transcript;
 use crate::utils::vec::*;
 use crate::Error;
-use crate::{arith::r1cs::R1CS, SonobeCurve};
+use crate::{arith::r1cs::R1CS, Curve};
 
 #[derive(Debug, Clone)]
 pub struct ProtoGalaxyProof<F: PrimeField> {
@@ -34,7 +34,7 @@ impl<F: PrimeField> Dummy<(usize, usize, usize)> for ProtoGalaxyProof<F> {
 }
 
 #[derive(Debug, Clone)]
-pub struct ProtoGalaxyAux<C: SonobeCurve> {
+pub struct ProtoGalaxyAux<C: Curve> {
     pub L_X_evals: Vec<C::ScalarField>,
     pub phi_stars: Vec<C>,
 }
@@ -42,10 +42,10 @@ pub struct ProtoGalaxyAux<C: SonobeCurve> {
 #[derive(Clone, Debug)]
 /// Implements the protocol described in section 4 of
 /// [ProtoGalaxy](https://eprint.iacr.org/2023/1106.pdf)
-pub struct Folding<C: SonobeCurve> {
+pub struct Folding<C: Curve> {
     _phantom: PhantomData<C>,
 }
-impl<C: SonobeCurve> Folding<C> {
+impl<C: Curve> Folding<C> {
     #![allow(clippy::type_complexity)]
     /// implements the non-interactive Prover from the folding scheme described in section 4
     pub fn prove(
@@ -429,7 +429,7 @@ pub mod tests {
 
     // k represents the number of instances to be fold, apart from the running instance
     #[allow(clippy::type_complexity)]
-    pub fn prepare_inputs<C: SonobeCurve>(
+    pub fn prepare_inputs<C: Curve>(
         k: usize,
     ) -> Result<
         (

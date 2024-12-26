@@ -45,10 +45,10 @@ use crate::{
     commitment::CommitmentScheme,
     folding::traits::CommittedInstanceOps,
     frontend::FCircuit,
-    Error, SonobeCurve,
+    Curve, Error,
 };
 
-pub struct RandomizedIVCProof<C1: SonobeCurve, C2: SonobeCurve> {
+pub struct RandomizedIVCProof<C1: Curve, C2: Curve> {
     pub U_i: CommittedInstance<C1>,
     pub u_i: CommittedInstance<C1>,
     pub U_r: CommittedInstance<C1>,
@@ -59,7 +59,7 @@ pub struct RandomizedIVCProof<C1: SonobeCurve, C2: SonobeCurve> {
     pub cf_W_i: Witness<C2>,
 }
 
-impl<C1: SonobeCurve, C2: SonobeCurve> RandomizedIVCProof<C1, C2> {
+impl<C1: Curve, C2: Curve> RandomizedIVCProof<C1, C2> {
     /// Compute a zero-knowledge proof of a Nova IVC proof
     /// It implements the prover of appendix D.4.in https://eprint.iacr.org/2023/573.pdf
     /// For further details on why folding is hiding, see lemma 9
@@ -130,7 +130,7 @@ impl<C1: SonobeCurve, C2: SonobeCurve> RandomizedIVCProof<C1, C2> {
         proof: &RandomizedIVCProof<C1, C2>,
     ) -> Result<(), Error>
     where
-        C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+        C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
     {
         // Handles case where i=0
         if i == C1::ScalarField::zero() {

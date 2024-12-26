@@ -28,7 +28,7 @@ use crate::{
         traits::{WitnessOps, WitnessVarOps},
     },
     frontend::FCircuit,
-    Error, SonobeCurve,
+    Curve, Error,
 };
 
 use super::{
@@ -81,8 +81,8 @@ pub type DeciderEthCircuit<C1, C2> = GenericOnchainDeciderCircuit<
 
 /// returns an instance of the DeciderEthCircuit from the given ProtoGalaxy struct
 impl<
-        C1: SonobeCurve,
-        C2: SonobeCurve,
+        C1: Curve,
+        C2: Curve,
         FC: FCircuit<C1::ScalarField>,
         CS1: CommitmentScheme<C1, false>,
         // enforce that the CS2 is Pedersen commitment scheme, since we're at Ethereum's EVM decider
@@ -142,7 +142,7 @@ impl<
 
 pub struct DeciderProtoGalaxyGadget;
 
-impl<C: SonobeCurve>
+impl<C: Curve>
     DeciderEnabledNIFS<
         C,
         CommittedInstance<C, RUNNING>,

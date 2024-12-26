@@ -37,7 +37,7 @@ use crate::{
     frontend::{utils::DummyCircuit, FCircuit},
     transcript::poseidon::poseidon_canonical_config,
     utils::pp_hash,
-    Error, FoldingScheme, SonobeCurve,
+    Curve, Error, FoldingScheme,
 };
 
 pub mod circuits;
@@ -56,11 +56,11 @@ use super::traits::{
 };
 
 /// Configuration for ProtoGalaxy's CycleFold circuit
-pub struct ProtoGalaxyCycleFoldConfig<C: SonobeCurve> {
+pub struct ProtoGalaxyCycleFoldConfig<C: Curve> {
     _c: PhantomData<C>,
 }
 
-impl<C: SonobeCurve> CycleFoldConfig for ProtoGalaxyCycleFoldConfig<C> {
+impl<C: Curve> CycleFoldConfig for ProtoGalaxyCycleFoldConfig<C> {
     const RANDOMNESS_BIT_LENGTH: usize = C::ScalarField::MODULUS_BIT_SIZE as usize;
     const N_INPUT_POINTS: usize = 2;
     type C = C;
@@ -76,14 +76,14 @@ pub type ProtoGalaxyCycleFoldCircuit<C> = CycleFoldCircuit<ProtoGalaxyCycleFoldC
 /// they have slightly different structures (e.g., length of `betas`) and
 /// behaviors (e.g., in satisfiability checks).
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CommittedInstance<C: SonobeCurve, const TYPE: bool> {
+pub struct CommittedInstance<C: Curve, const TYPE: bool> {
     phi: C,
     betas: Vec<C::ScalarField>,
     e: C::ScalarField,
     x: Vec<C::ScalarField>,
 }
 
-impl<C: SonobeCurve, const TYPE: bool> Dummy<(usize, usize)> for CommittedInstance<C, TYPE> {
+impl<C: Curve, const TYPE: bool> Dummy<(usize, usize)> for CommittedInstance<C, TYPE> {
     fn dummy((io_len, t): (usize, usize)) -> Self {
         if TYPE == INCOMING {
             assert_eq!(t, 0);
@@ -97,7 +97,7 @@ impl<C: SonobeCurve, const TYPE: bool> Dummy<(usize, usize)> for CommittedInstan
     }
 }
 
-impl<C: SonobeCurve, const TYPE: bool> Dummy<&R1CS<CF1<C>>> for CommittedInstance<C, TYPE> {
+impl<C: Curve, const TYPE: bool> Dummy<&R1CS<CF1<C>>> for CommittedInstance<C, TYPE> {
     fn dummy(r1cs: &R1CS<CF1<C>>) -> Self {
         let t = if TYPE == RUNNING {
             log2(r1cs.num_constraints()) as usize
@@ -108,7 +108,7 @@ impl<C: SonobeCurve, const TYPE: bool> Dummy<&R1CS<CF1<C>>> for CommittedInstanc
     }
 }
 
-impl<C: SonobeCurve, const TYPE: bool> CommittedInstanceOps<C> for CommittedInstance<C, TYPE> {
+impl<C: Curve, const TYPE: bool> CommittedInstanceOps<C> for CommittedInstance<C, TYPE> {
     type Var = CommittedInstanceVar<C, TYPE>;
 
     fn get_commitments(&self) -> Vec<C> {
@@ -120,7 +120,7 @@ impl<C: SonobeCurve, const TYPE: bool> CommittedInstanceOps<C> for CommittedInst
     }
 }
 
-impl<C: SonobeCurve, const TYPE: bool> Inputize<CF1<C>> for CommittedInstance<C, TYPE> {
+impl<C: Curve, const TYPE: bool> Inputize<CF1<C>> for CommittedInstance<C, TYPE> {
     /// Returns the internal representation in the same order as how the value
     /// is allocated in `CommittedInstanceVar::new_input`.
     fn inputize(&self) -> Vec<CF1<C>> {
@@ -135,14 +135,14 @@ impl<C: SonobeCurve, const TYPE: bool> Inputize<CF1<C>> for CommittedInstance<C,
 }
 
 #[derive(Clone, Debug)]
-pub struct CommittedInstanceVar<C: SonobeCurve, const TYPE: bool> {
+pub struct CommittedInstanceVar<C: Curve, const TYPE: bool> {
     phi: NonNativeAffineVar<C>,
     betas: Vec<FpVar<C::ScalarField>>,
     e: FpVar<C::ScalarField>,
     x: Vec<FpVar<C::ScalarField>>,
 }
 
-impl<C: SonobeCurve, const TYPE: bool> AllocVar<CommittedInstance<C, TYPE>, C::ScalarField>
+impl<C: Curve, const TYPE: bool> AllocVar<CommittedInstance<C, TYPE>, C::ScalarField>
     for CommittedInstanceVar<C, TYPE>
 {
     fn new_variable<T: Borrow<CommittedInstance<C, TYPE>>>(
@@ -169,7 +169,7 @@ impl<C: SonobeCurve, const TYPE: bool> AllocVar<CommittedInstance<C, TYPE>, C::S
     }
 }
 
-impl<C: SonobeCurve, const TYPE: bool> R1CSVar<C::ScalarField> for CommittedInstanceVar<C, TYPE> {
+impl<C: Curve, const TYPE: bool> R1CSVar<C::ScalarField> for CommittedInstanceVar<C, TYPE> {
     type Value = CommittedInstance<C, TYPE>;
 
     fn cs(&self) -> ConstraintSystemRef<C::ScalarField> {
@@ -194,9 +194,7 @@ impl<C: SonobeCurve, const TYPE: bool> R1CSVar<C::ScalarField> for CommittedInst
     }
 }
 
-impl<C: SonobeCurve, const TYPE: bool> CommittedInstanceVarOps<C>
-    for CommittedInstanceVar<C, TYPE>
-{
+impl<C: Curve, const TYPE: bool> CommittedInstanceVarOps<C> for CommittedInstanceVar<C, TYPE> {
     type PointVar = NonNativeAffineVar<C>;
 
     fn get_commitments(&self) -> Vec<Self::PointVar> {
@@ -238,7 +236,7 @@ impl<F: PrimeField> Witness<F> {
         Self { w, r_w: F::zero() }
     }
 
-    pub fn commit<CS: CommitmentScheme<C>, C: SonobeCurve<ScalarField = F>>(
+    pub fn commit<CS: CommitmentScheme<C>, C: Curve<ScalarField = F>>(
         &self,
         params: &CS::ProverParams,
         x: Vec<F>,
@@ -318,8 +316,8 @@ pub enum ProtoGalaxyError {
 #[derive(Debug, Clone)]
 pub struct ProverParams<C1, C2, CS1, CS2>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     CS1: CommitmentScheme<C1>,
     CS2: CommitmentScheme<C2>,
 {
@@ -332,8 +330,8 @@ where
 }
 impl<C1, C2, CS1, CS2> CanonicalSerialize for ProverParams<C1, C2, CS1, CS2>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     CS1: CommitmentScheme<C1, false>,
     CS2: CommitmentScheme<C2, false>,
 {
@@ -352,8 +350,8 @@ where
 }
 impl<C1, C2, CS1, CS2> Valid for ProverParams<C1, C2, CS1, CS2>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     CS1: CommitmentScheme<C1>,
     CS2: CommitmentScheme<C2>,
 {
@@ -372,8 +370,8 @@ where
 }
 impl<C1, C2, CS1, CS2> CanonicalDeserialize for ProverParams<C1, C2, CS1, CS2>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     CS1: CommitmentScheme<C1, false>,
     CS2: CommitmentScheme<C2, false>,
 {
@@ -397,8 +395,8 @@ where
 #[derive(Debug, Clone)]
 pub struct VerifierParams<C1, C2, CS1, CS2>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     CS1: CommitmentScheme<C1>,
     CS2: CommitmentScheme<C2>,
 {
@@ -416,8 +414,8 @@ where
 
 impl<C1, C2, CS1, CS2> Valid for VerifierParams<C1, C2, CS1, CS2>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     CS1: CommitmentScheme<C1>,
     CS2: CommitmentScheme<C2>,
 {
@@ -429,8 +427,8 @@ where
 }
 impl<C1, C2, CS1, CS2> CanonicalSerialize for VerifierParams<C1, C2, CS1, CS2>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     CS1: CommitmentScheme<C1>,
     CS2: CommitmentScheme<C2>,
 {
@@ -450,8 +448,8 @@ where
 
 impl<C1, C2, CS1, CS2> VerifierParams<C1, C2, CS1, CS2>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     CS1: CommitmentScheme<C1>,
     CS2: CommitmentScheme<C2>,
 {
@@ -471,7 +469,7 @@ where
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
-pub struct IVCProof<C1: SonobeCurve, C2: SonobeCurve> {
+pub struct IVCProof<C1: Curve, C2: Curve> {
     pub i: C1::ScalarField,
     pub z_0: Vec<C1::ScalarField>,
     pub z_i: Vec<C1::ScalarField>,
@@ -491,8 +489,8 @@ pub struct IVCProof<C1: SonobeCurve, C2: SonobeCurve> {
 #[derive(Clone, Debug)]
 pub struct ProtoGalaxy<C1, C2, FC, CS1, CS2>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     FC: FCircuit<C1::ScalarField>,
     CS1: CommitmentScheme<C1>,
     CS2: CommitmentScheme<C2>,
@@ -528,8 +526,8 @@ where
 
 impl<C1, C2, FC, CS1, CS2> ProtoGalaxy<C1, C2, FC, CS1, CS2>
 where
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2: SonobeCurve,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: Curve,
     FC: FCircuit<C1::ScalarField>,
     CS1: CommitmentScheme<C1>,
     CS2: CommitmentScheme<C2>,
@@ -624,8 +622,8 @@ where
 
 impl<C1, C2, FC, CS1, CS2> FoldingScheme<C1, C2, FC> for ProtoGalaxy<C1, C2, FC, CS1, CS2>
 where
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2: SonobeCurve,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: Curve,
     FC: FCircuit<C1::ScalarField>,
     CS1: CommitmentScheme<C1>,
     CS2: CommitmentScheme<C2>,
@@ -1084,8 +1082,8 @@ where
 
 impl<C1, C2, FC, CS1, CS2> ProtoGalaxy<C1, C2, FC, CS1, CS2>
 where
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2: SonobeCurve,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: Curve,
     FC: FCircuit<C1::ScalarField>,
     CS1: CommitmentScheme<C1>,
     CS2: CommitmentScheme<C2>,

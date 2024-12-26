@@ -38,14 +38,14 @@ use crate::{
     frontend::FCircuit,
     transcript::{AbsorbNonNativeGadget, TranscriptVar},
     utils::gadgets::VectorGadget,
-    SonobeCurve,
+    Curve,
 };
 
 pub struct FoldingGadget {}
 
 impl FoldingGadget {
     #[allow(clippy::type_complexity)]
-    pub fn fold_committed_instance<C: SonobeCurve, S: CryptographicSponge>(
+    pub fn fold_committed_instance<C: Curve, S: CryptographicSponge>(
         transcript: &mut impl TranscriptVar<C::ScalarField, S>,
         // running instance
         instance: &CommittedInstanceVar<C, true>,
@@ -135,7 +135,7 @@ pub struct AugmentationGadget;
 
 impl AugmentationGadget {
     #[allow(clippy::type_complexity)]
-    pub fn prepare_and_fold_primary<C: SonobeCurve, S: CryptographicSponge>(
+    pub fn prepare_and_fold_primary<C: Curve, S: CryptographicSponge>(
         transcript: &mut impl TranscriptVar<CF1<C>, S>,
         U: CommittedInstanceVar<C, true>,
         u_phis: Vec<NonNativeAffineVar<C>>,
@@ -171,8 +171,8 @@ impl AugmentationGadget {
     }
 
     pub fn prepare_and_fold_cyclefold<
-        C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-        C2: SonobeCurve,
+        C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+        C2: Curve,
         S: CryptographicSponge,
     >(
         transcript: &mut PoseidonSpongeVar<CF1<C1>>,
@@ -231,7 +231,7 @@ impl AugmentationGadget {
 /// defined in [CycleFold](https://eprint.iacr.org/2023/1192.pdf). These extra
 /// constraints verify the correct folding of CycleFold instances.
 #[derive(Debug, Clone)]
-pub struct AugmentedFCircuit<C1: SonobeCurve, C2: SonobeCurve, FC: FCircuit<CF1<C1>>> {
+pub struct AugmentedFCircuit<C1: Curve, C2: Curve, FC: FCircuit<CF1<C1>>> {
     pub(super) poseidon_config: PoseidonConfig<CF1<C1>>,
     pub(super) pp_hash: CF1<C1>,
     pub(super) i: CF1<C1>,
@@ -255,7 +255,7 @@ pub struct AugmentedFCircuit<C1: SonobeCurve, C2: SonobeCurve, FC: FCircuit<CF1<
     pub(super) cf2_cmT: C2,
 }
 
-impl<C1: SonobeCurve, C2: SonobeCurve, FC: FCircuit<CF1<C1>>> AugmentedFCircuit<C1, C2, FC> {
+impl<C1: Curve, C2: Curve, FC: FCircuit<CF1<C1>>> AugmentedFCircuit<C1, C2, FC> {
     pub fn empty(
         poseidon_config: &PoseidonConfig<CF1<C1>>,
         F_circuit: FC,
@@ -294,8 +294,8 @@ impl<C1: SonobeCurve, C2: SonobeCurve, FC: FCircuit<CF1<C1>>> AugmentedFCircuit<
 
 impl<C1, C2, FC> AugmentedFCircuit<C1, C2, FC>
 where
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2: SonobeCurve,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: Curve,
     FC: FCircuit<CF1<C1>>,
 {
     pub fn compute_next_state(
@@ -473,8 +473,8 @@ where
 
 impl<C1, C2, FC> ConstraintSynthesizer<CF1<C1>> for AugmentedFCircuit<C1, C2, FC>
 where
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2: SonobeCurve,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: Curve,
     FC: FCircuit<CF1<C1>>,
 {
     fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {

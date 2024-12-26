@@ -22,11 +22,11 @@ use crate::{
     folding::circuits::CF1,
     transcript::AbsorbNonNativeGadget,
     utils::vec::is_zero_vec,
-    Error, SonobeCurve,
+    Curve, Error,
 };
 
 // Implements the trait for absorbing ProtoGalaxy's CommittedInstance.
-impl<C: SonobeCurve, const TYPE: bool> Absorb for CommittedInstance<C, TYPE> {
+impl<C: Curve, const TYPE: bool> Absorb for CommittedInstance<C, TYPE> {
     fn to_sponge_bytes(&self, dest: &mut Vec<u8>) {
         C::ScalarField::batch_to_sponge_bytes(&self.to_sponge_field_elements_as_vec(), dest);
     }
@@ -40,9 +40,7 @@ impl<C: SonobeCurve, const TYPE: bool> Absorb for CommittedInstance<C, TYPE> {
 }
 
 // Implements the trait for absorbing ProtoGalaxy's CommittedInstanceVar in-circuit.
-impl<C: SonobeCurve, const TYPE: bool> AbsorbGadget<C::ScalarField>
-    for CommittedInstanceVar<C, TYPE>
-{
+impl<C: Curve, const TYPE: bool> AbsorbGadget<C::ScalarField> for CommittedInstanceVar<C, TYPE> {
     fn to_sponge_bytes(&self) -> Result<Vec<UInt8<C::ScalarField>>, SynthesisError> {
         FpVar::batch_to_sponge_bytes(&self.to_sponge_field_elements()?)
     }
@@ -65,7 +63,7 @@ impl<C: SonobeCurve, const TYPE: bool> AbsorbGadget<C::ScalarField>
 /// relaxed R1CS.
 ///
 /// See `nova/traits.rs` for the rationale behind the design.
-impl<C: SonobeCurve, const TYPE: bool> Arith<Witness<CF1<C>>, CommittedInstance<C, TYPE>>
+impl<C: Curve, const TYPE: bool> Arith<Witness<CF1<C>>, CommittedInstance<C, TYPE>>
     for R1CS<CF1<C>>
 {
     type Evaluation = Vec<CF1<C>>;
@@ -106,7 +104,7 @@ impl<C: SonobeCurve, const TYPE: bool> Arith<Witness<CF1<C>>, CommittedInstance<
 
 /// Unlike its native counterpart, we only need to support running instances in
 /// circuit, as the decider circuit only checks running instance satisfiability.
-impl<C: SonobeCurve> ArithGadget<WitnessVar<CF1<C>>, CommittedInstanceVar<C, RUNNING>>
+impl<C: Curve> ArithGadget<WitnessVar<CF1<C>>, CommittedInstanceVar<C, RUNNING>>
     for R1CSMatricesVar<CF1<C>, FpVar<CF1<C>>>
 {
     type Evaluation = (Vec<FpVar<CF1<C>>>, Vec<FpVar<CF1<C>>>);

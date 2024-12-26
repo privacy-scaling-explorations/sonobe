@@ -16,11 +16,11 @@ use crate::folding::traits::Inputize;
 use crate::folding::traits::{CommittedInstanceOps, Dummy};
 use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::utils::vec::mat_vec_mul;
-use crate::{Error, SonobeCurve};
+use crate::{Curve, Error};
 
 /// Linearized Committed CCS instance
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct LCCCS<C: SonobeCurve> {
+pub struct LCCCS<C: Curve> {
     // Commitment to witness
     pub C: C,
     // Relaxation factor of z for folded LCCCS
@@ -42,7 +42,7 @@ impl<F: PrimeField> CCS<F> {
     ) -> Result<(LCCCS<C>, Witness<F>), Error>
     where
         // enforce that CCS's F is the C::ScalarField
-        C: SonobeCurve<ScalarField = F>,
+        C: Curve<ScalarField = F>,
     {
         let w: Vec<F> = z[(1 + self.l)..].to_vec();
         // if the commitment scheme is set to be hiding, set the random blinding parameter
@@ -77,7 +77,7 @@ impl<F: PrimeField> CCS<F> {
     }
 }
 
-impl<C: SonobeCurve> Dummy<&CCS<CF1<C>>> for LCCCS<C> {
+impl<C: Curve> Dummy<&CCS<CF1<C>>> for LCCCS<C> {
     fn dummy(ccs: &CCS<CF1<C>>) -> Self {
         Self {
             C: C::zero(),
@@ -89,7 +89,7 @@ impl<C: SonobeCurve> Dummy<&CCS<CF1<C>>> for LCCCS<C> {
     }
 }
 
-impl<C: SonobeCurve> Arith<Witness<CF1<C>>, LCCCS<C>> for CCS<CF1<C>> {
+impl<C: Curve> Arith<Witness<CF1<C>>, LCCCS<C>> for CCS<CF1<C>> {
     type Evaluation = Vec<CF1<C>>;
 
     /// Perform the check of the LCCCS instance described at section 4.2,
@@ -115,7 +115,7 @@ impl<C: SonobeCurve> Arith<Witness<CF1<C>>, LCCCS<C>> for CCS<CF1<C>> {
     }
 }
 
-impl<C: SonobeCurve> Absorb for LCCCS<C> {
+impl<C: Curve> Absorb for LCCCS<C> {
     fn to_sponge_bytes(&self, dest: &mut Vec<u8>) {
         C::ScalarField::batch_to_sponge_bytes(&self.to_sponge_field_elements_as_vec(), dest);
     }
@@ -129,7 +129,7 @@ impl<C: SonobeCurve> Absorb for LCCCS<C> {
     }
 }
 
-impl<C: SonobeCurve> CommittedInstanceOps<C> for LCCCS<C> {
+impl<C: Curve> CommittedInstanceOps<C> for LCCCS<C> {
     type Var = LCCCSVar<C>;
 
     fn get_commitments(&self) -> Vec<C> {
@@ -141,7 +141,7 @@ impl<C: SonobeCurve> CommittedInstanceOps<C> for LCCCS<C> {
     }
 }
 
-impl<C: SonobeCurve> Inputize<CF1<C>> for LCCCS<C> {
+impl<C: Curve> Inputize<CF1<C>> for LCCCS<C> {
     /// Returns the internal representation in the same order as how the value
     /// is allocated in `LCCCS::new_input`.
     fn inputize(&self) -> Vec<CF1<C>> {
@@ -175,7 +175,7 @@ pub mod tests {
     use crate::utils::virtual_polynomial::{build_eq_x_r_vec, VirtualPolynomial};
 
     // method for testing
-    pub fn compute_Ls<C: SonobeCurve>(
+    pub fn compute_Ls<C: Curve>(
         ccs: &CCS<C::ScalarField>,
         lcccs: &LCCCS<C>,
         z: &[C::ScalarField],

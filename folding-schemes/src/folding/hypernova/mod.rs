@@ -43,15 +43,15 @@ use crate::{
         r1cs::{extract_w_x, R1CS},
         Arith,
     },
-    FoldingScheme, MultiFolding, SonobeCurve,
+    Curve, FoldingScheme, MultiFolding,
 };
 
 /// Configuration for HyperNova's CycleFold circuit
-pub struct HyperNovaCycleFoldConfig<C: SonobeCurve, const MU: usize, const NU: usize> {
+pub struct HyperNovaCycleFoldConfig<C: Curve, const MU: usize, const NU: usize> {
     _c: PhantomData<C>,
 }
 
-impl<C: SonobeCurve, const MU: usize, const NU: usize> CycleFoldConfig
+impl<C: Curve, const MU: usize, const NU: usize> CycleFoldConfig
     for HyperNovaCycleFoldConfig<C, MU, NU>
 {
     const RANDOMNESS_BIT_LENGTH: usize = NOVA_N_BITS_RO;
@@ -97,8 +97,8 @@ impl<F: PrimeField> WitnessOps<F> for Witness<F> {
 #[derive(Debug, Clone)]
 pub struct ProverParams<C1, C2, CS1, CS2, const H: bool>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
 {
@@ -114,8 +114,8 @@ where
 }
 
 impl<
-        C1: SonobeCurve,
-        C2: SonobeCurve,
+        C1: Curve,
+        C2: Curve,
         CS1: CommitmentScheme<C1, H>,
         CS2: CommitmentScheme<C2, H>,
         const H: bool,
@@ -138,8 +138,8 @@ impl<
 /// Verification parameters for HyperNova-based IVC
 #[derive(Debug, Clone)]
 pub struct VerifierParams<
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
     const H: bool,
@@ -158,8 +158,8 @@ pub struct VerifierParams<
 
 impl<C1, C2, CS1, CS2, const H: bool> CanonicalSerialize for VerifierParams<C1, C2, CS1, CS2, H>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
 {
@@ -179,8 +179,8 @@ where
 
 impl<C1, C2, CS1, CS2, const H: bool> VerifierParams<C1, C2, CS1, CS2, H>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
 {
@@ -199,8 +199,8 @@ where
 #[derive(PartialEq, Eq, Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct IVCProof<C1, C2>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
 {
     pub i: C1::ScalarField,
     pub z_0: Vec<C1::ScalarField>,
@@ -223,8 +223,8 @@ where
 #[derive(Clone, Debug)]
 pub struct HyperNova<C1, C2, FC, CS1, CS2, const MU: usize, const NU: usize, const H: bool>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     FC: FCircuit<C1::ScalarField>,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
@@ -261,12 +261,12 @@ where
 impl<C1, C2, FC, CS1, CS2, const MU: usize, const NU: usize, const H: bool> MultiFolding<C1, C2, FC>
     for HyperNova<C1, C2, FC, CS1, CS2, MU, NU, H>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     FC: FCircuit<C1::ScalarField>,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
 {
     type RunningInstance = (LCCCS<C1>, Witness<C1::ScalarField>);
     type IncomingInstance = (CCCS<C1>, Witness<C1::ScalarField>);
@@ -320,12 +320,12 @@ where
 impl<C1, C2, FC, CS1, CS2, const MU: usize, const NU: usize, const H: bool>
     HyperNova<C1, C2, FC, CS1, CS2, MU, NU, H>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     FC: FCircuit<C1::ScalarField>,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
 {
     /// internal helper for new_running_instance & new_incoming_instance methods, returns the R1CS
     /// z=[u,x,w] vector to be used to create the LCCCS & CCCS fresh instances.
@@ -402,12 +402,12 @@ where
 impl<C1, C2, FC, CS1, CS2, const MU: usize, const NU: usize, const H: bool>
     FoldingScheme<C1, C2, FC> for HyperNova<C1, C2, FC, CS1, CS2, MU, NU, H>
 where
-    C1: SonobeCurve,
-    C2: SonobeCurve,
+    C1: Curve,
+    C2: Curve,
     FC: FCircuit<C1::ScalarField>,
     CS1: CommitmentScheme<C1, H>,
     CS2: CommitmentScheme<C2, H>,
-    C1: SonobeCurve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
 {
     /// Reuse Nova's PreprocessorParam.
     type PreprocessorParam = PreprocessorParam<C1, C2, FC, CS1, CS2, H>;

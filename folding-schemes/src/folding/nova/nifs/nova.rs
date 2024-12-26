@@ -23,7 +23,7 @@ use crate::utils::vec::{hadamard, mat_vec_mul, vec_add, vec_scalar_mul, vec_sub}
 use crate::{Curve, Error};
 
 /// ChallengeGadget computes the RO challenge used for the Nova instances NIFS, it contains a
-/// rust-native and a in-circuit compatible versions.
+/// rust-native and an in-circuit compatible versions.
 pub struct ChallengeGadget<C: Curve, CI: Absorb> {
     _c: PhantomData<C>,
     _ci: PhantomData<CI>,

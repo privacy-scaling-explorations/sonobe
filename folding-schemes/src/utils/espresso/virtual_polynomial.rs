@@ -125,7 +125,7 @@ impl<F: PrimeField> VirtualPolynomial<F> {
         }
     }
 
-    /// Creates an new virtual polynomial from a MLE and its coefficient.
+    /// Creates a new virtual polynomial from a MLE and its coefficient.
     pub fn new_from_mle(mle: &Arc<DenseMultilinearExtension<F>>, coefficient: F) -> Self {
         let mle_ptr: *const DenseMultilinearExtension<F> = Arc::as_ptr(mle);
         let mut hm = HashMap::new();

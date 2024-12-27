@@ -146,12 +146,11 @@ impl<F: PrimeField, FC: FCircuit<F>> ConstraintSynthesizer<F> for WrapperCircuit
             Vec::<FpVar<F>>::new_witness(cs.clone(), || Ok(self.z_i.unwrap_or(vec![F::zero()])))?;
         let z_i1 =
             Vec::<FpVar<F>>::new_input(cs.clone(), || Ok(self.z_i1.unwrap_or(vec![F::zero()])))?;
-        let computed_z_i1 = self.FC.generate_step_constraints(
-            cs.clone(),
-            0,
-            z_i.clone(),
-            FC::ExternalInputsVar::default(),
-        )?;
+        let external_inputs =
+            FC::ExternalInputsVar::new_input(cs.clone(), || Ok(FC::ExternalInputs::default()))?;
+        let computed_z_i1 =
+            self.FC
+                .generate_step_constraints(cs.clone(), 0, z_i.clone(), external_inputs)?;
 
         use ark_r1cs_std::eq::EqGadget;
         computed_z_i1.enforce_equal(&z_i1)?;

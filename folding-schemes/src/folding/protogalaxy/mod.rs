@@ -567,7 +567,7 @@ where
             cs.clone(),
             0,
             Vec::new_witness(cs.clone(), || Ok(vec![Zero::zero(); state_len]))?,
-            FC::ExternalInputsVar::default(),
+            FC::ExternalInputsVar::new_witness(cs.clone(), || Ok(FC::ExternalInputs::default()))?,
         )?;
         let step_constraints = cs.num_constraints();
 

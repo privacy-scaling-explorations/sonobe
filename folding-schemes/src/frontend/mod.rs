@@ -12,12 +12,12 @@ pub mod utils;
 /// the step.
 /// Note that the external inputs for the specific circuit are defined at the implementation of
 /// both `FCircuit::ExternalInputs` and `FCircuit::ExternalInputsVar`, where the `Default` trait
-/// implementation. For example if the external inputs are just an array of field elements, their
-/// `Default` trait implementation must return an array of the expected size.
+/// implementation for the `ExternalInputs` returns the initialized data structure (ie. if the type
+/// contains a vector, it is initialized at the expected length).
 pub trait FCircuit<F: PrimeField>: Clone + Debug {
     type Params: Debug;
     type ExternalInputs: Clone + Default + Debug;
-    type ExternalInputsVar: Clone + Default + Debug + AllocVar<Self::ExternalInputs, F>;
+    type ExternalInputsVar: Clone + Debug + AllocVar<Self::ExternalInputs, F>;
 
     /// returns a new FCircuit instance
     fn new(params: Self::Params) -> Result<Self, Error>;

@@ -29,7 +29,7 @@ pub(crate) fn bench_ivc_opt<
 
     // warmup steps
     for _ in 0..5 {
-        fs.prove_step(rng, vec![], None)?;
+        fs.prove_step(rng, (), None)?;
     }
 
     let mut group = c.benchmark_group(format!(
@@ -38,7 +38,7 @@ pub(crate) fn bench_ivc_opt<
     ));
     group.significance_level(0.1).sample_size(10);
     group.bench_function("prove_step", |b| {
-        b.iter(|| -> Result<_, _> { black_box(fs.clone()).prove_step(rng, vec![], None) })
+        b.iter(|| -> Result<_, _> { black_box(fs.clone()).prove_step(rng, (), None) })
     });
 
     // verify the IVCProof

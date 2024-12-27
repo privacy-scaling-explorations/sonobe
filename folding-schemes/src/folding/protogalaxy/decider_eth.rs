@@ -285,8 +285,8 @@ pub mod tests {
         let start = Instant::now();
         let mut protogalaxy = PG::init(&protogalaxy_params, F_circuit, z_0.clone())?;
         println!("ProtoGalaxy initialized, {:?}", start.elapsed());
-        protogalaxy.prove_step(&mut rng, vec![], None)?;
-        protogalaxy.prove_step(&mut rng, vec![], None)?; // do a 2nd step
+        protogalaxy.prove_step(&mut rng, (), None)?;
+        protogalaxy.prove_step(&mut rng, (), None)?; // do a 2nd step
 
         // prepare the Decider prover & verifier params
         let (decider_pp, decider_vp) =
@@ -360,8 +360,8 @@ pub mod tests {
         let start = Instant::now();
         let mut protogalaxy = PG::init(&protogalaxy_params, F_circuit, z_0.clone())?;
         println!("ProtoGalaxy initialized, {:?}", start.elapsed());
-        protogalaxy.prove_step(&mut rng, vec![], None)?;
-        protogalaxy.prove_step(&mut rng, vec![], None)?; // do a 2nd step
+        protogalaxy.prove_step(&mut rng, (), None)?;
+        protogalaxy.prove_step(&mut rng, (), None)?; // do a 2nd step
 
         // prepare the Decider prover & verifier params
         let (decider_pp, decider_vp) =
@@ -402,9 +402,9 @@ pub mod tests {
         let mut protogalaxy = PG::init(&protogalaxy_params, F_circuit, z_0)?;
 
         let start = Instant::now();
-        protogalaxy.prove_step(&mut rng, vec![], None)?;
+        protogalaxy.prove_step(&mut rng, (), None)?;
         println!("prove_step, {:?}", start.elapsed());
-        protogalaxy.prove_step(&mut rng, vec![], None)?; // do a 2nd step
+        protogalaxy.prove_step(&mut rng, (), None)?; // do a 2nd step
 
         // decider proof generation
         let start = Instant::now();

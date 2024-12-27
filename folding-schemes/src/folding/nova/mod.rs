@@ -620,8 +620,8 @@ where
     fn prove_step(
         &mut self,
         mut rng: impl RngCore,
-        external_inputs: Vec<C1::ScalarField>,
-        // Nova does not support multi-instances folding
+        external_inputs: FC::ExternalInputs,
+        // Nova does not support multi-instances folding (by design)
         _other_instances: Option<Self::MultiCommittedInstanceWithWitness>,
     ) -> Result<(), Error> {
         // ensure that commitments are blinding if user has specified so.
@@ -657,14 +657,6 @@ where
                 self.z_i.len(),
                 "F.state_len()".to_string(),
                 self.F.state_len(),
-            ));
-        }
-        if external_inputs.len() != self.F.external_inputs_len() {
-            return Err(Error::NotSameLength(
-                "F.external_inputs_len()".to_string(),
-                self.F.external_inputs_len(),
-                "external_inputs.len()".to_string(),
-                external_inputs.len(),
             ));
         }
 
@@ -1123,7 +1115,7 @@ pub mod tests {
         )?;
 
         for _ in 0..num_steps {
-            nova.prove_step(&mut rng, vec![], None)?;
+            nova.prove_step(&mut rng, (), None)?;
         }
         assert_eq!(Fr::from(num_steps as u32), nova.i);
 

@@ -479,7 +479,7 @@ pub struct AugmentedFCircuit<
     pub(super) i_usize: Option<usize>,
     pub(super) z_0: Option<Vec<C1::ScalarField>>,
     pub(super) z_i: Option<Vec<C1::ScalarField>>,
-    pub(super) external_inputs: Option<Vec<C1::ScalarField>>,
+    pub(super) external_inputs: Option<FC::ExternalInputs>,
     pub(super) U_i: Option<LCCCS<C1>>,
     pub(super) Us: Option<Vec<LCCCS<C1>>>, // other U_i's to be folded that are not the main running instance
     pub(super) u_i_C: Option<C1>,          // u_i.C
@@ -602,7 +602,7 @@ where
                 i_usize: Some(0),
                 z_0: Some(z_0.clone()),
                 z_i: Some(z_0.clone()),
-                external_inputs: Some(vec![C1::ScalarField::zero(); self.F.external_inputs_len()]),
+                external_inputs: Some(FC::ExternalInputs::default()),
                 U_i: Some(U_i.clone()),
                 Us: Some(Us),
                 u_i_C: Some(u_i.C),
@@ -681,10 +681,8 @@ where
                 .z_i
                 .unwrap_or(vec![CF1::<C1>::zero(); self.F.state_len()]))
         })?;
-        let external_inputs = Vec::<FpVar<CF1<C1>>>::new_witness(cs.clone(), || {
-            Ok(self
-                .external_inputs
-                .unwrap_or(vec![CF1::<C1>::zero(); self.F.external_inputs_len()]))
+        let external_inputs = FC::ExternalInputsVar::new_witness(cs.clone(), || {
+            Ok(self.external_inputs.unwrap_or_default())
         })?;
 
         let U_dummy = LCCCS::<C1>::dummy(&self.ccs);
@@ -1278,7 +1276,7 @@ mod tests {
                         i_usize: Some(0),
                         z_0: Some(z_0.clone()),
                         z_i: Some(z_i.clone()),
-                        external_inputs: Some(vec![]),
+                        external_inputs: Some(()),
                         U_i: Some(U_i.clone()),
                         Us: Some(Us.clone()),
                         u_i_C: Some(u_i.C),
@@ -1362,7 +1360,7 @@ mod tests {
                         i_usize: Some(i),
                         z_0: Some(z_0.clone()),
                         z_i: Some(z_i.clone()),
-                        external_inputs: Some(vec![]),
+                        external_inputs: Some(()),
                         U_i: Some(U_i.clone()),
                         Us: Some(Us.clone()),
                         u_i_C: Some(u_i.C),

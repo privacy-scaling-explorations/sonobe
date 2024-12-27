@@ -77,7 +77,7 @@ pub mod tests {
         // perform multiple IVC steps (internally folding)
         let num_steps: usize = 3;
         for _ in 0..num_steps {
-            fs.prove_step(&mut rng, vec![], None)?;
+            fs.prove_step(&mut rng, FC::ExternalInputs::default(), None)?;
         }
 
         // verify the IVCProof
@@ -121,8 +121,8 @@ pub mod tests {
         // serialization new FS instance
         let num_steps: usize = 3;
         for _ in 0..num_steps {
-            new_fs.prove_step(&mut rng, vec![], None)?;
-            fs.prove_step(&mut rng, vec![], None)?;
+            new_fs.prove_step(&mut rng, FC::ExternalInputs::default(), None)?;
+            fs.prove_step(&mut rng, FC::ExternalInputs::default(), None)?;
         }
 
         // check that the IVCProofs from both FS instances are equal

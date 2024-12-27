@@ -240,7 +240,7 @@ pub mod tests {
 
         // generate a Nova instance and do a step of it
         let mut nova = N::init(&nova_params, F_circuit, z_0.clone())?;
-        nova.prove_step(&mut rng, vec![], None)?;
+        nova.prove_step(&mut rng, (), None)?;
         let ivc_proof = nova.ivc_proof();
         N::verify(nova_params.1, ivc_proof)?;
 

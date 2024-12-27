@@ -190,21 +190,20 @@ mod tests {
     }
     impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
         type Params = ();
+        type ExternalInputs = ();
+        type ExternalInputsVar = ();
         fn new(_params: Self::Params) -> Result<Self, Error> {
             Ok(Self { _f: PhantomData })
         }
         fn state_len(&self) -> usize {
             1
         }
-        fn external_inputs_len(&self) -> usize {
-            0
-        }
         fn generate_step_constraints(
             &self,
             cs: ConstraintSystemRef<F>,
             _i: usize,
             z_i: Vec<FpVar<F>>,
-            _external_inputs: Vec<FpVar<F>>,
+            _external_inputs: Self::ExternalInputsVar,
         ) -> Result<Vec<FpVar<F>>, SynthesisError> {
             let five = FpVar::<F>::new_constant(cs.clone(), F::from(5u32))?;
             let z_i = z_i[0].clone();
@@ -224,6 +223,8 @@ mod tests {
     }
     impl<F: PrimeField> FCircuit<F> for MultiInputsFCircuit<F> {
         type Params = ();
+        type ExternalInputs = ();
+        type ExternalInputsVar = ();
 
         fn new(_params: Self::Params) -> Result<Self, Error> {
             Ok(Self { _f: PhantomData })
@@ -231,16 +232,13 @@ mod tests {
         fn state_len(&self) -> usize {
             5
         }
-        fn external_inputs_len(&self) -> usize {
-            0
-        }
         /// generates the constraints for the step of F for the given z_i
         fn generate_step_constraints(
             &self,
             cs: ConstraintSystemRef<F>,
             _i: usize,
             z_i: Vec<FpVar<F>>,
-            _external_inputs: Vec<FpVar<F>>,
+            _external_inputs: Self::ExternalInputsVar,
         ) -> Result<Vec<FpVar<F>>, SynthesisError> {
             let four = FpVar::<F>::new_constant(cs.clone(), F::from(4u32))?;
             let forty = FpVar::<F>::new_constant(cs.clone(), F::from(40u32))?;
@@ -344,7 +342,8 @@ mod tests {
 
         let mut nova = NOVA::<FC>::init(&fs_params, f_circuit, z_0).unwrap();
         for _ in 0..n_steps {
-            nova.prove_step(&mut rng, vec![], None).unwrap();
+            nova.prove_step(&mut rng, FC::ExternalInputs::default(), None)
+                .unwrap();
         }
 
         let start = Instant::now();

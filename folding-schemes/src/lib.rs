@@ -197,7 +197,7 @@ pub trait FoldingScheme<
     fn prove_step(
         &mut self,
         rng: impl RngCore,
-        external_inputs: Vec<C1::ScalarField>,
+        external_inputs: FC::ExternalInputs,
         other_instances: Option<Self::MultiCommittedInstanceWithWitness>,
     ) -> Result<(), Error>;
 
@@ -237,7 +237,7 @@ pub trait MultiFolding<
         &self,
         rng: impl RngCore,
         state: Vec<C1::ScalarField>,
-        external_inputs: Vec<C1::ScalarField>,
+        external_inputs: FC::ExternalInputs,
     ) -> Result<Self::RunningInstance, Error>;
 
     /// Creates a new IncomingInstance for the given state, to be folded in the multi-folding step.
@@ -245,7 +245,7 @@ pub trait MultiFolding<
         &self,
         rng: impl RngCore,
         state: Vec<C1::ScalarField>,
-        external_inputs: Vec<C1::ScalarField>,
+        external_inputs: FC::ExternalInputs,
     ) -> Result<Self::IncomingInstance, Error>;
 }
 

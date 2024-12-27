@@ -55,7 +55,7 @@ pub struct AugmentedFCircuit<C1: Curve, C2: Curve, FC: FCircuit<CF1<C1>>> {
     pub(super) i_usize: Option<usize>,
     pub(super) z_0: Option<Vec<C1::ScalarField>>,
     pub(super) z_i: Option<Vec<C1::ScalarField>>,
-    pub(super) external_inputs: Option<Vec<C1::ScalarField>>,
+    pub(super) external_inputs: Option<FC::ExternalInputs>,
     pub(super) u_i_cmW: Option<C1>,
     pub(super) U_i: Option<CommittedInstance<C1>>,
     pub(super) U_i1_cmE: Option<C1>,
@@ -125,10 +125,8 @@ where
                 .z_i
                 .unwrap_or(vec![CF1::<C1>::zero(); self.F.state_len()]))
         })?;
-        let external_inputs = Vec::<FpVar<CF1<C1>>>::new_witness(cs.clone(), || {
-            Ok(self
-                .external_inputs
-                .unwrap_or(vec![CF1::<C1>::zero(); self.F.external_inputs_len()]))
+        let external_inputs = FC::ExternalInputsVar::new_witness(cs.clone(), || {
+            Ok(self.external_inputs.unwrap_or_default())
         })?;
 
         let u_dummy = CommittedInstance::dummy(2);

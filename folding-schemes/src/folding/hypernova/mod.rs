@@ -279,7 +279,7 @@ where
         &self,
         mut rng: impl RngCore,
         state: Vec<C1::ScalarField>,
-        external_inputs: Vec<C1::ScalarField>,
+        external_inputs: FC::ExternalInputs,
     ) -> Result<Self::RunningInstance, Error> {
         let r1cs_z = self.new_instance_generic(state, external_inputs)?;
         // compute committed instances, w_{i+1}, u_{i+1}, which will be used as w_i, u_i, so we
@@ -301,7 +301,7 @@ where
         &self,
         mut rng: impl RngCore,
         state: Vec<C1::ScalarField>,
-        external_inputs: Vec<C1::ScalarField>,
+        external_inputs: FC::ExternalInputs,
     ) -> Result<Self::IncomingInstance, Error> {
         let r1cs_z = self.new_instance_generic(state, external_inputs)?;
         // compute committed instances, w_{i+1}, u_{i+1}, which will be used as w_i, u_i, so we
@@ -332,7 +332,7 @@ where
     fn new_instance_generic(
         &self,
         state: Vec<C1::ScalarField>,
-        external_inputs: Vec<C1::ScalarField>,
+        external_inputs: FC::ExternalInputs,
     ) -> Result<Vec<C1::ScalarField>, Error> {
         // prepare the initial dummy instances
         let U_i = LCCCS::<C1>::dummy(&self.ccs);
@@ -599,7 +599,7 @@ where
     fn prove_step(
         &mut self,
         mut rng: impl RngCore,
-        external_inputs: Vec<C1::ScalarField>,
+        external_inputs: FC::ExternalInputs,
         other_instances: Option<Self::MultiCommittedInstanceWithWitness>,
     ) -> Result<(), Error> {
         // ensure that commitments are blinding if user has specified so.
@@ -663,14 +663,6 @@ where
                 self.z_i.len(),
                 "F.state_len()".to_string(),
                 self.F.state_len(),
-            ));
-        }
-        if external_inputs.len() != self.F.external_inputs_len() {
-            return Err(Error::NotSameLength(
-                "F.external_inputs_len()".to_string(),
-                self.F.external_inputs_len(),
-                "external_inputs.len()".to_string(),
-                external_inputs.len(),
             ));
         }
 
@@ -1045,17 +1037,17 @@ mod tests {
             let mut lcccs = vec![];
             for j in 0..MU - 1 {
                 let instance_state = vec![Fr::from(j as u32 + 85_u32)];
-                let (U, W) = hypernova.new_running_instance(&mut rng, instance_state, vec![])?;
+                let (U, W) = hypernova.new_running_instance(&mut rng, instance_state, ())?;
                 lcccs.push((U, W));
             }
             let mut cccs = vec![];
             for j in 0..NU - 1 {
                 let instance_state = vec![Fr::from(j as u32 + 15_u32)];
-                let (u, w) = hypernova.new_incoming_instance(&mut rng, instance_state, vec![])?;
+                let (u, w) = hypernova.new_incoming_instance(&mut rng, instance_state, ())?;
                 cccs.push((u, w));
             }
 
-            hypernova.prove_step(&mut rng, vec![], Some((lcccs, cccs)))?;
+            hypernova.prove_step(&mut rng, (), Some((lcccs, cccs)))?;
         }
         assert_eq!(Fr::from(num_steps as u32), hypernova.i);
 

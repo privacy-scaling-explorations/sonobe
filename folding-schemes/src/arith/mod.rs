@@ -1,8 +1,7 @@
-use ark_ec::CurveGroup;
 use ark_relations::r1cs::SynthesisError;
 use ark_std::rand::RngCore;
 
-use crate::{commitment::CommitmentScheme, folding::traits::Dummy, Error};
+use crate::{commitment::CommitmentScheme, folding::traits::Dummy, Curve, Error};
 
 pub mod ccs;
 pub mod r1cs;
@@ -123,7 +122,7 @@ pub trait ArithSerializer {
 /// in a plain R1CS.
 ///
 /// [HyperNova]: https://eprint.iacr.org/2023/573.pdf
-pub trait ArithSampler<C: CurveGroup, W, U>: Arith<W, U> {
+pub trait ArithSampler<C: Curve, W, U>: Arith<W, U> {
     /// Samples a random witness and instance that satisfy the constraint system.
     fn sample_witness_instance<CS: CommitmentScheme<C, true>>(
         &self,

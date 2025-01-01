@@ -9,10 +9,10 @@
 /// - generate the Solidity contract that verifies the proof
 /// - verify the proof in the EVM
 ///
-use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as G1};
+use ark_bn254::{Bn254, Fr, G1Projective as G1};
 use ark_ff::PrimeField;
 use ark_groth16::Groth16;
-use ark_grumpkin::{constraints::GVar as GVar2, Projective as G2};
+use ark_grumpkin::Projective as G2;
 use ark_r1cs_std::alloc::AllocVar;
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
@@ -46,21 +46,21 @@ pub struct CubicFCircuit<F: PrimeField> {
 }
 impl<F: PrimeField> FCircuit<F> for CubicFCircuit<F> {
     type Params = ();
+    type ExternalInputs = ();
+    type ExternalInputsVar = ();
+
     fn new(_params: Self::Params) -> Result<Self, Error> {
         Ok(Self { _f: PhantomData })
     }
     fn state_len(&self) -> usize {
         1
     }
-    fn external_inputs_len(&self) -> usize {
-        0
-    }
     fn generate_step_constraints(
         &self,
         cs: ConstraintSystemRef<F>,
         _i: usize,
         z_i: Vec<FpVar<F>>,
-        _external_inputs: Vec<FpVar<F>>,
+        _external_inputs: Self::ExternalInputsVar,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let five = FpVar::<F>::new_constant(cs.clone(), F::from(5u32))?;
         let z_i = z_i[0].clone();
@@ -76,19 +76,9 @@ fn main() -> Result<(), Error> {
 
     let f_circuit = CubicFCircuit::<Fr>::new(())?;
 
-    pub type N =
-        Nova<G1, GVar, G2, GVar2, CubicFCircuit<Fr>, KZG<'static, Bn254>, Pedersen<G2>, false>;
-    pub type D = DeciderEth<
-        G1,
-        GVar,
-        G2,
-        GVar2,
-        CubicFCircuit<Fr>,
-        KZG<'static, Bn254>,
-        Pedersen<G2>,
-        Groth16<Bn254>,
-        N,
-    >;
+    pub type N = Nova<G1, G2, CubicFCircuit<Fr>, KZG<'static, Bn254>, Pedersen<G2>, false>;
+    pub type D =
+        DeciderEth<G1, G2, CubicFCircuit<Fr>, KZG<'static, Bn254>, Pedersen<G2>, Groth16<Bn254>, N>;
 
     let poseidon_config = poseidon_canonical_config::<Fr>();
     let mut rng = ark_std::rand::rngs::OsRng;
@@ -106,7 +96,7 @@ fn main() -> Result<(), Error> {
     // run n steps of the folding iteration
     for i in 0..n_steps {
         let start = Instant::now();
-        nova.prove_step(rng, vec![], None)?;
+        nova.prove_step(rng, (), None)?;
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
 

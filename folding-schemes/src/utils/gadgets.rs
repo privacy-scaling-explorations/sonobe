@@ -71,11 +71,8 @@ pub struct SparseMatrixVar<FV> {
     pub coeffs: Vec<Vec<(FV, usize)>>,
 }
 
-impl<F, CF, FV> AllocVar<SparseMatrix<F>, CF> for SparseMatrixVar<FV>
-where
-    F: PrimeField,
-    CF: PrimeField,
-    FV: AllocVar<F, CF>,
+impl<F: PrimeField, CF: PrimeField, FV: AllocVar<F, CF>> AllocVar<SparseMatrix<F>, CF>
+    for SparseMatrixVar<FV>
 {
     fn new_variable<T: Borrow<SparseMatrix<F>>>(
         cs: impl Into<Namespace<CF>>,

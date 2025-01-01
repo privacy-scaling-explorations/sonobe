@@ -1,5 +1,3 @@
-use ark_crypto_primitives::sponge::Absorb;
-use ark_ec::CurveGroup;
 use ark_ff::{One, PrimeField};
 use ark_poly::univariate::DensePolynomial;
 use ark_poly::{DenseMultilinearExtension, DenseUVPolynomial, Polynomial};
@@ -9,35 +7,32 @@ use ark_std::{log2, Zero};
 use super::mova::{CommittedInstance, Witness};
 use crate::transcript::Transcript;
 use crate::utils::mle::dense_vec_to_dense_mle;
-use crate::Error;
+use crate::{Curve, Error};
 
 /// Implements the Points vs Line as described in
 /// [Mova](https://eprint.iacr.org/2024/1220.pdf) and Section 4.5.2 from Thaler’s book
 
 /// Claim from step 3 protocol 6
-pub struct PointvsLineEvaluationClaim<C: CurveGroup> {
+pub struct PointvsLineEvaluationClaim<C: Curve> {
     pub mleE1_prime: C::ScalarField,
     pub mleE2_prime: C::ScalarField,
     pub rE_prime: Vec<C::ScalarField>,
 }
 /// Proof from step 1 protocol 6
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct PointVsLineProof<C: CurveGroup> {
+pub struct PointVsLineProof<C: Curve> {
     pub h1: DensePolynomial<C::ScalarField>,
     pub h2: DensePolynomial<C::ScalarField>,
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct PointVsLine<C: CurveGroup, T: Transcript<C::ScalarField>> {
+pub struct PointVsLine<C: Curve, T: Transcript<C::ScalarField>> {
     _phantom_C: std::marker::PhantomData<C>,
     _phantom_T: std::marker::PhantomData<T>,
 }
 
 /// Protocol 6 from Mova
-impl<C: CurveGroup, T: Transcript<C::ScalarField>> PointVsLine<C, T>
-where
-    C::ScalarField: Absorb,
-{
+impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> {
     pub fn prove(
         transcript: &mut T,
         ci1: &CommittedInstance<C>,

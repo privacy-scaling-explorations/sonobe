@@ -5,10 +5,8 @@
 use ark_crypto_primitives::sponge::{
     constraints::{AbsorbGadget, CryptographicSpongeVar},
     poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig},
-    Absorb,
 };
-use ark_ec::CurveGroup;
-use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, fields::fp::FpVar, prelude::CurveVar};
+use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, fields::fp::FpVar};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use ark_std::{marker::PhantomData, Zero};
 
@@ -29,6 +27,7 @@ use crate::{
         nova::{decider_eth_circuit::WitnessVar, nifs::nova_circuits::CommittedInstanceVar},
         traits::{CommittedInstanceOps, CommittedInstanceVarOps, Dummy, WitnessOps, WitnessVarOps},
     },
+    Curve,
 };
 
 use super::DeciderEnabledNIFS;
@@ -36,9 +35,8 @@ use super::DeciderEnabledNIFS;
 /// Circuit that implements part of the in-circuit checks needed for the offchain verification over
 /// the Curve2's BaseField (=Curve1's ScalarField).
 pub struct GenericOffchainDeciderCircuit1<
-    C1: CurveGroup,
-    C2: CurveGroup,
-    GC2: CurveVar<C2, CF2<C2>>,
+    C1: Curve,
+    C2: Curve,
     RU: CommittedInstanceOps<C1>,       // Running instance
     IU: CommittedInstanceOps<C1>,       // Incoming instance
     W: WitnessOps<CF1<C1>>,             // Witness
@@ -46,7 +44,6 @@ pub struct GenericOffchainDeciderCircuit1<
     AVar: ArithGadget<W::Var, RU::Var>, // In-circuit representation of `A`
     D: DeciderEnabledNIFS<C1, RU, IU, W, A>,
 > {
-    pub _gc2: PhantomData<GC2>,
     pub _avar: PhantomData<AVar>,
     /// Constraint system of the Augmented Function circuit
     pub arith: A,
@@ -79,9 +76,8 @@ pub struct GenericOffchainDeciderCircuit1<
 }
 
 impl<
-        C1: CurveGroup,
-        C2: CurveGroup<ScalarField = CF2<C1>, BaseField = CF1<C1>>,
-        GC2: CurveVar<C2, CF2<C2>>,
+        C1: Curve,
+        C2: Curve<ScalarField = CF2<C1>, BaseField = CF1<C1>>,
         RU: CommittedInstanceOps<C1> + for<'a> Dummy<&'a A>,
         IU: CommittedInstanceOps<C1> + for<'a> Dummy<&'a A>,
         W: WitnessOps<CF1<C1>> + for<'a> Dummy<&'a A>,
@@ -97,7 +93,7 @@ impl<
         D::RandomnessDummyCfg,
         usize,
         usize,
-    )> for GenericOffchainDeciderCircuit1<C1, C2, GC2, RU, IU, W, A, AVar, D>
+    )> for GenericOffchainDeciderCircuit1<C1, C2, RU, IU, W, A, AVar, D>
 {
     fn dummy(
         (
@@ -119,7 +115,6 @@ impl<
         ),
     ) -> Self {
         Self {
-            _gc2: PhantomData,
             _avar: PhantomData,
             poseidon_config,
             pp_hash: Zero::zero(),
@@ -143,9 +138,8 @@ impl<
 }
 
 impl<
-        C1: CurveGroup,
-        C2: CurveGroup<ScalarField = CF2<C1>, BaseField = CF1<C1>>,
-        GC2: CurveVar<C2, CF2<C2>>,
+        C1: Curve,
+        C2: Curve<ScalarField = CF2<C1>, BaseField = CF1<C1>>,
         RU: CommittedInstanceOps<C1>,
         IU: CommittedInstanceOps<C1>,
         W: WitnessOps<CF1<C1>>,
@@ -153,10 +147,9 @@ impl<
         AVar: ArithGadget<W::Var, RU::Var> + AllocVar<A, CF1<C1>>,
         D: DeciderEnabledNIFS<C1, RU, IU, W, A>,
     > ConstraintSynthesizer<CF1<C1>>
-    for GenericOffchainDeciderCircuit1<C1, C2, GC2, RU, IU, W, A, AVar, D>
+    for GenericOffchainDeciderCircuit1<C1, C2, RU, IU, W, A, AVar, D>
 where
     RU::Var: AbsorbGadget<CF1<C1>> + CommittedInstanceVarOps<C1, PointVar = NonNativeAffineVar<C1>>,
-    CF1<C1>: Absorb,
 {
     fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
         let arith = AVar::new_witness(cs.clone(), || Ok(&self.arith))?;
@@ -177,7 +170,7 @@ where
         U_i1.get_commitments().enforce_equal(&U_i1_commitments)?;
 
         let cf_U_i =
-            CycleFoldCommittedInstanceVar::<C2, GC2>::new_input(cs.clone(), || Ok(self.cf_U_i))?;
+            CycleFoldCommittedInstanceVar::<C2>::new_input(cs.clone(), || Ok(self.cf_U_i))?;
 
         // allocate the inputs for the checks 7.1 and 7.2
         let kzg_challenges = Vec::new_input(cs.clone(), || Ok(self.kzg_challenges))?;
@@ -234,7 +227,7 @@ where
 
 /// Circuit that implements part of the in-circuit checks needed for the offchain verification over
 /// the Curve1's BaseField (=Curve2's ScalarField).
-pub struct GenericOffchainDeciderCircuit2<C2: CurveGroup> {
+pub struct GenericOffchainDeciderCircuit2<C2: Curve> {
     /// R1CS of the CycleFold circuit
     pub cf_arith: R1CS<CF1<C2>>,
     pub poseidon_config: PoseidonConfig<CF1<C2>>,
@@ -250,7 +243,7 @@ pub struct GenericOffchainDeciderCircuit2<C2: CurveGroup> {
     pub kzg_evaluations: Vec<CF1<C2>>,
 }
 
-impl<C2: CurveGroup> Dummy<(R1CS<CF1<C2>>, PoseidonConfig<CF1<C2>>, usize)>
+impl<C2: Curve> Dummy<(R1CS<CF1<C2>>, PoseidonConfig<CF1<C2>>, usize)>
     for GenericOffchainDeciderCircuit2<C2>
 {
     fn dummy(
@@ -272,7 +265,7 @@ impl<C2: CurveGroup> Dummy<(R1CS<CF1<C2>>, PoseidonConfig<CF1<C2>>, usize)>
     }
 }
 
-impl<C2: CurveGroup> ConstraintSynthesizer<CF1<C2>> for GenericOffchainDeciderCircuit2<C2> {
+impl<C2: Curve> ConstraintSynthesizer<CF1<C2>> for GenericOffchainDeciderCircuit2<C2> {
     fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C2>>) -> Result<(), SynthesisError> {
         let cf_r1cs = R1CSMatricesVar::<CF1<C2>, FpVar<CF1<C2>>>::new_witness(cs.clone(), || {
             Ok(self.cf_arith.clone())

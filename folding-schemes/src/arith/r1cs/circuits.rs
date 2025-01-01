@@ -95,7 +95,7 @@ pub mod tests {
         },
         CRHScheme, CRHSchemeGadget,
     };
-    use ark_ec::CurveGroup;
+
     use ark_ff::BigInteger;
     use ark_pallas::{Fq, Fr, Projective};
     use ark_r1cs_std::{eq::EqGadget, fields::fp::FpVar, uint8::UInt8};
@@ -104,7 +104,7 @@ pub mod tests {
         rand::{thread_rng, Rng},
         One, UniformRand,
     };
-    use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
+    use ark_vesta::Projective as Projective2;
 
     use super::*;
     use crate::arith::{
@@ -131,9 +131,9 @@ pub mod tests {
         },
         FCircuit,
     };
-    use crate::Error;
+    use crate::{Curve, Error};
 
-    fn prepare_instances<C: CurveGroup, CS: CommitmentScheme<C>, R: Rng>(
+    fn prepare_instances<C: Curve, CS: CommitmentScheme<C>, R: Rng>(
         mut rng: R,
         r1cs: &R1CS<C::ScalarField>,
         z: &[C::ScalarField],
@@ -295,7 +295,7 @@ pub mod tests {
         // non-natively
         let cs = ConstraintSystem::<Fr>::new_ref();
         let wVar = CycleFoldWitnessVar::new_witness(cs.clone(), || Ok(w))?;
-        let uVar = CycleFoldCommittedInstanceVar::<_, GVar2>::new_witness(cs.clone(), || Ok(u))?;
+        let uVar = CycleFoldCommittedInstanceVar::new_witness(cs.clone(), || Ok(u))?;
         let r1csVar =
             R1CSMatricesVar::<Fq, NonNativeUintVar<Fr>>::new_witness(cs.clone(), || Ok(r1cs))?;
         r1csVar.enforce_relation(&wVar, &uVar)?;

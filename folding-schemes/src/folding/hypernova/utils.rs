@@ -1,4 +1,3 @@
-use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_poly::{DenseMultilinearExtension, MultilinearExtension};
 use ark_std::One;
@@ -10,7 +9,7 @@ use crate::arith::ccs::CCS;
 use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::utils::vec::mat_vec_mul;
 use crate::utils::virtual_polynomial::{build_eq_x_r_vec, eq_eval, VirtualPolynomial};
-use crate::Error;
+use crate::{Curve, Error};
 
 /// Compute the arrays of sigma_i and theta_i from step 4 corresponding to the LCCCS and CCCS
 /// instances
@@ -97,17 +96,14 @@ pub fn compute_c<F: PrimeField>(
 }
 
 /// Compute g(x) polynomial for the given inputs.
-pub fn compute_g<C: CurveGroup>(
+pub fn compute_g<C: Curve>(
     ccs: &CCS<C::ScalarField>,
     running_instances: &[LCCCS<C>],
     z_lcccs: &[Vec<C::ScalarField>],
     z_cccs: &[Vec<C::ScalarField>],
     gamma: C::ScalarField,
     beta: &[C::ScalarField],
-) -> Result<VirtualPolynomial<C::ScalarField>, Error>
-where
-    C::ScalarField: PrimeField,
-{
+) -> Result<VirtualPolynomial<C::ScalarField>, Error> {
     assert_eq!(running_instances.len(), z_lcccs.len());
 
     let mut g = VirtualPolynomial::<C::ScalarField>::new(ccs.s);

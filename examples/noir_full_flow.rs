@@ -9,12 +9,12 @@
 /// - generate the Solidity contract that verifies the proof
 /// - verify the proof in the EVM
 ///
-use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as G1};
+use ark_bn254::{Bn254, Fr, G1Projective as G1};
 
 use ark_groth16::Groth16;
-use ark_grumpkin::{constraints::GVar as GVar2, Projective as G2};
+use ark_grumpkin::Projective as G2;
 
-use experimental_frontends::noir::NoirFCircuit;
+use experimental_frontends::{noir::NoirFCircuit, utils::VecF};
 use folding_schemes::{
     commitment::{kzg::KZG, pedersen::Pedersen},
     folding::{
@@ -42,20 +42,18 @@ fn main() -> Result<(), Error> {
     let z_0 = vec![Fr::from(1)];
 
     // initialize the noir fcircuit
-    let f_circuit = NoirFCircuit::new((
+    const EXT_INP_LEN: usize = 0;
+    let f_circuit = NoirFCircuit::<Fr, EXT_INP_LEN>::new((
         Path::new("./experimental-frontends/src/noir/test_folder/test_mimc/target/test_mimc.json")
             .into(),
         1,
-        0,
     ))?;
 
-    pub type N = Nova<G1, GVar, G2, GVar2, NoirFCircuit<Fr>, KZG<'static, Bn254>, Pedersen<G2>>;
+    pub type N = Nova<G1, G2, NoirFCircuit<Fr, EXT_INP_LEN>, KZG<'static, Bn254>, Pedersen<G2>>;
     pub type D = DeciderEth<
         G1,
-        GVar,
         G2,
-        GVar2,
-        NoirFCircuit<Fr>,
+        NoirFCircuit<Fr, EXT_INP_LEN>,
         KZG<'static, Bn254>,
         Pedersen<G2>,
         Groth16<Bn254>,
@@ -78,7 +76,7 @@ fn main() -> Result<(), Error> {
     // run n steps of the folding iteration
     for i in 0..5 {
         let start = Instant::now();
-        nova.prove_step(rng, vec![], None)?;
+        nova.prove_step(rng, VecF(vec![]), None)?;
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
     // verify the last IVC proof

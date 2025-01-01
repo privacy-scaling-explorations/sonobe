@@ -3,7 +3,7 @@
 #![allow(non_camel_case_types)]
 #![allow(clippy::upper_case_acronyms)]
 
-use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as Projective};
+use ark_bn254::{Bn254, Fr, G1Projective as Projective};
 use ark_crypto_primitives::{
     crh::{
         poseidon::constraints::{CRHGadget, CRHParametersVar},
@@ -12,7 +12,7 @@ use ark_crypto_primitives::{
     sponge::{poseidon::PoseidonConfig, Absorb},
 };
 use ark_ff::PrimeField;
-use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
+use ark_grumpkin::Projective as Projective2;
 use ark_r1cs_std::alloc::AllocVar;
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
@@ -74,6 +74,8 @@ where
     F: Absorb,
 {
     type Params = PoseidonConfig<F>;
+    type ExternalInputs = [F; 1];
+    type ExternalInputsVar = [FpVar<F>; 1];
 
     fn new(params: Self::Params) -> Result<Self, Error> {
         Ok(Self {
@@ -84,9 +86,6 @@ where
     fn state_len(&self) -> usize {
         1
     }
-    fn external_inputs_len(&self) -> usize {
-        1
-    }
     /// generates the constraints and returns the next state value for the step of F for the given
     /// z_i and external_inputs
     fn generate_step_constraints(
@@ -94,7 +93,7 @@ where
         cs: ConstraintSystemRef<F>,
         _i: usize,
         z_i: Vec<FpVar<F>>,
-        external_inputs: Vec<FpVar<F>>,
+        external_inputs: Self::ExternalInputsVar,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let crh_params =
             CRHParametersVar::<F>::new_constant(cs.clone(), self.poseidon_config.clone())?;
@@ -137,7 +136,10 @@ pub mod tests {
             external_inputs_step_native(z_i.clone(), external_inputs.clone(), &poseidon_config);
 
         let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i))?;
-        let external_inputsVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(external_inputs))?;
+        let external_inputsVar: [FpVar<Fr>; 1] =
+            Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(external_inputs))?
+                .try_into()
+                .unwrap();
 
         let computed_z_i1Var =
             circuit.generate_step_constraints(cs.clone(), 0, z_iVar, external_inputsVar)?;
@@ -153,11 +155,11 @@ fn main() -> Result<(), Error> {
 
     // prepare the external inputs to be used at each folding step
     let external_inputs = vec![
-        vec![Fr::from(3_u32)],
-        vec![Fr::from(33_u32)],
-        vec![Fr::from(73_u32)],
-        vec![Fr::from(103_u32)],
-        vec![Fr::from(125_u32)],
+        [Fr::from(3_u32)],
+        [Fr::from(33_u32)],
+        [Fr::from(73_u32)],
+        [Fr::from(103_u32)],
+        [Fr::from(125_u32)],
     ];
     assert_eq!(external_inputs.len(), num_steps);
 
@@ -169,9 +171,7 @@ fn main() -> Result<(), Error> {
     /// trait, and the rest of our code would be working without needing to be updated.
     type N = Nova<
         Projective,
-        GVar,
         Projective2,
-        GVar2,
         ExternalInputsCircuit<Fr>,
         KZG<'static, Bn254>,
         Pedersen<Projective2>,

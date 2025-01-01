@@ -9,13 +9,13 @@
 /// - generate the Solidity contract that verifies the proof
 /// - verify the proof in the EVM
 ///
-use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as G1};
+use ark_bn254::{Bn254, Fr, G1Projective as G1};
 use noname::backends::r1cs::R1csBn254Field;
 
 use ark_groth16::Groth16;
-use ark_grumpkin::{constraints::GVar as GVar2, Projective as G2};
+use ark_grumpkin::Projective as G2;
 
-use experimental_frontends::noname::NonameFCircuit;
+use experimental_frontends::{noname::NonameFCircuit, utils::VecF};
 use folding_schemes::{
     commitment::{kzg::KZG, pedersen::Pedersen},
     folding::{
@@ -58,24 +58,21 @@ fn main() -> Result<(), Error> {
     ];
 
     // initialize the noname circuit
-    let f_circuit_params = (NONAME_CIRCUIT_EXTERNAL_INPUTS.to_owned(), 2, 2);
-    let f_circuit = NonameFCircuit::<Fr, R1csBn254Field>::new(f_circuit_params)?;
+    let f_circuit_params = (NONAME_CIRCUIT_EXTERNAL_INPUTS.to_owned(), 2); // state len = 2
+    const EXT_INP_LEN: usize = 2;
+    let f_circuit = NonameFCircuit::<Fr, R1csBn254Field, EXT_INP_LEN>::new(f_circuit_params)?;
 
     pub type N = Nova<
         G1,
-        GVar,
         G2,
-        GVar2,
-        NonameFCircuit<Fr, R1csBn254Field>,
+        NonameFCircuit<Fr, R1csBn254Field, EXT_INP_LEN>,
         KZG<'static, Bn254>,
         Pedersen<G2>,
     >;
     pub type D = DeciderEth<
         G1,
-        GVar,
         G2,
-        GVar2,
-        NonameFCircuit<Fr, R1csBn254Field>,
+        NonameFCircuit<Fr, R1csBn254Field, EXT_INP_LEN>,
         KZG<'static, Bn254>,
         Pedersen<G2>,
         Groth16<Bn254>,
@@ -98,7 +95,7 @@ fn main() -> Result<(), Error> {
     // run n steps of the folding iteration
     for (i, external_inputs_at_step) in external_inputs.iter().enumerate() {
         let start = Instant::now();
-        nova.prove_step(rng, external_inputs_at_step.clone(), None)?;
+        nova.prove_step(rng, VecF(external_inputs_at_step.clone()), None)?;
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
 

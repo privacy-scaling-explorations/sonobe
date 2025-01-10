@@ -15,15 +15,18 @@ use core::marker::PhantomData;
 pub use super::decider_eth_circuit::DeciderEthCircuit;
 use super::decider_eth_circuit::DeciderNovaGadget;
 use super::{CommittedInstance, Nova};
-use crate::commitment::{
-    kzg::{Proof as KZGProof, KZG},
-    pedersen::Params as PedersenParams,
-    CommitmentScheme,
-};
 use crate::folding::circuits::decider::DeciderEnabledNIFS;
 use crate::folding::traits::{InputizeNonNative, WitnessOps};
 use crate::frontend::FCircuit;
 use crate::utils::eth::ToEth;
+use crate::{
+    commitment::{
+        kzg::{Proof as KZGProof, KZG},
+        pedersen::Params as PedersenParams,
+        CommitmentScheme,
+    },
+    folding::traits::Dummy,
+};
 use crate::{Curve, Error};
 use crate::{Decider as DeciderTrait, FoldingScheme};
 
@@ -93,7 +96,7 @@ where
     crate::folding::nova::VerifierParams<C1, C2, CS1, CS2, false>:
         From<<FS as FoldingScheme<C1, C2, FC>>::VerifierParam>,
 {
-    type PreprocessorParam = (FS::ProverParam, FS::VerifierParam);
+    type PreprocessorParam = ((FS::ProverParam, FS::VerifierParam), usize);
     type ProverParam = (S::ProvingKey, CS1::ProverParams);
     type Proof = Proof<C1, CS1, S>;
     type VerifierParam = VerifierParam<C1, CS1::VerifierParams, S::VerifyingKey>;
@@ -102,29 +105,33 @@ where
 
     fn preprocess(
         mut rng: impl RngCore + CryptoRng,
-        prep_param: Self::PreprocessorParam,
-        fs: FS,
+        ((pp, vp), state_len): Self::PreprocessorParam,
     ) -> Result<(Self::ProverParam, Self::VerifierParam), Error> {
-        let circuit = DeciderEthCircuit::<C1, C2>::try_from(Nova::from(fs))?;
+        // get the FoldingScheme prover & verifier params from Nova
+        let nova_pp: <Nova<C1, C2, FC, CS1, CS2, false> as FoldingScheme<C1, C2, FC>>::ProverParam =
+            pp.into();
+        let nova_vp: <Nova<C1, C2, FC, CS1, CS2, false> as FoldingScheme<
+                    C1,
+                    C2,
+                    FC,
+                >>::VerifierParam = vp.into();
+
+        let pp_hash = nova_vp.pp_hash()?;
+
+        let circuit = DeciderEthCircuit::<C1, C2>::dummy((
+            nova_vp.r1cs,
+            nova_vp.cf_r1cs,
+            nova_pp.cf_cs_pp,
+            nova_pp.poseidon_config,
+            (),
+            (),
+            state_len,
+            2, // Nova's running CommittedInstance contains 2 commitments
+        ));
 
         // get the Groth16 specific setup for the circuit
         let (g16_pk, g16_vk) = S::circuit_specific_setup(circuit, &mut rng)
             .map_err(|e| Error::SNARKSetupFail(e.to_string()))?;
-
-        // get the FoldingScheme prover & verifier params from Nova
-        #[allow(clippy::type_complexity)]
-        let nova_pp: <Nova<C1, C2, FC, CS1, CS2, false> as FoldingScheme<
-            C1,
-            C2,
-            FC,
-        >>::ProverParam = prep_param.0.clone().into();
-        #[allow(clippy::type_complexity)]
-        let nova_vp: <Nova<C1, C2, FC, CS1, CS2, false> as FoldingScheme<
-            C1,
-            C2,
-            FC,
-        >>::VerifierParam = prep_param.1.clone().into();
-        let pp_hash = nova_vp.pp_hash()?;
 
         let pp = (g16_pk, nova_pp.cs_pp);
         let vp = Self::VerifierParam {
@@ -316,7 +323,7 @@ pub mod tests {
         println!("Nova initialized, {:?}", start.elapsed());
 
         // prepare the Decider prover & verifier params
-        let (decider_pp, decider_vp) = D::preprocess(&mut rng, nova_params, nova.clone())?;
+        let (decider_pp, decider_vp) = D::preprocess(&mut rng, (nova_params, F_circuit.state_len()))?;
 
         let start = Instant::now();
         nova.prove_step(&mut rng, (), None)?;
@@ -389,12 +396,8 @@ pub mod tests {
         let preprocessor_param = PreprocessorParam::new(poseidon_config, F_circuit);
         let nova_params = N::preprocess(&mut rng, &preprocessor_param)?;
 
-        let start = Instant::now();
-        let nova = N::init(&nova_params, F_circuit, z_0.clone())?;
-        println!("Nova initialized, {:?}", start.elapsed());
-
         // prepare the Decider prover & verifier params
-        let (decider_pp, decider_vp) = D::preprocess(&mut rng, nova_params.clone(), nova.clone())?;
+        let (decider_pp, decider_vp) = D::preprocess(&mut rng, (nova_params.clone(), F_circuit.state_len()))?;
 
         // serialize the Nova params. These params are the trusted setup of the commitment schemes used
         // (ie. KZG & Pedersen in this case)

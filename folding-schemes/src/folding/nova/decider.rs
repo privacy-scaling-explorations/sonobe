@@ -15,8 +15,11 @@ use super::Nova;
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::cyclefold::CycleFoldCommittedInstance;
 use crate::folding::circuits::decider::DeciderEnabledNIFS;
-use crate::folding::traits::{CommittedInstanceOps, Inputize, InputizeNonNative, WitnessOps};
+use crate::folding::traits::{
+    CommittedInstanceOps, Dummy, Inputize, InputizeNonNative, WitnessOps,
+};
 use crate::frontend::FCircuit;
+use crate::transcript::poseidon::poseidon_canonical_config;
 use crate::{Curve, Error};
 use crate::{Decider as DeciderTrait, FoldingScheme};
 
@@ -117,7 +120,7 @@ where
     crate::folding::nova::VerifierParams<C1, C2, CS1, CS2, false>:
         From<<FS as FoldingScheme<C1, C2, FC>>::VerifierParam>,
 {
-    type PreprocessorParam = (FS::ProverParam, FS::VerifierParam);
+    type PreprocessorParam = ((FS::ProverParam, FS::VerifierParam), usize);
     type ProverParam =
         ProverParam<CS1::ProverParams, S1::ProvingKey, CS2::ProverParams, S2::ProvingKey>;
     type Proof = Proof<C1, C2, CS1, CS2, S1, S2>;
@@ -133,11 +136,32 @@ where
 
     fn preprocess(
         mut rng: impl RngCore + CryptoRng,
-        prep_param: Self::PreprocessorParam,
-        fs: FS,
+        ((pp, vp), state_len): Self::PreprocessorParam,
     ) -> Result<(Self::ProverParam, Self::VerifierParam), Error> {
-        let circuit1 = DeciderCircuit1::<C1, C2>::try_from(Nova::from(fs.clone()))?;
-        let circuit2 = DeciderCircuit2::<C2>::try_from(Nova::from(fs))?;
+        // get the FoldingScheme prover & verifier params from Nova
+        let nova_pp: <Nova<C1, C2, FC, CS1, CS2, false> as FoldingScheme<C1, C2, FC>>::ProverParam =
+            pp.into();
+        let nova_vp: <Nova<C1, C2, FC, CS1, CS2, false> as FoldingScheme<
+            C1,
+            C2,
+            FC,
+        >>::VerifierParam = vp.into();
+        let pp_hash = nova_vp.pp_hash()?;
+
+        let circuit1 = DeciderCircuit1::<C1, C2>::dummy((
+            nova_vp.r1cs,
+            &nova_vp.cf_r1cs,
+            nova_vp.poseidon_config,
+            (),
+            (),
+            state_len,
+            2, // Nova's running CommittedInstance contains 2 commitments
+        ));
+        let circuit2 = DeciderCircuit2::<C2>::dummy((
+            nova_vp.cf_r1cs,
+            poseidon_canonical_config::<C2::ScalarField>(),
+            2, // Nova's running CommittedInstance contains 2 commitments
+        ));
 
         // get the Groth16 specific setup for the circuits
         let (c1_g16_pk, c1_g16_vk) = S1::circuit_specific_setup(circuit1, &mut rng)
@@ -145,21 +169,6 @@ where
         let (c2_g16_pk, c2_g16_vk) = S2::circuit_specific_setup(circuit2, &mut rng)
             .map_err(|e| Error::SNARKSetupFail(e.to_string()))?;
 
-        // get the FoldingScheme prover & verifier params from Nova
-        #[allow(clippy::type_complexity)]
-        let nova_pp: <Nova<C1, C2, FC, CS1, CS2, false> as FoldingScheme<
-            C1,
-            C2,
-            FC,
-        >>::ProverParam = prep_param.0.clone().into();
-        #[allow(clippy::type_complexity)]
-        let nova_vp: <Nova<C1, C2, FC, CS1, CS2, false> as FoldingScheme<
-            C1,
-            C2,
-            FC,
-        >>::VerifierParam = prep_param.1.clone().into();
-
-        let pp_hash = nova_vp.pp_hash()?;
         let pp = Self::ProverParam {
             c1_snark_pp: c1_g16_pk,
             c1_cs_pp: nova_pp.cs_pp,
@@ -379,7 +388,7 @@ pub mod tests {
 
         // prepare the Decider prover & verifier params
         let start = Instant::now();
-        let (decider_pp, decider_vp) = D::preprocess(&mut rng, nova_params, nova.clone())?;
+        let (decider_pp, decider_vp) = D::preprocess(&mut rng, (nova_params, F_circuit.state_len()))?;
         println!("Decider preprocess, {:?}", start.elapsed());
 
         // decider proof generation

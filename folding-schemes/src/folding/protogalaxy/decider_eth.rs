@@ -5,6 +5,7 @@
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_snark::SNARK;
 use ark_std::{
+    log2,
     marker::PhantomData,
     rand::{CryptoRng, RngCore},
     One, Zero,
@@ -13,8 +14,8 @@ use ark_std::{
 pub use super::decider_eth_circuit::DeciderEthCircuit;
 use super::decider_eth_circuit::DeciderProtoGalaxyGadget;
 use super::ProtoGalaxy;
-use crate::folding::circuits::decider::DeciderEnabledNIFS;
 use crate::folding::traits::{InputizeNonNative, WitnessOps};
+use crate::folding::{circuits::decider::DeciderEnabledNIFS, traits::Dummy};
 use crate::frontend::FCircuit;
 use crate::Error;
 use crate::{
@@ -86,7 +87,7 @@ where
     crate::folding::protogalaxy::VerifierParams<C1, C2, CS1, CS2>:
         From<<FS as FoldingScheme<C1, C2, FC>>::VerifierParam>,
 {
-    type PreprocessorParam = (FS::ProverParam, FS::VerifierParam);
+    type PreprocessorParam = ((FS::ProverParam, FS::VerifierParam), usize);
     type ProverParam = (S::ProvingKey, CS1::ProverParams);
     type Proof = Proof<C1, CS1, S>;
     type VerifierParam = VerifierParam<C1, CS1::VerifierParams, S::VerifyingKey>;
@@ -95,29 +96,46 @@ where
 
     fn preprocess(
         mut rng: impl RngCore + CryptoRng,
-        prep_param: Self::PreprocessorParam,
-        fs: FS,
+        ((pp, vp), state_len): Self::PreprocessorParam,
     ) -> Result<(Self::ProverParam, Self::VerifierParam), Error> {
-        let circuit = DeciderEthCircuit::<C1, C2>::try_from(ProtoGalaxy::from(fs))?;
-
-        // get the Groth16 specific setup for the circuit
-        let (g16_pk, g16_vk) = S::circuit_specific_setup(circuit, &mut rng)
-            .map_err(|e| Error::SNARKSetupFail(e.to_string()))?;
-
         // get the FoldingScheme prover & verifier params from ProtoGalaxy
-        #[allow(clippy::type_complexity)]
         let protogalaxy_pp: <ProtoGalaxy<C1, C2, FC, CS1, CS2> as FoldingScheme<
             C1,
             C2,
             FC,
-        >>::ProverParam = prep_param.0.clone().into();
-        #[allow(clippy::type_complexity)]
+        >>::ProverParam = pp.into();
         let protogalaxy_vp: <ProtoGalaxy<C1, C2, FC, CS1, CS2> as FoldingScheme<
             C1,
             C2,
             FC,
-        >>::VerifierParam = prep_param.1.clone().into();
+        >>::VerifierParam = vp.into();
         let pp_hash = protogalaxy_vp.pp_hash()?;
+
+        // We fix `k`, the number of incoming instances, to 1, because
+        // multi-instances folding is not supported yet.
+        // TODO: Support multi-instances folding and make `k` a constant generic parameter (as in
+        // HyperNova). Tracking issue:
+        // https://github.com/privacy-scaling-explorations/sonobe/issues/82
+        let k = 1;
+        // `d`, the degree of the constraint system, is set to 2, as we only
+        // support R1CS for now, whose highest degree is 2.
+        let d = 2;
+        let t = log2(protogalaxy_vp.r1cs.num_constraints()) as usize;
+
+        let circuit = DeciderEthCircuit::<C1, C2>::dummy((
+            protogalaxy_vp.r1cs,
+            protogalaxy_vp.cf_r1cs,
+            protogalaxy_pp.cf_cs_params,
+            protogalaxy_pp.poseidon_config,
+            (t, d, k),
+            k + 1, // `k + 1` is the length of `L_X_evals`
+            state_len,
+            1, // ProtoGalaxy's running CommittedInstance contains 1 commitment
+        ));
+
+        // get the Groth16 specific setup for the circuit
+        let (g16_pk, g16_vk) = S::circuit_specific_setup(circuit, &mut rng)
+            .map_err(|e| Error::SNARKSetupFail(e.to_string()))?;
 
         let pp = (g16_pk, protogalaxy_pp.cs_params);
         let vp = Self::VerifierParam {
@@ -290,7 +308,7 @@ pub mod tests {
 
         // prepare the Decider prover & verifier params
         let (decider_pp, decider_vp) =
-            D::preprocess(&mut rng, protogalaxy_params, protogalaxy.clone())?;
+            D::preprocess(&mut rng, (protogalaxy_params, F_circuit.state_len()))?;
 
         // decider proof generation
         let start = Instant::now();
@@ -357,15 +375,11 @@ pub mod tests {
         let preprocessor_param = (poseidon_config, F_circuit);
         let protogalaxy_params = PG::preprocess(&mut rng, &preprocessor_param)?;
 
-        let start = Instant::now();
-        let mut protogalaxy = PG::init(&protogalaxy_params, F_circuit, z_0.clone())?;
-        println!("ProtoGalaxy initialized, {:?}", start.elapsed());
-        protogalaxy.prove_step(&mut rng, (), None)?;
-        protogalaxy.prove_step(&mut rng, (), None)?; // do a 2nd step
-
         // prepare the Decider prover & verifier params
-        let (decider_pp, decider_vp) =
-            D::preprocess(&mut rng, protogalaxy_params.clone(), protogalaxy.clone())?;
+        let (decider_pp, decider_vp) = D::preprocess(
+            &mut rng,
+            (protogalaxy_params.clone(), F_circuit.state_len()),
+        )?;
 
         // serialize the Nova params. These params are the trusted setup of the commitment schemes used
         // (ie. KZG & Pedersen in this case)

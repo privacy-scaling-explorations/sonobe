@@ -266,7 +266,6 @@ pub trait Decider<
     fn preprocess(
         rng: impl RngCore + CryptoRng,
         prep_param: Self::PreprocessorParam,
-        fs: FS,
     ) -> Result<(Self::ProverParam, Self::VerifierParam), Error>;
 
     fn prove(

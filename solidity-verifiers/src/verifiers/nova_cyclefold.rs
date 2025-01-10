@@ -146,7 +146,6 @@ mod tests {
     use ark_r1cs_std::alloc::AllocVar;
     use ark_r1cs_std::fields::fp::FpVar;
     use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
-    use ark_std::Zero;
     use askama::Template;
     use std::marker::PhantomData;
     use std::time::Instant;
@@ -305,14 +304,9 @@ mod tests {
                 f_circuit.clone(),
             );
         let nova_params = NOVA::preprocess(&mut rng, &prep_param).unwrap();
-        let nova = NOVA::init(
-            &nova_params,
-            f_circuit.clone(),
-            vec![Fr::zero(); f_circuit.state_len()].clone(),
-        )
-        .unwrap();
         let decider_params =
-            DECIDER::preprocess(&mut rng, nova_params.clone(), nova.clone()).unwrap();
+            DECIDER::<FC>::preprocess(&mut rng, (nova_params.clone(), f_circuit.state_len()))
+                .unwrap();
 
         (nova_params, decider_params)
     }

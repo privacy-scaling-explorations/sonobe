@@ -13,7 +13,7 @@ use crate::commitment::{
 };
 use crate::folding::circuits::decider::DeciderEnabledNIFS;
 use crate::folding::nova::decider_eth::VerifierParam;
-use crate::folding::traits::WitnessOps;
+use crate::folding::traits::{Dummy, WitnessOps};
 use crate::frontend::FCircuit;
 use crate::{Curve, Error};
 use crate::{Decider as DeciderTrait, FoldingScheme};
@@ -70,7 +70,7 @@ where
     crate::folding::hypernova::VerifierParams<C1, C2, CS1, CS2, false>:
         From<<FS as FoldingScheme<C1, C2, FC>>::VerifierParam>,
 {
-    type PreprocessorParam = (FS::ProverParam, FS::VerifierParam);
+    type PreprocessorParam = ((FS::ProverParam, FS::VerifierParam), usize);
     type ProverParam = (S::ProvingKey, CS1::ProverParams);
     type Proof = Proof<C1, CS1, S>;
     type VerifierParam = VerifierParam<C1, CS1::VerifierParams, S::VerifyingKey>;
@@ -79,29 +79,38 @@ where
 
     fn preprocess(
         mut rng: impl RngCore + CryptoRng,
-        prep_param: Self::PreprocessorParam,
-        fs: FS,
+        ((pp, vp), state_len): Self::PreprocessorParam,
     ) -> Result<(Self::ProverParam, Self::VerifierParam), Error> {
-        let circuit = DeciderEthCircuit::<C1, C2>::try_from(HyperNova::from(fs))?;
-
-        // get the Groth16 specific setup for the circuit
-        let (g16_pk, g16_vk) = S::circuit_specific_setup(circuit, &mut rng)
-            .map_err(|e| Error::SNARKSetupFail(e.to_string()))?;
-
         // get the FoldingScheme prover & verifier params from HyperNova
-        #[allow(clippy::type_complexity)]
         let hypernova_pp: <HyperNova<C1, C2, FC, CS1, CS2, MU, NU, false> as FoldingScheme<
             C1,
             C2,
             FC,
-        >>::ProverParam = prep_param.0.into();
-        #[allow(clippy::type_complexity)]
+        >>::ProverParam = pp.into();
         let hypernova_vp: <HyperNova<C1, C2, FC, CS1, CS2, MU, NU, false> as FoldingScheme<
             C1,
             C2,
             FC,
-        >>::VerifierParam = prep_param.1.into();
+        >>::VerifierParam = vp.into();
         let pp_hash = hypernova_vp.pp_hash()?;
+
+        let s = hypernova_vp.ccs.s;
+        let t = hypernova_vp.ccs.t;
+
+        let circuit = DeciderEthCircuit::<C1, C2>::dummy((
+            hypernova_vp.ccs,
+            hypernova_vp.cf_r1cs,
+            hypernova_pp.cf_cs_pp,
+            hypernova_pp.poseidon_config,
+            (s, t, MU, NU),
+            (),
+            state_len,
+            1, // HyperNova's LCCCS contains 1 commitment
+        ));
+
+        // get the Groth16 specific setup for the circuit
+        let (g16_pk, g16_vk) = S::circuit_specific_setup(circuit, &mut rng)
+            .map_err(|e| Error::SNARKSetupFail(e.to_string()))?;
 
         let pp = (g16_pk, hypernova_pp.cs_pp);
 
@@ -265,7 +274,7 @@ pub mod tests {
 
         // prepare the Decider prover & verifier params
         let (decider_pp, decider_vp) =
-            D::preprocess(&mut rng, hypernova_params, hypernova.clone())?;
+            D::preprocess(&mut rng, (hypernova_params, F_circuit.state_len()))?;
 
         // decider proof generation
         let proof = D::prove(rng, decider_pp, hypernova.clone())?;
@@ -320,13 +329,11 @@ pub mod tests {
         let prep_param = PreprocessorParam::new(poseidon_config.clone(), F_circuit);
         let hypernova_params = HN::preprocess(&mut rng, &prep_param)?;
 
-        let hypernova = HN::init(&hypernova_params, F_circuit, z_0.clone())?;
-
         let mut rng = rand::rngs::OsRng;
 
         // prepare the Decider prover & verifier params
         let (decider_pp, decider_vp) =
-            D::preprocess(&mut rng, hypernova_params.clone(), hypernova.clone())?;
+            D::preprocess(&mut rng, (hypernova_params.clone(), F_circuit.state_len()))?;
 
         let mut hypernova_pp_serialized = vec![];
         hypernova_params

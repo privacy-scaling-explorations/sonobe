@@ -28,7 +28,7 @@ use crate::Error;
 use crate::{
     arith::{
         ccs::{circuits::CCSMatricesVar, CCS},
-        ArithGadget,
+        ArithRelationGadget,
     },
     folding::circuits::decider::{EvalGadget, KZGChallengesGadget},
 };
@@ -38,7 +38,7 @@ use crate::{
     Curve,
 };
 
-impl<C: Curve> ArithGadget<WitnessVar<CF1<C>>, LCCCSVar<C>> for CCSMatricesVar<CF1<C>> {
+impl<C: Curve> ArithRelationGadget<WitnessVar<CF1<C>>, LCCCSVar<C>> for CCSMatricesVar<CF1<C>> {
     type Evaluation = Vec<FpVar<CF1<C>>>;
 
     fn eval_relation(

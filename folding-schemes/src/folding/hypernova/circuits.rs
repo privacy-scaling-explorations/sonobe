@@ -887,7 +887,7 @@ mod tests {
         arith::{
             ccs::tests::{get_test_ccs, get_test_z},
             r1cs::extract_w_x,
-            Arith,
+            ArithRelation,
         },
         commitment::{pedersen::Pedersen, CommitmentScheme},
         folding::{

@@ -9,7 +9,7 @@ use ark_std::Zero;
 use super::circuits::LCCCSVar;
 use super::Witness;
 use crate::arith::ccs::CCS;
-use crate::arith::Arith;
+use crate::arith::ArithRelation;
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::CF1;
 use crate::folding::traits::Inputize;
@@ -89,7 +89,7 @@ impl<C: Curve> Dummy<&CCS<CF1<C>>> for LCCCS<C> {
     }
 }
 
-impl<C: Curve> Arith<Witness<CF1<C>>, LCCCS<C>> for CCS<CF1<C>> {
+impl<C: Curve> ArithRelation<Witness<CF1<C>>, LCCCS<C>> for CCS<CF1<C>> {
     type Evaluation = Vec<CF1<C>>;
 
     /// Perform the check of the LCCCS instance described at section 4.2,
@@ -168,7 +168,7 @@ pub mod tests {
     use crate::arith::{
         ccs::tests::{get_test_ccs, get_test_z},
         r1cs::R1CS,
-        Arith,
+        ArithRelation,
     };
     use crate::commitment::pedersen::Pedersen;
     use crate::utils::hypercube::BooleanHypercube;

@@ -282,7 +282,7 @@ pub mod tests {
     use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
     use ark_pallas::{Fr, Projective};
 
-    use crate::arith::{r1cs::tests::get_test_r1cs, Arith};
+    use crate::arith::{r1cs::tests::get_test_r1cs, ArithRelation};
     use crate::commitment::pedersen::Pedersen;
     use crate::folding::nova::nifs::tests::test_nifs_opt;
 

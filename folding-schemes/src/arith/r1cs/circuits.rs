@@ -1,5 +1,5 @@
 use crate::{
-    arith::ArithGadget,
+    arith::ArithRelationGadget,
     utils::gadgets::{EquivalenceGadget, MatrixGadget, SparseMatrixVar, VectorGadget},
 };
 use ark_ff::PrimeField;
@@ -59,7 +59,7 @@ where
     }
 }
 
-impl<M, FVar, WVar: AsRef<[FVar]>, UVar: AsRef<[FVar]>> ArithGadget<WVar, UVar>
+impl<M, FVar, WVar: AsRef<[FVar]>, UVar: AsRef<[FVar]>> ArithRelationGadget<WVar, UVar>
     for R1CSMatricesVar<M, FVar>
 where
     SparseMatrixVar<FVar>: MatrixGadget<FVar>,
@@ -112,7 +112,7 @@ pub mod tests {
             extract_r1cs, extract_w_x,
             tests::{get_test_r1cs, get_test_z},
         },
-        Arith,
+        ArithRelation,
     };
     use crate::commitment::{pedersen::Pedersen, CommitmentScheme};
     use crate::folding::{

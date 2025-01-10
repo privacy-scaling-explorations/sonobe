@@ -6,7 +6,7 @@ use ark_std::{rand::Rng, sync::Arc, One, Zero};
 
 use super::circuits::CCCSVar;
 use super::Witness;
-use crate::arith::{ccs::CCS, Arith};
+use crate::arith::{ccs::CCS, ArithRelation};
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::CF1;
 use crate::folding::traits::Inputize;
@@ -98,7 +98,7 @@ impl<C: Curve> Dummy<&CCS<CF1<C>>> for CCCS<C> {
     }
 }
 
-impl<C: Curve> Arith<Witness<CF1<C>>, CCCS<C>> for CCS<CF1<C>> {
+impl<C: Curve> ArithRelation<Witness<CF1<C>>, CCCS<C>> for CCS<CF1<C>> {
     type Evaluation = Vec<CF1<C>>;
 
     fn eval_relation(&self, w: &Witness<CF1<C>>, u: &CCCS<C>) -> Result<Self::Evaluation, Error> {

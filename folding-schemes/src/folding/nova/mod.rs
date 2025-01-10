@@ -31,7 +31,7 @@ use crate::{
     constants::NOVA_N_BITS_RO,
     utils::pp_hash,
 };
-use crate::{arith::Arith, commitment::CommitmentScheme};
+use crate::{arith::ArithRelation, commitment::CommitmentScheme};
 use crate::{Curve, Error};
 use decider_eth_circuit::WitnessVar;
 

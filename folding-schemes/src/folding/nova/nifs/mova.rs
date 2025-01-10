@@ -14,7 +14,7 @@ use super::{
     pointvsline::{PointVsLine, PointVsLineProof, PointvsLineEvaluationClaim},
     NIFSTrait,
 };
-use crate::arith::{r1cs::R1CS, Arith};
+use crate::arith::{r1cs::R1CS, ArithRelation};
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::CF1;
 use crate::folding::traits::Dummy;
@@ -354,7 +354,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
     }
 }
 
-impl<C: Curve> Arith<Witness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
+impl<C: Curve> ArithRelation<Witness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
     type Evaluation = Vec<CF1<C>>;
 
     fn eval_relation(
@@ -380,7 +380,7 @@ pub mod tests {
     use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
     use ark_pallas::{Fr, Projective};
 
-    use crate::arith::{r1cs::tests::get_test_r1cs, Arith};
+    use crate::arith::{r1cs::tests::get_test_r1cs, ArithRelation};
     use crate::commitment::pedersen::Pedersen;
     use crate::folding::nova::nifs::tests::test_nifs_opt;
 

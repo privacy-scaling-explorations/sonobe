@@ -23,7 +23,7 @@ use num_bigint::BigUint;
 use crate::{
     arith::{
         r1cs::{extract_r1cs, extract_w_x, R1CS},
-        Arith,
+        ArithRelation,
     },
     commitment::CommitmentScheme,
     folding::circuits::{

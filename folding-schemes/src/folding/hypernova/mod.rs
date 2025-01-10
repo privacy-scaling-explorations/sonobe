@@ -41,7 +41,7 @@ use crate::{
     arith::{
         ccs::CCS,
         r1cs::{extract_w_x, R1CS},
-        Arith,
+        ArithRelation,
     },
     Curve, FoldingScheme, MultiFolding,
 };

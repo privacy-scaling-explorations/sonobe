@@ -13,7 +13,7 @@ use ark_std::log2;
 use crate::folding::traits::{CommittedInstanceOps, CommittedInstanceVarOps, Dummy, WitnessOps};
 use crate::transcript::{Transcript, TranscriptVar};
 use crate::utils::vec::poly_from_vec;
-use crate::{arith::Arith, folding::circuits::CF1};
+use crate::{arith::ArithRelation, folding::circuits::CF1};
 use crate::{Curve, Error};
 
 pub mod off_chain;
@@ -99,7 +99,7 @@ pub trait DeciderEnabledNIFS<
     RU: CommittedInstanceOps<C>, // Running instance
     IU: CommittedInstanceOps<C>, // Incoming instance
     W: WitnessOps<CF1<C>>,
-    A: Arith<W, RU>,
+    A: ArithRelation<W, RU>,
 >
 {
     type ProofDummyCfg;

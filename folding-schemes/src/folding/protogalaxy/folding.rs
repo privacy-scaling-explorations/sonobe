@@ -140,7 +140,7 @@ impl<C: Curve> Folding<C> {
         // 'refreshed' randomness) satisfies the relation.
         #[cfg(test)]
         {
-            use crate::arith::Arith;
+            use crate::arith::ArithRelation;
             r1cs.check_relation(
                 w,
                 &CommittedInstance::<_, true> {
@@ -408,7 +408,7 @@ pub mod tests {
     use ark_std::{rand::Rng, UniformRand};
 
     use crate::arith::r1cs::tests::{get_test_r1cs, get_test_z_split};
-    use crate::arith::Arith;
+    use crate::arith::ArithRelation;
     use crate::commitment::{pedersen::Pedersen, CommitmentScheme};
     use crate::transcript::poseidon::poseidon_canonical_config;
 

@@ -398,7 +398,7 @@ pub mod tests {
     use super::*;
     use crate::arith::{
         ccs::tests::{get_test_ccs, get_test_z},
-        Arith,
+        ArithRelation,
     };
     use crate::transcript::poseidon::poseidon_canonical_config;
     use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;

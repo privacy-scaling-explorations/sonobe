@@ -6,11 +6,11 @@ use crate::{commitment::CommitmentScheme, folding::traits::Dummy, Curve, Error};
 pub mod ccs;
 pub mod r1cs;
 
-/// `Arith` defines the operations that a constraint system (e.g., R1CS, CCS,
-/// etc.) should support.
+/// `ArithRelation` treats a constraint system (R1CS, CCS, etc.) as a relation
+/// between a witness of type `W` and a statement / public input / public IO /
+/// instance of type `U`, and in this trait, we define the necessary operations
+/// on the relation.
 ///
-/// Here, `W` is the type of witness, and `U` is the type of statement / public
-/// input / public IO / instance.
 /// Note that the same constraint system may support different types of `W` and
 /// `U`, and the satisfiability check may vary.
 ///
@@ -40,7 +40,7 @@ pub mod r1cs;
 /// This is also the case of CCS, where `W` and `U` may be vectors of field
 /// elements, [`crate::folding::hypernova::Witness`] and [`crate::folding::hypernova::lcccs::LCCCS`],
 /// or [`crate::folding::hypernova::Witness`] and [`crate::folding::hypernova::cccs::CCCS`].
-pub trait Arith<W, U>: Clone {
+pub trait ArithRelation<W, U>: Clone {
     type Evaluation;
 
     /// Returns a dummy witness and instance
@@ -122,7 +122,7 @@ pub trait ArithSerializer {
 /// in a plain R1CS.
 ///
 /// [HyperNova]: https://eprint.iacr.org/2023/573.pdf
-pub trait ArithSampler<C: Curve, W, U>: Arith<W, U> {
+pub trait ArithSampler<C: Curve, W, U>: ArithRelation<W, U> {
     /// Samples a random witness and instance that satisfy the constraint system.
     fn sample_witness_instance<CS: CommitmentScheme<C, true>>(
         &self,
@@ -131,9 +131,9 @@ pub trait ArithSampler<C: Curve, W, U>: Arith<W, U> {
     ) -> Result<(W, U), Error>;
 }
 
-/// `ArithGadget` defines the in-circuit counterparts of operations specified in
-/// `Arith` on constraint systems.
-pub trait ArithGadget<WVar, UVar> {
+/// `ArithRelationGadget` defines the in-circuit counterparts of operations
+/// specified in `ArithRelation` on constraint systems.
+pub trait ArithRelationGadget<WVar, UVar> {
     type Evaluation;
 
     /// Evaluates the constraint system `self` at witness `w` and instance `u`.

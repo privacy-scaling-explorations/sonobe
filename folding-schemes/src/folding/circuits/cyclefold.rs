@@ -30,7 +30,7 @@ use crate::Error;
 use crate::{
     arith::{
         r1cs::{circuits::R1CSMatricesVar, extract_w_x, R1CS},
-        ArithGadget,
+        ArithRelationGadget,
     },
     folding::traits::InputizeNonNative,
     Curve,
@@ -261,7 +261,7 @@ impl<C: Curve> NIFSFullGadget<C> {
     }
 }
 
-impl<C: Curve> ArithGadget<CycleFoldWitnessVar<C>, CycleFoldCommittedInstanceVar<C>>
+impl<C: Curve> ArithRelationGadget<CycleFoldWitnessVar<C>, CycleFoldCommittedInstanceVar<C>>
     for R1CSMatricesVar<CF1<C>, NonNativeUintVar<CF2<C>>>
 {
     type Evaluation = (Vec<NonNativeUintVar<CF2<C>>>, Vec<NonNativeUintVar<CF2<C>>>);
@@ -557,7 +557,7 @@ where
 
     #[cfg(test)]
     {
-        use crate::{arith::Arith, folding::traits::CommittedInstanceOps};
+        use crate::{arith::ArithRelation, folding::traits::CommittedInstanceOps};
         cf_u_i.check_incoming()?;
         cf_r1cs.check_relation(&cf_w_i, &cf_u_i)?;
         cf_r1cs.check_relation(&cf_W_i1, &cf_U_i1)?;

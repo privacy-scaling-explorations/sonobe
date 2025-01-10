@@ -7,7 +7,7 @@ use crate::utils::vec::{
 use crate::Error;
 
 use super::ArithSerializer;
-use super::{r1cs::R1CS, Arith};
+use super::{r1cs::R1CS, ArithRelation};
 
 pub mod circuits;
 
@@ -71,7 +71,7 @@ impl<F: PrimeField> CCS<F> {
     }
 }
 
-impl<F: PrimeField, W: AsRef<[F]>, U: AsRef<[F]>> Arith<W, U> for CCS<F> {
+impl<F: PrimeField, W: AsRef<[F]>, U: AsRef<[F]>> ArithRelation<W, U> for CCS<F> {
     type Evaluation = Vec<F>;
 
     fn eval_relation(&self, w: &W, u: &U) -> Result<Self::Evaluation, Error> {

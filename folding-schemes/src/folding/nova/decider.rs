@@ -388,7 +388,8 @@ pub mod tests {
 
         // prepare the Decider prover & verifier params
         let start = Instant::now();
-        let (decider_pp, decider_vp) = D::preprocess(&mut rng, (nova_params, F_circuit.state_len()))?;
+        let (decider_pp, decider_vp) =
+            D::preprocess(&mut rng, (nova_params, F_circuit.state_len()))?;
         println!("Decider preprocess, {:?}", start.elapsed());
 
         // decider proof generation

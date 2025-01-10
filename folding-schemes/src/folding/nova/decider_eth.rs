@@ -323,7 +323,8 @@ pub mod tests {
         println!("Nova initialized, {:?}", start.elapsed());
 
         // prepare the Decider prover & verifier params
-        let (decider_pp, decider_vp) = D::preprocess(&mut rng, (nova_params, F_circuit.state_len()))?;
+        let (decider_pp, decider_vp) =
+            D::preprocess(&mut rng, (nova_params, F_circuit.state_len()))?;
 
         let start = Instant::now();
         nova.prove_step(&mut rng, (), None)?;
@@ -397,7 +398,8 @@ pub mod tests {
         let nova_params = N::preprocess(&mut rng, &preprocessor_param)?;
 
         // prepare the Decider prover & verifier params
-        let (decider_pp, decider_vp) = D::preprocess(&mut rng, (nova_params.clone(), F_circuit.state_len()))?;
+        let (decider_pp, decider_vp) =
+            D::preprocess(&mut rng, (nova_params.clone(), F_circuit.state_len()))?;
 
         // serialize the Nova params. These params are the trusted setup of the commitment schemes used
         // (ie. KZG & Pedersen in this case)

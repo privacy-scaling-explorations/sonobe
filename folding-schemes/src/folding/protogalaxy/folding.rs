@@ -12,11 +12,11 @@ use super::utils::{all_powers, betas_star, exponential_powers, pow_i};
 use super::ProtoGalaxyError;
 use super::{CommittedInstance, Witness};
 
-use crate::folding::traits::Dummy;
 use crate::transcript::Transcript;
 use crate::utils::vec::*;
 use crate::Error;
 use crate::{arith::r1cs::R1CS, Curve};
+use crate::{arith::Arith, folding::traits::Dummy};
 
 #[derive(Debug, Clone)]
 pub struct ProtoGalaxyProof<F: PrimeField> {
@@ -74,7 +74,7 @@ impl<C: Curve> Folding<C> {
                 vec_w.len(),
             ));
         }
-        let d = 2; // for the moment hardcoded to 2 since it only supports R1CS
+        let d = r1cs.degree();
         let k = vec_instances.len();
         let t = instance.betas.len();
         let n = r1cs.A.n_cols;

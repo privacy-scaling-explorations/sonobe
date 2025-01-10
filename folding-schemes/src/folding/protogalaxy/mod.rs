@@ -23,7 +23,7 @@ use num_bigint::BigUint;
 use crate::{
     arith::{
         r1cs::{extract_r1cs, extract_w_x, R1CS},
-        ArithRelation,
+        Arith, ArithRelation,
     },
     commitment::CommitmentScheme,
     folding::circuits::{
@@ -659,7 +659,7 @@ where
 
         let f_circuit = FC::new(fc_params)?;
         let k = 1;
-        let d = 2;
+        let d = R1CS::<CF1<C1>>::empty().degree();
         let t = Self::compute_t(&poseidon_config, &f_circuit, d, k)?;
 
         // main circuit R1CS:
@@ -701,9 +701,7 @@ where
         // HyperNova). Tracking issue:
         // https://github.com/privacy-scaling-explorations/sonobe/issues/82
         let k = 1;
-        // `d`, the degree of the constraint system, is set to 2, as we only
-        // support R1CS for now, whose highest degree is 2.
-        let d = 2;
+        let d = R1CS::<CF1<C1>>::empty().degree();
         let t = Self::compute_t(poseidon_config, F, d, k)?;
 
         // prepare the circuit to obtain its R1CS
@@ -798,9 +796,7 @@ where
         // HyperNova). Tracking issue:
         // https://github.com/privacy-scaling-explorations/sonobe/issues/82
         let k = 1;
-        // `d`, the degree of the constraint system, is set to 2, as we only
-        // support R1CS for now, whose highest degree is 2.
-        let d = 2;
+        let d = self.r1cs.degree();
 
         // `sponge` is for digest computation.
         let sponge = PoseidonSponge::<C1::ScalarField>::new(&self.poseidon_config);
@@ -1168,7 +1164,7 @@ mod tests {
     #[ignore]
     #[test]
     fn test_t_bounds() -> Result<(), Error> {
-        let d = 2;
+        let d = R1CS::<Fr>::empty().degree();
         let k = 1;
 
         let poseidon_config = poseidon_canonical_config::<Fr>();

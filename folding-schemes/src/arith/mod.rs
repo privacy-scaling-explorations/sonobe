@@ -6,6 +6,10 @@ use crate::{commitment::CommitmentScheme, folding::traits::Dummy, Curve, Error};
 pub mod ccs;
 pub mod r1cs;
 
+pub trait Arith: Clone {
+    fn degree(&self) -> usize;
+}
+
 /// `ArithRelation` treats a constraint system (R1CS, CCS, etc.) as a relation
 /// between a witness of type `W` and a statement / public input / public IO /
 /// instance of type `U`, and in this trait, we define the necessary operations
@@ -40,7 +44,7 @@ pub mod r1cs;
 /// This is also the case of CCS, where `W` and `U` may be vectors of field
 /// elements, [`crate::folding::hypernova::Witness`] and [`crate::folding::hypernova::lcccs::LCCCS`],
 /// or [`crate::folding::hypernova::Witness`] and [`crate::folding::hypernova::cccs::CCCS`].
-pub trait ArithRelation<W, U>: Clone {
+pub trait ArithRelation<W, U>: Arith {
     type Evaluation;
 
     /// Returns a dummy witness and instance

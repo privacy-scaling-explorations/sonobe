@@ -6,8 +6,8 @@ use crate::utils::vec::{
 };
 use crate::Error;
 
-use super::ArithSerializer;
 use super::{r1cs::R1CS, ArithRelation};
+use super::{Arith, ArithSerializer};
 
 pub mod circuits;
 
@@ -71,6 +71,13 @@ impl<F: PrimeField> CCS<F> {
     }
 }
 
+impl<F: PrimeField> Arith for CCS<F> {
+    #[inline]
+    fn degree(&self) -> usize {
+        self.d
+    }
+}
+
 impl<F: PrimeField, W: AsRef<[F]>, U: AsRef<[F]>> ArithRelation<W, U> for CCS<F> {
     type Evaluation = Vec<F>;
 
@@ -109,7 +116,7 @@ impl<F: PrimeField> From<R1CS<F>> for CCS<F> {
             s_prime: log2(n) as usize,
             t: 3,
             q: 2,
-            d: 2,
+            d: r1cs.degree(),
 
             S: vec![vec![0, 1], vec![2]],
             c: vec![F::one(), F::one().neg()],

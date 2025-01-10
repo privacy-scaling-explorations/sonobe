@@ -4,7 +4,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::rand::Rng;
 
 use super::ccs::CCS;
-use super::{ArithRelation, ArithSerializer};
+use super::{Arith, ArithRelation, ArithSerializer};
 use crate::utils::vec::{
     hadamard, is_zero_vec, mat_vec_mul, vec_scalar_mul, vec_sub, SparseMatrix,
 };
@@ -40,6 +40,13 @@ impl<F: PrimeField> R1CS<F> {
         let uCz = vec_scalar_mul(&Cz, &z[0]);
         let AzBz = hadamard(&Az, &Bz)?;
         vec_sub(&AzBz, &uCz)
+    }
+}
+
+impl<F: PrimeField> Arith for R1CS<F> {
+    #[inline]
+    fn degree(&self) -> usize {
+        2
     }
 }
 

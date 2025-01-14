@@ -1,3 +1,4 @@
+use ark_ff::PrimeField;
 use ark_relations::r1cs::SynthesisError;
 use ark_std::rand::RngCore;
 
@@ -6,14 +7,32 @@ use crate::{commitment::CommitmentScheme, folding::traits::Dummy, Curve, Error};
 pub mod ccs;
 pub mod r1cs;
 
+/// [`Arith`] is a trait about constraint systems (R1CS, CCS, etc.), where we
+/// define methods for getting information about the constraint system.
 pub trait Arith: Clone {
+    /// Returns the degree of the constraint system
     fn degree(&self) -> usize;
+
+    /// Returns the number of constraints in the constraint system
+    fn n_constraints(&self) -> usize;
+
+    /// Returns the number of variables in the constraint system
+    fn n_variables(&self) -> usize;
+
+    /// Returns the number of public inputs / public IO / instances / statements
+    /// in the constraint system
+    fn n_public_inputs(&self) -> usize;
+
+    /// Returns the number of witnesses / secret inputs in the constraint system
+    fn n_witnesses(&self) -> usize;
+
+    /// Returns a tuple containing (w, x) (witness and public inputs respectively)
+    fn split_z<F: PrimeField>(&self, z: &[F]) -> (Vec<F>, Vec<F>);
 }
 
-/// `ArithRelation` treats a constraint system (R1CS, CCS, etc.) as a relation
-/// between a witness of type `W` and a statement / public input / public IO /
-/// instance of type `U`, and in this trait, we define the necessary operations
-/// on the relation.
+/// `ArithRelation` *treats a constraint system as a relation* between a witness
+/// of type `W` and a statement / public input / public IO / instance of type
+/// `U`, and in this trait, we define the necessary operations on the relation.
 ///
 /// Note that the same constraint system may support different types of `W` and
 /// `U`, and the satisfiability check may vary.

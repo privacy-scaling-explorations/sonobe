@@ -7,7 +7,7 @@ use super::nifs::nova_circuits::CommittedInstanceVar;
 use super::{CommittedInstance, Witness};
 use crate::arith::{
     r1cs::{circuits::R1CSMatricesVar, R1CS},
-    ArithRelation, ArithRelationGadget, ArithSampler,
+    Arith, ArithRelation, ArithRelationGadget, ArithSampler,
 };
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::CF1;
@@ -73,10 +73,10 @@ impl<C: Curve> ArithSampler<C, Witness<C>, CommittedInstance<C>> for R1CS<CF1<C>
         let rE = C::ScalarField::rand(&mut rng);
         let rW = C::ScalarField::rand(&mut rng);
 
-        let W = (0..self.A.n_cols - self.l - 1)
+        let W = (0..self.n_witnesses())
             .map(|_| C::ScalarField::rand(&mut rng))
             .collect();
-        let x = (0..self.l)
+        let x = (0..self.n_public_inputs())
             .map(|_| C::ScalarField::rand(&mut rng))
             .collect::<Vec<C::ScalarField>>();
         let mut z = vec![u];

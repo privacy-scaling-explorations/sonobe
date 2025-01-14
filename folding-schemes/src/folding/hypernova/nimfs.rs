@@ -1,7 +1,7 @@
 use ark_ff::{BigInteger, Field, PrimeField};
 use ark_poly::univariate::DensePolynomial;
 use ark_poly::{DenseUVPolynomial, Polynomial};
-use ark_std::{One, Zero};
+use ark_std::{fmt::Debug, marker::PhantomData, One, Zero};
 
 use super::{
     cccs::CCCS,
@@ -9,7 +9,7 @@ use super::{
     utils::{compute_c, compute_g, compute_sigmas_thetas},
     Witness,
 };
-use crate::arith::ccs::CCS;
+use crate::arith::{ccs::CCS, Arith};
 use crate::constants::NOVA_N_BITS_RO;
 use crate::folding::circuits::CF1;
 use crate::folding::traits::Dummy;
@@ -18,9 +18,6 @@ use crate::utils::sum_check::structs::{IOPProof as SumCheckProof, IOPProverMessa
 use crate::utils::sum_check::{IOPSumCheck, SumCheck};
 use crate::utils::virtual_polynomial::VPAuxInfo;
 use crate::{Curve, Error};
-
-use std::fmt::Debug;
-use std::marker::PhantomData;
 
 /// NIMFSProof defines a multifolding proof
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -316,7 +313,7 @@ impl<C: Curve, T: Transcript<C::ScalarField>> NIMFS<C, T> {
         let beta: Vec<C::ScalarField> = transcript.get_challenges(ccs.s);
 
         let vp_aux_info = VPAuxInfo::<C::ScalarField> {
-            max_degree: ccs.d + 1,
+            max_degree: ccs.degree() + 1,
             num_variables: ccs.s,
             phantom: PhantomData::<C::ScalarField>,
         };
@@ -424,7 +421,7 @@ pub mod tests {
 
         let sigmas_thetas = compute_sigmas_thetas(&ccs, &[z1.clone()], &[z2.clone()], &r_x_prime)?;
 
-        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1)?;
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n_witnesses())?;
 
         let (lcccs, w1) = ccs.to_lcccs::<_, Projective, Pedersen<Projective>, false>(
             &mut rng,
@@ -465,7 +462,7 @@ pub mod tests {
 
         // Create a basic CCS circuit
         let ccs = get_test_ccs::<Fr>();
-        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1)?;
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n_witnesses())?;
 
         // Generate a satisfying witness
         let z_1 = get_test_z(3);
@@ -521,7 +518,7 @@ pub mod tests {
 
         let ccs = get_test_ccs::<Fr>();
 
-        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1)?;
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n_witnesses())?;
 
         // LCCCS witness
         let z_1 = get_test_z(2);
@@ -581,7 +578,7 @@ pub mod tests {
 
         // Create a basic CCS circuit
         let ccs = get_test_ccs::<Fr>();
-        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1)?;
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n_witnesses())?;
 
         let mu = 10;
         let nu = 15;
@@ -660,7 +657,7 @@ pub mod tests {
 
         // Create a basic CCS circuit
         let ccs = get_test_ccs::<Fr>();
-        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1)?;
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n_witnesses())?;
 
         let poseidon_config = poseidon_canonical_config::<Fr>();
         // Prover's transcript

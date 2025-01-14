@@ -4,17 +4,14 @@ use ark_crypto_primitives::sponge::Absorb;
 use ark_ff::PrimeField;
 use ark_poly::Polynomial;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::log2;
-use ark_std::rand::RngCore;
-use ark_std::{One, UniformRand, Zero};
-use std::marker::PhantomData;
+use ark_std::{log2, marker::PhantomData, rand::RngCore, One, UniformRand, Zero};
 
 use super::{
     nova::NIFS as NovaNIFS,
     pointvsline::{PointVsLine, PointVsLineProof, PointvsLineEvaluationClaim},
     NIFSTrait,
 };
-use crate::arith::{r1cs::R1CS, ArithRelation};
+use crate::arith::{r1cs::R1CS, Arith, ArithRelation};
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::CF1;
 use crate::folding::traits::Dummy;
@@ -73,8 +70,8 @@ pub struct Witness<C: Curve> {
 impl<C: Curve> Dummy<&R1CS<C::ScalarField>> for Witness<C> {
     fn dummy(r1cs: &R1CS<C::ScalarField>) -> Self {
         Self {
-            E: vec![C::ScalarField::zero(); r1cs.A.n_rows],
-            W: vec![C::ScalarField::zero(); r1cs.A.n_cols - 1 - r1cs.l],
+            E: vec![C::ScalarField::zero(); r1cs.n_constraints()],
+            W: vec![C::ScalarField::zero(); r1cs.n_witnesses()],
             rW: C::ScalarField::zero(),
         }
     }

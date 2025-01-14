@@ -7,7 +7,7 @@ use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::R1CSVar;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress, SerializationError};
-use ark_std::{fmt::Debug, marker::PhantomData, rand::RngCore, One, Zero};
+use ark_std::{cmp::max, fmt::Debug, marker::PhantomData, rand::RngCore, One, Zero};
 
 pub mod cccs;
 pub mod circuits;
@@ -23,6 +23,11 @@ use decider_eth_circuit::WitnessVar;
 use lcccs::LCCCS;
 use nimfs::NIMFS;
 
+use crate::arith::{
+    ccs::CCS,
+    r1cs::{extract_w_x, R1CS},
+    Arith, ArithRelation,
+};
 use crate::commitment::CommitmentScheme;
 use crate::constants::NOVA_N_BITS_RO;
 use crate::folding::{
@@ -36,15 +41,7 @@ use crate::folding::{
 use crate::frontend::FCircuit;
 use crate::transcript::poseidon::poseidon_canonical_config;
 use crate::utils::pp_hash;
-use crate::Error;
-use crate::{
-    arith::{
-        ccs::CCS,
-        r1cs::{extract_w_x, R1CS},
-        ArithRelation,
-    },
-    Curve, FoldingScheme, MultiFolding,
-};
+use crate::{Curve, Error, FoldingScheme, MultiFolding};
 
 /// Configuration for HyperNova's CycleFold circuit
 pub struct HyperNovaCycleFoldConfig<C: Curve, const MU: usize, const NU: usize> {
@@ -81,7 +78,7 @@ impl<F: PrimeField> Witness<F> {
 
 impl<F: PrimeField> Dummy<&CCS<F>> for Witness<F> {
     fn dummy(ccs: &CCS<F>) -> Self {
-        Self::new(vec![F::zero(); ccs.n - ccs.l - 1])
+        Self::new(vec![F::zero(); ccs.n_witnesses()])
     }
 }
 
@@ -508,11 +505,20 @@ where
         // if cs params exist, use them, if not, generate new ones
         let (cs_pp, cs_vp) = match (&prep_param.cs_pp, &prep_param.cs_vp) {
             (Some(cs_pp), Some(cs_vp)) => (cs_pp.clone(), cs_vp.clone()),
-            _ => CS1::setup(&mut rng, ccs.n - ccs.l - 1)?,
+            // `CS1` is for committing to HyperNova's witness vector `w`, so we
+            // set `len` to the number of witnesses in `r1cs`.
+            _ => CS1::setup(&mut rng, ccs.n_witnesses())?,
         };
         let (cf_cs_pp, cf_cs_vp) = match (&prep_param.cf_cs_pp, &prep_param.cf_cs_vp) {
             (Some(cf_cs_pp), Some(cf_cs_vp)) => (cf_cs_pp.clone(), cf_cs_vp.clone()),
-            _ => CS2::setup(&mut rng, cf_r1cs.A.n_cols - cf_r1cs.l - 1)?,
+            _ => CS2::setup(
+                &mut rng,
+                // `CS2` is for committing to CycleFold's witness vector `w` and
+                // error term `e`, where the length of `e` is the number of
+                // constraints, so we set `len` to the maximum of `e` and `w`'s
+                // lengths.
+                max(cf_r1cs.n_constraints(), cf_r1cs.n_witnesses()),
+            )?,
         };
 
         let pp = ProverParams::<C1, C2, CS1, CS2, H> {

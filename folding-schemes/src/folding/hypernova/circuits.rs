@@ -17,7 +17,7 @@ use ark_r1cs_std::{
 use ark_relations::r1cs::{
     ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, Namespace, SynthesisError,
 };
-use ark_std::{fmt::Debug, ops::Neg, One, Zero};
+use ark_std::{fmt::Debug, iter::Sum, One, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::{
@@ -25,6 +25,11 @@ use super::{
     lcccs::LCCCS,
     nimfs::{NIMFSProof, NIMFS},
     HyperNovaCycleFoldConfig, Witness,
+};
+use crate::arith::{
+    ccs::CCS,
+    r1cs::{extract_r1cs, R1CS},
+    Arith,
 };
 use crate::constants::NOVA_N_BITS_RO;
 use crate::folding::{
@@ -42,11 +47,8 @@ use crate::folding::{
     traits::{CommittedInstanceVarOps, Dummy},
 };
 use crate::frontend::FCircuit;
+use crate::transcript::{AbsorbNonNativeGadget, TranscriptVar};
 use crate::utils::virtual_polynomial::VPAuxInfo;
-use crate::{
-    arith::{ccs::CCS, r1cs::extract_r1cs},
-    transcript::{AbsorbNonNativeGadget, TranscriptVar},
-};
 use crate::{Curve, Error};
 
 /// Committed CCS instance
@@ -266,7 +268,7 @@ impl<C: Curve> NIMFSGadget<C> {
         let beta: Vec<FpVar<CF1<C>>> = transcript.get_challenges(ccs.s)?;
 
         let vp_aux_info_raw = VPAuxInfo::<C::ScalarField> {
-            max_degree: ccs.d + 1,
+            max_degree: ccs.degree() + 1,
             num_variables: ccs.s,
             phantom: PhantomData::<C::ScalarField>,
         };
@@ -296,7 +298,6 @@ impl<C: Curve> NIMFSGadget<C> {
 
         // verify the claim c
         let computed_c = compute_c_gadget(
-            cs.clone(),
             ccs,
             proof.sigmas_thetas.0.clone(), // sigmas
             proof.sigmas_thetas.1.clone(), // thetas
@@ -405,7 +406,6 @@ impl<C: Curve> NIMFSGadget<C> {
 /// $$
 #[allow(clippy::too_many_arguments)]
 fn compute_c_gadget<F: PrimeField>(
-    cs: ConstraintSystemRef<F>,
     ccs: &CCS<F>,
     vec_sigmas: Vec<Vec<FpVar<F>>>,
     vec_thetas: Vec<Vec<FpVar<F>>>,
@@ -422,24 +422,23 @@ fn compute_c_gadget<F: PrimeField>(
     let mut c = FpVar::<F>::zero();
     let mut current_gamma = FpVar::<F>::one();
     for i in 0..vec_sigmas.len() {
-        for j in 0..ccs.t {
-            c += current_gamma.clone() * e_lcccs[i].clone() * vec_sigmas[i][j].clone();
+        for sigma in &vec_sigmas[i] {
+            c += current_gamma.clone() * e_lcccs[i].clone() * sigma;
             current_gamma *= gamma.clone();
         }
     }
 
-    let ccs_c = Vec::<FpVar<F>>::new_constant(cs.clone(), ccs.c.clone())?;
     let e_k = EqEvalGadget::eq_eval(&beta, &vec_r_x_prime)?;
     #[allow(clippy::needless_range_loop)]
     for k in 0..vec_thetas.len() {
-        let mut sum = FpVar::<F>::zero();
-        for i in 0..ccs.q {
+        let prods = ccs.S.iter().zip(&ccs.c).map(|(S_i, &c_i)| {
             let mut prod = FpVar::<F>::one();
-            for j in ccs.S[i].clone() {
-                prod *= vec_thetas[k][j].clone();
+            for &j in S_i {
+                prod *= &vec_thetas[k][j];
             }
-            sum += ccs_c[i].clone() * prod;
-        }
+            prod * c_i
+        });
+        let sum = FpVar::sum(prods);
         c += current_gamma.clone() * e_k.clone() * sum;
         current_gamma *= gamma.clone();
     }
@@ -535,20 +534,17 @@ where
         F: FC, // FCircuit
         ccs: Option<CCS<C1::ScalarField>>,
     ) -> Result<Self, Error> {
-        let initial_ccs = CCS {
-            // m, n, s, s_prime and M will be overwritten by the `compute_concrete_ccs' method
-            m: 0,
-            n: 0,
-            l: 2, // io_len
-            s: 1,
-            s_prime: 1,
-            t: 3, // note: this is only supports R1CS for the moment
-            q: 2,
-            d: 2,
-            S: vec![vec![0, 1], vec![2]],
-            c: vec![C1::ScalarField::one(), C1::ScalarField::one().neg()],
-            M: vec![],
-        };
+        // create the initial ccs by converting from a dummy r1cs with m = 0,
+        // n = 0, and l = 2 (i.e., 0 constraints, and 0 variables, and 2 public
+        // inputs).
+        // Here, `m` and `n` will be overwritten by the `compute_concrete_ccs`
+        // method.
+        let mut initial_ccs = CCS::from(R1CS::dummy((0, 0, 2)));
+        // Although `s = log(m)` is undefined for `m = 0`, we set it to 1 here
+        // because the circuit internally calls `IOPSumCheck::extract_sum` which
+        // will panic if `s = 0` (0 is arkworks' fallback value for `log(0)`).
+        // Similarly, `s` will also be overwritten by `compute_concrete_ccs`.
+        initial_ccs.s = 1;
         let mut augmented_f_circuit = Self::default(poseidon_config, F, initial_ccs)?;
         augmented_f_circuit.ccs = ccs
             .ok_or(())
@@ -557,7 +553,7 @@ where
     }
 
     /// This method computes the CCS parameters. This is used because there is a circular
-    /// dependency between the AugmentedFCircuit CCS and the CCS parameters m & n & s & s'.
+    /// dependency between the AugmentedFCircuit CCS and the CCS parameters m & n & s.
     /// For a stable FCircuit circuit, the CCS parameters can be computed in advance and can be
     /// feed in as parameter for the AugmentedFCircuit::empty method to avoid computing them there.
     pub fn compute_concrete_ccs(&self) -> Result<CCS<C1::ScalarField>, Error> {
@@ -879,8 +875,7 @@ mod tests {
     use ark_crypto_primitives::sponge::Absorb;
     use ark_ff::BigInteger;
     use ark_grumpkin::Projective as Projective2;
-    use ark_std::{test_rng, UniformRand};
-    use std::time::Instant;
+    use ark_std::{cmp::max, test_rng, time::Instant, UniformRand};
 
     use super::*;
     use crate::{
@@ -926,7 +921,7 @@ mod tests {
         let beta: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
         let r_x_prime: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
 
-        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1)?;
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n_witnesses())?;
 
         // Create the LCCCS instances out of z_lcccs
         let mut lcccs_instances = Vec::new();
@@ -982,7 +977,6 @@ mod tests {
         let beta_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(beta.clone()))?;
 
         let computed_c = compute_c_gadget(
-            cs.clone(),
             &ccs,
             vec_sigmas,
             vec_thetas,
@@ -1004,7 +998,7 @@ mod tests {
 
         // Create a basic CCS circuit
         let ccs = get_test_ccs::<Fr>();
-        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1)?;
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n_witnesses())?;
 
         let mu = 32;
         let nu = 42;
@@ -1107,7 +1101,7 @@ mod tests {
         let ccs = get_test_ccs();
         let z1 = get_test_z::<Fr>(3);
 
-        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1)?;
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n_witnesses())?;
 
         let (lcccs, _) = ccs.to_lcccs::<_, _, Pedersen<Projective, true>, true>(
             &mut rng,
@@ -1141,7 +1135,7 @@ mod tests {
         let ccs = get_test_ccs();
         let z1 = get_test_z::<Fr>(3);
 
-        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1)?;
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n_witnesses())?;
         let pp_hash = Fr::from(42u32); // only for test
 
         let i = Fr::from(3_u32);
@@ -1191,7 +1185,7 @@ mod tests {
             )?;
         let ccs = augmented_f_circuit.ccs.clone();
         println!("AugmentedFCircuit & CCS generation: {:?}", start.elapsed());
-        println!("CCS m x n: {} x {}", ccs.m, ccs.n);
+        println!("CCS m x n: {} x {}", ccs.n_constraints(), ccs.n_variables());
 
         // CycleFold circuit
         let cs2 = ConstraintSystem::<Fq>::new_ref();
@@ -1200,11 +1194,17 @@ mod tests {
         cs2.finalize();
         let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
         let cf_r1cs = extract_r1cs::<Fq>(&cs2)?;
-        println!("CF m x n: {} x {}", cf_r1cs.A.n_rows, cf_r1cs.A.n_cols);
+        println!(
+            "CF m x n: {} x {}",
+            cf_r1cs.n_constraints(),
+            cf_r1cs.n_variables()
+        );
 
-        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1)?;
-        let (cf_pedersen_params, _) =
-            Pedersen::<Projective2>::setup(&mut rng, cf_r1cs.A.n_cols - cf_r1cs.l - 1)?;
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n_witnesses())?;
+        let (cf_pedersen_params, _) = Pedersen::<Projective2>::setup(
+            &mut rng,
+            max(cf_r1cs.n_constraints(), cf_r1cs.n_witnesses()),
+        )?;
 
         // public params hash
         let pp_hash = Fr::from(42u32); // only for test

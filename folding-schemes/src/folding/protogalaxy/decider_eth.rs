@@ -119,7 +119,7 @@ where
         // https://github.com/privacy-scaling-explorations/sonobe/issues/82
         let k = 1;
         let d = protogalaxy_vp.r1cs.degree();
-        let t = log2(protogalaxy_vp.r1cs.num_constraints()) as usize;
+        let t = log2(protogalaxy_vp.r1cs.n_constraints()) as usize;
 
         let circuit = DeciderEthCircuit::<C1, C2>::dummy((
             protogalaxy_vp.r1cs,

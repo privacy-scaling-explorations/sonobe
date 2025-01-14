@@ -11,7 +11,7 @@ use std::marker::PhantomData;
 use super::nova::ChallengeGadget;
 use super::ova_circuits::CommittedInstanceVar;
 use super::NIFSTrait;
-use crate::arith::r1cs::R1CS;
+use crate::arith::{r1cs::R1CS, Arith};
 use crate::commitment::CommitmentScheme;
 use crate::folding::traits::{CommittedInstanceOps, Inputize};
 use crate::folding::{circuits::CF1, traits::Dummy};
@@ -107,7 +107,7 @@ impl<C: Curve> Witness<C> {
 impl<C: Curve> Dummy<&R1CS<CF1<C>>> for Witness<C> {
     fn dummy(r1cs: &R1CS<CF1<C>>) -> Self {
         Self {
-            w: vec![C::ScalarField::zero(); r1cs.A.n_cols - 1 - r1cs.l],
+            w: vec![C::ScalarField::zero(); r1cs.n_witnesses()],
             rW: C::ScalarField::zero(),
         }
     }

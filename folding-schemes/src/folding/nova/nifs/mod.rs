@@ -136,11 +136,14 @@ pub mod tests {
     use ark_pallas::{Fr, Projective};
     use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, R1CSVar};
     use ark_relations::r1cs::ConstraintSystem;
-    use ark_std::{test_rng, UniformRand};
+    use ark_std::{cmp::max, test_rng, UniformRand};
 
     use super::NIFSTrait;
     use super::*;
-    use crate::arith::r1cs::tests::{get_test_r1cs, get_test_z};
+    use crate::arith::{
+        r1cs::tests::{get_test_r1cs, get_test_z},
+        Arith,
+    };
     use crate::commitment::pedersen::Pedersen;
     use crate::folding::traits::{CommittedInstanceOps, CommittedInstanceVarOps};
     use crate::transcript::poseidon::poseidon_canonical_config;
@@ -154,7 +157,8 @@ pub mod tests {
         let r1cs: R1CS<Fr> = get_test_r1cs();
 
         let mut rng = ark_std::test_rng();
-        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, r1cs.A.n_cols)?;
+        let (pedersen_params, _) =
+            Pedersen::<Projective>::setup(&mut rng, max(r1cs.n_constraints(), r1cs.n_witnesses()))?;
 
         let poseidon_config = poseidon_canonical_config::<Fr>();
         let mut transcript_p = PoseidonSponge::<Fr>::new(&poseidon_config);
@@ -164,7 +168,7 @@ pub mod tests {
         // prepare the running instance
         let z = get_test_z(3);
         let (w, x) = r1cs.split_z(&z);
-        let mut W_i = N::new_witness(w.clone(), r1cs.A.n_rows, test_rng());
+        let mut W_i = N::new_witness(w.clone(), r1cs.n_constraints(), test_rng());
         let mut U_i = N::new_instance(&mut rng, &pedersen_params, &W_i, x, vec![])?;
 
         let num_iters = 10;
@@ -172,7 +176,7 @@ pub mod tests {
             // prepare the incoming instance
             let incoming_instance_z = get_test_z(i + 4);
             let (w, x) = r1cs.split_z(&incoming_instance_z);
-            let w_i = N::new_witness(w.clone(), r1cs.A.n_rows, test_rng());
+            let w_i = N::new_witness(w.clone(), r1cs.n_constraints(), test_rng());
             let u_i = N::new_instance(&mut rng, &pedersen_params, &w_i, x, vec![])?;
 
             // NIFS.P

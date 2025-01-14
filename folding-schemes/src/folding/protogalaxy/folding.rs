@@ -77,8 +77,8 @@ impl<C: Curve> Folding<C> {
         let d = r1cs.degree();
         let k = vec_instances.len();
         let t = instance.betas.len();
-        let n = r1cs.A.n_cols;
-        let m = r1cs.A.n_rows;
+        let n = r1cs.n_variables();
+        let m = r1cs.n_constraints();
 
         let z = [vec![C::ScalarField::one()], instance.x.clone(), w.w.clone()].concat();
 
@@ -446,7 +446,7 @@ pub mod tests {
 
         let (pedersen_params, _) = Pedersen::<C>::setup(&mut rng, w.len())?;
 
-        let t = log2(get_test_r1cs::<C::ScalarField>().A.n_rows) as usize;
+        let t = log2(get_test_r1cs::<C::ScalarField>().n_constraints()) as usize;
 
         let beta = C::ScalarField::rand(&mut rng);
         let betas = exponential_powers(beta, t);

@@ -4,6 +4,8 @@ use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar};
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 use ark_std::fmt::Debug;
 
+pub mod alloc;
+pub mod logup;
 pub mod utils;
 
 /// FCircuit defines the trait of the circuit of the F function, which is the one being folded (ie.

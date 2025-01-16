@@ -30,10 +30,7 @@
 /// paper).
 /// And the Use-case-2 would require a modified version of the Decider circuits.
 ///
-use ark_crypto_primitives::sponge::{
-    poseidon::{PoseidonConfig, PoseidonSponge},
-    CryptographicSponge,
-};
+use ark_crypto_primitives::sponge::poseidon::{PoseidonConfig, PoseidonSponge};
 use ark_std::{rand::RngCore, One, Zero};
 
 use super::{
@@ -45,6 +42,7 @@ use crate::{
     commitment::CommitmentScheme,
     folding::traits::CommittedInstanceOps,
     frontend::FCircuit,
+    transcript::Transcript,
     Curve, Error,
 };
 
@@ -71,7 +69,10 @@ impl<C1: Curve, C2: Curve> RandomizedIVCProof<C1, C2> {
         nova: &Nova<C1, C2, FC, CS1, CS2, true>,
         mut rng: impl RngCore,
     ) -> Result<RandomizedIVCProof<C1, C2>, Error> {
-        let mut transcript = PoseidonSponge::<C1::ScalarField>::new(&nova.poseidon_config);
+        let mut transcript = PoseidonSponge::<C1::ScalarField>::new_with_pp_hash(
+            &nova.poseidon_config,
+            nova.pp_hash,
+        );
 
         // I. Compute proof for 'regular' instances
         // 1. Fold the instance-witness pairs (U_i, W_i) with (u_i, w_i)
@@ -79,7 +80,6 @@ impl<C1: Curve, C2: Curve> RandomizedIVCProof<C1, C2> {
             &nova.cs_pp,
             &nova.r1cs,
             &mut transcript,
-            nova.pp_hash,
             &nova.w_i,
             &nova.u_i,
             &nova.W_i,
@@ -97,7 +97,6 @@ impl<C1: Curve, C2: Curve> RandomizedIVCProof<C1, C2> {
                 &nova.cs_pp,
                 &nova.r1cs,
                 &mut transcript,
-                nova.pp_hash,
                 &W_f,
                 &U_f,
                 &W_r,
@@ -148,13 +147,14 @@ impl<C1: Curve, C2: Curve> RandomizedIVCProof<C1, C2> {
         }
 
         // b. Check computed hashes are correct
-        let sponge = PoseidonSponge::<C1::ScalarField>::new(poseidon_config);
-        let expected_u_i_x = proof.U_i.hash(&sponge, pp_hash, i, &z_0, &z_i);
+        let sponge = PoseidonSponge::<C1::ScalarField>::new_with_pp_hash(poseidon_config, pp_hash);
+        let mut transcript = sponge.clone();
+        let expected_u_i_x = proof.U_i.hash(&sponge, i, &z_0, &z_i);
         if expected_u_i_x != proof.u_i.x[0] {
             return Err(Error::zkIVCVerificationFail);
         }
 
-        let expected_cf_u_i_x = proof.cf_U_i.hash_cyclefold(&sponge, pp_hash);
+        let expected_cf_u_i_x = proof.cf_U_i.hash_cyclefold(&sponge);
         if expected_cf_u_i_x != proof.u_i.x[1] {
             return Err(Error::IVCVerificationFail);
         }
@@ -164,11 +164,9 @@ impl<C1: Curve, C2: Curve> RandomizedIVCProof<C1, C2> {
             return Err(Error::zkIVCVerificationFail);
         }
 
-        let mut transcript = PoseidonSponge::<C1::ScalarField>::new(poseidon_config);
         // 3. Obtain the U_f folded instance
         let (U_f, _) = NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>, true>::verify(
             &mut transcript,
-            pp_hash,
             &proof.u_i,
             &proof.U_i,
             &proof.pi,
@@ -177,7 +175,6 @@ impl<C1: Curve, C2: Curve> RandomizedIVCProof<C1, C2> {
         // 4. Obtain the U^{\prime}_i folded instance
         let (U_i_prime, _) = NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>, true>::verify(
             &mut transcript,
-            pp_hash,
             &U_f,
             &proof.U_r,
             &proof.pi_prime,

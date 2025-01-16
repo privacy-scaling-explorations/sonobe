@@ -25,7 +25,6 @@ pub trait CommittedInstanceOps<C: Curve>: Inputize<CF1<C>> {
     fn hash<T: Transcript<CF1<C>>>(
         &self,
         sponge: &T,
-        pp_hash: CF1<C>, // public params hash
         i: CF1<C>,
         z_0: &[CF1<C>],
         z_i: &[CF1<C>],
@@ -34,7 +33,6 @@ pub trait CommittedInstanceOps<C: Curve>: Inputize<CF1<C>> {
         Self: Sized + Absorb,
     {
         let mut sponge = sponge.clone();
-        sponge.absorb(&pp_hash);
         sponge.absorb(&i);
         sponge.absorb(&z_0);
         sponge.absorb(&z_i);
@@ -71,7 +69,6 @@ pub trait CommittedInstanceVarOps<C: Curve> {
     fn hash(
         &self,
         sponge: &PoseidonSpongeVar<CF1<C>>,
-        pp_hash: &FpVar<CF1<C>>,
         i: &FpVar<CF1<C>>,
         z_0: &[FpVar<CF1<C>>],
         z_i: &[FpVar<CF1<C>>],
@@ -81,7 +78,6 @@ pub trait CommittedInstanceVarOps<C: Curve> {
     {
         let mut sponge = sponge.clone();
         let U_vec = self.to_sponge_field_elements()?;
-        sponge.absorb(&pp_hash)?;
         sponge.absorb(&i)?;
         sponge.absorb(&z_0)?;
         sponge.absorb(&z_i)?;

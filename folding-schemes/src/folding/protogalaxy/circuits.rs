@@ -1,5 +1,4 @@
 use ark_crypto_primitives::sponge::{
-    constraints::CryptographicSpongeVar,
     poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig},
     CryptographicSponge,
 };
@@ -269,7 +268,7 @@ where
         let K_coeffs = Vec::new_witness(cs.clone(), || Ok(self.K_coeffs))?;
 
         // `sponge` is for digest computation.
-        let sponge = PoseidonSpongeVar::<C1::ScalarField>::new(cs.clone(), &self.poseidon_config);
+        let sponge = PoseidonSpongeVar::new_with_pp_hash(&self.poseidon_config, &pp_hash)?;
         // `transcript` is for challenge generation.
         let mut transcript = sponge.clone();
 
@@ -278,9 +277,9 @@ where
         // Primary Part
         // P.1. Compute u_i.x
         // u_i.x[0] = H(i, z_0, z_i, U_i)
-        let (u_i_x, _) = U_i.clone().hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
+        let (u_i_x, _) = U_i.clone().hash(&sponge, &i, &z_0, &z_i)?;
         // u_i.x[1] = H(cf_U_i)
-        let (cf_u_i_x, _) = cf_U_i.clone().hash(&sponge, pp_hash.clone())?;
+        let (cf_u_i_x, _) = cf_U_i.clone().hash(&sponge)?;
 
         // P.2. Prepare incoming primary instances
         // P.3. Fold incoming primary instances into the running instance
@@ -303,16 +302,11 @@ where
 
         // Base case: u_{i+1}.x[0] == H((i+1, z_0, z_{i+1}, U_{\bot})
         // Non-base case: u_{i+1}.x[0] == H((i+1, z_0, z_{i+1}, U_{i+1})
-        let (u_i1_x, _) = U_i1.clone().hash(
-            &sponge,
-            &pp_hash,
-            &(i + FpVar::<CF1<C1>>::one()),
-            &z_0,
-            &z_i1,
-        )?;
+        let (u_i1_x, _) =
+            U_i1.clone()
+                .hash(&sponge, &(i + FpVar::<CF1<C1>>::one()), &z_0, &z_i1)?;
         let (u_i1_x_base, _) = CommittedInstanceVar::new_constant(cs.clone(), u_dummy)?.hash(
             &sponge,
-            &pp_hash,
             &FpVar::<CF1<C1>>::one(),
             &z_0,
             &z_i1,
@@ -353,7 +347,6 @@ where
         // C.3. Fold incoming CycleFold instances into the running instance
         let cf_U_i1 = CycleFoldAugmentationGadget::fold_gadget(
             &mut transcript,
-            &pp_hash,
             cf_U_i,
             vec![cf_u_i],
             vec![cf_cmT],
@@ -363,10 +356,10 @@ where
         // P.4.b compute and check the second output of F'
         // Base case: u_{i+1}.x[1] == H(cf_U_{\bot})
         // Non-base case: u_{i+1}.x[1] == H(cf_U_{i+1})
-        let (cf_u_i1_x, _) = cf_U_i1.clone().hash(&sponge, pp_hash.clone())?;
+        let (cf_u_i1_x, _) = cf_U_i1.clone().hash(&sponge)?;
         let (cf_u_i1_x_base, _) =
             CycleFoldCommittedInstanceVar::<C2>::new_constant(cs.clone(), cf_u_dummy)?
-                .hash(&sponge, pp_hash.clone())?;
+                .hash(&sponge)?;
         let cf_x = is_basecase.select(&cf_u_i1_x_base, &cf_u_i1_x)?;
         // This line "converts" `cf_x` from a witness to a public input.
         // Instead of directly modifying the constraint system, we explicitly
@@ -401,7 +394,7 @@ mod tests {
     use crate::{
         arith::r1cs::tests::get_test_r1cs,
         folding::protogalaxy::folding::{tests::prepare_inputs, Folding},
-        transcript::poseidon::poseidon_canonical_config,
+        transcript::{poseidon::poseidon_canonical_config, Transcript},
         Error,
     };
 
@@ -417,8 +410,9 @@ mod tests {
 
         // init Prover & Verifier's transcript
         let poseidon_config = poseidon_canonical_config::<Fr>();
-        let mut transcript_p = PoseidonSponge::new(&poseidon_config);
-        let mut transcript_v = PoseidonSponge::new(&poseidon_config);
+        let pp_hash = Fr::from(42u32); // only for testing
+        let mut transcript_p = PoseidonSponge::new_with_pp_hash(&poseidon_config, pp_hash);
+        let mut transcript_v = transcript_p.clone();
 
         let (_, _, proof, _) = Folding::<Projective>::prove(
             &mut transcript_p,
@@ -433,7 +427,9 @@ mod tests {
             Folding::<Projective>::verify(&mut transcript_v, &instance, &instances, proof.clone())?;
 
         let cs = ConstraintSystem::new_ref();
-        let mut transcript_var = PoseidonSpongeVar::new(cs.clone(), &poseidon_config);
+        let pp_hash_var = FpVar::new_witness(cs.clone(), || Ok(pp_hash))?;
+        let mut transcript_var =
+            PoseidonSpongeVar::new_with_pp_hash(&poseidon_config, &pp_hash_var)?;
         let instance_var = CommittedInstanceVar::new_witness(cs.clone(), || Ok(instance))?;
         let instances_var = Vec::new_witness(cs.clone(), || Ok(instances))?;
         let F_coeffs_var = Vec::new_witness(cs.clone(), || Ok(proof.F_coeffs))?;

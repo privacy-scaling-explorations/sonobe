@@ -2,15 +2,12 @@
 /// other more efficient approaches can be used.
 /// More details can be found at the documentation page:
 /// https://privacy-scaling-explorations.github.io/sonobe-docs/design/nova-decider-onchain.html
-use ark_crypto_primitives::sponge::{
-    constraints::CryptographicSpongeVar,
-    poseidon::{constraints::PoseidonSpongeVar, PoseidonSponge},
-    CryptographicSponge,
-};
+use ark_crypto_primitives::sponge::poseidon::{constraints::PoseidonSpongeVar, PoseidonSponge};
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     fields::fp::FpVar,
+    R1CSVar,
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
 use ark_std::{borrow::Borrow, marker::PhantomData};
@@ -20,19 +17,24 @@ use super::{
     nifs::{nova::NIFS, NIFSGadgetTrait, NIFSTrait},
     CommittedInstance, Nova, Witness,
 };
-use crate::commitment::{pedersen::Params as PedersenParams, CommitmentScheme};
-use crate::folding::{
-    circuits::{
-        decider::on_chain::GenericOnchainDeciderCircuit, nonnative::affine::NonNativeAffineVar, CF1,
-    },
-    traits::{WitnessOps, WitnessVarOps},
-};
-use crate::frontend::FCircuit;
 use crate::{
     arith::r1cs::{circuits::R1CSMatricesVar, R1CS},
-    folding::circuits::decider::{DeciderEnabledNIFS, EvalGadget, KZGChallengesGadget},
+    commitment::{pedersen::Params as PedersenParams, CommitmentScheme},
+    folding::{
+        circuits::{
+            decider::{
+                on_chain::GenericOnchainDeciderCircuit, DeciderEnabledNIFS, EvalGadget,
+                KZGChallengesGadget,
+            },
+            nonnative::affine::NonNativeAffineVar,
+            CF1,
+        },
+        traits::{WitnessOps, WitnessVarOps},
+    },
+    frontend::FCircuit,
+    transcript::Transcript,
+    Curve, Error,
 };
-use crate::{Curve, Error};
 
 /// In-circuit representation of the Witness associated to the CommittedInstance.
 #[derive(Debug, Clone)]
@@ -98,14 +100,13 @@ impl<
     type Error = Error;
 
     fn try_from(nova: Nova<C1, C2, FC, CS1, CS2, H>) -> Result<Self, Error> {
-        let mut transcript = PoseidonSponge::<C1::ScalarField>::new(&nova.poseidon_config);
+        let mut transcript = PoseidonSponge::new_with_pp_hash(&nova.poseidon_config, nova.pp_hash);
 
         // compute the U_{i+1}, W_{i+1}
         let (W_i1, U_i1, cmT, r_bits) = NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>, H>::prove(
             &nova.cs_pp,
             &nova.r1cs.clone(),
             &mut transcript,
-            nova.pp_hash,
             &nova.W_i,
             &nova.U_i,
             &nova.w_i,
@@ -165,16 +166,15 @@ impl<C: Curve>
     fn fold_field_elements_gadget(
         _arith: &R1CS<CF1<C>>,
         transcript: &mut PoseidonSpongeVar<CF1<C>>,
-        pp_hash: FpVar<CF1<C>>,
         U: CommittedInstanceVar<C>,
         U_vec: Vec<FpVar<CF1<C>>>,
         u: CommittedInstanceVar<C>,
         proof: C,
         _randomness: CF1<C>,
     ) -> Result<CommittedInstanceVar<C>, SynthesisError> {
-        let cs = transcript.cs();
+        let cs = U.u.cs();
         let cmT = NonNativeAffineVar::new_input(cs.clone(), || Ok(proof))?;
-        let (new_U, _) = NIFSGadget::verify(transcript, pp_hash, U, U_vec, u, Some(cmT))?;
+        let (new_U, _) = NIFSGadget::verify(transcript, U, U_vec, u, Some(cmT))?;
         Ok(new_U)
     }
 

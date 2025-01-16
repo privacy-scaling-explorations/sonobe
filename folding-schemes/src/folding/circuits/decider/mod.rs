@@ -115,7 +115,6 @@ pub trait DeciderEnabledNIFS<
     fn fold_field_elements_gadget(
         arith: &A,
         transcript: &mut PoseidonSpongeVar<CF1<C>>,
-        pp_hash: FpVar<CF1<C>>,
         U: RU::Var,
         U_vec: Vec<FpVar<CF1<C>>>,
         u: IU::Var,

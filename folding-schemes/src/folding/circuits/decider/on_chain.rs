@@ -1,7 +1,7 @@
 /// This file implements the onchain (Ethereum's EVM) decider circuit. For non-ethereum use cases,
 /// other more efficient approaches can be used.
 use ark_crypto_primitives::sponge::{
-    constraints::{AbsorbGadget, CryptographicSpongeVar},
+    constraints::AbsorbGadget,
     poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig},
 };
 use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, fields::fp::FpVar};
@@ -22,6 +22,7 @@ use crate::{
         },
         traits::{CommittedInstanceOps, CommittedInstanceVarOps, Dummy, WitnessOps, WitnessVarOps},
     },
+    transcript::TranscriptVar,
     Curve,
 };
 
@@ -211,7 +212,7 @@ where
         let kzg_evaluations = Vec::new_input(cs.clone(), || Ok(self.kzg_evaluations))?;
 
         // `sponge` is for digest computation.
-        let sponge = PoseidonSpongeVar::new(cs.clone(), &self.poseidon_config);
+        let sponge = PoseidonSpongeVar::new_with_pp_hash(&self.poseidon_config, &pp_hash)?;
         // `transcript` is for challenge generation.
         let mut transcript = sponge.clone();
 
@@ -226,8 +227,8 @@ where
         u_i.enforce_incoming()?;
 
         // 3. u_i.x[0] == H(i, z_0, z_i, U_i), u_i.x[1] == H(cf_U_i)
-        let (u_i_x, U_i_vec) = U_i.hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
-        let (cf_u_i_x, _) = cf_U_i.hash(&sponge, pp_hash.clone())?;
+        let (u_i_x, U_i_vec) = U_i.hash(&sponge, &i, &z_0, &z_i)?;
+        let (cf_u_i_x, _) = cf_U_i.hash(&sponge)?;
         u_i.get_public_inputs().enforce_equal(&[u_i_x, cf_u_i_x])?;
 
         #[cfg(feature = "light-test")]
@@ -286,7 +287,6 @@ where
         D::fold_field_elements_gadget(
             &self.arith,
             &mut transcript,
-            pp_hash,
             U_i,
             U_i_vec,
             u_i,

@@ -403,7 +403,6 @@ pub fn lagrange_polys<F: PrimeField>(
 pub mod tests {
     use super::*;
     use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
-    use ark_crypto_primitives::sponge::CryptographicSponge;
     use ark_pallas::{Fr, Projective};
     use ark_std::{rand::Rng, UniformRand};
 
@@ -494,8 +493,9 @@ pub mod tests {
 
         // init Prover & Verifier's transcript
         let poseidon_config = poseidon_canonical_config::<Fr>();
-        let mut transcript_p = PoseidonSponge::<Fr>::new(&poseidon_config);
-        let mut transcript_v = PoseidonSponge::<Fr>::new(&poseidon_config);
+        let pp_hash = Fr::from(42u32); // only for testing
+        let mut transcript_p = PoseidonSponge::new_with_pp_hash(&poseidon_config, pp_hash);
+        let mut transcript_v = transcript_p.clone();
 
         let (folded_instance, folded_witness, proof, _) = Folding::<Projective>::prove(
             &mut transcript_p,
@@ -527,8 +527,9 @@ pub mod tests {
 
         // init Prover & Verifier's transcript
         let poseidon_config = poseidon_canonical_config::<Fr>();
-        let mut transcript_p = PoseidonSponge::<Fr>::new(&poseidon_config);
-        let mut transcript_v = PoseidonSponge::<Fr>::new(&poseidon_config);
+        let pp_hash = Fr::from(42u32); // only for testing
+        let mut transcript_p = PoseidonSponge::new_with_pp_hash(&poseidon_config, pp_hash);
+        let mut transcript_v = transcript_p.clone();
 
         let (mut running_witness, mut running_instance, _, _) = prepare_inputs(0)?;
 

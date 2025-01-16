@@ -1,8 +1,5 @@
 /// Implements the scheme described in [HyperNova](https://eprint.iacr.org/2023/573.pdf)
-use ark_crypto_primitives::sponge::{
-    poseidon::{PoseidonConfig, PoseidonSponge},
-    CryptographicSponge,
-};
+use ark_crypto_primitives::sponge::poseidon::{PoseidonConfig, PoseidonSponge};
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{alloc::AllocVar, boolean::Boolean, R1CSVar};
 use ark_relations::r1cs::{
@@ -44,7 +41,7 @@ use crate::folding::{
     traits::{CommittedInstanceOps, Dummy, WitnessOps},
 };
 use crate::frontend::FCircuit;
-use crate::transcript::poseidon::poseidon_canonical_config;
+use crate::transcript::{poseidon::poseidon_canonical_config, Transcript};
 use crate::utils::pp_hash;
 use crate::{Curve, Error, FoldingScheme, MultiFolding};
 
@@ -367,17 +364,19 @@ where
         let (_, cf_U_i): (CycleFoldWitness<C2>, CycleFoldCommittedInstance<C2>) =
             self.cf_r1cs.dummy_witness_instance();
 
-        let sponge = PoseidonSponge::<C1::ScalarField>::new(&self.poseidon_config);
+        let sponge = PoseidonSponge::<C1::ScalarField>::new_with_pp_hash(
+            &self.poseidon_config,
+            self.pp_hash,
+        );
 
         u_i.x = vec![
             U_i.hash(
                 &sponge,
-                self.pp_hash,
                 C1::ScalarField::zero(), // i
                 &self.z_0,
                 &state,
             ),
-            cf_U_i.hash_cyclefold(&sponge, self.pp_hash),
+            cf_U_i.hash_cyclefold(&sponge),
         ];
         let us = vec![u_i.clone(); NU - 1];
 
@@ -578,8 +577,12 @@ where
             return Err(Error::CantBeZero("mu,nu".to_string()));
         }
 
+        // compute the public params hash
+        let pp_hash = vp.pp_hash()?;
+
         // `sponge` is for digest computation.
-        let sponge = PoseidonSponge::<C1::ScalarField>::new(&pp.poseidon_config);
+        let sponge =
+            PoseidonSponge::<C1::ScalarField>::new_with_pp_hash(&pp.poseidon_config, pp_hash);
 
         // prepare the HyperNova's AugmentedFCircuit and CycleFold's circuits and obtain its CCS
         // and R1CS respectively
@@ -593,9 +596,6 @@ where
         let cf_circuit = CycleFoldCircuit::<_, HyperNovaCycleFoldConfig<C1, MU, NU>>::default();
         let cf_r1cs = get_r1cs_from_cs::<C2::ScalarField>(cf_circuit)?;
 
-        // compute the public params hash
-        let pp_hash = vp.pp_hash()?;
-
         // setup the dummy instances
         let W_dummy = Witness::<C1::ScalarField>::dummy(&ccs);
         let U_dummy = LCCCS::<C1>::dummy(&ccs);
@@ -604,8 +604,8 @@ where
         let (cf_W_dummy, cf_U_dummy): (CycleFoldWitness<C2>, CycleFoldCommittedInstance<C2>) =
             cf_r1cs.dummy_witness_instance();
         u_dummy.x = vec![
-            U_dummy.hash(&sponge, pp_hash, C1::ScalarField::zero(), &z_0, &z_0),
-            cf_U_dummy.hash_cyclefold(&sponge, pp_hash),
+            U_dummy.hash(&sponge, C1::ScalarField::zero(), &z_0, &z_0),
+            cf_U_dummy.hash_cyclefold(&sponge),
         ];
 
         // W_dummy=W_0 is a 'dummy witness', all zeroes, but with the size corresponding to the
@@ -753,8 +753,10 @@ where
             };
         } else {
             let mut transcript_p: PoseidonSponge<C1::ScalarField> =
-                PoseidonSponge::<C1::ScalarField>::new(&self.poseidon_config);
-            transcript_p.absorb(&self.pp_hash);
+                PoseidonSponge::<C1::ScalarField>::new_with_pp_hash(
+                    &self.poseidon_config,
+                    self.pp_hash,
+                );
 
             let (all_Us, all_us, all_Ws, all_ws) = (
                 [&[self.U_i.clone()][..], &Us].concat(),
@@ -793,7 +795,6 @@ where
                 &mut transcript_p,
                 &self.cf_r1cs,
                 &self.cf_cs_pp,
-                self.pp_hash,
                 self.cf_W_i.clone(),
                 self.cf_U_i.clone(),
                 vec![cf_w_i],
@@ -960,22 +961,21 @@ where
             return Ok(());
         }
         // `sponge` is for digest computation.
-        let sponge = PoseidonSponge::<C1::ScalarField>::new(&vp.poseidon_config);
+        let sponge =
+            PoseidonSponge::<C1::ScalarField>::new_with_pp_hash(&vp.poseidon_config, vp.pp_hash()?);
 
         if u_i.x.len() != 2 || U_i.x.len() != 2 {
             return Err(Error::IVCVerificationFail);
         }
 
-        let pp_hash = vp.pp_hash()?;
-
         // check that u_i's output points to the running instance
         // u_i.X[0] == H(i, z_0, z_i, U_i)
-        let expected_u_i_x = U_i.hash(&sponge, pp_hash, num_steps, &z_0, &z_i);
+        let expected_u_i_x = U_i.hash(&sponge, num_steps, &z_0, &z_i);
         if expected_u_i_x != u_i.x[0] {
             return Err(Error::IVCVerificationFail);
         }
         // u_i.X[1] == H(cf_U_i)
-        let expected_cf_u_i_x = cf_U_i.hash_cyclefold(&sponge, pp_hash);
+        let expected_cf_u_i_x = cf_U_i.hash_cyclefold(&sponge);
         if expected_cf_u_i_x != u_i.x[1] {
             return Err(Error::IVCVerificationFail);
         }

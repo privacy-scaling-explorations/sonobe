@@ -3,7 +3,7 @@
 /// More details can be found at the documentation page:
 /// https://privacy-scaling-explorations.github.io/sonobe-docs/design/nova-decider-offchain.html
 use ark_crypto_primitives::sponge::{
-    constraints::{AbsorbGadget, CryptographicSpongeVar},
+    constraints::AbsorbGadget,
     poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig},
 };
 use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, fields::fp::FpVar};
@@ -27,6 +27,7 @@ use crate::{
         nova::{decider_eth_circuit::WitnessVar, nifs::nova_circuits::CommittedInstanceVar},
         traits::{CommittedInstanceOps, CommittedInstanceVarOps, Dummy, WitnessOps, WitnessVarOps},
     },
+    transcript::TranscriptVar,
     Curve,
 };
 
@@ -177,10 +178,10 @@ where
         let kzg_evaluations = Vec::new_input(cs.clone(), || Ok(self.kzg_evaluations))?;
 
         // `sponge` is for digest computation.
-        let sponge = PoseidonSpongeVar::new(cs.clone(), &self.poseidon_config);
+        // notice that `pp_hash` has already been absorbed during init.
+        let sponge = PoseidonSpongeVar::new_with_pp_hash(&self.poseidon_config, &pp_hash)?;
         // `transcript` is for challenge generation.
         let mut transcript = sponge.clone();
-        // notice that the `pp_hash` is absorbed inside the ChallengeGadget::get_challenge_gadget call
 
         // 1. enforce `U_{i+1}` and `W_{i+1}` satisfy `arith`
         arith.enforce_relation(&W_i1, &U_i1)?;
@@ -189,15 +190,14 @@ where
         u_i.enforce_incoming()?;
 
         // 3. u_i.x[0] == H(i, z_0, z_i, U_i), u_i.x[1] == H(cf_U_i)
-        let (u_i_x, U_i_vec) = U_i.hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
-        let (cf_u_i_x, _) = cf_U_i.hash(&sponge, pp_hash.clone())?;
+        let (u_i_x, U_i_vec) = U_i.hash(&sponge, &i, &z_0, &z_i)?;
+        let (cf_u_i_x, _) = cf_U_i.hash(&sponge)?;
         u_i.get_public_inputs().enforce_equal(&[u_i_x, cf_u_i_x])?;
 
         // 6.1. partially enforce `NIFS.V(U_i, u_i) = U_{i+1}`.
         D::fold_field_elements_gadget(
             &self.arith,
             &mut transcript,
-            pp_hash,
             U_i,
             U_i_vec,
             u_i,
@@ -281,8 +281,7 @@ impl<C2: Curve> ConstraintSynthesizer<CF1<C2>> for GenericOffchainDeciderCircuit
         let kzg_evaluations = Vec::new_input(cs.clone(), || Ok(self.kzg_evaluations))?;
 
         // `transcript` is for challenge generation.
-        let mut transcript = PoseidonSpongeVar::new(cs.clone(), &self.poseidon_config);
-        transcript.absorb(&pp_hash)?;
+        let mut transcript = PoseidonSpongeVar::new_with_pp_hash(&self.poseidon_config, &pp_hash)?;
 
         // 5. enforce `cf_U_i` and `cf_W_i` satisfy `cf_r1cs`
         cf_r1cs.enforce_relation(&cf_W_i, &cf_U_i)?;

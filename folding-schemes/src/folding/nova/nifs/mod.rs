@@ -68,7 +68,6 @@ pub trait NIFSTrait<
         cs_prover_params: &CS::ProverParams,
         r1cs: &R1CS<C::ScalarField>,
         transcript: &mut T,
-        pp_hash: C::ScalarField,
         W_i: &Self::Witness,           // running witness
         U_i: &Self::CommittedInstance, // running committed instance
         w_i: &Self::Witness,           // incoming witness
@@ -87,7 +86,6 @@ pub trait NIFSTrait<
     /// bits, so that it can be reused in other methods.
     fn verify(
         transcript: &mut T,
-        pp_hash: C::ScalarField,
         U_i: &Self::CommittedInstance,
         u_i: &Self::CommittedInstance,
         proof: &Self::Proof,
@@ -113,7 +111,6 @@ pub trait NIFSGadgetTrait<C: Curve, S: CryptographicSponge, T: TranscriptVar<CF1
     #[allow(clippy::type_complexity)]
     fn verify(
         transcript: &mut T,
-        pp_hash: FpVar<CF1<C>>,
         U_i: Self::CommittedInstanceVar,
         // U_i_vec is passed to reuse the already computed U_i_vec from previous methods
         U_i_vec: Vec<FpVar<CF1<C>>>,
@@ -128,11 +125,10 @@ pub trait NIFSGadgetTrait<C: Curve, S: CryptographicSponge, T: TranscriptVar<CF1
 #[cfg(test)]
 pub mod tests {
     use ark_crypto_primitives::sponge::{
-        constraints::{AbsorbGadget, CryptographicSpongeVar},
-        poseidon::constraints::PoseidonSpongeVar,
+        constraints::AbsorbGadget,
+        poseidon::{constraints::PoseidonSpongeVar, PoseidonSponge},
         Absorb,
     };
-    use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, CryptographicSponge};
     use ark_pallas::{Fr, Projective};
     use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, R1CSVar};
     use ark_relations::r1cs::ConstraintSystem;
@@ -161,9 +157,9 @@ pub mod tests {
             Pedersen::<Projective>::setup(&mut rng, max(r1cs.n_constraints(), r1cs.n_witnesses()))?;
 
         let poseidon_config = poseidon_canonical_config::<Fr>();
-        let mut transcript_p = PoseidonSponge::<Fr>::new(&poseidon_config);
-        let mut transcript_v = PoseidonSponge::<Fr>::new(&poseidon_config);
         let pp_hash = Fr::rand(&mut rng);
+        let mut transcript_p = PoseidonSponge::<Fr>::new_with_pp_hash(&poseidon_config, pp_hash);
+        let mut transcript_v = transcript_p.clone();
 
         // prepare the running instance
         let z = get_test_z(3);
@@ -184,7 +180,6 @@ pub mod tests {
                 &pedersen_params,
                 &r1cs,
                 &mut transcript_p,
-                pp_hash,
                 &W_i,
                 &U_i,
                 &w_i,
@@ -192,8 +187,7 @@ pub mod tests {
             )?;
 
             // NIFS.V
-            let (folded_committed_instance, _) =
-                N::verify(&mut transcript_v, pp_hash, &U_i, &u_i, &proof)?;
+            let (folded_committed_instance, _) = N::verify(&mut transcript_v, &U_i, &u_i, &proof)?;
 
             // set running_instance for next loop iteration
             W_i = folded_witness;
@@ -225,13 +219,14 @@ pub mod tests {
         let (U_i, u_i) = (ci[0].clone(), ci[1].clone());
         let pp_hash = Fr::rand(&mut rng);
         let poseidon_config = poseidon_canonical_config::<Fr>();
-        let mut transcript = PoseidonSponge::<Fr>::new(&poseidon_config);
-        let (ci3, _) = N::verify(&mut transcript, pp_hash, &U_i, &u_i, &proof)?;
+        let mut transcript = PoseidonSponge::<Fr>::new_with_pp_hash(&poseidon_config, pp_hash);
+        let (ci3, _) = N::verify(&mut transcript, &U_i, &u_i, &proof)?;
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        let mut transcriptVar = PoseidonSpongeVar::<Fr>::new(cs.clone(), &poseidon_config);
         let pp_hashVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(pp_hash))?;
+        let mut transcriptVar =
+            PoseidonSpongeVar::<Fr>::new_with_pp_hash(&poseidon_config, &pp_hashVar)?;
         let ci1Var = NG::CommittedInstanceVar::new_witness(cs.clone(), || Ok(U_i.clone()))?;
         let ci2Var = NG::CommittedInstanceVar::new_witness(cs.clone(), || Ok(u_i.clone()))?;
         let proofVar = NG::ProofVar::new_witness(cs.clone(), || Ok(proof))?;
@@ -239,7 +234,6 @@ pub mod tests {
         let ci1Var_vec = ci1Var.to_sponge_field_elements()?;
         let (out, _) = NG::verify(
             &mut transcriptVar,
-            pp_hashVar,
             ci1Var.clone(),
             ci1Var_vec,
             ci2Var.clone(),
@@ -297,15 +291,15 @@ pub mod tests {
         N::CommittedInstance: CommittedInstanceOps<Projective>,
     {
         let poseidon_config = poseidon_canonical_config::<Fr>();
-        let sponge = PoseidonSponge::<Fr>::new(&poseidon_config);
         let pp_hash = Fr::from(42u32); // only for test
+        let sponge = PoseidonSponge::<Fr>::new_with_pp_hash(&poseidon_config, pp_hash);
 
         let i = Fr::from(3_u32);
         let z_0 = vec![Fr::from(3_u32)];
         let z_i = vec![Fr::from(3_u32)];
 
         // compute the CommittedInstance hash natively
-        let h = ci.hash(&sponge, pp_hash, i, &z_0, &z_i);
+        let h = ci.hash(&sponge, i, &z_0, &z_i);
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
@@ -315,10 +309,10 @@ pub mod tests {
         let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i.clone()))?;
         let ciVar = NG::CommittedInstanceVar::new_witness(cs.clone(), || Ok(ci.clone()))?;
 
-        let sponge = PoseidonSpongeVar::<Fr>::new(cs.clone(), &poseidon_config);
+        let sponge = PoseidonSpongeVar::<Fr>::new_with_pp_hash(&poseidon_config, &pp_hashVar)?;
 
         // compute the CommittedInstance hash in-circuit
-        let (hVar, _) = ciVar.hash(&sponge, &pp_hashVar, &iVar, &z_0Var, &z_iVar)?;
+        let (hVar, _) = ciVar.hash(&sponge, &iVar, &z_0Var, &z_iVar)?;
         assert!(cs.is_satisfied()?);
 
         // check that the natively computed and in-circuit computed hashes match

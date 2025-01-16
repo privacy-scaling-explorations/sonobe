@@ -35,8 +35,8 @@ use crate::constants::NOVA_N_BITS_RO;
 use crate::folding::{
     circuits::{
         cyclefold::{
-            CycleFoldChallengeGadget, CycleFoldCommittedInstance, CycleFoldCommittedInstanceVar,
-            CycleFoldConfig, NIFSFullGadget,
+            CycleFoldAugmentationGadget, CycleFoldCommittedInstance, CycleFoldCommittedInstanceVar,
+            CycleFoldConfig,
         },
         nonnative::affine::NonNativeAffineVar,
         sum_check::{IOPProofVar, SumCheckVerifierGadget, VPAuxInfoVar},
@@ -707,7 +707,7 @@ where
         // u_i.x[0] = H(i, z_0, z_i, U_i)
         let (u_i_x, _) = U_i.clone().hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
         // u_i.x[1] = H(cf_U_i)
-        let (cf_u_i_x, cf_U_i_vec) = cf_U_i.clone().hash(&sponge, pp_hash.clone())?;
+        let (cf_u_i_x, _) = cf_U_i.clone().hash(&sponge, pp_hash.clone())?;
 
         // P.2. Construct u_i
         let u_i = CCCSVar::<C1> {
@@ -792,18 +792,13 @@ where
         )?;
 
         // C.3. nifs.verify (fold_committed_instance), obtains cf_U_{i+1} by folding cf_u_i & cf_U_i.
-        // compute cf_r = H(cf_u_i, cf_U_i, cf_cmT)
-        // cf_r_bits is denoted by rho* in the paper.
-        let cf_r_bits = CycleFoldChallengeGadget::<C2>::get_challenge_gadget(
+        let cf_U_i1 = CycleFoldAugmentationGadget::fold_gadget(
             &mut transcript,
-            pp_hash.clone(),
-            cf_U_i_vec,
-            cf_u_i.clone(),
-            cf_cmT.clone(),
+            &pp_hash,
+            cf_U_i,
+            vec![cf_u_i],
+            vec![cf_cmT],
         )?;
-        // Fold cf1_u_i & cf_U_i into cf1_U_{i+1}
-        let cf_U_i1 =
-            NIFSFullGadget::<C2>::fold_committed_instance(cf_r_bits, cf_cmT, cf_U_i, cf_u_i)?;
 
         // Back to Primary Part
         // P.4.b compute and check the second output of F'
@@ -845,7 +840,6 @@ where
 mod tests {
     use ark_bn254::{Fq, Fr, G1Projective as Projective};
     use ark_crypto_primitives::sponge::Absorb;
-    use ark_ff::BigInteger;
     use ark_grumpkin::Projective as Projective2;
     use ark_std::{cmp::max, test_rng, time::Instant, UniformRand};
 
@@ -858,11 +852,8 @@ mod tests {
         },
         commitment::{pedersen::Pedersen, CommitmentScheme},
         folding::{
-            circuits::cyclefold::{fold_cyclefold_circuit, CycleFoldWitness},
-            hypernova::{
-                utils::{compute_c, compute_sigmas_thetas},
-                HyperNovaCycleFoldCircuit,
-            },
+            circuits::cyclefold::{CycleFoldCircuit, CycleFoldWitness},
+            hypernova::utils::{compute_c, compute_sigmas_thetas},
             traits::CommittedInstanceOps,
         },
         frontend::utils::{cubic_step_native, CubicFCircuit},
@@ -1161,7 +1152,8 @@ mod tests {
 
         // CycleFold circuit
         let cs2 = ConstraintSystem::<Fq>::new_ref();
-        let cf_circuit = HyperNovaCycleFoldCircuit::<Projective, MU, NU>::empty();
+        let cf_circuit =
+            CycleFoldCircuit::<_, HyperNovaCycleFoldConfig<Projective, MU, NU>>::default();
         cf_circuit.generate_constraints(cs2.clone())?;
         cs2.finalize();
         let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
@@ -1281,43 +1273,41 @@ mod tests {
 
                 u_i1_x = U_i1.hash(&sponge, pp_hash, iFr + Fr::one(), &z_0, &z_i1);
 
-                let rho_bits = rho.into_bigint().to_bits_le()[..NOVA_N_BITS_RO].to_vec();
-
                 // CycleFold part:
-                let cf_circuit = HyperNovaCycleFoldCircuit::<Projective, MU, NU> {
-                    r_bits: Some(rho_bits.clone()),
-                    points: Some(
-                        [
-                            vec![U_i.clone().C],
-                            Us.iter().map(|Us_i| Us_i.C).collect(),
-                            vec![u_i.clone().C],
-                            us.iter().map(|us_i| us_i.C).collect(),
-                        ]
-                        .concat(),
-                    ),
+                let cf_config = HyperNovaCycleFoldConfig::<Projective, MU, NU> {
+                    r: rho,
+                    points: [
+                        vec![U_i.clone().C],
+                        Us.iter().map(|Us_i| Us_i.C).collect(),
+                        vec![u_i.clone().C],
+                        us.iter().map(|us_i| us_i.C).collect(),
+                    ]
+                    .concat(),
                 };
 
                 // ensure that the CycleFoldCircuit is well defined
                 assert_eq!(
-                    cf_circuit.points.clone().unwrap().len(),
+                    cf_config.points.len(),
                     HyperNovaCycleFoldConfig::<Projective, MU, NU>::N_INPUT_POINTS
                 );
 
-                let (cf_u_i, cf_W_i1, cf_U_i1, cf_cmT) = fold_cyclefold_circuit::<
-                    HyperNovaCycleFoldConfig<Projective, MU, NU>,
-                    Projective2,
-                    Pedersen<Projective2>,
-                    false,
-                >(
-                    &mut transcript_p,
-                    cf_r1cs.clone(),
-                    cf_pedersen_params.clone(),
-                    pp_hash,
-                    cf_W_i.clone(), // CycleFold running instance witness
-                    cf_U_i.clone(), // CycleFold running instance
-                    cf_circuit,
-                    &mut rng,
-                )?;
+                let (cf_w_i, cf_u_i) = cf_config
+                    .build_circuit()
+                    .generate_incoming_instance_witness::<_, Pedersen<_>, false>(
+                        &cf_pedersen_params,
+                        &mut rng,
+                    )?;
+                let (cf_W_i1, cf_U_i1, cf_cmTs) =
+                    CycleFoldAugmentationGadget::fold_native::<_, Pedersen<_>, false>(
+                        &mut transcript_p,
+                        &cf_r1cs,
+                        &cf_pedersen_params,
+                        pp_hash,
+                        cf_W_i,
+                        cf_U_i.clone(),
+                        vec![cf_w_i],
+                        vec![cf_u_i.clone()],
+                    )?;
 
                 // hash the CycleFold folded instance, which is used as the 2nd public input in the
                 // AugmentedFCircuit
@@ -1344,7 +1334,7 @@ mod tests {
                         // cyclefold values
                         cf_u_i_cmW: Some(cf_u_i.cmW),
                         cf_U_i: Some(cf_U_i),
-                        cf_cmT: Some(cf_cmT),
+                        cf_cmT: Some(cf_cmTs[0]),
                     };
 
                 // assign the next round instances

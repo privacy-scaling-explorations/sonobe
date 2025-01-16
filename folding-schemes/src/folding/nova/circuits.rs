@@ -21,15 +21,14 @@ use super::{
 };
 use crate::folding::circuits::{
     cyclefold::{
-        CycleFoldChallengeGadget, CycleFoldCommittedInstance, CycleFoldCommittedInstanceVar,
-        CycleFoldConfig, NIFSFullGadget,
+        CycleFoldAugmentationGadget, CycleFoldCommittedInstance, CycleFoldCommittedInstanceVar,
+        CycleFoldConfig,
     },
     nonnative::affine::NonNativeAffineVar,
     CF1,
 };
 use crate::folding::traits::{CommittedInstanceVarOps, Dummy};
 use crate::frontend::FCircuit;
-use crate::transcript::AbsorbNonNativeGadget;
 use crate::Curve;
 
 /// `AugmentedFCircuit` enhances the original step function `F`, so that it can
@@ -161,7 +160,7 @@ where
         // u_i.x[0] = H(i, z_0, z_i, U_i)
         let (u_i_x, U_i_vec) = U_i.clone().hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
         // u_i.x[1] = H(cf_U_i)
-        let (cf_u_i_x, cf_U_i_vec) = cf_U_i.clone().hash(&sponge, pp_hash.clone())?;
+        let (cf_u_i_x, _) = cf_U_i.clone().hash(&sponge, pp_hash.clone())?;
 
         // P.2. Construct u_i
         let u_i = CommittedInstanceVar {
@@ -255,33 +254,13 @@ where
             vec![U_i.cmE, cmT, U_i1.cmE],
         )?;
 
-        // C.3. nifs.verify, obtains cf1_U_{i+1} by folding cf1_u_i & cf_U_i, and then cf_U_{i+1}
-        // by folding cf2_u_i & cf1_U_{i+1}.
-
-        // compute cf1_r = H(cf1_u_i, cf_U_i, cf1_cmT)
-        // cf_r_bits is denoted by rho* in the paper.
-        let cf1_r_bits = CycleFoldChallengeGadget::<C2>::get_challenge_gadget(
+        // C.3. nifs.verify, obtains cf_U_{i+1} by folding cf1_u_i and cf2_u_i into cf_U.
+        let cf_U_i1 = CycleFoldAugmentationGadget::fold_gadget(
             &mut transcript,
-            pp_hash.clone(),
-            cf_U_i_vec,
-            cf1_u_i.clone(),
-            cf1_cmT.clone(),
-        )?;
-        // Fold cf1_u_i & cf_U_i into cf1_U_{i+1}
-        let cf1_U_i1 =
-            NIFSFullGadget::<C2>::fold_committed_instance(cf1_r_bits, cf1_cmT, cf_U_i, cf1_u_i)?;
-
-        // same for cf2_r:
-        let cf2_r_bits = CycleFoldChallengeGadget::<C2>::get_challenge_gadget(
-            &mut transcript,
-            pp_hash.clone(),
-            cf1_U_i1.to_native_sponge_field_elements()?,
-            cf2_u_i.clone(),
-            cf2_cmT.clone(),
-        )?;
-        let cf_U_i1 = NIFSFullGadget::<C2>::fold_committed_instance(
-            cf2_r_bits, cf2_cmT, cf1_U_i1, // the output from NIFS.V(cf1_r, cf_U, cfE_u)
-            cf2_u_i,
+            &pp_hash,
+            cf_U_i,
+            vec![cf1_u_i, cf2_u_i],
+            vec![cf1_cmT, cf2_cmT],
         )?;
 
         // Back to Primary Part

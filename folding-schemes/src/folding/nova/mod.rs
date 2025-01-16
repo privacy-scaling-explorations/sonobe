@@ -9,30 +9,33 @@ use ark_crypto_primitives::sponge::{
     Absorb, CryptographicSponge,
 };
 use ark_ff::{BigInteger, PrimeField};
-use ark_r1cs_std::R1CSVar;
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisMode};
+use ark_r1cs_std::{alloc::AllocVar, prelude::Boolean, R1CSVar};
+use ark_relations::r1cs::{
+    ConstraintSynthesizer, ConstraintSystem, SynthesisMode, ConstraintSystemRef, SynthesisError,
+};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Valid};
-use ark_std::{cmp::max, fmt::Debug, marker::PhantomData, rand::RngCore, One, UniformRand, Zero};
+use ark_std::{cmp::max, fmt::Debug, rand::RngCore, One, UniformRand, Zero};
 
-use crate::folding::{circuits::CF1, traits::Dummy};
-use crate::frontend::FCircuit;
-use crate::transcript::{poseidon::poseidon_canonical_config, Transcript};
-use crate::utils::vec::is_zero_vec;
-use crate::FoldingScheme;
-use crate::{
-    arith::r1cs::{extract_r1cs, extract_w_x, R1CS},
-    constants::NOVA_N_BITS_RO,
-    utils::pp_hash,
+use crate::arith::{
+    r1cs::{extract_r1cs, extract_w_x, R1CS},
+    Arith, ArithRelation,
 };
-use crate::{
-    arith::Arith,
-    folding::circuits::cyclefold::{
-        fold_cyclefold_circuit, CycleFoldCircuit, CycleFoldCommittedInstance, CycleFoldConfig,
-        CycleFoldWitness,
+use crate::commitment::CommitmentScheme;
+use crate::constants::NOVA_N_BITS_RO;
+use crate::folding::{
+    circuits::{
+        cyclefold::{
+            CycleFoldAugmentationGadget, CycleFoldCommittedInstance, CycleFoldConfig,
+            CycleFoldWitness,
+        },
+        CF1,
     },
+    traits::Dummy,
 };
-use crate::{arith::ArithRelation, commitment::CommitmentScheme};
-use crate::{Curve, Error};
+use crate::frontend::FCircuit;
+use crate::transcript::poseidon::poseidon_canonical_config;
+use crate::utils::{pp_hash, vec::is_zero_vec};
+use crate::{Curve, Error, FoldingScheme};
 use decider_eth_circuit::WitnessVar;
 
 pub mod circuits;
@@ -52,25 +55,53 @@ pub mod decider_circuits;
 pub mod decider_eth;
 pub mod decider_eth_circuit;
 
-use super::traits::{CommittedInstanceOps, Inputize, WitnessOps};
+use super::{
+    circuits::{cyclefold::CycleFoldCircuit, CF2},
+    traits::{CommittedInstanceOps, Inputize, WitnessOps},
+};
 
 /// Configuration for Nova's CycleFold circuit
 pub struct NovaCycleFoldConfig<C: Curve> {
-    _c: PhantomData<C>,
+    r: Vec<bool>,
+    points: Vec<C>,
 }
 
-impl<C: Curve> CycleFoldConfig for NovaCycleFoldConfig<C> {
+impl<C: Curve> Default for NovaCycleFoldConfig<C> {
+    fn default() -> Self {
+        Self {
+            r: vec![false; NOVA_N_BITS_RO],
+            points: vec![C::zero(); 2],
+        }
+    }
+}
+
+impl<C: Curve> CycleFoldConfig<C> for NovaCycleFoldConfig<C> {
     const RANDOMNESS_BIT_LENGTH: usize = NOVA_N_BITS_RO;
     // Number of points to be folded in the CycleFold circuit, in Nova's case, this is a fixed
     // amount:
     // 2 points to be folded.
     const N_INPUT_POINTS: usize = 2;
-    type C = C;
-}
+    const N_UNIQUE_RANDOMNESSES: usize = 1;
 
-/// CycleFold circuit for computing random linear combinations of group elements
-/// in Nova instances.
-pub type NovaCycleFoldCircuit<C> = CycleFoldCircuit<NovaCycleFoldConfig<C>>;
+    fn alloc_points(&self, cs: ConstraintSystemRef<CF2<C>>) -> Result<Vec<C::Var>, SynthesisError> {
+        let points = Vec::new_witness(cs.clone(), || Ok(self.points.clone()))?;
+        for point in &points {
+            Self::mark_point_as_public(point)?;
+        }
+        Ok(points)
+    }
+
+    fn alloc_randomnesses(
+        &self,
+        cs: ConstraintSystemRef<CF2<C>>,
+    ) -> Result<Vec<Vec<Boolean<CF2<C>>>>, SynthesisError> {
+        let one = &CF1::<C>::one().into_bigint().to_bits_le()[..NOVA_N_BITS_RO];
+        let one_var = Vec::new_constant(cs.clone(), one)?;
+        let r_var = Vec::new_witness(cs.clone(), || Ok(self.r.clone()))?;
+        Self::mark_randomness_as_public(&r_var)?;
+        Ok(vec![one_var, r_var])
+    }
+}
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct CommittedInstance<C: Curve> {
@@ -510,7 +541,7 @@ where
         // CycleFold circuit R1CS
         let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
         cs2.set_mode(SynthesisMode::Setup);
-        let cf_circuit = NovaCycleFoldCircuit::<C1>::empty();
+        let cf_circuit = CycleFoldCircuit::<_, NovaCycleFoldConfig<C1>>::default();
         cf_circuit.generate_constraints(cs2.clone())?;
         cs2.finalize();
         let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
@@ -591,7 +622,7 @@ where
 
         let augmented_F_circuit =
             AugmentedFCircuit::<C1, C2, FC>::empty(&pp.poseidon_config, F.clone());
-        let cf_circuit = NovaCycleFoldCircuit::<C1>::empty();
+        let cf_circuit = CycleFoldCircuit::<_, NovaCycleFoldConfig<C1>>::default();
 
         augmented_F_circuit.generate_constraints(cs.clone())?;
         cs.finalize();
@@ -746,30 +777,28 @@ where
             }
         } else {
             // CycleFold part:
-            let cfW_circuit = NovaCycleFoldCircuit::<C1> {
-                r_bits: Some(r_bits.clone()),
-                points: Some(vec![self.U_i.clone().cmW, self.u_i.clone().cmW]),
-            };
-            let cfE_circuit = NovaCycleFoldCircuit::<C1> {
-                r_bits: Some(r_bits.clone()),
-                points: Some(vec![self.U_i.clone().cmE, cmT]),
-            };
+            let (cfW_w_i, cfW_u_i) = NovaCycleFoldConfig {
+                r: r_bits.clone(),
+                points: vec![self.U_i.clone().cmW, self.u_i.clone().cmW],
+            }
+            .build_circuit()
+            .generate_incoming_instance_witness::<_, CS2, H>(&self.cf_cs_pp, &mut rng)?;
+            let (cfE_w_i, cfE_u_i) = NovaCycleFoldConfig {
+                r: r_bits.clone(),
+                points: vec![self.U_i.clone().cmE, cmT],
+            }
+            .build_circuit()
+            .generate_incoming_instance_witness::<_, CS2, H>(&self.cf_cs_pp, &mut rng)?;
 
-            // fold self.cf_U_i + cfW_U -> folded running with cfW
-            let (cfW_u_i, cfW_W_i1, cfW_U_i1, cfW_cmT) = self.fold_cyclefold_circuit(
+            let (cf_W_i1, cf_U_i1, cf_cmTs) = CycleFoldAugmentationGadget::fold_native::<_, CS2, H>(
                 &mut transcript,
-                self.cf_W_i.clone(), // CycleFold running instance witness
-                self.cf_U_i.clone(), // CycleFold running instance
-                cfW_circuit,
-                &mut rng,
-            )?;
-            // fold [the output from folding self.cf_U_i + cfW_U] + cfE_U = folded_running_with_cfW + cfE
-            let (cfE_u_i, cf_W_i1, cf_U_i1, cf_cmT) = self.fold_cyclefold_circuit(
-                &mut transcript,
-                cfW_W_i1,
-                cfW_U_i1.clone(),
-                cfE_circuit,
-                &mut rng,
+                &self.cf_r1cs,
+                &self.cf_cs_pp,
+                self.pp_hash,
+                self.cf_W_i.clone(),
+                self.cf_U_i.clone(),
+                vec![cfW_w_i, cfE_w_i],
+                vec![cfW_u_i.clone(), cfE_u_i.clone()],
             )?;
 
             augmented_F_circuit = AugmentedFCircuit::<C1, C2, FC> {
@@ -790,8 +819,8 @@ where
                 cf1_u_i_cmW: Some(cfW_u_i.cmW),
                 cf2_u_i_cmW: Some(cfE_u_i.cmW),
                 cf_U_i: Some(self.cf_U_i.clone()),
-                cf1_cmT: Some(cfW_cmT),
-                cf2_cmT: Some(cf_cmT),
+                cf1_cmT: Some(cf_cmTs[0]),
+                cf2_cmT: Some(cf_cmTs[1]),
             };
 
             self.cf_W_i = cf_W_i1;
@@ -876,7 +905,7 @@ where
         cs2.set_mode(SynthesisMode::Setup);
         let augmented_F_circuit =
             AugmentedFCircuit::<C1, C2, FC>::empty(&pp.poseidon_config, f_circuit.clone());
-        let cf_circuit = NovaCycleFoldCircuit::<C1>::empty();
+        let cf_circuit = CycleFoldCircuit::<_, NovaCycleFoldConfig<C1>>::default();
 
         augmented_F_circuit.generate_constraints(cs.clone())?;
         cs.finalize();
@@ -964,46 +993,6 @@ where
     }
 }
 
-impl<C1, C2, FC, CS1, CS2, const H: bool> Nova<C1, C2, FC, CS1, CS2, H>
-where
-    C1: Curve,
-    C2: Curve,
-    FC: FCircuit<C1::ScalarField>,
-    CS1: CommitmentScheme<C1, H>,
-    CS2: CommitmentScheme<C2, H>,
-    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-{
-    // folds the given cyclefold circuit and its instances
-    #[allow(clippy::type_complexity)]
-    fn fold_cyclefold_circuit<T: Transcript<C1::ScalarField>>(
-        &self,
-        transcript: &mut T,
-        cf_W_i: CycleFoldWitness<C2>, // witness of the running instance
-        cf_U_i: CycleFoldCommittedInstance<C2>, // running instance
-        cf_circuit: NovaCycleFoldCircuit<C1>,
-        rng: &mut impl RngCore,
-    ) -> Result<
-        (
-            CycleFoldCommittedInstance<C2>, // u_i
-            CycleFoldWitness<C2>,           // W_i1
-            CycleFoldCommittedInstance<C2>, // U_i1
-            C2,                             // cmT
-        ),
-        Error,
-    > {
-        fold_cyclefold_circuit::<NovaCycleFoldConfig<C1>, C2, CS2, H>(
-            transcript,
-            self.cf_r1cs.clone(),
-            self.cf_cs_pp.clone(),
-            self.pp_hash,
-            cf_W_i,
-            cf_U_i,
-            cf_circuit,
-            rng,
-        )
-    }
-}
-
 /// helper method to get the r1cs from the ConstraintSynthesizer
 pub fn get_r1cs_from_cs<F: PrimeField>(
     circuit: impl ConstraintSynthesizer<F>,
@@ -1030,7 +1019,7 @@ where
     C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
 {
     let augmented_F_circuit = AugmentedFCircuit::<C1, C2, FC>::empty(poseidon_config, F_circuit);
-    let cf_circuit = NovaCycleFoldCircuit::<C1>::empty();
+    let cf_circuit = CycleFoldCircuit::<_, NovaCycleFoldConfig<C1>>::default();
     let r1cs = get_r1cs_from_cs::<C1::ScalarField>(augmented_F_circuit)?;
     let cf_r1cs = get_r1cs_from_cs::<C2::ScalarField>(cf_circuit)?;
     Ok((r1cs, cf_r1cs))

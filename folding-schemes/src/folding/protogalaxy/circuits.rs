@@ -24,16 +24,16 @@ use crate::{
     folding::{
         circuits::{
             cyclefold::{
-                CycleFoldChallengeGadget, CycleFoldCommittedInstance,
-                CycleFoldCommittedInstanceVar, CycleFoldConfig, NIFSFullGadget,
+                CycleFoldAugmentationGadget, CycleFoldCommittedInstance,
+                CycleFoldCommittedInstanceVar, CycleFoldConfig,
             },
             nonnative::affine::NonNativeAffineVar,
-            CF1, CF2,
+            CF1,
         },
         traits::{CommittedInstanceVarOps, Dummy},
     },
     frontend::FCircuit,
-    transcript::{AbsorbNonNativeGadget, TranscriptVar},
+    transcript::TranscriptVar,
     utils::gadgets::VectorGadget,
     Curve,
 };
@@ -166,34 +166,6 @@ impl AugmentationGadget {
 
         Ok((U, L_X_evals))
     }
-
-    pub fn fold_cyclefold<C2: Curve, S: CryptographicSponge>(
-        transcript: &mut impl TranscriptVar<CF2<C2>, S>,
-        pp_hash: FpVar<CF2<C2>>,
-        mut cf_U: CycleFoldCommittedInstanceVar<C2>,
-        cf_us: Vec<CycleFoldCommittedInstanceVar<C2>>,
-        cf_cmTs: Vec<C2::Var>,
-    ) -> Result<CycleFoldCommittedInstanceVar<C2>, SynthesisError> {
-        assert_eq!(cf_us.len(), cf_cmTs.len());
-
-        // Fold the incoming CycleFold instances into the running CycleFold
-        // instance in a iterative way, since `NIFSFullGadget` only supports
-        // folding one incoming instance at a time.
-        for (cf_u, cmT) in cf_us.into_iter().zip(cf_cmTs) {
-            let cf_r_bits = CycleFoldChallengeGadget::get_challenge_gadget(
-                transcript,
-                pp_hash.clone(),
-                cf_U.to_native_sponge_field_elements()?,
-                cf_u.clone(),
-                cmT.clone(),
-            )?;
-            // Fold the current incoming CycleFold instance `cf_u` into the
-            // running CycleFold instance `cf_U`.
-            cf_U = NIFSFullGadget::fold_committed_instance(cf_r_bits, cmT, cf_U, cf_u)?;
-        }
-
-        Ok(cf_U)
-    }
 }
 
 /// `AugmentedFCircuit` enhances the original step function `F`, so that it can
@@ -226,13 +198,9 @@ pub struct AugmentedFCircuit<C1: Curve, C2: Curve, FC: FCircuit<CF1<C1>>> {
     pub(super) F_coeffs: Vec<CF1<C1>>,
     pub(super) K_coeffs: Vec<CF1<C1>>,
 
-    pub(super) phi_stars: Vec<C1>,
-
-    pub(super) cf1_u_i_cmW: C2,                        // input
-    pub(super) cf2_u_i_cmW: C2,                        // input
+    pub(super) cf_u_i_cmW: C2,                         // input
     pub(super) cf_U_i: CycleFoldCommittedInstance<C2>, // input
-    pub(super) cf1_cmT: C2,
-    pub(super) cf2_cmT: C2,
+    pub(super) cf_cmT: C2,
 }
 
 impl<C1: Curve, C2: Curve, FC: FCircuit<CF1<C1>>> AugmentedFCircuit<C1, C2, FC> {
@@ -260,14 +228,11 @@ impl<C1: Curve, C2: Curve, FC: FCircuit<CF1<C1>>> AugmentedFCircuit<C1, C2, FC> 
             U_i1_phi: C1::zero(),
             F_coeffs: vec![CF1::<C1>::zero(); t],
             K_coeffs: vec![CF1::<C1>::zero(); d * k + 1],
-            phi_stars: vec![C1::zero(); k],
             F: F_circuit,
             // cyclefold values
-            cf1_u_i_cmW: C2::zero(),
-            cf2_u_i_cmW: C2::zero(),
+            cf_u_i_cmW: C2::zero(),
             cf_U_i: cf_u_dummy,
-            cf1_cmT: C2::zero(),
-            cf2_cmT: C2::zero(),
+            cf_cmT: C2::zero(),
         }
     }
 }
@@ -293,15 +258,12 @@ where
         let U_i = CommittedInstanceVar::<C1, true>::new_witness(cs.clone(), || Ok(self.U_i))?;
         let u_i_phi = NonNativeAffineVar::new_witness(cs.clone(), || Ok(self.u_i_phi))?;
         let U_i1_phi = NonNativeAffineVar::new_witness(cs.clone(), || Ok(self.U_i1_phi))?;
-        let phi_stars =
-            Vec::<NonNativeAffineVar<C1>>::new_witness(cs.clone(), || Ok(self.phi_stars))?;
 
         let cf_u_dummy =
             CycleFoldCommittedInstance::dummy(ProtoGalaxyCycleFoldConfig::<C1>::IO_LEN);
         let cf_U_i =
             CycleFoldCommittedInstanceVar::<C2>::new_witness(cs.clone(), || Ok(self.cf_U_i))?;
-        let cf1_cmT = C2::Var::new_witness(cs.clone(), || Ok(self.cf1_cmT))?;
-        let cf2_cmT = C2::Var::new_witness(cs.clone(), || Ok(self.cf2_cmT))?;
+        let cf_cmT = C2::Var::new_witness(cs.clone(), || Ok(self.cf_cmT))?;
 
         let F_coeffs = Vec::new_witness(cs.clone(), || Ok(self.F_coeffs))?;
         let K_coeffs = Vec::new_witness(cs.clone(), || Ok(self.K_coeffs))?;
@@ -368,34 +330,33 @@ where
         FpVar::new_input(cs.clone(), || x.value())?.enforce_equal(&x)?;
 
         // CycleFold part
-        // C.1. Compute cf1_u_i.x and cf2_u_i.x
-        // C.2. Construct `cf1_u_i` and `cf2_u_i`
-        let cf1_u = CycleFoldCommittedInstanceVar::new_incoming_from_components(
-            // `cf1_u_i.cmW` is provided by the prover as witness.
-            C2::Var::new_witness(cs.clone(), || Ok(self.cf1_u_i_cmW))?,
-            // To construct `cf1_u_i.x`, we need to provide the randomness
-            // `r[0]`, the `phi` component in running instance `U_i`, and
-            // `phi_stars[0]`.
-            &r[0].to_bits_le()?,
-            vec![NonNativeAffineVar::zero(), U_i.phi, phi_stars[0].clone()],
-        )?;
-        let cf2_u = CycleFoldCommittedInstanceVar::new_incoming_from_components(
-            // `cf2_u_i.cmW` is provided by the prover as witness.
-            C2::Var::new_witness(cs.clone(), || Ok(self.cf2_u_i_cmW))?,
-            // To construct `cf2_u_i.x`, we need to provide the randomness
-            // `r[1]`, the `phi` component in committed instances `u_i` and
-            // `U_{i+1}`, and `phi_stars[0]`.
-            &r[1].to_bits_le()?,
-            vec![phi_stars[0].clone(), u_i_phi, U_i1.phi],
+        // C.1. Compute `cf_u_i.x`
+        // C.2. Construct `cf_u_i`
+        let cf_u_i = CycleFoldCommittedInstanceVar::new_incoming_from_components(
+            // `cf_u_i.cmW` is provided by the prover as witness.
+            C2::Var::new_witness(cs.clone(), || Ok(self.cf_u_i_cmW))?,
+            // To construct `cf_u_i.x`, we need to provide the randomness `r` as
+            // well as the `phi` component in committed instances `U_i`, `u_i`,
+            // and `U_{i+1}`.
+            // Note that the randomness `r` is converted to `r_0, r_1 / r_0` due
+            // to how `ProtoGalaxyCycleFoldConfig::alloc_randomnesses` creates
+            // randomness in the CycleFold circuit.
+            &[
+                r[0].to_bits_le()?,
+                r[1].mul_by_inverse(&r[0])?.to_bits_le()?,
+            ]
+            .concat(),
+            vec![U_i.phi, u_i_phi, U_i1.phi],
         )?;
 
+        // C.2. Prepare incoming CycleFold instances
         // C.3. Fold incoming CycleFold instances into the running instance
-        let cf_U_i1 = AugmentationGadget::fold_cyclefold(
+        let cf_U_i1 = CycleFoldAugmentationGadget::fold_gadget(
             &mut transcript,
-            pp_hash.clone(),
+            &pp_hash,
             cf_U_i,
-            vec![cf1_u, cf2_u],
-            vec![cf1_cmT, cf2_cmT],
+            vec![cf_u_i],
+            vec![cf_cmT],
         )?;
 
         // Back to Primary Part

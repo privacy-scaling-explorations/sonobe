@@ -15,7 +15,7 @@ use ark_r1cs_std::{
 use ark_relations::r1cs::{
     ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, Namespace, SynthesisError,
 };
-use ark_std::{borrow::Borrow, fmt::Debug, marker::PhantomData, rand::RngCore, One, Zero};
+use ark_std::{borrow::Borrow, fmt::Debug, marker::PhantomData, rand::RngCore, One};
 
 use super::{
     nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
@@ -23,7 +23,7 @@ use super::{
 };
 use crate::arith::{
     r1cs::{circuits::R1CSMatricesVar, extract_w_x, R1CS},
-    Arith, ArithRelationGadget,
+    ArithRelationGadget,
 };
 use crate::commitment::CommitmentScheme;
 use crate::constants::NOVA_N_BITS_RO;
@@ -325,13 +325,13 @@ impl<C: Curve> CycleFoldChallengeGadget<C> {
     pub fn get_challenge_native<T: Transcript<C::BaseField>>(
         transcript: &mut T,
         pp_hash: C::BaseField, // public params hash
-        U_i: CycleFoldCommittedInstance<C>,
-        u_i: CycleFoldCommittedInstance<C>,
+        U_i: &CycleFoldCommittedInstance<C>,
+        u_i: &CycleFoldCommittedInstance<C>,
         cmT: C,
     ) -> Vec<bool> {
         transcript.absorb(&pp_hash);
-        transcript.absorb_nonnative(&U_i);
-        transcript.absorb_nonnative(&u_i);
+        transcript.absorb_nonnative(U_i);
+        transcript.absorb_nonnative(u_i);
         transcript.absorb_point(&cmT);
         transcript.squeeze_bits(NOVA_N_BITS_RO)
     }
@@ -339,145 +339,337 @@ impl<C: Curve> CycleFoldChallengeGadget<C> {
     // compatible with the native get_challenge_native
     pub fn get_challenge_gadget<S: CryptographicSponge, T: TranscriptVar<C::BaseField, S>>(
         transcript: &mut T,
-        pp_hash: FpVar<C::BaseField>, // public params hash
-        U_i_vec: Vec<FpVar<C::BaseField>>,
-        u_i: CycleFoldCommittedInstanceVar<C>,
-        cmT: C::Var,
+        pp_hash: &FpVar<C::BaseField>, // public params hash
+        U_i_vec: &[FpVar<C::BaseField>],
+        u_i: &CycleFoldCommittedInstanceVar<C>,
+        cmT: &C::Var,
     ) -> Result<Vec<Boolean<C::BaseField>>, SynthesisError> {
-        transcript.absorb(&pp_hash)?;
+        transcript.absorb(pp_hash)?;
         transcript.absorb(&U_i_vec)?;
-        transcript.absorb_nonnative(&u_i)?;
-        transcript.absorb_point(&cmT)?;
+        transcript.absorb_nonnative(u_i)?;
+        transcript.absorb_point(cmT)?;
         transcript.squeeze_bits(NOVA_N_BITS_RO)
     }
 }
 
-/// `CycleFoldConfig` allows us to customize the behavior of CycleFold circuit
-/// according to the folding scheme we are working with.
-pub trait CycleFoldConfig {
+/// [`CycleFoldConfig`] controls the behavior of [`CycleFoldCircuit`].
+///
+/// Looking ahead, the circuit computes the random linear combination of points,
+/// which is essentially done by iteratively computing `P = (P + p_i) * r_i`,
+/// where `P` is the folded point, `p_i` is the input point, and `r_i` is the
+/// randomness.
+pub trait CycleFoldConfig<C: Curve>: Sized + Default {
     /// `N_INPUT_POINTS` specifies the number of input points that are folded in
     /// [`CycleFoldCircuit`] via random linear combinations.
     const N_INPUT_POINTS: usize;
-    /// `RANDOMNESS_BIT_LENGTH` is the (maximum) bit length of randomness `r`.
+    /// `N_UNIQUE_RANDOMNESSES` specifies the number of *unique* randomnesses
+    /// allocated in [`CycleFoldCircuit`]. Although the linear combination in
+    /// general consists of multiple randomnesses, some folding schemes (such as
+    /// Nova and HyperNova) only need a single one. Thus, by setting this value,
+    /// the circuit can learn how many randomnesses are used and how long the
+    /// public inputs vector should be.
+    const N_UNIQUE_RANDOMNESSES: usize;
+    /// `RANDOMNESS_BIT_LENGTH` is the maximum bit length of a randomness `r_i`.
     const RANDOMNESS_BIT_LENGTH: usize;
     /// `FIELD_CAPACITY` is the maximum number of bits that can be stored in a
     /// field element.
     ///
-    /// E.g., given a randomness `r` with `RANDOMNESS_BIT_LENGTH` bits, we need
-    /// `RANDOMNESS_BIT_LENGTH / FIELD_CAPACITY` field elements to represent `r`
-    /// compactly in-circuit.
-    const FIELD_CAPACITY: usize = CF2::<Self::C>::MODULUS_BIT_SIZE as usize - 1;
-
-    /// Public inputs length for the CycleFoldCircuit.
-    /// * For Nova this is: `|[r, p1.x,y, p2.x,y, p3.x,y]|`
-    /// * In general, `|[r, (p_i.x,y)*n_points, p_folded.x,y]|`.
+    /// By default, `FIELD_CAPACITY` is set to `MODULUS_BIT_SIZE - 1`.
     ///
-    /// Thus, `IO_LEN` is:
-    /// `RANDOMNESS_BIT_LENGTH / FIELD_CAPACITY  + 2 * N_INPUT_POINTS + 2`
+    /// Given a randomness `r_i` with `RANDOMNESS_BIT_LENGTH` bits, we need
+    /// `RANDOMNESS_BIT_LENGTH / FIELD_CAPACITY` field elements to represent it
+    /// *compactly* in-circuit.
+    const FIELD_CAPACITY: usize = CF2::<C>::MODULUS_BIT_SIZE as usize - 1;
+
+    /// Public inputs length for the [`CycleFoldCircuit`], which depends on the
+    /// above constants defined by the concrete folding scheme. For example:
+    /// * In Nova, this is `|r| + |p_1| + |p_2| + |P|`
+    /// * In HyperNova, this is `|r| + |p_i| * n_points + |P|`.
+    /// * In ProtoGalaxy, this is `|[..., r_i, ...]| + |p_i| * n_points + |P|`.
+    ///
+    /// As explained above, `|r|` (i.e., the length of a single randomness) is
+    /// `RANDOMNESS_BIT_LENGTH / FIELD_CAPACITY`.
+    /// When there are multiple randomnesses, the length of `|[..., r_i, ...]|`
+    /// is `RANDOMNESS_BIT_LENGTH * N_UNIQUE_RANDOMNESSES / FIELD_CAPACITY`, as
+    /// the bits of all randomnesses are concatenated before being packed into
+    /// field elements.
+    /// The length of a point `p_i` when treated as public inputs is 2, as we
+    /// only need the `x` and `y` coordinates of the point.
+    ///
+    /// Thus, `IO_LEN` is `RANDOMNESS_BIT_LENGTH * N_UNIQUE_RANDOMNESSES / FIELD_CAPACITY + 2 * (N_INPUT_POINTS + 1)`.
     const IO_LEN: usize = {
-        Self::RANDOMNESS_BIT_LENGTH.div_ceil(Self::FIELD_CAPACITY) + 2 * Self::N_INPUT_POINTS + 2
+        (Self::RANDOMNESS_BIT_LENGTH * Self::N_UNIQUE_RANDOMNESSES).div_ceil(Self::FIELD_CAPACITY)
+            + 2 * (Self::N_INPUT_POINTS + 1)
     };
 
-    type C: Curve;
-}
+    /// `alloc_points` allocates the points that are going to be folded in the
+    /// [`CycleFoldCircuit`] via random linear combinations.
+    ///
+    /// The implementation must allocate the points as *witness* variables (i.e.
+    /// by calling [`AllocVar::new_witness`]) first, then mark them as public
+    /// inputs by calling [`CycleFoldConfig::mark_point_as_public`], and finally
+    /// return the allocated witness variables.
+    ///
+    /// While it is possible to allocate the points as public inputs directly,
+    /// we do not use this approach because this will create a longer vector of
+    /// public inputs, which is not ideal for the augmented step circuit on the
+    /// primary curve.
+    fn alloc_points(&self, cs: ConstraintSystemRef<CF2<C>>) -> Result<Vec<C::Var>, SynthesisError>;
 
-/// CycleFoldCircuit contains the constraints that check the correct fold of the committed
-/// instances from Curve1. Namely, it checks the random linear combinations of the elliptic curve
-/// (Curve1) points of u_i, U_i leading to U_{i+1}
-#[derive(Debug, Clone)]
-pub struct CycleFoldCircuit<CFG: CycleFoldConfig> {
-    /// r_bits is the bit representation of the r whose powers are used in the
-    /// random-linear-combination inside the CycleFoldCircuit
-    pub r_bits: Option<Vec<bool>>,
-    /// points to be folded in the CycleFoldCircuit
-    pub points: Option<Vec<CFG::C>>,
-}
+    /// `alloc_randomnesses` allocates the randomnesses used as coefficients of
+    /// the random linear combinations in the `CycleFoldCircuit`.
+    ///
+    /// The implementation must allocate the randomnesses as *witness* variables
+    /// (i.e. by calling [`AllocVar::new_witness`]) first, then mark them as
+    /// public inputs by calling [`CycleFoldConfig::mark_point_as_public`], and
+    /// finally return the allocated witness variables.
+    ///
+    /// See [`CycleFoldConfig::alloc_points`] for the reason why they need to be
+    /// allocated as witness variables first and converted to public later.
+    ///
+    /// In addition, because the circuit computes `P = (P + p_i) * r_i` for each
+    /// `i` from `N_INPUT_POINTS - 1` down to `0`, the actual linear combination
+    /// is `P = r_0 * p_0 + (r_0 r_1) * p_1 + (r_0 r_1 r_2) * p_2 + ...`. Thus,
+    /// to compute `P = R_0 p_0 + R_1 p_1 + R_2 p_2 + ...`, the implementation
+    /// should return `r_0 = R_0, r_1 = R_1 / R_0, ..., r_i = R_i / R_{i - 1}`.
+    /// A special case is `R_i = R^i`, where the allocated randomnesses become
+    /// `r_0 = 1, r_1 = r_2 = ... = R`.
+    fn alloc_randomnesses(
+        &self,
+        cs: ConstraintSystemRef<CF2<C>>,
+    ) -> Result<Vec<Vec<Boolean<CF2<C>>>>, SynthesisError>;
 
-impl<CFG: CycleFoldConfig> CycleFoldCircuit<CFG> {
-    /// n_points indicates the number of points being folded in the CycleFoldCircuit
-    pub fn empty() -> Self {
-        Self {
-            r_bits: None,
-            points: None,
+    /// `mark_point_as_public` marks a point as public.
+    ///
+    /// The final vector of public inputs is shorter than the result of calling
+    /// [`AllocVar::new_input`], because we only need the x and y coordinates of
+    /// the point, but the `infinity` flag is not necessary.
+    fn mark_point_as_public(point: &C::Var) -> Result<(), SynthesisError> {
+        for x in &point.to_constraint_field()?[..2] {
+            // This line "converts" `x` from a witness to a public input.
+            // Instead of directly modifying the constraint system, we explicitly
+            // allocate a public input and enforce that its value is indeed `x`.
+            // While comparing `x` with itself seems redundant, this is necessary
+            // because:
+            // - `.value()` allows an honest prover to extract public inputs without
+            //   computing them outside the circuit.
+            // - `.enforce_equal()` prevents a malicious prover from claiming wrong
+            //   public inputs that are not the honest `x` computed in-circuit.
+            FpVar::new_input(x.cs().clone(), || x.value())?.enforce_equal(x)?;
+        }
+        Ok(())
+    }
+
+    /// `mark_randomness_as_public` marks randomness as public.
+    ///
+    /// The final vector of public inputs is shorter than the result of calling
+    /// [`AllocVar::new_input`], because we pack the bits of randomness into
+    /// a compact field elements.
+    fn mark_randomness_as_public(r: &[Boolean<CF2<C>>]) -> Result<(), SynthesisError> {
+        for bits in r.chunks(Self::FIELD_CAPACITY) {
+            let x = Boolean::le_bits_to_fp(bits)?;
+            FpVar::new_input(x.cs().clone(), || x.value())?.enforce_equal(&x)?;
+        }
+        Ok(())
+    }
+
+    /// `build_circuit` creates a new [`CycleFoldCircuit`] with `self` as the
+    /// configuration.
+    fn build_circuit(self) -> CycleFoldCircuit<C, Self> {
+        CycleFoldCircuit {
+            _c: PhantomData,
+            cfg: self,
         }
     }
 }
 
-impl<CFG: CycleFoldConfig> ConstraintSynthesizer<CF2<CFG::C>> for CycleFoldCircuit<CFG> {
-    fn generate_constraints(
-        self,
-        cs: ConstraintSystemRef<CF2<CFG::C>>,
-    ) -> Result<(), SynthesisError> {
-        let r_bits = Vec::<Boolean<CF2<CFG::C>>>::new_witness(cs.clone(), || {
-            Ok(self
-                .r_bits
-                .unwrap_or(vec![false; CFG::RANDOMNESS_BIT_LENGTH]))
-        })?;
-        let points = Vec::<<CFG::C as Curve>::Var>::new_witness(cs.clone(), || {
-            Ok(self
-                .points
-                .unwrap_or(vec![CFG::C::zero(); CFG::N_INPUT_POINTS]))
-        })?;
+#[derive(Debug, Clone)]
+pub struct CycleFoldCircuit<C: Curve, CFG: CycleFoldConfig<C>> {
+    _c: PhantomData<C>,
+    cfg: CFG,
+}
+
+impl<C: Curve, CFG: CycleFoldConfig<C>> Default for CycleFoldCircuit<C, CFG> {
+    fn default() -> Self {
+        CFG::default().build_circuit()
+    }
+}
+
+impl<C: Curve, CFG: CycleFoldConfig<C>> ConstraintSynthesizer<CF2<C>> for CycleFoldCircuit<C, CFG> {
+    fn generate_constraints(self, cs: ConstraintSystemRef<CF2<C>>) -> Result<(), SynthesisError> {
+        let rs = self.cfg.alloc_randomnesses(cs.clone())?;
+        let points = self.cfg.alloc_points(cs.clone())?;
 
         #[cfg(test)]
         {
             assert_eq!(CFG::N_INPUT_POINTS, points.len());
-            assert_eq!(CFG::RANDOMNESS_BIT_LENGTH, r_bits.len());
+            assert_eq!(CFG::N_INPUT_POINTS, rs.len());
+            for r in &rs {
+                assert_eq!(CFG::RANDOMNESS_BIT_LENGTH, r.len());
+            }
         }
 
-        // Fold the original points of the instances natively in CycleFold.
-        // In Nova,
-        // - for the cmW we're computing: U_i1.cmW = U_i.cmW + r * u_i.cmW
-        // - for the cmE we're computing: U_i1.cmE = U_i.cmE + r * cmT + r^2 * u_i.cmE, where u_i.cmE
-        // is assumed to be 0, so, U_i1.cmE = U_i.cmE + r * cmT
-        // We want to compute
-        // P_folded = p_0 + r * P_1 + r^2 * P_2 + r^3 * P_3 + ... + r^{n-2} * P_{n-2} + r^{n-1} * P_{n-1}
-        // so in order to do it more efficiently (less constraints) we do
-        // P_folded = (((P_{n-1} * r + P_{n-2}) * r + P_{n-3})... ) * r + P_0
-        let mut p_folded = points[CFG::N_INPUT_POINTS - 1].clone();
+        // A slightly optimized version of `scalar_mul_le`.
+        fn point_mul<C: Curve>(
+            point: &C::Var,
+            r: &[Boolean<CF2<C>>],
+        ) -> Result<C::Var, SynthesisError> {
+            if r.is_constant() {
+                let r = CF1::<C>::from(<CF1<C> as PrimeField>::BigInt::from_bits_le(&r.value()?));
+                if r.is_one() {
+                    return Ok(point.clone());
+                }
+            }
+            point.scalar_mul_le(r.iter())
+        }
+
+        // Given a vector of points (over the primary curve) that are obtained
+        // from the instances of the folding scheme, we fold them *natively* in
+        // the CycleFold circuit (over the secondary curve).
+        // * In Nova, we need to compute P = p_0 + R * p_1.
+        //   - for the cmW we're computing: U_i1.cmW = U_i.cmW + R * u_i.cmW
+        //   - for the cmE we're computing: U_i1.cmE = U_i.cmE + R * cmT + R^2 * u_i.cmE, where u_i.cmE
+        //     is assumed to be 0, so, U_i1.cmE = U_i.cmE + R * cmT
+        // * In HyperNova, we need to compute P = p_0 + R * p_1 + R^2 * p_2 + ... + R^{n-1} * p_{n-1}.
+        // * In ProtoGalaxy, we need to compute P = R_0 * p_0 + R_1 * p_1 + R_2 * p_2 + ... + R_{n-1} * p_{n-1}.
+        //
+        // To handle HyperNova more efficiently (with less constraints), we do
+        // P = ((((p_{n-1} * R) + p_{n-2}) * R + p_{n-3}) * R + ...) * R + p_0.
+        // This can be done iteratively by computing P = (P + p_i) * R.
+        //
+        // We further generalize this to support ProtoGalaxy, which now becomes
+        // P = (((((p_{n-1} * r_{n-1}) + p_{n-2}) * r_{n-2} + p_{n-3}) * r_{n-3} + ...) * r_1 + p_0) * r_0
+        //
+        // Here, r_0 = 1, r_1 = r_2 = ... = r_{n-1} = R for Nova and HyperNova,
+        // and r_i = R_i / R_{i - 1} for ProtoGalaxy.
+        let mut p_folded = point_mul::<C>(
+            &points[CFG::N_INPUT_POINTS - 1],
+            &rs[CFG::N_INPUT_POINTS - 1],
+        )?;
         for i in (0..CFG::N_INPUT_POINTS - 1).rev() {
-            p_folded = p_folded.scalar_mul_le(r_bits.iter())? + points[i].clone();
+            p_folded = point_mul::<C>(&(p_folded + &points[i]), &rs[i])?;
         }
 
-        // Check that the points coordinates are placed as the public input x:
-        // In Nova, this is: x == [r, p1, p2, p3] (wheere p3 is the p_folded).
-        // In multifolding schemes such as HyperNova, this is:
-        // computed_x = [r, p_0, p_1, p_2, ..., p_n, p_folded],
-        // where each p_i is in fact p_i.to_constraint_field()
-        let r_fp = r_bits
-            .chunks(CF2::<CFG::C>::MODULUS_BIT_SIZE as usize - 1)
-            .map(Boolean::le_bits_to_fp)
-            .collect::<Result<Vec<_>, _>>()?;
-        let points_aux = points
-            .iter()
-            .map(|p_i| Ok(p_i.to_constraint_field()?[..2].to_vec()))
-            .collect::<Result<Vec<_>, SynthesisError>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        let x = [
-            r_fp,
-            points_aux,
-            p_folded.to_constraint_field()?[..2].to_vec(),
-        ]
-        .concat();
-        #[cfg(test)]
-        assert_eq!(x.len(), CFG::IO_LEN); // non-constrained sanity check
-
-        // This line "converts" `x` from a witness to a public input.
-        // Instead of directly modifying the constraint system, we explicitly
-        // allocate a public input and enforce that its value is indeed `x`.
-        // While comparing `x` with itself seems redundant, this is necessary
-        // because:
-        // - `.value()` allows an honest prover to extract public inputs without
-        //   computing them outside the circuit.
-        // - `.enforce_equal()` prevents a malicious prover from claiming wrong
-        //   public inputs that are not the honest `x` computed in-circuit.
-        Vec::new_input(cs, || Ok(x.value().unwrap_or(vec![Zero::zero(); x.len()])))?
-            .enforce_equal(&x)?;
+        CFG::mark_point_as_public(&p_folded)?;
 
         Ok(())
+    }
+}
+
+impl<C1: Curve, CFG: CycleFoldConfig<C1>> CycleFoldCircuit<C1, CFG> {
+    /// Generates a pair of incoming instance and witness for the CycleFold
+    /// circuit.
+    pub fn generate_incoming_instance_witness<
+        C2: Curve<ScalarField = CF2<C1>, BaseField = CF1<C1>>,
+        CS2: CommitmentScheme<C2, H>,
+        const H: bool,
+    >(
+        self,
+        cf_cs_params: &CS2::ProverParams,
+        mut rng: impl RngCore,
+    ) -> Result<(CycleFoldWitness<C2>, CycleFoldCommittedInstance<C2>), Error> {
+        let cs2 = ConstraintSystem::new_ref();
+        self.generate_constraints(cs2.clone())?;
+
+        let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
+        let (cf_w_i, cf_x_i) = extract_w_x(&cs2);
+
+        #[cfg(test)]
+        assert_eq!(cf_x_i.len(), CFG::IO_LEN);
+
+        // generate cyclefold instances
+        let cf_w_i = CycleFoldWitness::<C2>::new::<H>(cf_w_i, cs2.num_constraints, &mut rng);
+        let cf_u_i = cf_w_i.commit::<CS2, H>(cf_cs_params, cf_x_i)?;
+
+        Ok((cf_w_i, cf_u_i))
+    }
+}
+
+/// [`CycleFoldAugmentationGadget`] implements methods for folding multiple
+/// CycleFold instances, both natively and in the augmented step circuit.
+pub struct CycleFoldAugmentationGadget;
+
+impl CycleFoldAugmentationGadget {
+    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+    pub fn fold_native<C: Curve, CS: CommitmentScheme<C, H>, const H: bool>(
+        transcript: &mut impl Transcript<CF2<C>>,
+        cf_r1cs: &R1CS<C::ScalarField>,
+        cf_cs_params: &CS::ProverParams,
+        pp_hash: CF2<C>,                           // public params hash
+        mut cf_W: CycleFoldWitness<C>,             // witness of the running instance
+        mut cf_U: CycleFoldCommittedInstance<C>,   // running instance
+        cf_ws: Vec<CycleFoldWitness<C>>,           // witnesses of the incoming instances
+        cf_us: Vec<CycleFoldCommittedInstance<C>>, // incoming instances
+    ) -> Result<
+        (
+            CycleFoldWitness<C>,           // W_i1
+            CycleFoldCommittedInstance<C>, // U_i1
+            Vec<C>,                        // cmT
+        ),
+        Error,
+    > {
+        assert_eq!(cf_ws.len(), cf_us.len());
+        let mut cf_cmTs = vec![];
+
+        for (cf_w, cf_u) in cf_ws.into_iter().zip(cf_us) {
+            // compute T* and cmT* for CycleFoldCircuit
+            let (cf_T, cf_cmT) = NIFS::<C, CS, PoseidonSponge<CF1<C>>, H>::compute_cyclefold_cmT(
+                cf_cs_params,
+                cf_r1cs,
+                &cf_w,
+                &cf_u,
+                &cf_W,
+                &cf_U,
+            )?;
+            cf_cmTs.push(cf_cmT);
+
+            let cf_r_bits = CycleFoldChallengeGadget::get_challenge_native(
+                transcript, pp_hash, &cf_U, &cf_u, cf_cmT,
+            );
+            let cf_r_Fq = CF1::<C>::from(<CF1<C> as PrimeField>::BigInt::from_bits_le(&cf_r_bits));
+
+            (cf_W, cf_U) = CycleFoldNIFS::<C, CS, H>::prove(
+                cf_r_Fq, &cf_W, &cf_U, &cf_w, &cf_u, &cf_T, cf_cmT,
+            )?;
+
+            #[cfg(test)]
+            {
+                use crate::{arith::ArithRelation, folding::traits::CommittedInstanceOps};
+                cf_u.check_incoming()?;
+                cf_r1cs.check_relation(&cf_w, &cf_u)?;
+                cf_r1cs.check_relation(&cf_W, &cf_U)?;
+            }
+        }
+
+        Ok((cf_W, cf_U, cf_cmTs))
+    }
+
+    pub fn fold_gadget<C2: Curve, S: CryptographicSponge>(
+        transcript: &mut impl TranscriptVar<CF2<C2>, S>,
+        pp_hash: &FpVar<CF2<C2>>,
+        mut cf_U: CycleFoldCommittedInstanceVar<C2>,
+        cf_us: Vec<CycleFoldCommittedInstanceVar<C2>>,
+        cf_cmTs: Vec<C2::Var>,
+    ) -> Result<CycleFoldCommittedInstanceVar<C2>, SynthesisError> {
+        assert_eq!(cf_us.len(), cf_cmTs.len());
+
+        // Fold the incoming CycleFold instances into the running CycleFold
+        // instance in a iterative way, since `NIFSFullGadget` only supports
+        // folding one incoming instance at a time.
+        for (cf_u, cmT) in cf_us.into_iter().zip(cf_cmTs) {
+            let cf_r_bits = CycleFoldChallengeGadget::get_challenge_gadget(
+                transcript,
+                pp_hash,
+                &cf_U.to_native_sponge_field_elements()?,
+                &cf_u,
+                &cmT,
+            )?;
+            // Fold the current incoming CycleFold instance `cf_u` into the
+            // running CycleFold instance `cf_U`.
+            cf_U = NIFSFullGadget::fold_committed_instance(cf_r_bits, cmT, cf_U, cf_u)?;
+        }
+
+        Ok(cf_U)
     }
 }
 
@@ -525,82 +717,6 @@ impl<C2: Curve, CS2: CommitmentScheme<C2, H>, const H: bool> CycleFoldNIFS<C2, C
     }
 }
 
-/// Folds the given cyclefold circuit and its instances. This method is abstracted from any folding
-/// scheme struct because it is used both by Nova & HyperNova's CycleFold.
-#[allow(clippy::type_complexity)]
-#[allow(clippy::too_many_arguments)]
-pub fn fold_cyclefold_circuit<CFG, C2, CS2, const H: bool>(
-    transcript: &mut impl Transcript<CF2<C2>>,
-    cf_r1cs: R1CS<C2::ScalarField>,
-    cf_cs_params: CS2::ProverParams,
-    pp_hash: CF2<C2>,                       // public params hash
-    cf_W_i: CycleFoldWitness<C2>,           // witness of the running instance
-    cf_U_i: CycleFoldCommittedInstance<C2>, // running instance
-    cf_circuit: CycleFoldCircuit<CFG>,
-    mut rng: impl RngCore,
-) -> Result<
-    (
-        CycleFoldCommittedInstance<C2>, // u_i
-        CycleFoldWitness<C2>,           // W_i1
-        CycleFoldCommittedInstance<C2>, // U_i1
-        C2,                             // cmT
-    ),
-    Error,
->
-where
-    CFG: CycleFoldConfig,
-    C2: Curve<ScalarField = CF2<CFG::C>, BaseField = CF1<CFG::C>>,
-    CS2: CommitmentScheme<C2, H>,
-{
-    let cs2 = ConstraintSystem::new_ref();
-    cf_circuit.generate_constraints(cs2.clone())?;
-
-    let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
-    let (cf_w_i, cf_x_i) = extract_w_x(&cs2);
-
-    #[cfg(test)]
-    assert_eq!(cf_x_i.len(), CFG::IO_LEN);
-
-    // fold cyclefold instances
-    let cf_w_i =
-        CycleFoldWitness::<C2>::new::<H>(cf_w_i.clone(), cf_r1cs.n_constraints(), &mut rng);
-    let cf_u_i = cf_w_i.commit::<CS2, H>(&cf_cs_params, cf_x_i.clone())?;
-
-    // compute T* and cmT* for CycleFoldCircuit
-    let (cf_T, cf_cmT) = NIFS::<C2, CS2, PoseidonSponge<CF1<C2>>, H>::compute_cyclefold_cmT(
-        &cf_cs_params,
-        &cf_r1cs,
-        &cf_w_i,
-        &cf_u_i,
-        &cf_W_i,
-        &cf_U_i,
-    )?;
-
-    let cf_r_bits = CycleFoldChallengeGadget::get_challenge_native(
-        transcript,
-        pp_hash,
-        cf_U_i.clone(),
-        cf_u_i.clone(),
-        cf_cmT,
-    );
-    let cf_r_Fq = CF1::<C2>::from_bigint(BigInteger::from_bits_le(&cf_r_bits))
-        .expect("cf_r_bits out of bounds");
-
-    let (cf_W_i1, cf_U_i1) = CycleFoldNIFS::<C2, CS2, H>::prove(
-        cf_r_Fq, &cf_W_i, &cf_U_i, &cf_w_i, &cf_u_i, &cf_T, cf_cmT,
-    )?;
-
-    #[cfg(test)]
-    {
-        use crate::{arith::ArithRelation, folding::traits::CommittedInstanceOps};
-        cf_u_i.check_incoming()?;
-        cf_r1cs.check_relation(&cf_w_i, &cf_u_i)?;
-        cf_r1cs.check_relation(&cf_W_i1, &cf_U_i1)?;
-    }
-
-    Ok((cf_u_i, cf_W_i1, cf_U_i1, cf_cmT))
-}
-
 #[cfg(test)]
 pub mod tests {
     use ark_bn254::{constraints::GVar, Fq, Fr, G1Projective as Projective};
@@ -609,7 +725,7 @@ pub mod tests {
         poseidon::{constraints::PoseidonSpongeVar, PoseidonSponge},
     };
     use ark_r1cs_std::R1CSVar;
-    use ark_std::{One, UniformRand};
+    use ark_std::{One, UniformRand, Zero};
 
     use super::*;
     use crate::commitment::pedersen::Pedersen;
@@ -618,13 +734,45 @@ pub mod tests {
     use crate::utils::get_cm_coordinates;
 
     struct TestCycleFoldConfig<C: Curve, const N: usize> {
-        _c: PhantomData<C>,
+        r: CF1<C>,
+        points: Vec<C>,
     }
 
-    impl<C: Curve, const N: usize> CycleFoldConfig for TestCycleFoldConfig<C, N> {
+    impl<C: Curve, const N: usize> Default for TestCycleFoldConfig<C, N> {
+        fn default() -> Self {
+            let r = CF1::<C>::zero();
+            let points = vec![C::zero(); N];
+            Self { r, points }
+        }
+    }
+
+    impl<C: Curve, const N: usize> CycleFoldConfig<C> for TestCycleFoldConfig<C, N> {
         const RANDOMNESS_BIT_LENGTH: usize = NOVA_N_BITS_RO;
         const N_INPUT_POINTS: usize = N;
-        type C = C;
+        const N_UNIQUE_RANDOMNESSES: usize = 1;
+
+        fn alloc_points(
+            &self,
+            cs: ConstraintSystemRef<CF2<C>>,
+        ) -> Result<Vec<C::Var>, SynthesisError> {
+            let points = Vec::new_witness(cs.clone(), || Ok(self.points.clone()))?;
+            for point in &points {
+                Self::mark_point_as_public(point)?;
+            }
+            Ok(points)
+        }
+
+        fn alloc_randomnesses(
+            &self,
+            cs: ConstraintSystemRef<CF2<C>>,
+        ) -> Result<Vec<Vec<Boolean<CF2<C>>>>, SynthesisError> {
+            let one = &CF1::<C>::one().into_bigint().to_bits_le()[..NOVA_N_BITS_RO];
+            let r = &self.r.into_bigint().to_bits_le()[..NOVA_N_BITS_RO];
+            let one_var = Vec::new_constant(cs.clone(), one)?;
+            let r_var = Vec::new_witness(cs.clone(), || Ok(r))?;
+            Self::mark_randomness_as_public(&r_var)?;
+            Ok([vec![one_var], vec![r_var; N - 1]].concat())
+        }
     }
 
     #[test]
@@ -662,10 +810,7 @@ pub mod tests {
             get_cm_coordinates(&res),
         ]
         .concat();
-        let cf_circuit = CycleFoldCircuit::<TestCycleFoldConfig<Projective, n>> {
-            r_bits: Some(rho_bits),
-            points: Some(points),
-        };
+        let cf_circuit = TestCycleFoldConfig::<Projective, n> { r: rho_Fr, points }.build_circuit();
         cf_circuit.generate_constraints(cs.clone())?;
         assert!(cs.is_satisfied()?);
         // `instance_assignment[0]` is the constant term 1
@@ -752,8 +897,8 @@ pub mod tests {
         let r_bits = CycleFoldChallengeGadget::<Projective>::get_challenge_native(
             &mut transcript,
             pp_hash,
-            U_i.clone(),
-            u_i.clone(),
+            &U_i,
+            &u_i,
             cmT,
         );
 
@@ -771,10 +916,10 @@ pub mod tests {
         let pp_hashVar = FpVar::<Fq>::new_witness(cs.clone(), || Ok(pp_hash))?;
         let r_bitsVar = CycleFoldChallengeGadget::<Projective>::get_challenge_gadget(
             &mut transcript_var,
-            pp_hashVar,
-            U_iVar.to_native_sponge_field_elements()?,
-            u_iVar,
-            cmTVar,
+            &pp_hashVar,
+            &U_iVar.to_native_sponge_field_elements()?,
+            &u_iVar,
+            &cmTVar,
         )?;
         assert!(cs.is_satisfied()?);
 

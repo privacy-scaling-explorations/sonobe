@@ -1,7 +1,6 @@
 /// contains [Nova](https://eprint.iacr.org/2021/370.pdf) related circuits
-use ark_crypto_primitives::sponge::{
-    constraints::CryptographicSpongeVar,
-    poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig, PoseidonSponge},
+use ark_crypto_primitives::sponge::poseidon::{
+    constraints::PoseidonSpongeVar, PoseidonConfig, PoseidonSponge,
 };
 use ark_r1cs_std::{
     alloc::AllocVar,
@@ -29,6 +28,7 @@ use crate::folding::circuits::{
 };
 use crate::folding::traits::{CommittedInstanceVarOps, Dummy};
 use crate::frontend::FCircuit;
+use crate::transcript::TranscriptVar;
 use crate::Curve;
 
 /// `AugmentedFCircuit` enhances the original step function `F`, so that it can
@@ -149,7 +149,10 @@ where
             C2::Var::new_witness(cs.clone(), || Ok(self.cf2_cmT.unwrap_or_else(C2::zero)))?;
 
         // `sponge` is for digest computation.
-        let sponge = PoseidonSpongeVar::<C1::ScalarField>::new(cs.clone(), &self.poseidon_config);
+        let sponge = PoseidonSpongeVar::<C1::ScalarField>::new_with_pp_hash(
+            &self.poseidon_config,
+            &pp_hash,
+        )?;
         // `transcript` is for challenge generation.
         let mut transcript = sponge.clone();
 
@@ -158,9 +161,9 @@ where
         // Primary Part
         // P.1. Compute u_i.x
         // u_i.x[0] = H(i, z_0, z_i, U_i)
-        let (u_i_x, U_i_vec) = U_i.clone().hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
+        let (u_i_x, U_i_vec) = U_i.clone().hash(&sponge, &i, &z_0, &z_i)?;
         // u_i.x[1] = H(cf_U_i)
-        let (cf_u_i_x, _) = cf_U_i.clone().hash(&sponge, pp_hash.clone())?;
+        let (cf_u_i_x, _) = cf_U_i.clone().hash(&sponge)?;
 
         // P.2. Construct u_i
         let u_i = CommittedInstanceVar {
@@ -187,7 +190,6 @@ where
             PoseidonSpongeVar<C1::ScalarField>,
         >::verify(
             &mut transcript,
-            pp_hash.clone(),
             U_i.clone(),
             U_i_vec,
             u_i.clone(),
@@ -206,16 +208,11 @@ where
 
         // Base case: u_{i+1}.x[0] == H((i+1, z_0, z_{i+1}, U_{\bot})
         // Non-base case: u_{i+1}.x[0] == H((i+1, z_0, z_{i+1}, U_{i+1})
-        let (u_i1_x, _) = U_i1.clone().hash(
-            &sponge,
-            &pp_hash,
-            &(i + FpVar::<CF1<C1>>::one()),
-            &z_0,
-            &z_i1,
-        )?;
+        let (u_i1_x, _) =
+            U_i1.clone()
+                .hash(&sponge, &(i + FpVar::<CF1<C1>>::one()), &z_0, &z_i1)?;
         let (u_i1_x_base, _) = CommittedInstanceVar::new_constant(cs.clone(), u_dummy)?.hash(
             &sponge,
-            &pp_hash,
             &FpVar::<CF1<C1>>::one(),
             &z_0,
             &z_i1,
@@ -257,7 +254,6 @@ where
         // C.3. nifs.verify, obtains cf_U_{i+1} by folding cf1_u_i and cf2_u_i into cf_U.
         let cf_U_i1 = CycleFoldAugmentationGadget::fold_gadget(
             &mut transcript,
-            &pp_hash,
             cf_U_i,
             vec![cf1_u_i, cf2_u_i],
             vec![cf1_cmT, cf2_cmT],
@@ -267,10 +263,10 @@ where
         // P.4.b compute and check the second output of F'
         // Base case: u_{i+1}.x[1] == H(cf_U_{\bot})
         // Non-base case: u_{i+1}.x[1] == H(cf_U_{i+1})
-        let (cf_u_i1_x, _) = cf_U_i1.clone().hash(&sponge, pp_hash.clone())?;
+        let (cf_u_i1_x, _) = cf_U_i1.clone().hash(&sponge)?;
         let (cf_u_i1_x_base, _) =
             CycleFoldCommittedInstanceVar::<C2>::new_constant(cs.clone(), cf_u_dummy)?
-                .hash(&sponge, pp_hash)?;
+                .hash(&sponge)?;
         let cf_x = is_basecase.select(&cf_u_i1_x_base, &cf_u_i1_x)?;
         // This line "converts" `cf_x` from a witness to a public input.
         // Instead of directly modifying the constraint system, we explicitly
@@ -302,9 +298,7 @@ where
 pub mod tests {
     use super::*;
     use ark_bn254::{Fr, G1Projective as Projective};
-    use ark_crypto_primitives::sponge::{
-        constraints::AbsorbGadget, poseidon::PoseidonSponge, CryptographicSponge,
-    };
+    use ark_crypto_primitives::sponge::{constraints::AbsorbGadget, poseidon::PoseidonSponge};
     use ark_ff::{BigInteger, PrimeField};
 
     use ark_r1cs_std::prelude::Boolean;
@@ -312,7 +306,7 @@ pub mod tests {
     use ark_std::UniformRand;
 
     use crate::folding::nova::nifs::nova::ChallengeGadget;
-    use crate::transcript::poseidon::poseidon_canonical_config;
+    use crate::transcript::{poseidon::poseidon_canonical_config, Transcript};
     use crate::Error;
 
     // checks that the gadget and native implementations of the challenge computation match
@@ -320,7 +314,8 @@ pub mod tests {
     fn test_challenge_gadget() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_canonical_config::<Fr>();
-        let mut transcript = PoseidonSponge::<Fr>::new(&poseidon_config);
+        let pp_hash = Fr::from(42u32); // only for testing
+        let mut transcript = PoseidonSponge::<Fr>::new_with_pp_hash(&poseidon_config, pp_hash);
 
         let u_i = CommittedInstance::<Projective> {
             cmE: Projective::rand(&mut rng),
@@ -336,13 +331,10 @@ pub mod tests {
         };
         let cmT = Projective::rand(&mut rng);
 
-        let pp_hash = Fr::from(42u32); // only for testing
-
         // compute the challenge natively
         let r_bits =
             ChallengeGadget::<Projective, CommittedInstance<Projective>>::get_challenge_native(
                 &mut transcript,
-                pp_hash,
                 &U_i,
                 &u_i,
                 Some(&cmT),
@@ -356,13 +348,13 @@ pub mod tests {
         let U_iVar =
             CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || Ok(U_i.clone()))?;
         let cmTVar = NonNativeAffineVar::<Projective>::new_witness(cs.clone(), || Ok(cmT))?;
-        let mut transcriptVar = PoseidonSpongeVar::<Fr>::new(cs.clone(), &poseidon_config);
+        let mut transcriptVar =
+            PoseidonSpongeVar::<Fr>::new_with_pp_hash(&poseidon_config, &pp_hashVar)?;
 
         // compute the challenge in-circuit
         let r_bitsVar =
             ChallengeGadget::<Projective, CommittedInstance<Projective>>::get_challenge_gadget(
                 &mut transcriptVar,
-                pp_hashVar,
                 U_iVar.to_sponge_field_elements()?,
                 u_iVar,
                 Some(cmTVar),

@@ -1,16 +1,13 @@
 /// This file implements the onchain (Ethereum's EVM) decider circuit. For non-ethereum use cases,
 /// other more efficient approaches can be used.
-use ark_crypto_primitives::sponge::{
-    constraints::CryptographicSpongeVar,
-    poseidon::{constraints::PoseidonSpongeVar, PoseidonSponge},
-    CryptographicSponge,
-};
+use ark_crypto_primitives::sponge::poseidon::{constraints::PoseidonSpongeVar, PoseidonSponge};
 use ark_ff::PrimeField;
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
     eq::EqGadget,
     fields::fp::FpVar,
+    R1CSVar,
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
 use ark_std::{borrow::Borrow, log2, marker::PhantomData};
@@ -20,23 +17,22 @@ use super::{
     nimfs::{NIMFSProof, NIMFS},
     HyperNova, Witness, CCCS, LCCCS,
 };
-use crate::folding::circuits::{decider::on_chain::GenericOnchainDeciderCircuit, CF1};
+use crate::arith::{
+    ccs::{circuits::CCSMatricesVar, CCS},
+    ArithRelationGadget,
+};
+use crate::commitment::{pedersen::Params as PedersenParams, CommitmentScheme};
+use crate::folding::circuits::{
+    decider::{
+        on_chain::GenericOnchainDeciderCircuit, DeciderEnabledNIFS, EvalGadget, KZGChallengesGadget,
+    },
+    CF1,
+};
 use crate::folding::traits::{WitnessOps, WitnessVarOps};
 use crate::frontend::FCircuit;
+use crate::transcript::Transcript;
 use crate::utils::gadgets::{eval_mle, MatrixGadget};
-use crate::Error;
-use crate::{
-    arith::{
-        ccs::{circuits::CCSMatricesVar, CCS},
-        ArithRelationGadget,
-    },
-    folding::circuits::decider::{EvalGadget, KZGChallengesGadget},
-};
-use crate::{
-    commitment::{pedersen::Params as PedersenParams, CommitmentScheme},
-    folding::circuits::decider::DeciderEnabledNIFS,
-    Curve,
-};
+use crate::{Curve, Error};
 
 impl<C: Curve> ArithRelationGadget<WitnessVar<CF1<C>>, LCCCSVar<C>> for CCSMatricesVar<CF1<C>> {
     type Evaluation = Vec<FpVar<CF1<C>>>;
@@ -125,8 +121,7 @@ impl<
 
     fn try_from(hn: HyperNova<C1, C2, FC, CS1, CS2, MU, NU, H>) -> Result<Self, Error> {
         // compute the U_{i+1}, W_{i+1}, by folding the last running & incoming instances
-        let mut transcript = PoseidonSponge::<C1::ScalarField>::new(&hn.poseidon_config);
-        transcript.absorb(&hn.pp_hash);
+        let mut transcript = PoseidonSponge::new_with_pp_hash(&hn.poseidon_config, hn.pp_hash);
         let (nimfs_proof, U_i1, W_i1, rho) = NIMFS::<C1, PoseidonSponge<C1::ScalarField>>::prove(
             &mut transcript,
             &hn.ccs,
@@ -186,15 +181,13 @@ impl<C: Curve> DeciderEnabledNIFS<C, LCCCS<C>, CCCS<C>, Witness<C::ScalarField>,
     fn fold_field_elements_gadget(
         arith: &CCS<CF1<C>>,
         transcript: &mut PoseidonSpongeVar<CF1<C>>,
-        pp_hash: FpVar<CF1<C>>,
         U: LCCCSVar<C>,
         _U_vec: Vec<FpVar<CF1<C>>>,
         u: CCCSVar<C>,
         proof: Self::Proof,
         randomness: Self::Randomness,
     ) -> Result<LCCCSVar<C>, SynthesisError> {
-        let cs = transcript.cs();
-        transcript.absorb(&pp_hash)?;
+        let cs = U.u.cs();
         let nimfs_proof = NIMFSProofVar::<C>::new_witness(cs.clone(), || Ok(proof))?;
         let rho = FpVar::<CF1<C>>::new_input(cs.clone(), || Ok(randomness))?;
         let (computed_U_i1, rho_bits) = NIMFSGadget::<C>::verify(

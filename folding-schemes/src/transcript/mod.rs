@@ -57,6 +57,10 @@ impl<F: PrimeField, T: AbsorbNonNativeGadget<F>> AbsorbNonNativeGadget<F> for [T
 }
 
 pub trait Transcript<F: PrimeField>: CryptographicSponge {
+    /// `new_with_pp_hash` creates a new transcript / sponge with the given
+    /// hash of the public parameters.
+    fn new_with_pp_hash(config: &Self::Config, pp_hash: F) -> Self;
+
     /// `absorb_point` is for absorbing points whose `BaseField` is the field of
     /// the sponge, i.e., the type `C` of these points should satisfy
     /// `C::BaseField = F`.
@@ -90,6 +94,13 @@ pub trait Transcript<F: PrimeField>: CryptographicSponge {
 pub trait TranscriptVar<F: PrimeField, S: CryptographicSponge>:
     CryptographicSpongeVar<F, S>
 {
+    /// `new_with_pp_hash` creates a new transcript / sponge with the given
+    /// hash of the public parameters.
+    fn new_with_pp_hash(
+        config: &Self::Parameters,
+        pp_hash: &FpVar<F>,
+    ) -> Result<Self, SynthesisError>;
+
     /// `absorb_point` is for absorbing points whose `BaseField` is the field of
     /// the sponge, i.e., the type `C` of these points should satisfy
     /// `C::BaseField = F`.

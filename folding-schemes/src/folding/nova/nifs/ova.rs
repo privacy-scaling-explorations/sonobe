@@ -170,7 +170,6 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         _cs_prover_params: &CS::ProverParams,
         _r1cs: &R1CS<C::ScalarField>,
         transcript: &mut T,
-        pp_hash: C::ScalarField,
         W_i: &Self::Witness,
         U_i: &Self::CommittedInstance,
         w_i: &Self::Witness,
@@ -187,7 +186,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         let mut transcript_v = transcript.clone();
 
         let r_bits = ChallengeGadget::<C, Self::CommittedInstance>::get_challenge_native(
-            transcript, pp_hash, U_i, u_i, None, // cmT not used in Ova
+            transcript, U_i, u_i, None, // cmT not used in Ova
         );
         let r_Fr = C::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
             .ok_or(Error::OutOfBounds)?;
@@ -195,7 +194,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         let w = Self::fold_witness(r_Fr, W_i, w_i, &())?;
 
         let proof = C::ScalarField::zero();
-        let (ci, _r_bits_v) = Self::verify(&mut transcript_v, pp_hash, U_i, u_i, &proof)?;
+        let (ci, _r_bits_v) = Self::verify(&mut transcript_v, U_i, u_i, &proof)?;
         #[cfg(test)]
         assert_eq!(_r_bits_v, r_bits);
 
@@ -204,13 +203,12 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
 
     fn verify(
         transcript: &mut T,
-        pp_hash: C::ScalarField,
         U_i: &Self::CommittedInstance,
         u_i: &Self::CommittedInstance,
         _proof: &Self::Proof, // unused in Ova
     ) -> Result<(Self::CommittedInstance, Vec<bool>), Error> {
         let r_bits = ChallengeGadget::<C, Self::CommittedInstance>::get_challenge_native(
-            transcript, pp_hash, U_i, u_i, None, // cmT not used in Ova
+            transcript, U_i, u_i, None, // cmT not used in Ova
         );
         let r = C::ScalarField::from_bigint(BigInteger::from_bits_le(&r_bits))
             .ok_or(Error::OutOfBounds)?;

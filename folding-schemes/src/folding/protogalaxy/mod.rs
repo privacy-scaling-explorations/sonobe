@@ -883,13 +883,8 @@ where
             )?;
 
             // CycleFold part:
-            let mut r0_bits = aux.L_X_evals[0].into_bigint().to_bits_le();
-            let mut r1_bits = aux.L_X_evals[1].into_bigint().to_bits_le();
-            r0_bits.resize(C1::ScalarField::MODULUS_BIT_SIZE as usize, false);
-            r1_bits.resize(C1::ScalarField::MODULUS_BIT_SIZE as usize, false);
-
-            // cyclefold circuit for enforcing:
-            // 0 + U_i.phi * L_evals[0] == phi_stars[0]
+            // Create cyclefold circuit for enforcing:
+            // U_i.phi * L_evals[0] + u_i.phi * L_evals[1] = U_i1.phi
             let (cf_w_i, cf_u_i) = ProtoGalaxyCycleFoldConfig {
                 rs: aux.L_X_evals,
                 points: vec![self.U_i.phi, self.u_i.phi],
@@ -897,7 +892,7 @@ where
             .build_circuit()
             .generate_incoming_instance_witness::<_, CS2, false>(&self.cf_cs_params, &mut rng)?;
 
-            // fold self.cf_U_i + cf1_U -> folded running with cf1
+            // fold cf_U_i + cf_u_i -> folded running instance cf_U_i1
             let (cf_W_i1, cf_U_i1, cf_cmTs) =
                 CycleFoldAugmentationGadget::fold_native::<_, CS2, false>(
                     &mut transcript_prover,

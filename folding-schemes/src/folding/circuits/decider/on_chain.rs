@@ -9,7 +9,7 @@ use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisE
 use ark_std::{marker::PhantomData, Zero};
 
 use crate::{
-    arith::{r1cs::R1CS, Arith, ArithGadget},
+    arith::{r1cs::R1CS, ArithRelation, ArithRelationGadget},
     commitment::pedersen::Params as PedersenParams,
     folding::{
         circuits::{
@@ -61,11 +61,11 @@ use super::DeciderEnabledNIFS;
 pub struct GenericOnchainDeciderCircuit<
     C1: Curve,
     C2: Curve,
-    RU: CommittedInstanceOps<C1>,       // Running instance
-    IU: CommittedInstanceOps<C1>,       // Incoming instance
-    W: WitnessOps<CF1<C1>>,             // Witness
-    A: Arith<W, RU>,                    // Constraint system
-    AVar: ArithGadget<W::Var, RU::Var>, // In-circuit representation of `A`
+    RU: CommittedInstanceOps<C1>,               // Running instance
+    IU: CommittedInstanceOps<C1>,               // Incoming instance
+    W: WitnessOps<CF1<C1>>,                     // Witness
+    A: ArithRelation<W, RU>,                    // Constraint system
+    AVar: ArithRelationGadget<W::Var, RU::Var>, // In-circuit representation of `A`
     D: DeciderEnabledNIFS<C1, RU, IU, W, A>,
 > {
     pub _avar: PhantomData<AVar>,
@@ -110,8 +110,8 @@ impl<
         RU: CommittedInstanceOps<C1> + for<'a> Dummy<&'a A>,
         IU: CommittedInstanceOps<C1> + for<'a> Dummy<&'a A>,
         W: WitnessOps<CF1<C1>> + for<'a> Dummy<&'a A>,
-        A: Arith<W, RU>,
-        AVar: ArithGadget<W::Var, RU::Var> + AllocVar<A, CF1<C1>>,
+        A: ArithRelation<W, RU>,
+        AVar: ArithRelationGadget<W::Var, RU::Var> + AllocVar<A, CF1<C1>>,
         D: DeciderEnabledNIFS<C1, RU, IU, W, A>,
     >
     Dummy<(
@@ -178,8 +178,8 @@ impl<
         RU: CommittedInstanceOps<C1>,
         IU: CommittedInstanceOps<C1>,
         W: WitnessOps<CF1<C1>>,
-        A: Arith<W, RU>,
-        AVar: ArithGadget<W::Var, RU::Var> + AllocVar<A, CF1<C1>>,
+        A: ArithRelation<W, RU>,
+        AVar: ArithRelationGadget<W::Var, RU::Var> + AllocVar<A, CF1<C1>>,
         D: DeciderEnabledNIFS<C1, RU, IU, W, A>,
     > ConstraintSynthesizer<CF1<C1>> for GenericOnchainDeciderCircuit<C1, C2, RU, IU, W, A, AVar, D>
 where

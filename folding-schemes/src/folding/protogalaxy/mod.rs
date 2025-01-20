@@ -23,7 +23,7 @@ use num_bigint::BigUint;
 use crate::{
     arith::{
         r1cs::{extract_r1cs, extract_w_x, R1CS},
-        Arith,
+        Arith, ArithRelation,
     },
     commitment::CommitmentScheme,
     folding::circuits::{
@@ -100,11 +100,11 @@ impl<C: Curve, const TYPE: bool> Dummy<(usize, usize)> for CommittedInstance<C, 
 impl<C: Curve, const TYPE: bool> Dummy<&R1CS<CF1<C>>> for CommittedInstance<C, TYPE> {
     fn dummy(r1cs: &R1CS<CF1<C>>) -> Self {
         let t = if TYPE == RUNNING {
-            log2(r1cs.num_constraints()) as usize
+            log2(r1cs.n_constraints()) as usize
         } else {
             0
         };
-        Self::dummy((r1cs.num_public_inputs(), t))
+        Self::dummy((r1cs.n_public_inputs(), t))
     }
 }
 
@@ -254,7 +254,7 @@ impl<F: PrimeField> Witness<F> {
 impl<F: PrimeField> Dummy<&R1CS<F>> for Witness<F> {
     fn dummy(r1cs: &R1CS<F>) -> Self {
         Self {
-            w: vec![F::zero(); r1cs.num_witnesses()],
+            w: vec![F::zero(); r1cs.n_witnesses()],
             r_w: F::zero(),
         }
     }
@@ -659,7 +659,7 @@ where
 
         let f_circuit = FC::new(fc_params)?;
         let k = 1;
-        let d = 2;
+        let d = R1CS::<CF1<C1>>::empty().degree();
         let t = Self::compute_t(&poseidon_config, &f_circuit, d, k)?;
 
         // main circuit R1CS:
@@ -701,9 +701,7 @@ where
         // HyperNova). Tracking issue:
         // https://github.com/privacy-scaling-explorations/sonobe/issues/82
         let k = 1;
-        // `d`, the degree of the constraint system, is set to 2, as we only
-        // support R1CS for now, whose highest degree is 2.
-        let d = 2;
+        let d = R1CS::<CF1<C1>>::empty().degree();
         let t = Self::compute_t(poseidon_config, F, d, k)?;
 
         // prepare the circuit to obtain its R1CS
@@ -724,8 +722,16 @@ where
         let cs2 = cs2.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
         let cf_r1cs = extract_r1cs::<C1::BaseField>(&cs2)?;
 
-        let (cs_pp, cs_vp) = CS1::setup(&mut rng, r1cs.A.n_rows)?;
-        let (cf_cs_pp, cf_cs_vp) = CS2::setup(&mut rng, max(cf_r1cs.A.n_rows, cf_r1cs.A.n_cols))?;
+        // `CS1` is for committing to ProtoGalaxy's witness vector `w`, so we
+        // set `len` to the number of witnesses in `r1cs`.
+        let (cs_pp, cs_vp) = CS1::setup(&mut rng, r1cs.n_witnesses())?;
+        // `CS2` is for committing to CycleFold's witness vector `w` and error
+        // term `e`, where the length of `e` is the number of constraints, so we
+        // set `len` to the maximum of `e` and `w`'s lengths.
+        let (cf_cs_pp, cf_cs_vp) = CS2::setup(
+            &mut rng,
+            max(cf_r1cs.n_constraints(), cf_r1cs.n_witnesses()),
+        )?;
 
         Ok((
             Self::ProverParam {
@@ -798,9 +804,7 @@ where
         // HyperNova). Tracking issue:
         // https://github.com/privacy-scaling-explorations/sonobe/issues/82
         let k = 1;
-        // `d`, the degree of the constraint system, is set to 2, as we only
-        // support R1CS for now, whose highest degree is 2.
-        let d = 2;
+        let d = self.r1cs.degree();
 
         // `sponge` is for digest computation.
         let sponge = PoseidonSponge::<C1::ScalarField>::new(&self.poseidon_config);
@@ -1168,7 +1172,7 @@ mod tests {
     #[ignore]
     #[test]
     fn test_t_bounds() -> Result<(), Error> {
-        let d = 2;
+        let d = R1CS::<Fr>::empty().degree();
         let k = 1;
 
         let poseidon_config = poseidon_canonical_config::<Fr>();

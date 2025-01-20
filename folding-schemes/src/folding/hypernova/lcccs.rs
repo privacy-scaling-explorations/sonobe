@@ -1,6 +1,6 @@
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ff::PrimeField;
-use ark_poly::{DenseMultilinearExtension, Polynomial};
+use ark_poly::Polynomial;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use ark_std::rand::Rng;
@@ -9,7 +9,7 @@ use ark_std::Zero;
 use super::circuits::LCCCSVar;
 use super::Witness;
 use crate::arith::ccs::CCS;
-use crate::arith::Arith;
+use crate::arith::{Arith, ArithRelation};
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::CF1;
 use crate::folding::traits::Inputize;
@@ -44,7 +44,7 @@ impl<F: PrimeField> CCS<F> {
         // enforce that CCS's F is the C::ScalarField
         C: Curve<ScalarField = F>,
     {
-        let w: Vec<F> = z[(1 + self.l)..].to_vec();
+        let (w, x) = self.split_z(z);
         // if the commitment scheme is set to be hiding, set the random blinding parameter
         let r_w = if CS::is_hiding() {
             F::rand(rng)
@@ -55,20 +55,21 @@ impl<F: PrimeField> CCS<F> {
 
         let r_x: Vec<F> = (0..self.s).map(|_| F::rand(rng)).collect();
 
-        let Mzs: Vec<DenseMultilinearExtension<F>> = self
+        // compute v_j
+        let v = self
             .M
             .iter()
-            .map(|M_j| Ok(dense_vec_to_dense_mle(self.s, &mat_vec_mul(M_j, z)?)))
+            .map(|M_j| {
+                let Mz = dense_vec_to_dense_mle(self.s, &mat_vec_mul(M_j, z)?);
+                Ok(Mz.evaluate(&r_x))
+            })
             .collect::<Result<_, Error>>()?;
-
-        // compute v_j
-        let v: Vec<F> = Mzs.iter().map(|Mz| Mz.evaluate(&r_x)).collect();
 
         Ok((
             LCCCS::<C> {
                 C,
                 u: z[0],
-                x: z[1..(1 + self.l)].to_vec(),
+                x,
                 r_x,
                 v,
             },
@@ -82,14 +83,14 @@ impl<C: Curve> Dummy<&CCS<CF1<C>>> for LCCCS<C> {
         Self {
             C: C::zero(),
             u: CF1::<C>::zero(),
-            x: vec![CF1::<C>::zero(); ccs.l],
+            x: vec![CF1::<C>::zero(); ccs.n_public_inputs()],
             r_x: vec![CF1::<C>::zero(); ccs.s],
             v: vec![CF1::<C>::zero(); ccs.t],
         }
     }
 }
 
-impl<C: Curve> Arith<Witness<CF1<C>>, LCCCS<C>> for CCS<CF1<C>> {
+impl<C: Curve> ArithRelation<Witness<CF1<C>>, LCCCS<C>> for CCS<CF1<C>> {
     type Evaluation = Vec<CF1<C>>;
 
     /// Perform the check of the LCCCS instance described at section 4.2,
@@ -159,16 +160,13 @@ impl<C: Curve> Inputize<CF1<C>> for LCCCS<C> {
 #[cfg(test)]
 pub mod tests {
     use ark_pallas::{Fr, Projective};
-    use ark_std::test_rng;
-    use ark_std::One;
-    use ark_std::UniformRand;
-    use std::sync::Arc;
+    use ark_std::{sync::Arc, test_rng, One, UniformRand};
 
     use super::*;
     use crate::arith::{
         ccs::tests::{get_test_ccs, get_test_z},
         r1cs::R1CS,
-        Arith,
+        ArithRelation,
     };
     use crate::commitment::pedersen::Pedersen;
     use crate::utils::hypercube::BooleanHypercube;
@@ -181,19 +179,21 @@ pub mod tests {
         z: &[C::ScalarField],
     ) -> Result<Vec<VirtualPolynomial<C::ScalarField>>, Error> {
         let eq_rx = build_eq_x_r_vec(&lcccs.r_x)?;
-        let eq_rx_mle = dense_vec_to_dense_mle(ccs.s, &eq_rx);
+        let eq_rx_mle = Arc::new(dense_vec_to_dense_mle(ccs.s, &eq_rx));
 
-        let mut Ls = Vec::with_capacity(ccs.t);
-        for M_j in ccs.M.iter() {
-            let mut L = VirtualPolynomial::<C::ScalarField>::new(ccs.s);
-            let mut Mz = vec![dense_vec_to_dense_mle(ccs.s, &mat_vec_mul(M_j, z)?)];
-            Mz.push(eq_rx_mle.clone());
-            L.add_mle_list(
-                Mz.iter().map(|v| Arc::new(v.clone())),
-                C::ScalarField::one(),
-            )?;
-            Ls.push(L);
-        }
+        let Ls = ccs
+            .M
+            .iter()
+            .map(|M_j| {
+                let mut L = VirtualPolynomial::<C::ScalarField>::new(ccs.s);
+                let Mz = vec![
+                    Arc::new(dense_vec_to_dense_mle(ccs.s, &mat_vec_mul(M_j, z)?)),
+                    eq_rx_mle.clone(),
+                ];
+                L.add_mle_list(Mz, C::ScalarField::one())?;
+                Ok(L)
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
         Ok(Ls)
     }
 
@@ -208,7 +208,7 @@ pub mod tests {
         let ccs = CCS::from(r1cs);
         let z: Vec<Fr> = (0..n_cols).map(|_| Fr::rand(&mut rng)).collect();
 
-        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1)?;
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n_witnesses())?;
 
         let (lcccs, _) = ccs.to_lcccs::<_, Projective, Pedersen<Projective, false>, false>(
             &mut rng,
@@ -248,7 +248,7 @@ pub mod tests {
         let (bad_w, bad_x) = ccs.split_z(&bad_z);
         assert!(ccs.check_relation(&bad_w, &bad_x).is_err());
 
-        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1)?;
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n_witnesses())?;
         // Compute v_j with the right z
         let (lcccs, _) = ccs.to_lcccs::<_, Projective, Pedersen<Projective>, false>(
             &mut rng,

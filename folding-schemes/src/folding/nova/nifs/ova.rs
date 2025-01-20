@@ -11,7 +11,7 @@ use std::marker::PhantomData;
 use super::nova::ChallengeGadget;
 use super::ova_circuits::CommittedInstanceVar;
 use super::NIFSTrait;
-use crate::arith::r1cs::R1CS;
+use crate::arith::{r1cs::R1CS, Arith};
 use crate::commitment::CommitmentScheme;
 use crate::folding::traits::{CommittedInstanceOps, Inputize};
 use crate::folding::{circuits::CF1, traits::Dummy};
@@ -107,7 +107,7 @@ impl<C: Curve> Witness<C> {
 impl<C: Curve> Dummy<&R1CS<CF1<C>>> for Witness<C> {
     fn dummy(r1cs: &R1CS<CF1<C>>) -> Self {
         Self {
-            w: vec![C::ScalarField::zero(); r1cs.A.n_cols - 1 - r1cs.l],
+            w: vec![C::ScalarField::zero(); r1cs.n_witnesses()],
             rW: C::ScalarField::zero(),
         }
     }
@@ -254,14 +254,14 @@ pub mod tests {
     use super::*;
     use ark_pallas::{Fr, Projective};
 
-    use crate::arith::{r1cs::tests::get_test_r1cs, Arith};
+    use crate::arith::{r1cs::tests::get_test_r1cs, ArithRelation};
     use crate::commitment::pedersen::Pedersen;
     use crate::folding::nova::nifs::tests::test_nifs_opt;
     use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
 
     // Simple auxiliary structure mainly used to help pass a witness for which we can check
     // easily an R1CS relation.
-    // Notice that checking it requires us to have `E` as per [`Arith`] trait definition.
+    // Notice that checking it requires us to have `E` as per [`ArithRelation`] trait definition.
     // But since we don't hold `E` nor `e` within the NIFS, we create this structure to pass
     // `e` such that the check can be done.
     #[derive(Debug, Clone)]
@@ -269,7 +269,7 @@ pub mod tests {
         pub(crate) w: Vec<C::ScalarField>,
         pub(crate) e: Vec<C::ScalarField>,
     }
-    impl<C: Curve> Arith<TestingWitness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
+    impl<C: Curve> ArithRelation<TestingWitness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
         type Evaluation = Vec<CF1<C>>;
 
         fn eval_relation(

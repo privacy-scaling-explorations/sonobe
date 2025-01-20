@@ -41,7 +41,7 @@ use super::{
     CommittedInstance, Nova, Witness,
 };
 use crate::{
-    arith::{r1cs::R1CS, Arith, ArithSampler},
+    arith::{r1cs::R1CS, ArithRelation, ArithSampler},
     commitment::CommitmentScheme,
     folding::traits::CommittedInstanceOps,
     frontend::FCircuit,

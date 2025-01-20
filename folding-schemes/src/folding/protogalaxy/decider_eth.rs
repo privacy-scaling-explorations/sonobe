@@ -14,6 +14,7 @@ use ark_std::{
 pub use super::decider_eth_circuit::DeciderEthCircuit;
 use super::decider_eth_circuit::DeciderProtoGalaxyGadget;
 use super::ProtoGalaxy;
+use crate::arith::Arith;
 use crate::folding::traits::{InputizeNonNative, WitnessOps};
 use crate::folding::{circuits::decider::DeciderEnabledNIFS, traits::Dummy};
 use crate::frontend::FCircuit;
@@ -117,10 +118,8 @@ where
         // HyperNova). Tracking issue:
         // https://github.com/privacy-scaling-explorations/sonobe/issues/82
         let k = 1;
-        // `d`, the degree of the constraint system, is set to 2, as we only
-        // support R1CS for now, whose highest degree is 2.
-        let d = 2;
-        let t = log2(protogalaxy_vp.r1cs.num_constraints()) as usize;
+        let d = protogalaxy_vp.r1cs.degree();
+        let t = log2(protogalaxy_vp.r1cs.n_constraints()) as usize;
 
         let circuit = DeciderEthCircuit::<C1, C2>::dummy((
             protogalaxy_vp.r1cs,

@@ -8,7 +8,7 @@ use ark_std::cfg_iter;
 use ark_std::rand::Rng;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
-use crate::Error;
+use crate::{folding::traits::Dummy, Error};
 
 #[derive(Clone, Debug, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct SparseMatrix<F: PrimeField> {
@@ -19,14 +19,22 @@ pub struct SparseMatrix<F: PrimeField> {
     pub coeffs: R1CSMatrix<F>,
 }
 
-impl<F: PrimeField> SparseMatrix<F> {
-    pub fn empty() -> Self {
+impl<F: PrimeField> Dummy<(usize, usize)> for SparseMatrix<F> {
+    fn dummy((n_rows, n_cols): (usize, usize)) -> Self {
         Self {
-            n_rows: 0,
-            n_cols: 0,
-            coeffs: vec![],
+            n_rows,
+            n_cols,
+            // unnecessary to allocate each row as the matrix is sparse
+            coeffs: vec![vec![]; n_rows],
         }
     }
+}
+
+impl<F: PrimeField> SparseMatrix<F> {
+    pub fn empty() -> Self {
+        Self::dummy((0, 0))
+    }
+
     pub fn rand<R: Rng>(rng: &mut R, n_rows: usize, n_cols: usize) -> Self {
         const ZERO_VAL_PROBABILITY: f64 = 0.8f64;
 

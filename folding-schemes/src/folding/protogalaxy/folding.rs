@@ -12,11 +12,11 @@ use super::utils::{all_powers, betas_star, exponential_powers, pow_i};
 use super::ProtoGalaxyError;
 use super::{CommittedInstance, Witness};
 
-use crate::folding::traits::Dummy;
 use crate::transcript::Transcript;
 use crate::utils::vec::*;
 use crate::Error;
 use crate::{arith::r1cs::R1CS, Curve};
+use crate::{arith::Arith, folding::traits::Dummy};
 
 #[derive(Debug, Clone)]
 pub struct ProtoGalaxyProof<F: PrimeField> {
@@ -74,11 +74,11 @@ impl<C: Curve> Folding<C> {
                 vec_w.len(),
             ));
         }
-        let d = 2; // for the moment hardcoded to 2 since it only supports R1CS
+        let d = r1cs.degree();
         let k = vec_instances.len();
         let t = instance.betas.len();
-        let n = r1cs.A.n_cols;
-        let m = r1cs.A.n_rows;
+        let n = r1cs.n_variables();
+        let m = r1cs.n_constraints();
 
         let z = [vec![C::ScalarField::one()], instance.x.clone(), w.w.clone()].concat();
 
@@ -140,7 +140,7 @@ impl<C: Curve> Folding<C> {
         // 'refreshed' randomness) satisfies the relation.
         #[cfg(test)]
         {
-            use crate::arith::Arith;
+            use crate::arith::ArithRelation;
             r1cs.check_relation(
                 w,
                 &CommittedInstance::<_, true> {
@@ -408,7 +408,7 @@ pub mod tests {
     use ark_std::{rand::Rng, UniformRand};
 
     use crate::arith::r1cs::tests::{get_test_r1cs, get_test_z_split};
-    use crate::arith::Arith;
+    use crate::arith::ArithRelation;
     use crate::commitment::{pedersen::Pedersen, CommitmentScheme};
     use crate::transcript::poseidon::poseidon_canonical_config;
 
@@ -446,7 +446,7 @@ pub mod tests {
 
         let (pedersen_params, _) = Pedersen::<C>::setup(&mut rng, w.len())?;
 
-        let t = log2(get_test_r1cs::<C::ScalarField>().A.n_rows) as usize;
+        let t = log2(get_test_r1cs::<C::ScalarField>().n_constraints()) as usize;
 
         let beta = C::ScalarField::rand(&mut rng);
         let betas = exponential_powers(beta, t);

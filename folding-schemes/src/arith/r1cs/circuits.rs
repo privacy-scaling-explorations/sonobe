@@ -1,5 +1,5 @@
 use crate::{
-    arith::ArithGadget,
+    arith::ArithRelationGadget,
     utils::gadgets::{EquivalenceGadget, MatrixGadget, SparseMatrixVar, VectorGadget},
 };
 use ark_ff::PrimeField;
@@ -59,7 +59,7 @@ where
     }
 }
 
-impl<M, FVar, WVar: AsRef<[FVar]>, UVar: AsRef<[FVar]>> ArithGadget<WVar, UVar>
+impl<M, FVar, WVar: AsRef<[FVar]>, UVar: AsRef<[FVar]>> ArithRelationGadget<WVar, UVar>
     for R1CSMatricesVar<M, FVar>
 where
     SparseMatrixVar<FVar>: MatrixGadget<FVar>,
@@ -86,8 +86,6 @@ where
 
 #[cfg(test)]
 pub mod tests {
-    use std::cmp::max;
-
     use ark_crypto_primitives::crh::{
         sha256::{
             constraints::{Sha256Gadget, UnitVar},
@@ -101,6 +99,7 @@ pub mod tests {
     use ark_r1cs_std::{eq::EqGadget, fields::fp::FpVar, uint8::UInt8};
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef};
     use ark_std::{
+        cmp::max,
         rand::{thread_rng, Rng},
         One, UniformRand,
     };
@@ -112,7 +111,7 @@ pub mod tests {
             extract_r1cs, extract_w_x,
             tests::{get_test_r1cs, get_test_z},
         },
-        Arith,
+        Arith, ArithRelation,
     };
     use crate::commitment::{pedersen::Pedersen, CommitmentScheme};
     use crate::folding::{

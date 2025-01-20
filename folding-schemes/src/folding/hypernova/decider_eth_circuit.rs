@@ -28,7 +28,7 @@ use crate::Error;
 use crate::{
     arith::{
         ccs::{circuits::CCSMatricesVar, CCS},
-        ArithGadget,
+        ArithRelationGadget,
     },
     folding::circuits::decider::{EvalGadget, KZGChallengesGadget},
 };
@@ -38,7 +38,7 @@ use crate::{
     Curve,
 };
 
-impl<C: Curve> ArithGadget<WitnessVar<CF1<C>>, LCCCSVar<C>> for CCSMatricesVar<CF1<C>> {
+impl<C: Curve> ArithRelationGadget<WitnessVar<CF1<C>>, LCCCSVar<C>> for CCSMatricesVar<CF1<C>> {
     type Evaluation = Vec<FpVar<CF1<C>>>;
 
     fn eval_relation(
@@ -231,7 +231,7 @@ pub mod tests {
     use ark_std::{test_rng, UniformRand};
 
     use super::*;
-    use crate::arith::r1cs::R1CS;
+    use crate::arith::{r1cs::R1CS, Arith};
     use crate::commitment::pedersen::Pedersen;
     use crate::folding::nova::PreprocessorParam;
     use crate::frontend::utils::CubicFCircuit;
@@ -247,7 +247,7 @@ pub mod tests {
         let ccs = CCS::from(r1cs);
         let z: Vec<Fr> = (0..n_cols).map(|_| Fr::rand(&mut rng)).collect();
 
-        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1)?;
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n_witnesses())?;
 
         let (lcccs, w) = ccs.to_lcccs::<_, Projective, Pedersen<Projective>, false>(
             &mut rng,

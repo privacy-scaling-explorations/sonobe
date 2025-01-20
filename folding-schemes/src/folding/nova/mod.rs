@@ -12,15 +12,8 @@ use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::R1CSVar;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Valid};
-use ark_std::fmt::Debug;
-use ark_std::rand::RngCore;
-use ark_std::{One, UniformRand, Zero};
-use core::marker::PhantomData;
+use ark_std::{cmp::max, fmt::Debug, marker::PhantomData, rand::RngCore, One, UniformRand, Zero};
 
-use crate::folding::circuits::cyclefold::{
-    fold_cyclefold_circuit, CycleFoldCircuit, CycleFoldCommittedInstance, CycleFoldConfig,
-    CycleFoldWitness,
-};
 use crate::folding::{circuits::CF1, traits::Dummy};
 use crate::frontend::FCircuit;
 use crate::transcript::{poseidon::poseidon_canonical_config, Transcript};
@@ -31,7 +24,14 @@ use crate::{
     constants::NOVA_N_BITS_RO,
     utils::pp_hash,
 };
-use crate::{arith::Arith, commitment::CommitmentScheme};
+use crate::{
+    arith::Arith,
+    folding::circuits::cyclefold::{
+        fold_cyclefold_circuit, CycleFoldCircuit, CycleFoldCommittedInstance, CycleFoldConfig,
+        CycleFoldWitness,
+    },
+};
+use crate::{arith::ArithRelation, commitment::CommitmentScheme};
 use crate::{Curve, Error};
 use decider_eth_circuit::WitnessVar;
 
@@ -93,7 +93,7 @@ impl<C: Curve> Dummy<usize> for CommittedInstance<C> {
 
 impl<C: Curve> Dummy<&R1CS<CF1<C>>> for CommittedInstance<C> {
     fn dummy(r1cs: &R1CS<CF1<C>>) -> Self {
-        Self::dummy(r1cs.l)
+        Self::dummy(r1cs.n_public_inputs())
     }
 }
 
@@ -185,9 +185,9 @@ impl<C: Curve> Witness<C> {
 impl<C: Curve> Dummy<&R1CS<CF1<C>>> for Witness<C> {
     fn dummy(r1cs: &R1CS<CF1<C>>) -> Self {
         Self {
-            E: vec![C::ScalarField::zero(); r1cs.A.n_rows],
+            E: vec![C::ScalarField::zero(); r1cs.n_constraints()],
             rE: C::ScalarField::zero(),
-            W: vec![C::ScalarField::zero(); r1cs.A.n_cols - 1 - r1cs.l],
+            W: vec![C::ScalarField::zero(); r1cs.n_witnesses()],
             rW: C::ScalarField::zero(),
         }
     }
@@ -536,11 +536,25 @@ where
         // if cs params exist, use them, if not, generate new ones
         let (cs_pp, cs_vp) = match (&prep_param.cs_pp, &prep_param.cs_vp) {
             (Some(cs_pp), Some(cs_vp)) => (cs_pp.clone(), cs_vp.clone()),
-            _ => CS1::setup(&mut rng, r1cs.A.n_rows)?,
+            _ => CS1::setup(
+                &mut rng,
+                // `CS1` is for committing to Nova's witness vector `w` and
+                // error term `e`, where the length of `e` is the number of
+                // constraints, so we set `len` to the maximum of `e` and `w`'s
+                // lengths.
+                max(r1cs.n_constraints(), r1cs.n_witnesses()),
+            )?,
         };
         let (cf_cs_pp, cf_cs_vp) = match (&prep_param.cf_cs_pp, &prep_param.cf_cs_vp) {
             (Some(cf_cs_pp), Some(cf_cs_vp)) => (cf_cs_pp.clone(), cf_cs_vp.clone()),
-            _ => CS2::setup(&mut rng, cf_r1cs.A.n_rows)?,
+            _ => CS2::setup(
+                &mut rng,
+                // `CS2` is for committing to CycleFold's witness vector `w` and
+                // error term `e`, where the length of `e` is the number of
+                // constraints, so we set `len` to the maximum of `e` and `w`'s
+                // lengths.
+                max(cf_r1cs.n_constraints(), cf_r1cs.n_witnesses()),
+            )?,
         };
 
         let prover_params = ProverParams::<C1, C2, CS1, CS2, H> {
@@ -800,7 +814,7 @@ where
         // set values for next iteration
         self.i += C1::ScalarField::one();
         self.z_i = z_i1;
-        self.w_i = Witness::<C1>::new::<H>(w_i1, self.r1cs.A.n_rows, &mut rng);
+        self.w_i = Witness::<C1>::new::<H>(w_i1, self.r1cs.n_constraints(), &mut rng);
         self.u_i = self.w_i.commit::<CS1, H>(&self.cs_pp, x_i1)?;
         self.W_i = W_i1;
         self.U_i = U_i1;
@@ -1013,22 +1027,6 @@ where
     let r1cs = get_r1cs_from_cs::<C1::ScalarField>(augmented_F_circuit)?;
     let cf_r1cs = get_r1cs_from_cs::<C2::ScalarField>(cf_circuit)?;
     Ok((r1cs, cf_r1cs))
-}
-
-/// helper method to get the pedersen params length for both the AugmentedFCircuit and the
-/// CycleFold circuit
-pub fn get_cs_params_len<C1, C2, FC>(
-    poseidon_config: &PoseidonConfig<C1::ScalarField>,
-    F_circuit: FC,
-) -> Result<(usize, usize), Error>
-where
-    C1: Curve,
-    C2: Curve,
-    FC: FCircuit<C1::ScalarField>,
-    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-{
-    let (r1cs, cf_r1cs) = get_r1cs::<C1, C2, FC>(poseidon_config, F_circuit)?;
-    Ok((r1cs.A.n_rows, cf_r1cs.A.n_rows))
 }
 
 #[cfg(test)]

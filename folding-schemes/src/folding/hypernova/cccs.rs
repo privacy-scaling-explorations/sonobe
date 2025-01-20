@@ -6,7 +6,7 @@ use ark_std::{rand::Rng, sync::Arc, One, Zero};
 
 use super::circuits::CCCSVar;
 use super::Witness;
-use crate::arith::{ccs::CCS, Arith};
+use crate::arith::{ccs::CCS, Arith, ArithRelation};
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::CF1;
 use crate::folding::traits::Inputize;
@@ -36,7 +36,7 @@ impl<F: PrimeField> CCS<F> {
         // enforce that CCS's F is the C::ScalarField
         C: Curve<ScalarField = F>,
     {
-        let w: Vec<F> = z[(1 + self.l)..].to_vec();
+        let (w, x) = self.split_z(z);
 
         // if the commitment scheme is set to be hiding, set the random blinding parameter
         let r_w = if CS::is_hiding() {
@@ -46,25 +46,22 @@ impl<F: PrimeField> CCS<F> {
         };
         let C = CS::commit(cs_params, &w, &r_w)?;
 
-        Ok((
-            CCCS::<C> {
-                C,
-                x: z[1..(1 + self.l)].to_vec(),
-            },
-            Witness::<F> { w, r_w },
-        ))
+        Ok((CCCS::<C> { C, x }, Witness::<F> { w, r_w }))
     }
 
     /// Computes q(x) = \sum^q c_i * \prod_{j \in S_i} ( \sum_{y \in {0,1}^s'} M_j(x, y) * z(y) )
     /// polynomial over x
     pub fn compute_q(&self, z: &[F]) -> Result<VirtualPolynomial<F>, Error> {
         let mut q_x = VirtualPolynomial::<F>::new(self.s);
-        for i in 0..self.q {
+        for (S_i, &c_i) in self.S.iter().zip(&self.c) {
             let mut Q_k = vec![];
-            for &j in self.S[i].iter() {
-                Q_k.push(dense_vec_to_dense_mle(self.s, &mat_vec_mul(&self.M[j], z)?));
+            for &j in S_i {
+                Q_k.push(Arc::new(dense_vec_to_dense_mle(
+                    self.s,
+                    &mat_vec_mul(&self.M[j], z)?,
+                )));
             }
-            q_x.add_mle_list(Q_k.iter().map(|v| Arc::new(v.clone())), self.c[i])?;
+            q_x.add_mle_list(Q_k, c_i)?;
         }
         Ok(q_x)
     }
@@ -74,16 +71,19 @@ impl<F: PrimeField> CCS<F> {
     /// polynomial over x
     pub fn compute_Q(&self, z: &[F], beta: &[F]) -> Result<VirtualPolynomial<F>, Error> {
         let eq_beta = build_eq_x_r_vec(beta)?;
-        let eq_beta_mle = dense_vec_to_dense_mle(self.s, &eq_beta);
+        let eq_beta_mle = Arc::new(dense_vec_to_dense_mle(self.s, &eq_beta));
 
         let mut Q = VirtualPolynomial::<F>::new(self.s);
-        for i in 0..self.q {
+        for (S_i, &c_i) in self.S.iter().zip(&self.c) {
             let mut Q_k = vec![];
-            for &j in self.S[i].iter() {
-                Q_k.push(dense_vec_to_dense_mle(self.s, &mat_vec_mul(&self.M[j], z)?));
+            for &j in S_i {
+                Q_k.push(Arc::new(dense_vec_to_dense_mle(
+                    self.s,
+                    &mat_vec_mul(&self.M[j], z)?,
+                )));
             }
             Q_k.push(eq_beta_mle.clone());
-            Q.add_mle_list(Q_k.iter().map(|v| Arc::new(v.clone())), self.c[i])?;
+            Q.add_mle_list(Q_k, c_i)?;
         }
         Ok(Q)
     }
@@ -93,12 +93,12 @@ impl<C: Curve> Dummy<&CCS<CF1<C>>> for CCCS<C> {
     fn dummy(ccs: &CCS<CF1<C>>) -> Self {
         Self {
             C: C::zero(),
-            x: vec![CF1::<C>::zero(); ccs.l],
+            x: vec![CF1::<C>::zero(); ccs.n_public_inputs()],
         }
     }
 }
 
-impl<C: Curve> Arith<Witness<CF1<C>>, CCCS<C>> for CCS<CF1<C>> {
+impl<C: Curve> ArithRelation<Witness<CF1<C>>, CCCS<C>> for CCS<CF1<C>> {
     type Evaluation = Vec<CF1<C>>;
 
     fn eval_relation(&self, w: &Witness<CF1<C>>, u: &CCCS<C>) -> Result<Self::Evaluation, Error> {

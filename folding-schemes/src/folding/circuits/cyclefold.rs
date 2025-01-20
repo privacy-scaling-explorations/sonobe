@@ -21,20 +21,19 @@ use ark_std::Zero;
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::{nonnative::uint::NonNativeUintVar, CF1, CF2};
+use crate::arith::{
+    r1cs::{circuits::R1CSMatricesVar, extract_w_x, R1CS},
+    Arith, ArithRelationGadget,
+};
 use crate::commitment::CommitmentScheme;
 use crate::constants::NOVA_N_BITS_RO;
-use crate::folding::nova::nifs::{nova::NIFS, NIFSTrait};
+use crate::folding::{
+    nova::nifs::{nova::NIFS, NIFSTrait},
+    traits::InputizeNonNative,
+};
 use crate::transcript::{AbsorbNonNative, AbsorbNonNativeGadget, Transcript, TranscriptVar};
 use crate::utils::gadgets::{EquivalenceGadget, VectorGadget};
-use crate::Error;
-use crate::{
-    arith::{
-        r1cs::{circuits::R1CSMatricesVar, extract_w_x, R1CS},
-        ArithGadget,
-    },
-    folding::traits::InputizeNonNative,
-    Curve,
-};
+use crate::{Curve, Error};
 
 /// Re-export the Nova committed instance as `CycleFoldCommittedInstance` and
 /// witness as `CycleFoldWitness`, for clarity and consistency
@@ -261,7 +260,7 @@ impl<C: Curve> NIFSFullGadget<C> {
     }
 }
 
-impl<C: Curve> ArithGadget<CycleFoldWitnessVar<C>, CycleFoldCommittedInstanceVar<C>>
+impl<C: Curve> ArithRelationGadget<CycleFoldWitnessVar<C>, CycleFoldCommittedInstanceVar<C>>
     for R1CSMatricesVar<CF1<C>, NonNativeUintVar<CF2<C>>>
 {
     type Evaluation = (Vec<NonNativeUintVar<CF2<C>>>, Vec<NonNativeUintVar<CF2<C>>>);
@@ -528,7 +527,8 @@ where
     assert_eq!(cf_x_i.len(), CFG::IO_LEN);
 
     // fold cyclefold instances
-    let cf_w_i = CycleFoldWitness::<C2>::new::<H>(cf_w_i.clone(), cf_r1cs.A.n_rows, &mut rng);
+    let cf_w_i =
+        CycleFoldWitness::<C2>::new::<H>(cf_w_i.clone(), cf_r1cs.n_constraints(), &mut rng);
     let cf_u_i = cf_w_i.commit::<CS2, H>(&cf_cs_params, cf_x_i.clone())?;
 
     // compute T* and cmT* for CycleFoldCircuit
@@ -557,7 +557,7 @@ where
 
     #[cfg(test)]
     {
-        use crate::{arith::Arith, folding::traits::CommittedInstanceOps};
+        use crate::{arith::ArithRelation, folding::traits::CommittedInstanceOps};
         cf_u_i.check_incoming()?;
         cf_r1cs.check_relation(&cf_w_i, &cf_u_i)?;
         cf_r1cs.check_relation(&cf_W_i1, &cf_U_i1)?;

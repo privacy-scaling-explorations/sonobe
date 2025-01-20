@@ -17,7 +17,7 @@ use super::{
 use crate::{
     arith::{
         r1cs::{circuits::R1CSMatricesVar, R1CS},
-        Arith, ArithGadget,
+        ArithRelation, ArithRelationGadget,
     },
     folding::circuits::CF1,
     transcript::AbsorbNonNativeGadget,
@@ -56,14 +56,14 @@ impl<C: Curve, const TYPE: bool> AbsorbGadget<C::ScalarField> for CommittedInsta
     }
 }
 
-/// Implements `Arith` for R1CS, where the witness is of type [`Witness`], and
-/// the committed instance is of type [`CommittedInstance`].
+/// Implements [`ArithRelation`] for R1CS, where the witness is of type
+/// [`Witness`], and the committed instance is of type [`CommittedInstance`].
 ///
 /// Due to the error term `CommittedInstance.e`, R1CS here is considered as a
 /// relaxed R1CS.
 ///
 /// See `nova/traits.rs` for the rationale behind the design.
-impl<C: Curve, const TYPE: bool> Arith<Witness<CF1<C>>, CommittedInstance<C, TYPE>>
+impl<C: Curve, const TYPE: bool> ArithRelation<Witness<CF1<C>>, CommittedInstance<C, TYPE>>
     for R1CS<CF1<C>>
 {
     type Evaluation = Vec<CF1<C>>;
@@ -104,7 +104,7 @@ impl<C: Curve, const TYPE: bool> Arith<Witness<CF1<C>>, CommittedInstance<C, TYP
 
 /// Unlike its native counterpart, we only need to support running instances in
 /// circuit, as the decider circuit only checks running instance satisfiability.
-impl<C: Curve> ArithGadget<WitnessVar<CF1<C>>, CommittedInstanceVar<C, RUNNING>>
+impl<C: Curve> ArithRelationGadget<WitnessVar<CF1<C>>, CommittedInstanceVar<C, RUNNING>>
     for R1CSMatricesVar<CF1<C>, FpVar<CF1<C>>>
 {
     type Evaluation = (Vec<FpVar<CF1<C>>>, Vec<FpVar<CF1<C>>>);

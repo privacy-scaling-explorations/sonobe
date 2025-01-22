@@ -64,7 +64,7 @@ impl<F: PrimeField, BF: BackendField, const L: usize> FCircuit<F> for NonameFCir
             .map(|idx| -> Result<FpVar<F>, SynthesisError> {
                 // the assigned zi1 is of the same size than the initial zi and is located in the
                 // output of the witness vector
-                // we prefer to assign z_i1 here since (1) we have to return it, (2) we cant return
+                // we prefer to assign z_i1 here since (1) we have to return it, (2) we can't return
                 // anything with the `generate_constraints` method used below
                 let value: BigUint = Into::into(noname_witness.witness[idx]);
                 let field_element = F::from(value);

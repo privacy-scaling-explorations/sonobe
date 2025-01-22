@@ -25,6 +25,7 @@ pub mod nova_circuits;
 pub mod ova;
 pub mod ova_circuits;
 pub mod pointvsline;
+mod mova_matrix;
 
 /// Defines the NIFS (Non-Interactive Folding Scheme) trait, initially defined in
 /// [Nova](https://eprint.iacr.org/2021/370.pdf), and it's variants

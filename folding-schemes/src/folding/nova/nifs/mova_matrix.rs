@@ -16,8 +16,7 @@ use crate::folding::nova::nifs::pointvsline::{PointVsLine, PointVsLineProof, Poi
 use crate::folding::traits::Dummy;
 use crate::transcript::Transcript;
 use crate::utils::mle::dense_vec_to_dense_mle;
-use crate::utils::vec::is_zero_vec;
-
+use crate::utils::vec::{is_zero_vec, mat_vec_mul, mat_vec_mul_dense};
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize)]
 pub struct RelaxedCommitedRelation<C: Curve> {
     com_a: C,
@@ -173,13 +172,13 @@ NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
     // Protocol 5 - point 8 (Page 25)
     fn fold_witness(
         alpha: C::ScalarField,
-        sparse_wit: &Witness<C>,
+        simple_wit: &Witness<C>,
         acc_wit: &Witness<C>,
         aux: &Vec<C::ScalarField>, // T in Mova's notation
     ) -> Result<Witness<C>, Error> {
-        let a_acc = alpha * &sparse_wit.A + &acc_wit.A;
-        let b_acc = alpha * &sparse_wit.B + &acc_wit.B;
-        let c_acc = alpha * &sparse_wit.C + &acc_wit.C;
+        let a_acc = alpha * &simple_wit.A + &acc_wit.A;
+        let b_acc = alpha * &simple_wit.B + &acc_wit.B;
+        let c_acc = alpha * &simple_wit.C + &acc_wit.C;
         let e_acc = &acc_wit.E + alpha * aux;
 
         Ok(Witness::<C> {
@@ -199,10 +198,10 @@ NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
         r1cs: &R1CS<C::ScalarField>,
         transcript: &mut T,
         pp_hash: C::ScalarField,
-        W_i: &Witness<C>,
-        U_i: &RelaxedCommitedRelation<C>,
-        w_i: &Witness<C>,
-        u_i: &RelaxedCommitedRelation<C>,
+        simple_witness: &Witness<C>,
+        simple_instance: &RelaxedCommitedRelation<C>,
+        acc_witness: &Witness<C>,
+        acc_instance: &RelaxedCommitedRelation<C>,
     ) -> Result<
         (
             Self::Witness,
@@ -212,34 +211,34 @@ NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
         ),
         Error,
     > {
-        todo!("To be updated");
 
-        /*
         transcript.absorb(&pp_hash);
-        // Protocol 5 is pre-processing
-        transcript.absorb(U_i);
-        transcript.absorb(u_i);
+        transcript.absorb(simple_instance);
+        transcript.absorb(acc_instance);
 
-        // Protocol 6
+        // Protocol 5 - Steps 2-3
         let (
             h_proof,
             PointvsLineEvaluationClaim {
+                mleE1_prime, // todo!("Needs to be removed when the new protocol is done")
                 mleE2_prime,
                 rE_prime,
             },
-        ) = PointVsLine::<C, T>::prove(transcript, U_i, u_i, W_i, w_i)?;
+        ) = PointVsLine::<C, T>::prove(transcript, simple_instance, acc_instance, simple_witness, acc_witness)?;
 
-        // Protocol 7
-
-        transcript.absorb(&mleE1_prime);
         transcript.absorb(&mleE2_prime);
 
-        // compute the cross terms
-        let z1: Vec<C::ScalarField> = [vec![U_i.u], U_i.x.to_vec(), W_i.W.to_vec()].concat();
-        let z2: Vec<C::ScalarField> = [vec![u_i.u], u_i.x.to_vec(), w_i.W.to_vec()].concat();
-        let T = NovaNIFS::<C, CS, T, H>::compute_T(r1cs, U_i.u, u_i.u, &z1, &z2, &W_i.E, &w_i.E)?;
+        // compute the Cross Term
+        let T: Vec<C::ScalarField> = {
+            // todo!("Change to sparse Matrices. Review witness types")
+            let a1b2: Vec<C::ScalarField> = mat_vec_mul_dense(&simple_witness.A, &acc_witness.B)?;
+            let a2b1: Vec<C::ScalarField> = mat_vec_mul_dense(&acc_witness.A, &simple_witness.B)?;
+            let u2c1: Vec<C::ScalarField> = mat_vec_mul_dense(&acc_instance.u, &simple_witness.C)?;
+            a1b2 + a2b1 - u2c1 - &acc_witness.C
+        };
 
-        let n_vars: usize = log2(W_i.E.len()) as usize;
+        // Compute MLE_T
+        let n_vars: usize = log2(simple_witness.E.len()) as usize;
         if log2(T.len()) as usize != n_vars {
             return Err(Error::NotExpectedLength(T.len(), n_vars));
         }
@@ -247,21 +246,21 @@ NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
         let mleT = dense_vec_to_dense_mle(n_vars, &T);
         let mleT_evaluated = mleT.evaluate(&rE_prime);
 
+        // Derive alpha
         transcript.absorb(&mleT_evaluated);
-
         let alpha: C::ScalarField = transcript.get_challenge();
 
         let ci = Self::fold_committed_instance(
             alpha,
-            U_i,
-            u_i,
+            simple_witness,
+            acc_instance,
             &rE_prime,
-            &mleE1_prime,
             &mleE2_prime,
             &mleT_evaluated,
         )?;
-        let w = Self::fold_witness(alpha, W_i, w_i, &T)?;
+        let w = Self::fold_witness(alpha, simple_witness, acc_witness, &T)?;
 
+        // todo!(Review when new Pointvsline protocol is ready)
         let proof = Self::Proof {
             h_proof,
             mleE1_prime,
@@ -274,7 +273,7 @@ NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
             proof,
             vec![], // r_bits, returned to be passed as inputs to the circuit, not used at the
             // current impl status
-        ))*/
+        ))
     }
 
     /// [Mova](https://eprint.iacr.org/2024/1220.pdf)'s section 4. It verifies the results from the proof
@@ -309,6 +308,7 @@ NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
                 alpha,
                 U_i,
                 u_i,
+                &rE_prime,
                 &proof.mleE2_prime,
                 &proof.mleT,
             )?,
@@ -324,7 +324,7 @@ NIFS<C, CS, T, H>
     // todo!("Make sure sparse multiplications are optimized")
     fn fold_committed_instance(
         alpha: C::ScalarField,
-        sparse_instance: &RelaxedCommitedRelation<C>,
+        simple_instance: &RelaxedCommitedRelation<C>,
         acc_instance: &RelaxedCommitedRelation<C>,
         rE_prime: &[C::ScalarField],
         mleE2_prime: &C::ScalarField, // v' in Protocol 5
@@ -332,9 +332,9 @@ NIFS<C, CS, T, H>
     ) -> Result<RelaxedCommitedRelation<C>, Error> {
         // Step 7
         // Accumulate commitments
-        let com_a_acc = alpha * sparse_instance.com_a + acc_instance.com_a;
-        let com_b_acc = alpha * sparse_instance.com_b + acc_instance.com_b;
-        let com_c_acc = alpha * sparse_instance.com_c + acc_instance.com_c;
+        let com_a_acc = alpha * simple_instance.com_a + acc_instance.com_a;
+        let com_b_acc = alpha * simple_instance.com_b + acc_instance.com_b;
+        let com_c_acc = alpha * simple_instance.com_c + acc_instance.com_c;
 
         // Update scalars
         let u_acc = alpha + acc_instance.u;

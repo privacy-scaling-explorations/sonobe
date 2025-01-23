@@ -16,6 +16,7 @@ use crate::folding::nova::nifs::pointvsline::{PointVsLine, PointVsLineProof, Poi
 use crate::folding::traits::Dummy;
 use crate::transcript::Transcript;
 use crate::utils::mle::dense_vec_to_dense_mle;
+use crate::utils::vec::is_zero_vec;
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize)]
 pub struct RelaxedCommitedRelation<C: Curve> {
@@ -25,6 +26,7 @@ pub struct RelaxedCommitedRelation<C: Curve> {
     u: C::ScalarField,
     v: C::ScalarField,
     r: Vec<C::ScalarField>,
+    mleE: C::ScalarField,
 }
 
 impl<C: Curve> Absorb for RelaxedCommitedRelation<C> {
@@ -40,6 +42,7 @@ impl<C: Curve> Absorb for RelaxedCommitedRelation<C> {
         self.u.to_sponge_field_elements(dest);
         self.v.to_sponge_field_elements(dest);
         self.r.to_sponge_field_elements(dest);
+        self.mleE.to_sponge_field_elements(dest);
     }
 }
 
@@ -52,6 +55,7 @@ impl<C: Curve> Dummy<usize> for RelaxedCommitedRelation<C> {
             u: C::ScalarField::zero(),
             v: C::ScalarField::zero(),
             r: vec![C::ScalarField::zero(); 2 * log_n],
+            mleE: C::ScalarField::zero(),
         }
     }
 }
@@ -77,8 +81,14 @@ impl<C: Curve> Witness<C> {
     pub fn commit<CS: CommitmentScheme<C, H>, const H: bool>(
         &self,
         params: &CS::ProverParams,
-        log_n: usize,
+        rE: Vec<C::ScalarField>,
     ) -> Result<RelaxedCommitedRelation<C>, Error> {
+        let mut mleE = C::ScalarField::zero();
+        if !is_zero_vec::<C::ScalarField>(&self.E) {
+            let E = dense_vec_to_dense_mle(log2(self.E.len()) as usize, &self.E);
+            mleE = E.evaluate(&rE);
+        }
+
         // todo!("Right now we are ignoring the hiding property")
         let com_a = CS::commit(params, &self.A, &C::ScalarField::zero())?;
         let com_b = CS::commit(params, &self.B, &C::ScalarField::zero())?;
@@ -91,7 +101,8 @@ impl<C: Curve> Witness<C> {
             com_c,
             u: C::ScalarField::one(),
             v: C::ScalarField::one(),
-            r: vec![C::ScalarField::zero(); 2 * log_n],
+            r: rE,
+            mleE,
         })
     }
 }
@@ -144,11 +155,19 @@ NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
     fn new_instance(
         mut rng: impl RngCore,
         params: &CS::ProverParams,
-        W: &Self::Witness,
+        witness: &Self::Witness,
         x: Vec<C::ScalarField>,
         aux: Vec<C::ScalarField>, // = r_E
     ) -> Result<Self::CommittedInstance, Error> {
-        todo!("To be implemented");
+        let mut rE = aux.clone();
+        if is_zero_vec(&rE) {
+            // means that we're in a fresh instance, so generate random value
+            rE = (0..2 * log2(witness.E.len()))
+                .map(|_| C::ScalarField::rand(&mut rng))
+                .collect();
+        }
+        witness.commit(params, rE)
+
     }
 
     // Protocol 5 - point 8 (Page 25)
@@ -205,7 +224,6 @@ NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
         let (
             h_proof,
             PointvsLineEvaluationClaim {
-                mleE1_prime,
                 mleE2_prime,
                 rE_prime,
             },
@@ -308,6 +326,7 @@ NIFS<C, CS, T, H>
         alpha: C::ScalarField,
         sparse_instance: &RelaxedCommitedRelation<C>,
         acc_instance: &RelaxedCommitedRelation<C>,
+        rE_prime: &[C::ScalarField],
         mleE2_prime: &C::ScalarField, // v' in Protocol 5
         mleT: &C::ScalarField,
     ) -> Result<RelaxedCommitedRelation<C>, Error> {
@@ -321,6 +340,9 @@ NIFS<C, CS, T, H>
         let u_acc = alpha + acc_instance.u;
         let v_acc = mleE2_prime + alpha * mleT;
 
+        // Fold MLE
+        // todo!("Not in the paper, check again later");
+        let mlE = mleE2_prime + alpha * mleT;
 
         Ok(RelaxedCommitedRelation::<C> {
             com_a: com_a_acc,
@@ -328,7 +350,8 @@ NIFS<C, CS, T, H>
             com_c: com_c_acc,
             u: u_acc,
             v: v_acc,
-            r: acc_instance.r.clone(), // todo!("Check is this is correct. I believe we can get rid off r from the relation def.")
+            r: rE_prime.to_vec(),
+            mleE: mlE
         })
     }
 }

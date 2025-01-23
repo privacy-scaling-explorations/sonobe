@@ -8,7 +8,6 @@ use ark_std::{log2, marker::PhantomData, rand::RngCore, One, UniformRand, Zero};
 
 use super::{
     nova::NIFS as NovaNIFS,
-    pointvsline::{PointVsLine, PointVsLineProof, PointvsLineEvaluationClaim},
     NIFSTrait,
 };
 use crate::arith::{r1cs::R1CS, Arith, ArithRelation};
@@ -21,6 +20,7 @@ use crate::utils::{
     vec::{is_zero_vec, vec_add, vec_scalar_mul},
 };
 use crate::{Curve, Error};
+use crate::folding::temp2::{PointVsLine, PointvsLineEvaluationClaimR1CS, PointVsLineProofR1CS, PointVsLineR1CS};
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct CommittedInstance<C: Curve> {
@@ -116,7 +116,7 @@ impl<C: Curve> Witness<C> {
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<C: Curve> {
-    pub h_proof: PointVsLineProof<C>,
+    pub h_proof: PointVsLineProofR1CS<C>,
     pub mleE1_prime: C::ScalarField,
     pub mleE2_prime: C::ScalarField,
     pub mleT: C::ScalarField,
@@ -219,12 +219,12 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         // Protocol 6
         let (
             h_proof,
-            PointvsLineEvaluationClaim {
+            PointvsLineEvaluationClaimR1CS {
                 mleE1_prime,
                 mleE2_prime,
                 rE_prime,
             },
-        ) = PointVsLine::<C, T>::prove(transcript, U_i, u_i, W_i, w_i)?;
+        ) = PointVsLineR1CS::<C, T>::prove(transcript, U_i, u_i, W_i, w_i)?;
 
         // Protocol 7
 
@@ -287,7 +287,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         transcript.absorb(&pp_hash);
         transcript.absorb(U_i);
         transcript.absorb(u_i);
-        let rE_prime = PointVsLine::<C, T>::verify(
+        let rE_prime = PointVsLineR1CS::<C, T>::verify(
             transcript,
             U_i,
             u_i,

@@ -282,32 +282,35 @@ NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
     fn verify(
         transcript: &mut T,
         pp_hash: C::ScalarField,
-        U_i: &RelaxedCommitedRelation<C>,
-        u_i: &RelaxedCommitedRelation<C>,
+        simple_instance: &RelaxedCommitedRelation<C>,
+        acc_instance: &RelaxedCommitedRelation<C>,
         proof: &Proof<C>,
     ) -> Result<(Self::CommittedInstance, Vec<bool>), Error> {
+
         transcript.absorb(&pp_hash);
-        transcript.absorb(U_i);
-        transcript.absorb(u_i);
+        transcript.absorb(simple_instance);
+        transcript.absorb(acc_instance);
+
+        // Verify rE_prime
         let rE_prime = PointVsLine::<C, T>::verify(
             transcript,
-            U_i,
-            u_i,
+            simple_instance,
+            acc_instance,
             &proof.h_proof,
             &proof.mleE2_prime, // todo!("Update verify method")
             &proof.mleE2_prime,
         )?;
 
+        // Derive alpha
         transcript.absorb(&proof.mleE2_prime);
         transcript.absorb(&proof.mleT);
-
         let alpha: C::ScalarField = transcript.get_challenge();
 
         Ok((
             Self::fold_committed_instance(
                 alpha,
-                U_i,
-                u_i,
+                simple_instance,
+                acc_instance,
                 &rE_prime,
                 &proof.mleE2_prime,
                 &proof.mleT,

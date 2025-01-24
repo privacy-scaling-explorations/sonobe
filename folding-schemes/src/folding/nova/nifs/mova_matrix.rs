@@ -8,12 +8,16 @@ use ark_std::{log2, marker::PhantomData, rand::RngCore, One, UniformRand, Zero};
 
 use crate::arith::r1cs::R1CS;
 use crate::commitment::CommitmentScheme;
-use crate::folding::nova::nifs::pointvsline::{PointVsLine, PointVsLineEvaluationClaimMatrix, PointVsLineMatrix, PointVsLineProofMatrix};
+use crate::folding::nova::nifs::pointvsline::{
+    PointVsLine, PointVsLineEvaluationClaimMatrix, PointVsLineMatrix, PointVsLineProofMatrix,
+};
 use crate::folding::nova::nifs::NIFSTrait;
 use crate::folding::traits::Dummy;
 use crate::transcript::Transcript;
 use crate::utils::mle::dense_vec_to_dense_mle;
-use crate::utils::vec::{hadamard, is_zero_vec, mat_vec_mul, mat_vec_mul_dense, vec_add, vec_scalar_mul, vec_sub};
+use crate::utils::vec::{
+    hadamard, is_zero_vec, vec_add, vec_scalar_mul, vec_sub,
+};
 use crate::{Curve, Error};
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize)]
 pub struct RelaxedCommitedRelation<C: Curve> {
@@ -21,9 +25,8 @@ pub struct RelaxedCommitedRelation<C: Curve> {
     pub cmB: C,
     pub cmC: C,
     pub u: C::ScalarField,
-    pub v: C::ScalarField,
+    pub mleE: C::ScalarField,   // v in MOVA notation
     pub rE: Vec<C::ScalarField>,
-    pub mleE: C::ScalarField,
 }
 
 impl<C: Curve> Absorb for RelaxedCommitedRelation<C> {
@@ -36,9 +39,9 @@ impl<C: Curve> Absorb for RelaxedCommitedRelation<C> {
         self.cmB.to_native_sponge_field_elements(dest);
         self.cmC.to_native_sponge_field_elements(dest);
         self.u.to_sponge_field_elements(dest);
-        self.v.to_sponge_field_elements(dest);
-        self.rE.to_sponge_field_elements(dest);
         self.mleE.to_sponge_field_elements(dest);
+        self.rE.to_sponge_field_elements(dest);
+
     }
 }
 
@@ -49,9 +52,8 @@ impl<C: Curve> Dummy<usize> for RelaxedCommitedRelation<C> {
             cmB: C::zero(),
             cmC: C::zero(),
             u: C::ScalarField::zero(),
-            v: C::ScalarField::zero(),
-            rE: vec![C::ScalarField::zero(); 2 * log_n],
             mleE: C::ScalarField::zero(),
+            rE: vec![C::ScalarField::zero(); 2 * log_n],
         }
     }
 }
@@ -112,9 +114,8 @@ impl<C: Curve> Witness<C> {
             cmB: com_b,
             cmC: com_c,
             u: C::ScalarField::one(),
-            v: C::ScalarField::one(),
-            rE,
             mleE,
+            rE,
         })
     }
 }
@@ -205,7 +206,10 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         let a_acc = vec_add(&vec_scalar_mul(&acc_wit.A, &alpha), &simple_wit.A)?;
         let b_acc = vec_add(&vec_scalar_mul(&acc_wit.B, &alpha), &simple_wit.B)?;
         let c_acc = vec_add(&vec_scalar_mul(&acc_wit.C, &alpha), &simple_wit.C)?;
-        let e_acc = vec_add(&vec_scalar_mul(aux, &alpha), &vec_scalar_mul(&acc_wit.E, &a2))?;
+        let e_acc = vec_add(
+            &vec_scalar_mul(aux, &alpha),
+            &vec_scalar_mul(&acc_wit.E, &a2),
+        )?;
 
         Ok(Witness::<C> {
             A: a_acc,
@@ -272,7 +276,6 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         let A1B2B1A2 = vec_add(&A1B2, &B1A2)?;
         let u2c1: Vec<C::ScalarField> = vec_scalar_mul(&simple_witness.C, &acc_instance.u);
         let T = vec_sub(&vec_sub(&A1B2B1A2, &acc_witness.C)?, &u2c1)?;
-
 
         // Compute MLE_T
         let n_vars: usize = log2(simple_witness.E.len()) as usize;
@@ -384,23 +387,15 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
 
         // Update scalars
         let u_acc = alpha + acc_instance.u;
-        let a2 = alpha * alpha;
-        let mlE = *mleT * alpha + a2 * mleE2_prime;
-
-        // Fold MLE
-        // todo!("Not in the paper, check again later");
-        // Actually in the paper its the v Possible needs to be chanched in teh whole protocol
-        // NOTICE HERE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        // let mlE = mleE2_prime + alpha * *mleT;
+        let mlE = mleE2_prime + alpha * *mleT;
 
         Ok(RelaxedCommitedRelation::<C> {
             cmA: com_a_acc,
             cmB: com_b_acc,
             cmC: com_c_acc,
             u: u_acc,
-            v: acc_instance.v,
-            rE: rE_prime.to_vec(),
             mleE: mlE,
+            rE: rE_prime.to_vec(),
         })
     }
 }

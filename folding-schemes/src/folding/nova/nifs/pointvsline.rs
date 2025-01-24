@@ -85,9 +85,7 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> for PointVsLineR
         w1: &Self::Witness,
         w2: &Self::Witness,
     ) -> Result<(Self::PointVsLineProof, Self::PointVsLineEvaluationClaim), Error> {
-        let ci1 = ci1.ok_or_else(|| {
-            Error::Other("Missing ci1 in R1CS prove".to_string())
-        })?;
+        let ci1 = ci1.ok_or_else(|| Error::Other("Missing ci1 in R1CS prove".to_string()))?;
 
         let n_vars: usize = log2(w1.E.len()) as usize;
 
@@ -151,8 +149,9 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> for PointVsLineR
                 return Err(Error::NotEqual);
             }
         } else {
-            return Err(Error::Other("Missing mleE1_prime in R1CS verify".to_string()));
-
+            return Err(Error::Other(
+                "Missing mleE1_prime in R1CS verify".to_string(),
+            ));
         }
 
         if *mleE2_prime != proof.h2.evaluate(&beta) {

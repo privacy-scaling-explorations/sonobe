@@ -1,46 +1,43 @@
-use std::marker::PhantomData;
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ff::PrimeField;
 use ark_poly::Polynomial;
 /// Mova-like folding for matrix multiplications as desbribed in !todo(add reference to paper if public)
 // !todo(Add blinding factor to suport hiding property).
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::{log2, marker::PhantomData, rand::RngCore, One, UniformRand, Zero};
 
-use ark_serialize::CanonicalSerialize;
-use ark_std::log2;
-use ark_std::rand::RngCore;
-use crate::commitment::CommitmentScheme;
-use crate::{Curve, Error};
 use crate::arith::r1cs::R1CS;
+use crate::commitment::CommitmentScheme;
+use crate::folding::nova::nifs::pointvsline::{PointVsLine, PointVsLineEvaluationClaimMatrix, PointVsLineMatrix, PointVsLineProofMatrix};
 use crate::folding::nova::nifs::NIFSTrait;
-use crate::folding::nova::nifs::pointvsline::{PointVsLine, PointVsLineProof, PointvsLineEvaluationClaim};
 use crate::folding::traits::Dummy;
 use crate::transcript::Transcript;
 use crate::utils::mle::dense_vec_to_dense_mle;
-use crate::utils::vec::{is_zero_vec, mat_vec_mul, mat_vec_mul_dense};
+use crate::utils::vec::{hadamard, is_zero_vec, mat_vec_mul, mat_vec_mul_dense, vec_add, vec_scalar_mul, vec_sub};
+use crate::{Curve, Error};
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize)]
 pub struct RelaxedCommitedRelation<C: Curve> {
-    com_a: C,
-    com_b: C,
-    com_c: C,
-    u: C::ScalarField,
-    v: C::ScalarField,
-    r: Vec<C::ScalarField>,
-    mleE: C::ScalarField,
+    pub cmA: C,
+    pub cmB: C,
+    pub cmC: C,
+    pub u: C::ScalarField,
+    pub v: C::ScalarField,
+    pub rE: Vec<C::ScalarField>,
+    pub mleE: C::ScalarField,
 }
 
 impl<C: Curve> Absorb for RelaxedCommitedRelation<C> {
-    fn to_sponge_bytes(&self, _dest: &mut Vec<u8>) {
-        // This is never called
-        unimplemented!()
+    fn to_sponge_bytes(&self, dest: &mut Vec<u8>) {
+        C::ScalarField::batch_to_sponge_bytes(&self.to_sponge_field_elements_as_vec(), dest);
     }
 
     fn to_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
-        self.com_a.to_native_sponge_field_elements(dest);
-        self.com_b.to_native_sponge_field_elements(dest);
-        self.com_c.to_native_sponge_field_elements(dest);
+        self.cmA.to_native_sponge_field_elements(dest);
+        self.cmB.to_native_sponge_field_elements(dest);
+        self.cmC.to_native_sponge_field_elements(dest);
         self.u.to_sponge_field_elements(dest);
         self.v.to_sponge_field_elements(dest);
-        self.r.to_sponge_field_elements(dest);
+        self.rE.to_sponge_field_elements(dest);
         self.mleE.to_sponge_field_elements(dest);
     }
 }
@@ -48,12 +45,12 @@ impl<C: Curve> Absorb for RelaxedCommitedRelation<C> {
 impl<C: Curve> Dummy<usize> for RelaxedCommitedRelation<C> {
     fn dummy(log_n: usize) -> Self {
         Self {
-            com_a: C::zero(),
-            com_b: C::zero(),
-            com_c: C::zero(),
+            cmA: C::zero(),
+            cmB: C::zero(),
+            cmC: C::zero(),
             u: C::ScalarField::zero(),
             v: C::ScalarField::zero(),
-            r: vec![C::ScalarField::zero(); 2 * log_n],
+            rE: vec![C::ScalarField::zero(); 2 * log_n],
             mleE: C::ScalarField::zero(),
         }
     }
@@ -67,13 +64,29 @@ pub struct Witness<C: Curve> {
     pub E: Vec<C::ScalarField>,
 }
 
+impl<C: Curve> Dummy<usize> for Witness<C> {
+    fn dummy(size: usize) -> Self {
+        Self {
+            A: vec![C::ScalarField::zero(); size],
+            B: vec![C::ScalarField::zero(); size],
+            C: vec![C::ScalarField::zero(); size],
+            E: vec![C::ScalarField::zero(); size],
+        }
+    }
+}
+
 impl<C: Curve> Witness<C> {
-    pub fn new<const H: bool>(a: Vec<C::ScalarField>, b: Vec<C::ScalarField>, c: Vec<C::ScalarField>, e: Vec<C::ScalarField>) -> Self {
+    pub fn new<const H: bool>(
+        a: Vec<C::ScalarField>,
+        b: Vec<C::ScalarField>,
+        c: Vec<C::ScalarField>,
+        e: Vec<C::ScalarField>,
+    ) -> Self {
         Self {
             A: a,
             B: b,
             C: c,
-            E: e
+            E: e,
         }
     }
 
@@ -95,25 +108,23 @@ impl<C: Curve> Witness<C> {
 
         // todo!("Check if this is the right place for generating r");
         Ok(RelaxedCommitedRelation {
-            com_a,
-            com_b,
-            com_c,
+            cmA: com_a,
+            cmB: com_b,
+            cmC: com_c,
             u: C::ScalarField::one(),
             v: C::ScalarField::one(),
-            r: rE,
+            rE,
             mleE,
         })
     }
 }
 
-// todo!("Review and update proof fields")
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<C: Curve> {
-    pub h_proof: PointVsLineProof<C>,
+    pub h_proof: PointVsLineProofMatrix<C>,
     pub mleE2_prime: C::ScalarField,
     pub mleT: C::ScalarField,
 }
-
 
 /// Implements the Non-Interactive Folding Scheme described in section 4 of
 /// [Mova](https://eprint.iacr.org/2024/1220.pdf).
@@ -129,9 +140,8 @@ pub struct NIFS<
     _ct: PhantomData<T>,
 }
 
-
 impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
-NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
+    NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
 {
     type CommittedInstance = RelaxedCommitedRelation<C>;
     type Witness = Witness<C>;
@@ -140,22 +150,33 @@ NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
 
     // Right now we are packing the 4 matrices in a single vector to achieve compatibility with NIFStrait.
     fn new_witness(abce: Vec<C::ScalarField>, e_len: usize, rng: impl RngCore) -> Self::Witness {
-        assert_eq!(abce.len() % 4, 0); // Check for proper length.
+        assert_eq!(
+            abce.len() % 4,
+            0,
+            "Input vector length must be a multiple of 4"
+        );
         let chunk_size = e_len / 4;
-        let mut iter = abce.into_iter();
 
-        let a: Vec<C::ScalarField> = iter.by_ref().take(chunk_size).collect();
-        let b: Vec<C::ScalarField> = iter.by_ref().take(chunk_size).collect();
-        let c: Vec<C::ScalarField> = iter.by_ref().take(chunk_size).collect();
-        let e: Vec<C::ScalarField> = iter.collect();
-        Witness::new::<H>(a, b, c, e)
+        // let mut iter = abce.into_iter();
+        //
+        // let a: Vec<C::ScalarField> = iter.by_ref().take(chunk_size).collect();
+        // let b: Vec<C::ScalarField> = iter.by_ref().take(chunk_size).collect();
+        // let c: Vec<C::ScalarField> = iter.by_ref().take(chunk_size).collect();
+        // let e: Vec<C::ScalarField> = iter.collect();
+        // Witness::new::<H>(a, b, c, e)
+
+        // I think this way is more efficient
+        let (a, rest) = abce.split_at(chunk_size);
+        let (b, rest) = rest.split_at(chunk_size);
+        let (c, e) = rest.split_at(chunk_size);
+        Witness::new::<H>(a.to_vec(), b.to_vec(), c.to_vec(), e.to_vec())
     }
 
     fn new_instance(
         mut rng: impl RngCore,
         params: &CS::ProverParams,
         witness: &Self::Witness,
-        x: Vec<C::ScalarField>,
+        _x: Vec<C::ScalarField>,
         aux: Vec<C::ScalarField>, // = r_E
     ) -> Result<Self::CommittedInstance, Error> {
         let mut rE = aux.clone();
@@ -165,8 +186,7 @@ NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
                 .map(|_| C::ScalarField::rand(&mut rng))
                 .collect();
         }
-        witness.commit(params, rE)
-
+        witness.commit::<CS, H>(params, rE)
     }
 
     // Protocol 5 - point 8 (Page 25)
@@ -176,16 +196,22 @@ NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
         acc_wit: &Witness<C>,
         aux: &Vec<C::ScalarField>, // T in Mova's notation
     ) -> Result<Witness<C>, Error> {
-        let a_acc = alpha * &simple_wit.A + &acc_wit.A;
-        let b_acc = alpha * &simple_wit.B + &acc_wit.B;
-        let c_acc = alpha * &simple_wit.C + &acc_wit.C;
-        let e_acc = &acc_wit.E + alpha * aux;
+        // let a_acc = alpha * &simple_wit.A + &acc_wit.A;
+        // let b_acc = alpha * &simple_wit.B + &acc_wit.B;
+        // let c_acc = alpha * &simple_wit.C + &acc_wit.C;
+        // let e_acc = &acc_wit.E + alpha * aux;
+
+        let a2 = alpha * alpha;
+        let a_acc = vec_add(&vec_scalar_mul(&acc_wit.A, &alpha), &simple_wit.A)?;
+        let b_acc = vec_add(&vec_scalar_mul(&acc_wit.B, &alpha), &simple_wit.B)?;
+        let c_acc = vec_add(&vec_scalar_mul(&acc_wit.C, &alpha), &simple_wit.C)?;
+        let e_acc = vec_add(&vec_scalar_mul(aux, &alpha), &vec_scalar_mul(&acc_wit.E, &a2))?;
 
         Ok(Witness::<C> {
             A: a_acc,
             B: b_acc,
             C: c_acc,
-            E: e_acc
+            E: e_acc,
         })
     }
 
@@ -211,31 +237,42 @@ NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
         ),
         Error,
     > {
-
         transcript.absorb(&pp_hash);
         transcript.absorb(simple_instance);
         transcript.absorb(acc_instance);
 
-        // Protocol 5 - Steps 2-3
+        // Protocol 5 - Steps 1-3
         let (
             h_proof,
-            PointvsLineEvaluationClaim {
-                mleE1_prime, // todo!("Needs to be removed when the new protocol is done")
+            PointVsLineEvaluationClaimMatrix {
                 mleE2_prime,
                 rE_prime,
             },
-        ) = PointVsLine::<C, T>::prove(transcript, simple_instance, acc_instance, simple_witness, acc_witness)?;
+        ) = PointVsLineMatrix::<C, T>::prove(
+            transcript,
+            None,
+            acc_instance,
+            simple_witness,
+            acc_witness,
+        )?;
 
         transcript.absorb(&mleE2_prime);
 
         // compute the Cross Term
-        let T: Vec<C::ScalarField> = {
-            // todo!("Change to sparse Matrices. Review witness types")
-            let a1b2: Vec<C::ScalarField> = mat_vec_mul_dense(&simple_witness.A, &acc_witness.B)?;
-            let a2b1: Vec<C::ScalarField> = mat_vec_mul_dense(&acc_witness.A, &simple_witness.B)?;
-            let u2c1: Vec<C::ScalarField> = mat_vec_mul_dense(&acc_instance.u, &simple_witness.C)?;
-            a1b2 + a2b1 - u2c1 - &acc_witness.C
-        };
+        // let T: Vec<C::ScalarField> = {
+        //     // todo!("Change to sparse Matrices. Review witness types")
+        //     let a1b2: Vec<C::ScalarField> = mat_vec_mul_dense(&simple_witness.A, &acc_witness.B)?;
+        //     let a2b1: Vec<C::ScalarField> = mat_vec_mul_dense(&acc_witness.A, &simple_witness.B)?;
+        //     let u2c1: Vec<C::ScalarField> = mat_vec_mul_dense(&acc_instance.u, &simple_witness.C)?;
+        //     a1b2 + a2b1 - u2c1 - &acc_witness.C
+        // };
+
+        let A1B2 = hadamard(&simple_witness.A, &acc_witness.B)?;
+        let B1A2 = hadamard(&simple_witness.B, &acc_witness.A)?;
+        let A1B2B1A2 = vec_add(&A1B2, &B1A2)?;
+        let u2c1: Vec<C::ScalarField> = vec_scalar_mul(&simple_witness.C, &acc_instance.u);
+        let T = vec_sub(&vec_sub(&A1B2B1A2, &acc_witness.C)?, &u2c1)?;
+
 
         // Compute MLE_T
         let n_vars: usize = log2(simple_witness.E.len()) as usize;
@@ -252,7 +289,7 @@ NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
 
         let ci = Self::fold_committed_instance(
             alpha,
-            simple_witness,
+            simple_instance,
             acc_instance,
             &rE_prime,
             &mleE2_prime,
@@ -263,7 +300,6 @@ NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
         // todo!(Review when new Pointvsline protocol is ready)
         let proof = Self::Proof {
             h_proof,
-            mleE1_prime,
             mleE2_prime,
             mleT: mleT_evaluated,
         };
@@ -272,7 +308,7 @@ NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
             ci,
             proof,
             vec![], // r_bits, returned to be passed as inputs to the circuit, not used at the
-            // current impl status
+                    // current impl status
         ))
     }
 
@@ -286,18 +322,17 @@ NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
         acc_instance: &RelaxedCommitedRelation<C>,
         proof: &Proof<C>,
     ) -> Result<(Self::CommittedInstance, Vec<bool>), Error> {
-
         transcript.absorb(&pp_hash);
         transcript.absorb(simple_instance);
         transcript.absorb(acc_instance);
 
         // Verify rE_prime
-        let rE_prime = PointVsLine::<C, T>::verify(
+        let rE_prime = PointVsLineMatrix::<C, T>::verify(
             transcript,
             simple_instance,
             acc_instance,
             &proof.h_proof,
-            &proof.mleE2_prime, // todo!("Update verify method")
+            None,
             &proof.mleE2_prime,
         )?;
 
@@ -321,7 +356,7 @@ NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
 }
 
 impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
-NIFS<C, CS, T, H>
+    NIFS<C, CS, T, H>
 {
     // Protocol 5 - Step 7 (page 25)
     // todo!("Make sure sparse multiplications are optimized")
@@ -335,26 +370,37 @@ NIFS<C, CS, T, H>
     ) -> Result<RelaxedCommitedRelation<C>, Error> {
         // Step 7
         // Accumulate commitments
-        let com_a_acc = alpha * simple_instance.com_a + acc_instance.com_a;
-        let com_b_acc = alpha * simple_instance.com_b + acc_instance.com_b;
-        let com_c_acc = alpha * simple_instance.com_c + acc_instance.com_c;
+        // let com_a_acc = alpha * simple_instance.cmA + acc_instance.cmA;
+        // let com_b_acc = alpha * simple_instance.cmB + acc_instance.cmB;
+        // let com_c_acc = alpha * simple_instance.cmC + acc_instance.cmC;
+        // let a2 = alpha * alpha;
+        // let a_acc = vec_add(&vec_scalar_mul(&acc_wit.A, &alpha), &simple_wit.A)?;
+        // let b_acc = vec_add(&vec_scalar_mul(&acc_wit.B, &alpha), &simple_wit.B)?;
+        // let c_acc = vec_add(&vec_scalar_mul(&acc_wit.C, &alpha), &simple_wit.C)?;
+        // let e_acc = vec_add(&vec_scalar_mul(aux, &alpha), &vec_scalar_mul(&acc_wit.E, &a2))?;
+        let com_a_acc = simple_instance.cmA + acc_instance.cmA.mul(alpha);
+        let com_b_acc = simple_instance.cmB + acc_instance.cmB.mul(alpha);
+        let com_c_acc = simple_instance.cmC + acc_instance.cmC.mul(alpha);
 
         // Update scalars
         let u_acc = alpha + acc_instance.u;
-        let v_acc = mleE2_prime + alpha * mleT;
+        let a2 = alpha * alpha;
+        let mlE = *mleT * alpha + a2 * mleE2_prime;
 
         // Fold MLE
         // todo!("Not in the paper, check again later");
-        let mlE = mleE2_prime + alpha * mleT;
+        // Actually in the paper its the v Possible needs to be chanched in teh whole protocol
+        // NOTICE HERE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        // let mlE = mleE2_prime + alpha * *mleT;
 
         Ok(RelaxedCommitedRelation::<C> {
-            com_a: com_a_acc,
-            com_b: com_b_acc,
-            com_c: com_c_acc,
+            cmA: com_a_acc,
+            cmB: com_b_acc,
+            cmC: com_c_acc,
             u: u_acc,
-            v: v_acc,
-            r: rE_prime.to_vec(),
-            mleE: mlE
+            v: acc_instance.v,
+            rE: rE_prime.to_vec(),
+            mleE: mlE,
         })
     }
 }

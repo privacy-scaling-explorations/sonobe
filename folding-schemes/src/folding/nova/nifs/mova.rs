@@ -6,13 +6,13 @@ use ark_poly::Polynomial;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{log2, marker::PhantomData, rand::RngCore, One, UniformRand, Zero};
 
-use super::{
-    nova::NIFS as NovaNIFS,
-    NIFSTrait,
-};
+use super::{nova::NIFS as NovaNIFS, NIFSTrait};
 use crate::arith::{r1cs::R1CS, Arith, ArithRelation};
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::CF1;
+use crate::folding::nova::nifs::pointvsline::{
+    PointVsLine, PointVsLineEvaluationClaimR1CS, PointVsLineProofR1CS, PointVsLineR1CS,
+};
 use crate::folding::traits::Dummy;
 use crate::transcript::Transcript;
 use crate::utils::{
@@ -20,7 +20,6 @@ use crate::utils::{
     vec::{is_zero_vec, vec_add, vec_scalar_mul},
 };
 use crate::{Curve, Error};
-use crate::folding::temp2::{PointVsLine, PointvsLineEvaluationClaimR1CS, PointVsLineProofR1CS, PointVsLineR1CS};
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct CommittedInstance<C: Curve> {
@@ -34,9 +33,8 @@ pub struct CommittedInstance<C: Curve> {
 }
 
 impl<C: Curve> Absorb for CommittedInstance<C> {
-    fn to_sponge_bytes(&self, _dest: &mut Vec<u8>) {
-        // This is never called
-        unimplemented!()
+    fn to_sponge_bytes(&self, dest: &mut Vec<u8>) {
+        C::ScalarField::batch_to_sponge_bytes(&self.to_sponge_field_elements_as_vec(), dest);
     }
 
     fn to_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
@@ -219,12 +217,12 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         // Protocol 6
         let (
             h_proof,
-            PointvsLineEvaluationClaimR1CS {
+            PointVsLineEvaluationClaimR1CS {
                 mleE1_prime,
                 mleE2_prime,
                 rE_prime,
             },
-        ) = PointVsLineR1CS::<C, T>::prove(transcript, U_i, u_i, W_i, w_i)?;
+        ) = PointVsLineR1CS::<C, T>::prove(transcript, Some(U_i), u_i, W_i, w_i)?;
 
         // Protocol 7
 
@@ -292,7 +290,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
             U_i,
             u_i,
             &proof.h_proof,
-            &proof.mleE1_prime,
+            Some(&proof.mleE1_prime),
             &proof.mleE2_prime,
         )?;
 

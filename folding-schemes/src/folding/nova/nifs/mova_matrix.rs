@@ -158,15 +158,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         );
         let chunk_size = e_len / 4;
 
-        // let mut iter = abce.into_iter();
-        //
-        // let a: Vec<C::ScalarField> = iter.by_ref().take(chunk_size).collect();
-        // let b: Vec<C::ScalarField> = iter.by_ref().take(chunk_size).collect();
-        // let c: Vec<C::ScalarField> = iter.by_ref().take(chunk_size).collect();
-        // let e: Vec<C::ScalarField> = iter.collect();
-        // Witness::new::<H>(a, b, c, e)
-
-        // I think this way is more efficient
+        // Split vector into matrices
         let (a, rest) = abce.split_at(chunk_size);
         let (b, rest) = rest.split_at(chunk_size);
         let (c, e) = rest.split_at(chunk_size);
@@ -373,17 +365,9 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
     ) -> Result<RelaxedCommitedRelation<C>, Error> {
         // Step 7
         // Accumulate commitments
-        // let com_a_acc = alpha * simple_instance.cmA + acc_instance.cmA;
-        // let com_b_acc = alpha * simple_instance.cmB + acc_instance.cmB;
-        // let com_c_acc = alpha * simple_instance.cmC + acc_instance.cmC;
-        // let a2 = alpha * alpha;
-        // let a_acc = vec_add(&vec_scalar_mul(&acc_wit.A, &alpha), &simple_wit.A)?;
-        // let b_acc = vec_add(&vec_scalar_mul(&acc_wit.B, &alpha), &simple_wit.B)?;
-        // let c_acc = vec_add(&vec_scalar_mul(&acc_wit.C, &alpha), &simple_wit.C)?;
-        // let e_acc = vec_add(&vec_scalar_mul(aux, &alpha), &vec_scalar_mul(&acc_wit.E, &a2))?;
-        let com_a_acc = simple_instance.cmA + acc_instance.cmA.mul(alpha);
-        let com_b_acc = simple_instance.cmB + acc_instance.cmB.mul(alpha);
-        let com_c_acc = simple_instance.cmC + acc_instance.cmC.mul(alpha);
+        let com_a_acc = simple_instance.cmA.mul(alpha) + acc_instance.cmA;
+        let com_b_acc = simple_instance.cmB.mul(alpha) + acc_instance.cmB;
+        let com_c_acc = simple_instance.cmC.mul(alpha) + acc_instance.cmC;
 
         // Update scalars
         let u_acc = alpha + acc_instance.u;

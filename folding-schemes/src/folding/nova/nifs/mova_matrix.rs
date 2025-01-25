@@ -189,18 +189,12 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         acc_wit: &Witness<C>,
         aux: &Vec<C::ScalarField>, // T in Mova's notation
     ) -> Result<Witness<C>, Error> {
-        // let a_acc = alpha * &simple_wit.A + &acc_wit.A;
-        // let b_acc = alpha * &simple_wit.B + &acc_wit.B;
-        // let c_acc = alpha * &simple_wit.C + &acc_wit.C;
-        // let e_acc = &acc_wit.E + alpha * aux;
-
-        let a2 = alpha * alpha;
-        let a_acc = vec_add(&vec_scalar_mul(&acc_wit.A, &alpha), &simple_wit.A)?;
-        let b_acc = vec_add(&vec_scalar_mul(&acc_wit.B, &alpha), &simple_wit.B)?;
-        let c_acc = vec_add(&vec_scalar_mul(&acc_wit.C, &alpha), &simple_wit.C)?;
+        let a_acc = vec_add(&vec_scalar_mul(&simple_wit.A, &alpha), &acc_wit.A)?;
+        let b_acc = vec_add(&vec_scalar_mul(&simple_wit.B, &alpha), &acc_wit.B)?;
+        let c_acc = vec_add(&vec_scalar_mul(&simple_wit.C, &alpha), &acc_wit.C)?;
         let e_acc = vec_add(
             &vec_scalar_mul(aux, &alpha),
-            &vec_scalar_mul(&acc_wit.E, &a2),
+            &acc_wit.E
         )?;
 
         Ok(Witness::<C> {

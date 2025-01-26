@@ -15,9 +15,7 @@ use crate::folding::nova::nifs::NIFSTrait;
 use crate::folding::traits::Dummy;
 use crate::transcript::Transcript;
 use crate::utils::mle::dense_vec_to_dense_mle;
-use crate::utils::vec::{
-    hadamard, is_zero_vec, vec_add, vec_scalar_mul, vec_sub,
-};
+use crate::utils::vec::{is_zero_vec, mat_mat_mul_dense, vec_add, vec_scalar_mul, vec_sub};
 use crate::{Curve, Error};
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize)]
 pub struct RelaxedCommitedRelation<C: Curve> {
@@ -248,17 +246,10 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
 
         transcript.absorb(&mleE2_prime);
 
-        // compute the Cross Term
-        // let T: Vec<C::ScalarField> = {
-        //     // todo!("Change to sparse Matrices. Review witness types")
-        //     let a1b2: Vec<C::ScalarField> = mat_vec_mul_dense(&simple_witness.A, &acc_witness.B)?;
-        //     let a2b1: Vec<C::ScalarField> = mat_vec_mul_dense(&acc_witness.A, &simple_witness.B)?;
-        //     let u2c1: Vec<C::ScalarField> = mat_vec_mul_dense(&acc_instance.u, &simple_witness.C)?;
-        //     a1b2 + a2b1 - u2c1 - &acc_witness.C
-        // };
-
-        let A1B2 = hadamard(&simple_witness.A, &acc_witness.B)?;
-        let B1A2 = hadamard(&simple_witness.B, &acc_witness.A)?;
+        // todo!("Change to sparse Matrices. Review witness types")
+        // Compute cross term T
+        let A1B2 = mat_mat_mul_dense(&simple_witness.A, &acc_witness.B)?;
+        let B1A2 = mat_mat_mul_dense(&acc_witness.A, &simple_witness.B)?;
         let A1B2B1A2 = vec_add(&A1B2, &B1A2)?;
         let u2c1: Vec<C::ScalarField> = vec_scalar_mul(&simple_witness.C, &acc_instance.u);
         let T = vec_sub(&vec_sub(&A1B2B1A2, &acc_witness.C)?, &u2c1)?;
@@ -365,7 +356,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
 
         // Update scalars
         let u_acc = alpha + acc_instance.u;
-        let mlE = mleE2_prime + alpha * *mleT;
+        let mlE = *mleE2_prime + alpha * *mleT;
 
         Ok(RelaxedCommitedRelation::<C> {
             cmA: com_a_acc,

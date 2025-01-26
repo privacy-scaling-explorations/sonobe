@@ -138,7 +138,7 @@ pub fn mat_mat_mul_dense<F: PrimeField>(M1: &[F], M2: &[F]) -> Result<Vec<F>, Er
     if M1.is_empty() || M2.is_empty() {
         return Err(Error::Empty);
     }
-    if M1.len() !=  M2.len() {
+    if M1.len() != M2.len() {
         return Err(Error::NotSameLength(
             "M1.len()".to_string(),
             M1.len(),
@@ -151,7 +151,7 @@ pub fn mat_mat_mul_dense<F: PrimeField>(M1: &[F], M2: &[F]) -> Result<Vec<F>, Er
     let cols = rows;
     let m_len = rows * cols;
     if rows * cols != M1.len() {
-        return Err(Error::NotExpectedLength(m_len, M1.len()))
+        return Err(Error::NotExpectedLength(m_len, M1.len()));
     }
 
     let indices: Vec<_> = (0..rows).collect();
@@ -288,7 +288,10 @@ pub mod tests {
     fn test_mat_mat_mul_dense_1() -> Result<(), Error> {
         let a = to_F_vec::<Fr>(vec![1, 2, 3, 4, 5, 6, 7, 8, 9]);
         let b = to_F_vec::<Fr>(vec![1, 2, 3, 4, 5, 6, 7, 8, 9]);
-        assert_eq!(mat_mat_mul_dense(&a, &b)?, to_F_vec(vec![30, 36, 42, 66, 81, 96, 102, 126, 150]));
+        assert_eq!(
+            mat_mat_mul_dense(&a, &b)?,
+            to_F_vec(vec![30, 36, 42, 66, 81, 96, 102, 126, 150])
+        );
         Ok(())
     }
 
@@ -299,5 +302,4 @@ pub mod tests {
         assert_eq!(mat_mat_mul_dense(&a, &b)?, to_F_vec(vec![8, 5, 20, 13]));
         Ok(())
     }
-
 }

@@ -23,7 +23,7 @@ pub struct RelaxedCommitedRelation<C: Curve> {
     pub cmB: C,
     pub cmC: C,
     pub u: C::ScalarField,
-    pub mleE: C::ScalarField,   // v in MOVA notation
+    pub mleE: C::ScalarField, // v in MOVA notation
     pub rE: Vec<C::ScalarField>,
 }
 
@@ -39,20 +39,29 @@ impl<C: Curve> Absorb for RelaxedCommitedRelation<C> {
         self.u.to_sponge_field_elements(dest);
         self.mleE.to_sponge_field_elements(dest);
         self.rE.to_sponge_field_elements(dest);
-
     }
 }
 
 impl<C: Curve> Dummy<usize> for RelaxedCommitedRelation<C> {
-    fn dummy(log_n: usize) -> Self {
+    fn dummy(size: usize) -> Self {
         Self {
             cmA: C::zero(),
             cmB: C::zero(),
             cmC: C::zero(),
             u: C::ScalarField::zero(),
             mleE: C::ScalarField::zero(),
-            rE: vec![C::ScalarField::zero(); 2 * log_n],
+            rE: vec![C::ScalarField::zero(); 2 * size],
         }
+    }
+}
+
+impl<C: Curve> RelaxedCommitedRelation<C> {
+    fn is_simple(&self) -> bool {
+        self.u == C::ScalarField::from(1) && self.mleE == C::ScalarField::zero()
+    }
+
+    fn is_accumulated(&self) -> bool {
+        self.u != C::ScalarField::from(1) && self.mleE != C::ScalarField::zero()
     }
 }
 
@@ -168,7 +177,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         params: &CS::ProverParams,
         witness: &Self::Witness,
         _x: Vec<C::ScalarField>,
-        aux: Vec<C::ScalarField>, // = r_E
+        aux: Vec<C::ScalarField>, // = rE
     ) -> Result<Self::CommittedInstance, Error> {
         let mut rE = aux.clone();
         if is_zero_vec(&rE) {
@@ -190,10 +199,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         let a_acc = vec_add(&vec_scalar_mul(&simple_wit.A, &alpha), &acc_wit.A)?;
         let b_acc = vec_add(&vec_scalar_mul(&simple_wit.B, &alpha), &acc_wit.B)?;
         let c_acc = vec_add(&vec_scalar_mul(&simple_wit.C, &alpha), &acc_wit.C)?;
-        let e_acc = vec_add(
-            &vec_scalar_mul(aux, &alpha),
-            &acc_wit.E
-        )?;
+        let e_acc = vec_add(&vec_scalar_mul(aux, &alpha), &acc_wit.E)?;
 
         Ok(Witness::<C> {
             A: a_acc,
@@ -225,6 +231,16 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         ),
         Error,
     > {
+        // Verify instances have the correct form.
+        // 2 simple instances can be folded, a simple and an accumulated instance can also be folded. 2 accumulated instances cannot be folded
+        if simple_instance.is_accumulated() {
+            return if acc_instance.is_simple() {
+                Err(Error::Other(String::from("Parameters were passed in the wrong order. They need to be reordered.")))
+            } else {
+                Err(Error::Other(String::from("Cannot fold 2 accumulated instances.")))
+            }
+        }
+
         transcript.absorb(&pp_hash);
         transcript.absorb(simple_instance);
         transcript.absorb(acc_instance);

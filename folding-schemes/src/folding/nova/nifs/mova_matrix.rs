@@ -18,7 +18,7 @@ use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::utils::vec::{is_zero_vec, mat_mat_mul_dense, vec_add, vec_scalar_mul, vec_sub};
 use crate::{Curve, Error};
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize)]
-pub struct RelaxedCommitedRelation<C: Curve> {
+pub struct RelaxedCommittedRelation<C: Curve> {
     pub cmA: C,
     pub cmB: C,
     pub cmC: C,
@@ -27,7 +27,7 @@ pub struct RelaxedCommitedRelation<C: Curve> {
     pub rE: Vec<C::ScalarField>,
 }
 
-impl<C: Curve> Absorb for RelaxedCommitedRelation<C> {
+impl<C: Curve> Absorb for RelaxedCommittedRelation<C> {
     fn to_sponge_bytes(&self, dest: &mut Vec<u8>) {
         C::ScalarField::batch_to_sponge_bytes(&self.to_sponge_field_elements_as_vec(), dest);
     }
@@ -42,7 +42,7 @@ impl<C: Curve> Absorb for RelaxedCommitedRelation<C> {
     }
 }
 
-impl<C: Curve> Dummy<usize> for RelaxedCommitedRelation<C> {
+impl<C: Curve> Dummy<usize> for RelaxedCommittedRelation<C> {
     fn dummy(size: usize) -> Self {
         Self {
             cmA: C::zero(),
@@ -55,7 +55,7 @@ impl<C: Curve> Dummy<usize> for RelaxedCommitedRelation<C> {
     }
 }
 
-impl<C: Curve> RelaxedCommitedRelation<C> {
+impl<C: Curve> RelaxedCommittedRelation<C> {
     fn is_simple(&self) -> bool {
         self.u == C::ScalarField::from(1) && self.mleE == C::ScalarField::zero()
     }
@@ -103,7 +103,7 @@ impl<C: Curve> Witness<C> {
         &self,
         params: &CS::ProverParams,
         rE: Vec<C::ScalarField>,
-    ) -> Result<RelaxedCommitedRelation<C>, Error> {
+    ) -> Result<RelaxedCommittedRelation<C>, Error> {
         let mut mleE = C::ScalarField::zero();
         if !is_zero_vec::<C::ScalarField>(&self.E) {
             let E = dense_vec_to_dense_mle(log2(self.E.len()) as usize, &self.E);
@@ -116,7 +116,7 @@ impl<C: Curve> Witness<C> {
         let com_c = CS::commit(params, &self.C, &C::ScalarField::zero())?;
 
         // todo!("Check if this is the right place for generating r");
-        Ok(RelaxedCommitedRelation {
+        Ok(RelaxedCommittedRelation {
             cmA: com_a,
             cmB: com_b,
             cmC: com_c,
@@ -137,6 +137,7 @@ pub struct Proof<C: Curve> {
 /// Implements the Non-Interactive Folding Scheme described in section 4 of
 /// [Mova](https://eprint.iacr.org/2024/1220.pdf).
 /// `H` specifies whether the NIFS will use a blinding factor
+#[allow(clippy::upper_case_acronyms)]
 pub struct NIFS<
     C: Curve,
     CS: CommitmentScheme<C, H>,
@@ -151,13 +152,13 @@ pub struct NIFS<
 impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
     NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
 {
-    type CommittedInstance = RelaxedCommitedRelation<C>;
+    type CommittedInstance = RelaxedCommittedRelation<C>;
     type Witness = Witness<C>;
     type ProverAux = Vec<C::ScalarField>; // T in Mova's notation
     type Proof = Proof<C>;
 
     // Right now we are packing the 4 matrices in a single vector to achieve compatibility with NIFStrait.
-    fn new_witness(abce: Vec<C::ScalarField>, e_len: usize, rng: impl RngCore) -> Self::Witness {
+    fn new_witness(abce: Vec<C::ScalarField>, e_len: usize, _rng: impl RngCore) -> Self::Witness {
         assert_eq!(
             abce.len() % 4,
             0,
@@ -215,13 +216,13 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
     #[allow(clippy::type_complexity)]
     fn prove(
         _cs_prover_params: &CS::ProverParams, // not used in Mova since we don't commit to T
-        r1cs: &R1CS<C::ScalarField>,
+        _r1cs: &R1CS<C::ScalarField>,
         transcript: &mut T,
         pp_hash: C::ScalarField,
         simple_witness: &Witness<C>,
-        simple_instance: &RelaxedCommitedRelation<C>,
+        simple_instance: &RelaxedCommittedRelation<C>,
         acc_witness: &Witness<C>,
-        acc_instance: &RelaxedCommitedRelation<C>,
+        acc_instance: &RelaxedCommittedRelation<C>,
     ) -> Result<
         (
             Self::Witness,
@@ -235,10 +236,14 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         // 2 simple instances can be folded, a simple and an accumulated instance can also be folded. 2 accumulated instances cannot be folded
         if simple_instance.is_accumulated() {
             return if acc_instance.is_simple() {
-                Err(Error::Other(String::from("Parameters were passed in the wrong order. They need to be reordered.")))
+                Err(Error::Other(String::from(
+                    "Parameters were passed in the wrong order. They need to be reordered.",
+                )))
             } else {
-                Err(Error::Other(String::from("Cannot fold 2 accumulated instances.")))
-            }
+                Err(Error::Other(String::from(
+                    "Cannot fold 2 accumulated instances.",
+                )))
+            };
         }
 
         transcript.absorb(&pp_hash);
@@ -314,8 +319,8 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
     fn verify(
         transcript: &mut T,
         pp_hash: C::ScalarField,
-        simple_instance: &RelaxedCommitedRelation<C>,
-        acc_instance: &RelaxedCommitedRelation<C>,
+        simple_instance: &RelaxedCommittedRelation<C>,
+        acc_instance: &RelaxedCommittedRelation<C>,
         proof: &Proof<C>,
     ) -> Result<(Self::CommittedInstance, Vec<bool>), Error> {
         transcript.absorb(&pp_hash);
@@ -358,12 +363,12 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
     // todo!("Make sure sparse multiplications are optimized")
     fn fold_committed_instance(
         alpha: C::ScalarField,
-        simple_instance: &RelaxedCommitedRelation<C>,
-        acc_instance: &RelaxedCommitedRelation<C>,
+        simple_instance: &RelaxedCommittedRelation<C>,
+        acc_instance: &RelaxedCommittedRelation<C>,
         rE_prime: &[C::ScalarField],
         mleE2_prime: &C::ScalarField, // v' in Protocol 5
         mleT: &C::ScalarField,
-    ) -> Result<RelaxedCommitedRelation<C>, Error> {
+    ) -> Result<RelaxedCommittedRelation<C>, Error> {
         // Step 7
         // Accumulate commitments
         let com_a_acc = simple_instance.cmA.mul(alpha) + acc_instance.cmA;
@@ -374,7 +379,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         let u_acc = alpha + acc_instance.u;
         let mlE = *mleE2_prime + alpha * *mleT;
 
-        Ok(RelaxedCommitedRelation::<C> {
+        Ok(RelaxedCommittedRelation::<C> {
             cmA: com_a_acc,
             cmB: com_b_acc,
             cmC: com_c_acc,

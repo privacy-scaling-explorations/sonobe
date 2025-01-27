@@ -7,7 +7,7 @@ use ark_std::{log2, Zero};
 use std::fmt::Debug;
 
 use crate::folding::nova::nifs::mova::{CommittedInstance, Witness};
-use crate::folding::nova::nifs::mova_matrix::{RelaxedCommitedRelation, Witness as MatrixWitness};
+use crate::folding::nova::nifs::mova_matrix::{RelaxedCommittedRelation, Witness as MatrixWitness};
 use crate::transcript::Transcript;
 use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::{Curve, Error};
@@ -179,7 +179,7 @@ pub struct PointVsLineMatrix<C: Curve, T: Transcript<C::ScalarField>> {
 impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> for PointVsLineMatrix<C, T> {
     type PointVsLineProof = PointVsLineProofMatrix<C>;
     type PointVsLineEvaluationClaim = PointVsLineEvaluationClaimMatrix<C>;
-    type CommittedInstance = RelaxedCommitedRelation<C>;
+    type CommittedInstance = RelaxedCommittedRelation<C>;
     type Witness = MatrixWitness<C>;
 
     fn prove(

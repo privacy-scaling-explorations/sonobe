@@ -170,7 +170,7 @@ pub fn mat_mat_mul_dense<F: PrimeField>(M1: &[F], M2: &[F]) -> Result<Vec<F>, Er
         })
         .collect();
 
-    Ok(results.into_iter().flat_map(|row| row).collect())
+    Ok(results.into_iter().flatten().collect())
 }
 
 pub fn mat_vec_mul<F: PrimeField>(M: &SparseMatrix<F>, z: &[F]) -> Result<Vec<F>, Error> {

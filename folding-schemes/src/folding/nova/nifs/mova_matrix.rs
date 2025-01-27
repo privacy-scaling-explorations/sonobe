@@ -1,8 +1,8 @@
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ff::PrimeField;
 use ark_poly::Polynomial;
-/// Mova-like folding for matrix multiplications as desbribed in !todo(add reference to paper if public)
-// !todo(Add blinding factor to suport hiding property).
+/// Mova-like folding for matrix multiplications as descbribed in !todo(add reference to paper if public)
+// !todo(Add blinding factor to support hiding property).
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{log2, marker::PhantomData, rand::RngCore, One, UniformRand, Zero};
 

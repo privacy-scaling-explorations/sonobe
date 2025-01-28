@@ -302,10 +302,20 @@ fn compute_l<F: PrimeField>(r1: &[F], r1_sub_r2: &[F], x: F) -> Result<Vec<F>, E
 
 #[cfg(test)]
 mod tests {
-    use super::{compute_h, compute_l};
+    use super::{compute_h, compute_l, PointVsLine, PointVsLineR1CS};
+    use crate::commitment::pedersen::Pedersen;
+    use crate::commitment::CommitmentScheme;
+    use crate::transcript::poseidon::poseidon_canonical_config;
     use crate::Error;
-    use ark_pallas::Fq;
+    use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
+    use ark_pallas::{Fq, Fr, Projective};
     use ark_poly::{DenseMultilinearExtension, DenseUVPolynomial};
+    use ark_std::{log2, UniformRand};
+
+    use crate::folding::nova::nifs::mova::Witness;
+    use crate::folding::nova::nifs::NIFSTrait;
+    use ark_crypto_primitives::sponge::CryptographicSponge;
+    use ark_ff::Zero;
 
     #[test]
     fn test_compute_h() -> Result<(), Error> {
@@ -406,6 +416,8 @@ mod tests {
         assert_eq!(result, expected);
         Ok(())
     }
+
+    #[test]
     fn test_evaluations() -> Result<(), Error> {
         // Basic test with no zero error term to ensure that the folding is correct.
         // This test mainly focuses on if the evaluation of h0 and h1 are correct.

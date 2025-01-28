@@ -30,7 +30,7 @@ pub struct RelaxedCommittedRelation<C: Curve> {
     pub cmB: C,                  // Commitment to matrix B. cmB = commitment(B).
     pub cmC: C,                  // Commitment to matrix C. cmC = commitment(C).
     pub u: C::ScalarField,       // Scalar used in the folding.
-    pub mleE: C::ScalarField,    // v = mle[E](rE) in MOVA notation. Multilinear extension of matrix E evaluated at random point rE.
+    pub mleE: C::ScalarField, // v = mle[E](rE) in MOVA notation. Multilinear extension of matrix E evaluated at random point rE.
     pub rE: Vec<C::ScalarField>, // Random point where MLE is evaluated. Size of 2 * log2(n).
 }
 
@@ -462,37 +462,47 @@ pub mod tests {
         let mat_dim = 4; // 4x4 matrices
 
         // Set up transcript and commitment scheme
-        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, mat_dim * mat_dim).unwrap();
+        let (pedersen_params, _) =
+            Pedersen::<Projective>::setup(&mut rng, mat_dim * mat_dim).unwrap();
         let poseidon_config = poseidon_canonical_config::<Fr>();
         let mut transcript_p = PoseidonSponge::<Fr>::new(&poseidon_config);
         let mut transcript_v = PoseidonSponge::<Fr>::new(&poseidon_config);
         let pp_hash = Fr::rand(&mut rng);
 
         let instances: Vec<(Witness<Projective>, RelaxedCommittedRelation<Projective>)> =
-            get_instances::<Projective, Pedersen<Projective>>(n_instances, mat_dim, &mut rng, &pedersen_params);
+            get_instances::<Projective, Pedersen<Projective>>(
+                n_instances,
+                mat_dim,
+                &mut rng,
+                &pedersen_params,
+            );
 
         let r1cs: R1CS<Fr> = get_test_r1cs();
         for i in 0..instances.len() - 1 {
             // Fold
-            let (_wit_acc, instance_acc, proof, _) = NIFS::<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>::prove(
-                &pedersen_params,
-                &r1cs,
-                &mut transcript_p,
-                pp_hash,
-                &instances[i].0,
-                &instances[i].1,
-                &instances[i + 1].0,
-                &instances[i + 1].1,
-            ).unwrap();
+            let (_wit_acc, instance_acc, proof, _) =
+                NIFS::<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>::prove(
+                    &pedersen_params,
+                    &r1cs,
+                    &mut transcript_p,
+                    pp_hash,
+                    &instances[i].0,
+                    &instances[i].1,
+                    &instances[i + 1].0,
+                    &instances[i + 1].1,
+                )
+                .unwrap();
 
             // Verify
-            let (ci_verify, _) = NIFS::<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>::verify(
-                &mut transcript_v,
-                pp_hash,
-                &instances[i].1,
-                &instances[i + 1].1,
-                &proof,
-            ).unwrap();
+            let (ci_verify, _) =
+                NIFS::<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>::verify(
+                    &mut transcript_v,
+                    pp_hash,
+                    &instances[i].1,
+                    &instances[i + 1].1,
+                    &proof,
+                )
+                .unwrap();
 
             // assert_eq!(instance_acc, ci_verify);
             // rE does not match as it's random, I believe it should not be in the relation if we are already storing mleE.
@@ -513,14 +523,20 @@ pub mod tests {
         let mat_dim = 16; // 16x16 matrices
 
         // Set up transcript and commitment scheme
-        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, mat_dim * mat_dim).unwrap();
+        let (pedersen_params, _) =
+            Pedersen::<Projective>::setup(&mut rng, mat_dim * mat_dim).unwrap();
         let poseidon_config = poseidon_canonical_config::<Fr>();
         let mut transcript_p = PoseidonSponge::<Fr>::new(&poseidon_config);
         let mut transcript_v = PoseidonSponge::<Fr>::new(&poseidon_config);
         let pp_hash = Fr::rand(&mut rng);
 
         let mut instances: Vec<(Witness<Projective>, RelaxedCommittedRelation<Projective>)> =
-            get_instances::<Projective, Pedersen<Projective>>(n_instances, mat_dim, &mut rng, &pedersen_params);
+            get_instances::<Projective, Pedersen<Projective>>(
+                n_instances,
+                mat_dim,
+                &mut rng,
+                &pedersen_params,
+            );
 
         let r1cs: R1CS<Fr> = get_test_r1cs();
 
@@ -541,7 +557,8 @@ pub mod tests {
                     &next_i,
                     &current_acc_wit,
                     &current_acc_inst,
-                ).unwrap();
+                )
+                .unwrap();
 
             // Verify
             let (ci_verify, _) =
@@ -551,7 +568,8 @@ pub mod tests {
                     &next_i,
                     &current_acc_inst,
                     &proof,
-                ).unwrap();
+                )
+                .unwrap();
 
             // rE does not match as it's random, I believe it should not be in the relation if we are already storing mleE.
             assert_eq!(inst_acc.cmA, ci_verify.cmA);

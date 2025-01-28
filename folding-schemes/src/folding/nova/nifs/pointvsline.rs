@@ -406,4 +406,62 @@ mod tests {
         assert_eq!(result, expected);
         Ok(())
     }
+    fn test_evaluations() -> Result<(), Error> {
+        // Basic test with no zero error term to ensure that the folding is correct.
+        // This test mainly focuses on if the evaluation of h0 and h1 are correct.
+        let mut rng = ark_std::test_rng();
+
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, 4)?;
+        let poseidon_config = poseidon_canonical_config::<Fr>();
+        let mut transcript_p = PoseidonSponge::<Fr>::new(&poseidon_config);
+        let mut transcript_v = PoseidonSponge::<Fr>::new(&poseidon_config);
+
+        let W_i = Witness {
+            E: vec![Fr::from(25), Fr::from(50), Fr::from(0), Fr::from(0)],
+            W: vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)],
+            rW: Fr::zero(),
+        };
+        let rE = (0..log2(W_i.E.len())).map(|_| Fr::rand(&mut rng)).collect();
+        // x is not important
+        let x = vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)];
+        let U_i =
+            Witness::commit::<Pedersen<Projective>, false>(&W_i, &pedersen_params, x.clone(), rE)?;
+
+        let w_i = Witness {
+            E: vec![Fr::from(75), Fr::from(100), Fr::from(0), Fr::from(0)],
+            W: vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)],
+            rW: Fr::zero(),
+        };
+        let rE = (0..log2(W_i.E.len())).map(|_| Fr::rand(&mut rng)).collect();
+        let u_i = Witness::commit::<Pedersen<Projective>, false>(&w_i, &pedersen_params, x, rE)?;
+
+        let (proof, claim) =
+            PointVsLineR1CS::prove(&mut transcript_p, Some(&U_i), &u_i, &W_i, &w_i)?;
+
+        let result = PointVsLineR1CS::verify(
+            &mut transcript_v,
+            &U_i,
+            &u_i,
+            &proof,
+            Some(&claim.mleE1_prime),
+            &claim.mleE2_prime,
+        );
+
+        assert!(result.is_ok(), "Verification failed");
+        let mut transcript_v = PoseidonSponge::<Fr>::new(&poseidon_config);
+
+        // Pass the wrong committed instance which should result in a wrong evaluation in h returning an error
+        let result = PointVsLineR1CS::verify(
+            &mut transcript_v,
+            &U_i,
+            &U_i,
+            &proof,
+            Some(&claim.mleE1_prime),
+            &claim.mleE2_prime,
+        );
+
+        assert!(result.is_err(), "Verification failed");
+
+        Ok(())
+    }
 }

@@ -23,7 +23,7 @@ use num_integer::Roots;
 /// Where A, B, C are nxn matrices such that:
 /// A * B = u * C + E
 /// where u is a scalar, and E is the error matrix.
-/// When u=1 and E is the zero matrix, we have the simple commited relation in which A * B = C.
+/// When u=1 and E is the zero matrix, we have the simple committed relation in which A * B = C.
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize)]
 pub struct RelaxedCommittedRelation<C: Curve> {
     pub cmA: C,                  // Commitment to matrix A. cmA = commitment(A).
@@ -113,9 +113,9 @@ impl<C: Curve> Witness<C> {
     }
     /// Commits to a witness W and produces a RelaxedCommittedRelation
     /// # Parameters
-    /// * `self` - Witness instance to be commited.
+    /// * `self` - Witness instance to be committed.
     /// * `params` - Commitment scheme parameters.
-    /// * `rE` - Random evaluation point for the commited instance.
+    /// * `rE` - Random evaluation point for the committed instance.
     pub fn commit<CS: CommitmentScheme<C, H>, const H: bool>(
         &self,
         params: &CS::ProverParams,

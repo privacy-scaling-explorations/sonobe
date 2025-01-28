@@ -1,11 +1,3 @@
-use ark_crypto_primitives::sponge::Absorb;
-use ark_ff::PrimeField;
-use ark_poly::Polynomial;
-/// Mova-like folding for matrix multiplications as descbribed in !todo(add reference to paper if public)
-// !todo(Add blinding factor to support hiding property).
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{log2, marker::PhantomData, rand::RngCore, One, UniformRand, Zero};
-
 use crate::arith::r1cs::R1CS;
 use crate::commitment::CommitmentScheme;
 use crate::folding::nova::nifs::pointvsline::{
@@ -17,6 +9,14 @@ use crate::transcript::Transcript;
 use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::utils::vec::{is_zero_vec, mat_mat_mul_dense, vec_add, vec_scalar_mul, vec_sub};
 use crate::{Curve, Error};
+use ark_crypto_primitives::sponge::Absorb;
+use ark_ff::PrimeField;
+use ark_poly::Polynomial;
+/// Mova-like folding for matrix multiplications as descbribed in !todo(add reference to paper if public)
+// !todo(Add blinding factor to support hiding property).
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::{log2, marker::PhantomData, rand::RngCore, One, UniformRand, Zero};
+use num_integer::Roots;
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize)]
 pub struct RelaxedCommittedRelation<C: Curve> {
     pub cmA: C,
@@ -183,7 +183,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         let mut rE = aux.clone();
         if is_zero_vec(&rE) {
             // means that we're in a fresh instance, so generate random value
-            rE = (0..2 * log2(witness.E.len()))
+            rE = (0..2 * log2(witness.E.len().sqrt()))
                 .map(|_| C::ScalarField::rand(&mut rng))
                 .collect();
         }

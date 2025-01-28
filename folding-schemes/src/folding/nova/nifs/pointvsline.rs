@@ -1,3 +1,8 @@
+use crate::folding::nova::nifs::mova::{CommittedInstance, Witness};
+use crate::folding::nova::nifs::mova_matrix::{RelaxedCommittedRelation, Witness as MatrixWitness};
+use crate::transcript::Transcript;
+use crate::utils::mle::dense_vec_to_dense_mle;
+use crate::{Curve, Error};
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ff::{One, PrimeField};
 use ark_poly::univariate::DensePolynomial;
@@ -5,12 +10,6 @@ use ark_poly::{DenseMultilinearExtension, DenseUVPolynomial, Polynomial};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{log2, Zero};
 use std::fmt::Debug;
-
-use crate::folding::nova::nifs::mova::{CommittedInstance, Witness};
-use crate::folding::nova::nifs::mova_matrix::{RelaxedCommittedRelation, Witness as MatrixWitness};
-use crate::transcript::Transcript;
-use crate::utils::mle::dense_vec_to_dense_mle;
-use crate::{Curve, Error};
 
 /// Implements the Points vs Line as described in
 /// [Mova](https://eprint.iacr.org/2024/1220.pdf) and Section 4.5.2 from Thaler’s book
@@ -93,15 +92,15 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> for PointVsLineR
         let mleE2 = dense_vec_to_dense_mle(n_vars, &w2.E);
 
         // We have l(0) = r1, l(1) = r2 so we know that l(x) = r1 + x(r2-r1) thats why we need r2-r1
-        let r1_sub_r2: Vec<<C>::ScalarField> = ci1
+        let r2_sub_r1: Vec<<C>::ScalarField> = ci1
             .rE
             .iter()
             .zip(&ci2.rE)
-            .map(|(&r1, r2)| r1 - r2)
+            .map(|(&r1, r2)| *r2 - r1)
             .collect();
 
-        let h1 = compute_h(&mleE1, &ci1.rE, &r1_sub_r2)?;
-        let h2 = compute_h(&mleE2, &ci1.rE, &r1_sub_r2)?;
+        let h1 = compute_h(&mleE1, &ci1.rE, &r2_sub_r1)?;
+        let h2 = compute_h(&mleE2, &ci1.rE, &r2_sub_r1)?;
 
         transcript.absorb(&h1.coeffs());
         transcript.absorb(&h2.coeffs());
@@ -111,7 +110,7 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> for PointVsLineR
         let mleE1_prime = h1.evaluate(&beta);
         let mleE2_prime = h2.evaluate(&beta);
 
-        let rE_prime = compute_l(&ci1.rE, &r1_sub_r2, beta)?;
+        let rE_prime = compute_l(&ci1.rE, &r2_sub_r1, beta)?;
 
         Ok((
             Self::PointVsLineProof { h1, h2 },
@@ -158,13 +157,13 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> for PointVsLineR
             return Err(Error::NotEqual);
         }
 
-        let r1_sub_r2: Vec<<C>::ScalarField> = ci1
+        let r2_sub_r1: Vec<<C>::ScalarField> = ci1
             .rE
             .iter()
             .zip(&ci2.rE)
-            .map(|(&r1, r2)| r1 - r2)
+            .map(|(&r1, r2)| *r2 - r1)
             .collect();
-        let rE_prime = compute_l(&ci1.rE, &r1_sub_r2, beta)?;
+        let rE_prime = compute_l(&ci1.rE, &r2_sub_r1, beta)?;
 
         Ok(rE_prime)
     }
@@ -189,19 +188,19 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> for PointVsLineM
         w1: &Self::Witness,
         w2: &Self::Witness,
     ) -> Result<(Self::PointVsLineProof, Self::PointVsLineEvaluationClaim), Error> {
-        let n_vars: usize = log2(w1.E.len()) as usize;
+        // Derive randomness
         let r1_scalar = C::ScalarField::from_le_bytes_mod_order(b"r1");
         transcript.absorb(&r1_scalar);
-
         let r1 = transcript.get_challenges(ci2.rE.len());
 
+        let n_vars: usize = log2(w1.E.len()) as usize;
         let mleE2 = dense_vec_to_dense_mle(n_vars, &w2.E);
 
-        // We have l(0) = r1, l(1) = r2 so we know that l(x) = r1 + x(r2-r1) thats why we need r2-r1
-        let r1_sub_r2: Vec<<C>::ScalarField> =
-            r1.iter().zip(&ci2.rE).map(|(&r1, r2)| r1 - r2).collect();
+        // We have l(0) = r1, l(1) = r2 so we know that l(x) = r1 + x(r2-r1) that's why we need r2-r1
+        let r2_sub_r1: Vec<<C>::ScalarField> =
+            r1.iter().zip(&ci2.rE).map(|(&r1, r2)| *r2 - r1).collect();
 
-        let h2 = compute_h(&mleE2, &r1, &r1_sub_r2)?;
+        let h2 = compute_h(&mleE2, &r1, &r2_sub_r1)?;
 
         transcript.absorb(&h2.coeffs());
 
@@ -209,7 +208,7 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> for PointVsLineM
 
         let mleE2_prime = h2.evaluate(&beta);
 
-        let rE_prime = compute_l(&r1, &r1_sub_r2, beta)?;
+        let rE_prime = compute_l(&r1, &r2_sub_r1, beta)?;
 
         Ok((
             Self::PointVsLineProof { h2 },
@@ -245,9 +244,9 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> for PointVsLineM
             return Err(Error::NotEqual);
         }
 
-        let r1_sub_r2: Vec<<C>::ScalarField> =
-            r1.iter().zip(&ci2.rE).map(|(&r1, r2)| r1 - r2).collect();
-        let rE_prime = compute_l(&ci1.rE, &r1_sub_r2, beta)?;
+        let r2_sub_r1: Vec<<C>::ScalarField> =
+            r1.iter().zip(&ci2.rE).map(|(&r1, r2)| *r2 - r1).collect();
+        let rE_prime = compute_l(&ci1.rE, &r2_sub_r1, beta)?;
 
         Ok(rE_prime)
     }
@@ -256,10 +255,10 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> for PointVsLineM
 fn compute_h<F: PrimeField>(
     mle: &DenseMultilinearExtension<F>,
     r1: &[F],
-    r1_sub_r2: &[F],
+    r2_sub_r1: &[F],
 ) -> Result<DensePolynomial<F>, Error> {
     let n_vars: usize = mle.num_vars;
-    if r1.len() != r1_sub_r2.len() || r1.len() != n_vars {
+    if r1.len() != r2_sub_r1.len() || r1.len() != n_vars {
         return Err(Error::NotEqual);
     }
 
@@ -271,9 +270,9 @@ fn compute_h<F: PrimeField>(
         .map(|&x| DensePolynomial::from_coefficients_slice(&[x]))
         .collect();
 
-    for (i, (&r1_i, &r1_sub_r2_i)) in r1.iter().zip(r1_sub_r2.iter()).enumerate().take(n_vars) {
-        // Create a linear polynomial r(X) = r1_i + (r1_sub_r2_i) * X (basically l)
-        let r = DensePolynomial::from_coefficients_slice(&[r1_i, r1_sub_r2_i]);
+    for (i, (&r1_i, &r2_sub_r1_i)) in r1.iter().zip(r2_sub_r1.iter()).enumerate().take(n_vars) {
+        // Create a linear polynomial r(X) = r1_i + (r2_sub_r1_i) * X (basically l)
+        let r = DensePolynomial::from_coefficients_slice(&[r1_i, r2_sub_r1_i]);
         let half_len = 1 << (n_vars - i - 1);
 
         for b in 0..half_len {
@@ -287,16 +286,16 @@ fn compute_h<F: PrimeField>(
     Ok(poly.swap_remove(0))
 }
 
-fn compute_l<F: PrimeField>(r1: &[F], r1_sub_r2: &[F], x: F) -> Result<Vec<F>, Error> {
-    if r1.len() != r1_sub_r2.len() {
+fn compute_l<F: PrimeField>(r1: &[F], r2_sub_r1: &[F], x: F) -> Result<Vec<F>, Error> {
+    if r1.len() != r2_sub_r1.len() {
         return Err(Error::NotEqual);
     }
 
     // we have l(x) = r1 + x(r2-r1) so return the result
     Ok(r1
         .iter()
-        .zip(r1_sub_r2)
-        .map(|(&r1, &r1_sub_r0)| r1 + x * r1_sub_r0)
+        .zip(r2_sub_r1)
+        .map(|(&r1, &r2_sub_r1)| r1 + x * r2_sub_r1)
         .collect())
 }
 
@@ -393,7 +392,7 @@ mod tests {
     fn test_compute_l() -> Result<(), Error> {
         // Test with simple non-zero values
         let r1 = vec![Fq::from(1), Fq::from(2), Fq::from(3)];
-        let r1_sub_r2 = vec![Fq::from(4), Fq::from(5), Fq::from(6)];
+        let r2_sub_r1 = vec![Fq::from(4), Fq::from(5), Fq::from(6)];
         let x = Fq::from(2);
 
         let expected = vec![
@@ -402,7 +401,7 @@ mod tests {
             Fq::from(3) + Fq::from(2) * Fq::from(6),
         ];
 
-        let result = compute_l(&r1, &r1_sub_r2, x)?;
+        let result = compute_l(&r1, &r2_sub_r1, x)?;
         assert_eq!(result, expected);
         Ok(())
     }

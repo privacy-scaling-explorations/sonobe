@@ -472,7 +472,7 @@ mod tests {
             &claim.mleE2_prime,
         );
 
-        assert!(result.is_err(), "Verification failed");
+        assert!(result.is_err(), "Verification was okay when it should fail");
 
         Ok(())
     }

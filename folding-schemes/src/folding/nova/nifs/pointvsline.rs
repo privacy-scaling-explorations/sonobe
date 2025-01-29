@@ -508,12 +508,8 @@ mod tests {
             B: vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)],
             C: vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)],
             E: vec![Fr::from(25), Fr::from(50), Fr::from(0), Fr::from(0)],
-            // W: vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)],
-            // rW: Fr::zero(),
         };
         let rE = (0..log2(W_i.E.len())).map(|_| Fr::rand(&mut rng)).collect();
-        // x is not important
-        // let x = vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)];
         let U_i = MatrixWitness::commit::<Pedersen<Projective>, false>(&W_i, &pedersen_params, rE)?;
 
         let w_i = MatrixWitness {
@@ -521,8 +517,6 @@ mod tests {
             B: vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)],
             C: vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)],
             E: vec![Fr::from(75), Fr::from(100), Fr::from(0), Fr::from(0)],
-            // W: vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)],
-            // rW: Fr::zero(),
         };
         let rE = (0..log2(W_i.E.len())).map(|_| Fr::rand(&mut rng)).collect();
         let u_i = MatrixWitness::commit::<Pedersen<Projective>, false>(&w_i, &pedersen_params, rE)?;

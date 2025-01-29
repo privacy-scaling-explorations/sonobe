@@ -123,7 +123,7 @@ impl<C: Curve> Witness<C> {
     ) -> Result<RelaxedCommittedRelation<C>, Error> {
         let mut mleE = C::ScalarField::zero();
         if !is_zero_vec::<C::ScalarField>(&self.E) {
-            let E = dense_vec_to_dense_mle(log2(self.E.len().sqrt()) as usize, &self.E);
+            let E = dense_vec_to_dense_mle(log2(self.E.len()) as usize, &self.E);
             mleE = E.evaluate(&rE);
         }
 

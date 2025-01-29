@@ -507,13 +507,8 @@ pub mod tests {
                 )
                 .unwrap();
 
-            // assert_eq!(instance_acc, ci_verify);
-            // rE does not match because an error in PointVsLine, we should replace whit assert_eq!(inst_acc, ci_verify) when it's solved
-            assert_eq!(instance_acc.cmA, ci_verify.cmA);
-            assert_eq!(instance_acc.cmB, ci_verify.cmB);
-            assert_eq!(instance_acc.cmC, ci_verify.cmC);
-            assert_eq!(instance_acc.u, ci_verify.u);
-            assert_eq!(instance_acc.mleE, ci_verify.mleE);
+            // Ensure they match
+            assert_eq!(instance_acc, ci_verify);
         }
     }
 
@@ -574,12 +569,8 @@ pub mod tests {
                 )
                 .unwrap();
 
-            // rE does not match because an error in PointVsLine, we should replace whit assert_eq!(inst_acc, ci_verify) when it's solved
-            assert_eq!(inst_acc.cmA, ci_verify.cmA);
-            assert_eq!(inst_acc.cmB, ci_verify.cmB);
-            assert_eq!(inst_acc.cmC, ci_verify.cmC);
-            assert_eq!(inst_acc.u, ci_verify.u);
-            assert_eq!(inst_acc.mleE, ci_verify.mleE);
+            // Ensure they match
+            assert_eq!(inst_acc, ci_verify);
 
             // Update state for next iteration
             current_acc_wit = wit_acc;

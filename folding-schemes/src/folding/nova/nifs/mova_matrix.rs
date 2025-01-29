@@ -123,7 +123,7 @@ impl<C: Curve> Witness<C> {
     ) -> Result<RelaxedCommittedRelation<C>, Error> {
         let mut mleE = C::ScalarField::zero();
         if !is_zero_vec::<C::ScalarField>(&self.E) {
-            let E = dense_vec_to_dense_mle(log2(self.E.len().sqrt()) as usize, &self.E);
+            let E = dense_vec_to_dense_mle(log2(self.E.len()) as usize, &self.E);
             mleE = E.evaluate(&rE);
         }
 
@@ -152,6 +152,7 @@ pub struct Proof<C: Curve> {
     pub mleE2_prime: C::ScalarField,
     /// Evaluation of the crossterm T in r_acc = MLE[T](r_acc)
     pub mleT: C::ScalarField,
+    pub rE_prime: Vec<C::ScalarField>,
 }
 
 /// Implements the Non-Interactive Folding Scheme described in section 3.2 of the previous referenced article.
@@ -321,6 +322,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
             h_proof,
             mleE2_prime,
             mleT: mleT_evaluated,
+            rE_prime,
         };
         Ok((
             w,
@@ -348,11 +350,12 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         // Verify rE_prime
         let rE_prime = PointVsLineMatrix::<C, T>::verify(
             transcript,
-            simple_instance,
+            None,
             acc_instance,
             &proof.h_proof,
             None,
             &proof.mleE2_prime,
+            &proof.rE_prime,
         )?;
 
         // Derive alpha

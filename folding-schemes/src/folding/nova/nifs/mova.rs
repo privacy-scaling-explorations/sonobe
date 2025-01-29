@@ -118,6 +118,7 @@ pub struct Proof<C: Curve> {
     pub mleE1_prime: C::ScalarField,
     pub mleE2_prime: C::ScalarField,
     pub mleT: C::ScalarField,
+    pub rE_prime: Vec<C::ScalarField>,
 }
 
 /// Implements the Non-Interactive Folding Scheme described in section 4 of
@@ -262,6 +263,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
             mleE1_prime,
             mleE2_prime,
             mleT: mleT_evaluated,
+            rE_prime,
         };
         Ok((
             w,
@@ -287,11 +289,12 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         transcript.absorb(u_i);
         let rE_prime = PointVsLineR1CS::<C, T>::verify(
             transcript,
-            U_i,
+            Some(U_i),
             u_i,
             &proof.h_proof,
             Some(&proof.mleE1_prime),
             &proof.mleE2_prime,
+            &proof.rE_prime,
         )?;
 
         transcript.absorb(&proof.mleE1_prime);

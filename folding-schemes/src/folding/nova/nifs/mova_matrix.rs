@@ -123,7 +123,7 @@ impl<C: Curve> Witness<C> {
     ) -> Result<RelaxedCommittedRelation<C>, Error> {
         let mut mleE = C::ScalarField::zero();
         if !is_zero_vec::<C::ScalarField>(&self.E) {
-            let E = dense_vec_to_dense_mle(log2(self.E.len()) as usize, &self.E);
+            let E = dense_vec_to_dense_mle(log2(self.E.len().sqrt()) as usize, &self.E);
             mleE = E.evaluate(&rE);
         }
 
@@ -505,7 +505,7 @@ pub mod tests {
                 .unwrap();
 
             // assert_eq!(instance_acc, ci_verify);
-            // rE does not match as it's random, I believe it should not be in the relation if we are already storing mleE.
+            // rE does not match because an error in PointVsLine, we should replace whit assert_eq!(inst_acc, ci_verify) when it's solved
             assert_eq!(instance_acc.cmA, ci_verify.cmA);
             assert_eq!(instance_acc.cmB, ci_verify.cmB);
             assert_eq!(instance_acc.cmC, ci_verify.cmC);
@@ -571,7 +571,7 @@ pub mod tests {
                 )
                 .unwrap();
 
-            // rE does not match as it's random, I believe it should not be in the relation if we are already storing mleE.
+            // rE does not match because an error in PointVsLine, we should replace whit assert_eq!(inst_acc, ci_verify) when it's solved
             assert_eq!(inst_acc.cmA, ci_verify.cmA);
             assert_eq!(inst_acc.cmB, ci_verify.cmB);
             assert_eq!(inst_acc.cmC, ci_verify.cmC);

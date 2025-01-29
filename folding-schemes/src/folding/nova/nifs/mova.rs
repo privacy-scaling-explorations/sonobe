@@ -263,7 +263,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
             mleE1_prime,
             mleE2_prime,
             mleT: mleT_evaluated,
-            rE_prime
+            rE_prime,
         };
         Ok((
             w,

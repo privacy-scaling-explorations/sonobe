@@ -253,11 +253,10 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> for PointVsLineM
 
         let r2_sub_r1: Vec<<C>::ScalarField> =
             r1.iter().zip(&ci2.rE).map(|(&r1, r2)| *r2 - r1).collect();
-        let rE_prime = compute_l(&r1, &r1_sub_r2, beta)?;
+        let rE_prime = compute_l(&r1, &r2_sub_r1, beta)?;
         if rE_prime != rE_prime_p {
             return Err(Error::NotEqual);
         }
-
 
         Ok(rE_prime)
     }
@@ -515,8 +514,7 @@ mod tests {
         let rE = (0..log2(W_i.E.len())).map(|_| Fr::rand(&mut rng)).collect();
         // x is not important
         // let x = vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)];
-        let U_i =
-            MatrixWitness::commit::<Pedersen<Projective>, false>(&W_i, &pedersen_params, rE)?;
+        let U_i = MatrixWitness::commit::<Pedersen<Projective>, false>(&W_i, &pedersen_params, rE)?;
 
         let w_i = MatrixWitness {
             A: vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)],
@@ -529,8 +527,7 @@ mod tests {
         let rE = (0..log2(W_i.E.len())).map(|_| Fr::rand(&mut rng)).collect();
         let u_i = MatrixWitness::commit::<Pedersen<Projective>, false>(&w_i, &pedersen_params, rE)?;
 
-        let (proof, claim) =
-            PointVsLineMatrix::prove(&mut transcript_p, None, &u_i, &W_i, &w_i)?;
+        let (proof, claim) = PointVsLineMatrix::prove(&mut transcript_p, None, &u_i, &W_i, &w_i)?;
 
         let result = PointVsLineMatrix::verify(
             &mut transcript_v,

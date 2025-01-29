@@ -248,7 +248,7 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> for PointVsLineM
 
         let r1_sub_r2: Vec<<C>::ScalarField> =
             r1.iter().zip(&ci2.rE).map(|(&r1, r2)| r1 - r2).collect();
-        let rE_prime = compute_l(&ci1.rE, &r1_sub_r2, beta)?;
+        let rE_prime = compute_l(&r1, &r2_sub_r1, beta)?;
 
         Ok(rE_prime)
     }

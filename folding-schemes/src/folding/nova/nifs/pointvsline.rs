@@ -60,6 +60,7 @@ pub trait PointVsLine<C: Curve, T: Transcript<C::ScalarField>> {
         proof: &Self::PointVsLineProof,
         mleE1_prime: Option<&C::ScalarField>,
         mleE2_prime: &<C>::ScalarField,
+        rE_prime_p: &[<C>::ScalarField], // the rE_prime of the user
     ) -> Result<
         Vec<<C>::ScalarField>, // rE=rE1'=rE2'.
         Error,
@@ -130,6 +131,7 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> for PointVsLineR
         proof: &Self::PointVsLineProof,
         mleE1_prime: Option<&C::ScalarField>,
         mleE2_prime: &<C>::ScalarField,
+        rE_prime_p: &[<C>::ScalarField],
     ) -> Result<Vec<<C>::ScalarField>, Error> {
         let ci1 = ci1.ok_or_else(|| Error::Other("Missing ci1 in R1CS verify".to_string()))?;
         if proof.h1.evaluate(&C::ScalarField::zero()) != ci1.mleE {
@@ -166,6 +168,9 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> for PointVsLineR
             .map(|(&r1, r2)| r1 - r2)
             .collect();
         let rE_prime = compute_l(&ci1.rE, &r1_sub_r2, beta)?;
+        if rE_prime != rE_prime_p {
+            return Err(Error::NotEqual);
+        }
 
         Ok(rE_prime)
     }
@@ -228,6 +233,7 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> for PointVsLineM
         proof: &Self::PointVsLineProof,
         _mleE1_prime: Option<&C::ScalarField>,
         mleE2_prime: &<C>::ScalarField,
+        rE_prime_p: &[<C>::ScalarField],
     ) -> Result<Vec<<C>::ScalarField>, Error> {
         if proof.h2.evaluate(&C::ScalarField::one()) != ci2.mleE {
             return Err(Error::NotEqual);
@@ -249,6 +255,10 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> for PointVsLineM
         let r1_sub_r2: Vec<<C>::ScalarField> =
             r1.iter().zip(&ci2.rE).map(|(&r1, r2)| r1 - r2).collect();
         let rE_prime = compute_l(&r1, &r1_sub_r2, beta)?;
+        if rE_prime != rE_prime_p {
+            return Err(Error::NotEqual);
+        }
+
 
         Ok(rE_prime)
     }
@@ -459,6 +469,7 @@ mod tests {
             &proof,
             Some(&claim.mleE1_prime),
             &claim.mleE2_prime,
+            &claim.rE_prime,
         );
 
         assert!(result.is_ok(), "Verification failed");
@@ -475,6 +486,7 @@ mod tests {
             &proof,
             Some(&claim.mleE1_prime),
             &claim.mleE2_prime,
+            &claim.rE_prime,
         );
 
         assert!(result.is_err(), "Verification was okay when it should fail");
@@ -528,6 +540,7 @@ mod tests {
             &proof,
             None,
             &claim.mleE2_prime,
+            &claim.rE_prime,
         );
 
         assert!(result.is_ok(), "Verification failed");
@@ -544,6 +557,7 @@ mod tests {
             &proof,
             None,
             &claim.mleE2_prime,
+            &claim.rE_prime,
         );
 
         assert!(result.is_err(), "Verification was okay when it should fail");

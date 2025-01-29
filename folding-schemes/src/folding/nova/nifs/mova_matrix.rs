@@ -132,6 +132,7 @@ pub struct Proof<C: Curve> {
     pub h_proof: PointVsLineProofMatrix<C>,
     pub mleE2_prime: C::ScalarField,
     pub mleT: C::ScalarField,
+    pub rE_prime: Vec<C::ScalarField>,
 }
 
 /// Implements the Non-Interactive Folding Scheme described in section 4 of
@@ -303,6 +304,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
             h_proof,
             mleE2_prime,
             mleT: mleT_evaluated,
+            rE_prime,
         };
         Ok((
             w,
@@ -335,6 +337,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
             &proof.h_proof,
             None,
             &proof.mleE2_prime,
+            &proof.rE_prime,
         )?;
 
         // Derive alpha

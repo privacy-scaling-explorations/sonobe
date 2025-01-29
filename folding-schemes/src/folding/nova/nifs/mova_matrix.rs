@@ -330,7 +330,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         // Verify rE_prime
         let rE_prime = PointVsLineMatrix::<C, T>::verify(
             transcript,
-            simple_instance,
+            None,
             acc_instance,
             &proof.h_proof,
             None,

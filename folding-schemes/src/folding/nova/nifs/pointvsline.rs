@@ -55,7 +55,7 @@ pub trait PointVsLine<C: Curve, T: Transcript<C::ScalarField>> {
 
     fn verify(
         transcript: &mut T,
-        ci1: &Self::CommittedInstance,
+        ci1: Option<&Self::CommittedInstance>,
         ci2: &Self::CommittedInstance,
         proof: &Self::PointVsLineProof,
         mleE1_prime: Option<&C::ScalarField>,
@@ -125,12 +125,13 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> for PointVsLineR
 
     fn verify(
         transcript: &mut T,
-        ci1: &Self::CommittedInstance,
+        ci1: Option<&Self::CommittedInstance>,
         ci2: &Self::CommittedInstance,
         proof: &Self::PointVsLineProof,
         mleE1_prime: Option<&C::ScalarField>,
         mleE2_prime: &<C>::ScalarField,
     ) -> Result<Vec<<C>::ScalarField>, Error> {
+        let ci1 = ci1.ok_or_else(|| Error::Other("Missing ci1 in R1CS verify".to_string()))?;
         if proof.h1.evaluate(&C::ScalarField::zero()) != ci1.mleE {
             return Err(Error::NotEqual);
         }
@@ -222,7 +223,7 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> for PointVsLineM
 
     fn verify(
         transcript: &mut T,
-        ci1: &Self::CommittedInstance,
+        _ci1: Option<&Self::CommittedInstance>,
         ci2: &Self::CommittedInstance,
         proof: &Self::PointVsLineProof,
         _mleE1_prime: Option<&C::ScalarField>,
@@ -302,7 +303,7 @@ fn compute_l<F: PrimeField>(r1: &[F], r1_sub_r2: &[F], x: F) -> Result<Vec<F>, E
 
 #[cfg(test)]
 mod tests {
-    use super::{compute_h, compute_l, PointVsLine, PointVsLineR1CS};
+    use super::{compute_h, compute_l, PointVsLine, PointVsLineMatrix, PointVsLineR1CS};
     use crate::commitment::pedersen::Pedersen;
     use crate::commitment::CommitmentScheme;
     use crate::transcript::poseidon::poseidon_canonical_config;
@@ -313,7 +314,8 @@ mod tests {
     use ark_std::{log2, UniformRand};
 
     use crate::folding::nova::nifs::mova::Witness;
-    use crate::folding::nova::nifs::NIFSTrait;
+    use crate::folding::nova::nifs::mova_matrix::Witness as MatrixWitness;
+
     use ark_crypto_primitives::sponge::CryptographicSponge;
     use ark_ff::Zero;
 
@@ -418,7 +420,7 @@ mod tests {
     }
 
     #[test]
-    fn test_evaluations() -> Result<(), Error> {
+    fn test_evaluations_R1CS() -> Result<(), Error> {
         // Basic test with no zero error term to ensure that the folding is correct.
         // This test mainly focuses on if the evaluation of h0 and h1 are correct.
         let mut rng = ark_std::test_rng();
@@ -452,7 +454,7 @@ mod tests {
 
         let result = PointVsLineR1CS::verify(
             &mut transcript_v,
-            &U_i,
+            Some(&U_i),
             &u_i,
             &proof,
             Some(&claim.mleE1_prime),
@@ -460,15 +462,87 @@ mod tests {
         );
 
         assert!(result.is_ok(), "Verification failed");
+        // Check if the re_prime is the same
+        let re_verified = result.unwrap();
+        assert!(re_verified == claim.rE_prime);
         let mut transcript_v = PoseidonSponge::<Fr>::new(&poseidon_config);
 
         // Pass the wrong committed instance which should result in a wrong evaluation in h returning an error
         let result = PointVsLineR1CS::verify(
             &mut transcript_v,
-            &U_i,
+            Some(&U_i),
             &U_i,
             &proof,
             Some(&claim.mleE1_prime),
+            &claim.mleE2_prime,
+        );
+
+        assert!(result.is_err(), "Verification was okay when it should fail");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_evaluations_Matrix() -> Result<(), Error> {
+        // Basic test with no zero error term to ensure that the folding is correct.
+        // This test mainly focuses on if the evaluation of h0 and h1 are correct.
+        let mut rng = ark_std::test_rng();
+
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, 4)?;
+        let poseidon_config = poseidon_canonical_config::<Fr>();
+        let mut transcript_p = PoseidonSponge::<Fr>::new(&poseidon_config);
+        let mut transcript_v = PoseidonSponge::<Fr>::new(&poseidon_config);
+
+        let W_i = MatrixWitness {
+            A: vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)],
+            B: vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)],
+            C: vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)],
+            E: vec![Fr::from(25), Fr::from(50), Fr::from(0), Fr::from(0)],
+            // W: vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)],
+            // rW: Fr::zero(),
+        };
+        let rE = (0..log2(W_i.E.len())).map(|_| Fr::rand(&mut rng)).collect();
+        // x is not important
+        // let x = vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)];
+        let U_i =
+            MatrixWitness::commit::<Pedersen<Projective>, false>(&W_i, &pedersen_params, rE)?;
+
+        let w_i = MatrixWitness {
+            A: vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)],
+            B: vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)],
+            C: vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)],
+            E: vec![Fr::from(75), Fr::from(100), Fr::from(0), Fr::from(0)],
+            // W: vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)],
+            // rW: Fr::zero(),
+        };
+        let rE = (0..log2(W_i.E.len())).map(|_| Fr::rand(&mut rng)).collect();
+        let u_i = MatrixWitness::commit::<Pedersen<Projective>, false>(&w_i, &pedersen_params, rE)?;
+
+        let (proof, claim) =
+            PointVsLineMatrix::prove(&mut transcript_p, None, &u_i, &W_i, &w_i)?;
+
+        let result = PointVsLineMatrix::verify(
+            &mut transcript_v,
+            None,
+            &u_i,
+            &proof,
+            None,
+            &claim.mleE2_prime,
+        );
+
+        assert!(result.is_ok(), "Verification failed");
+        // Check if the re_prime is the same
+        let re_verified = result.unwrap();
+        assert!(re_verified == claim.rE_prime);
+        let mut transcript_v = PoseidonSponge::<Fr>::new(&poseidon_config);
+
+        // Pass the wrong committed instance which should result in a wrong evaluation in h returning an error
+        let result = PointVsLineMatrix::verify(
+            &mut transcript_v,
+            None,
+            &U_i,
+            &proof,
+            None,
             &claim.mleE2_prime,
         );
 

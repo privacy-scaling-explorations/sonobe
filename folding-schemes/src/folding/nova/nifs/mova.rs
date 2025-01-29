@@ -287,7 +287,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         transcript.absorb(u_i);
         let rE_prime = PointVsLineR1CS::<C, T>::verify(
             transcript,
-            U_i,
+            Some(U_i),
             u_i,
             &proof.h_proof,
             Some(&proof.mleE1_prime),

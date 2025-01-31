@@ -59,7 +59,7 @@ pub trait PointVsLine<C: Curve, T: Transcript<C::ScalarField>> {
         proof: &Self::PointVsLineProof,
         mleE1_prime: Option<&C::ScalarField>,
         mleE2_prime: &<C>::ScalarField,
-        rE_prime_p: &[<C>::ScalarField], // the rE_prime of the user
+        rE_prime_p: &[<C>::ScalarField], // the rE_prime of the prover
     ) -> Result<
         Vec<<C>::ScalarField>, // rE=rE1'=rE2'.
         Error,

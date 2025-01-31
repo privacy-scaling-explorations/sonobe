@@ -1,6 +1,6 @@
 /// Mova-like folding for matrix multiplications as described in "Folding and Lookup Arguments for Proving Inference of Deep Learning Models" by Nethermind Research
-/// Currently, we are not interested in the hiding properties, so we ignore the hiding factors and focus on the succintness property.
-/// Please note the code could be easilyt extended so support hiding.
+/// Currently, we are not interested in the hiding properties, so we ignore the hiding factors and focus on the succinctness property.
+/// Please note the code could be easily extended so support hiding.
 use crate::arith::r1cs::R1CS;
 use crate::commitment::CommitmentScheme;
 use crate::folding::nova::nifs::pointvsline::{
@@ -150,8 +150,9 @@ pub struct Proof<C: Curve> {
     pub h_proof: PointVsLineProofMatrix<C>,
     /// Evaluation of the MLE[h2] in the random challenge beta
     pub mleE2_prime: C::ScalarField,
-    /// Evaluation of the crossterm T in r_acc = MLE[T](r_acc)
+    /// Evaluation of the cross term T in r_acc = MLE[T](r_acc)
     pub mleT: C::ScalarField,
+    /// Evaluation of the h polynomial in the random challenge beta
     pub rE_prime: Vec<C::ScalarField>,
 }
 
@@ -317,7 +318,6 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         )?;
         let w = Self::fold_witness(alpha, simple_witness, acc_witness, &T)?;
 
-        // todo!(Review when new Pointvsline protocol is ready)
         let proof = Self::Proof {
             h_proof,
             mleE2_prime,
@@ -405,14 +405,14 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
 
         // Update scalars
         let u_acc = alpha + acc_instance.u;
-        let mlE = *mleE2_prime + alpha * *mleT;
+        let mleE = *mleE2_prime + alpha * *mleT;
 
         Ok(RelaxedCommittedRelation::<C> {
             cmA: com_a_acc,
             cmB: com_b_acc,
             cmC: com_c_acc,
             u: u_acc,
-            mleE: mlE,
+            mleE,
             rE: rE_prime.to_vec(),
         })
     }

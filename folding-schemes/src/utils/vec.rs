@@ -285,6 +285,14 @@ pub mod tests {
     }
 
     #[test]
+    fn test_vec_add() -> Result<(), Error> {
+        let a: Vec<Fr> = to_F_vec::<Fr>(vec![1, 2, 3, 4, 5, 6]);
+        let b: Vec<Fr> = to_F_vec(vec![7, 8, 9, 10, 11, 12]);
+        assert_eq!(vec_add(&a, &b)?, to_F_vec(vec![8, 10, 12, 14, 16, 18]));
+        Ok(())
+    }
+
+    #[test]
     fn test_mat_mat_mul_dense_1() -> Result<(), Error> {
         let a = to_F_vec::<Fr>(vec![1, 2, 3, 4, 5, 6, 7, 8, 9]);
         let b = to_F_vec::<Fr>(vec![1, 2, 3, 4, 5, 6, 7, 8, 9]);

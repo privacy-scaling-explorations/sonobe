@@ -187,9 +187,9 @@ mod tests {
 
     use crate::folding::nova::nifs::mova::Witness;
 
+    use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
     use ark_crypto_primitives::sponge::CryptographicSponge;
     use ark_ff::Zero;
-    use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
     use ark_pallas::{Fq, Fr, Projective};
 
     #[test]
@@ -322,8 +322,7 @@ mod tests {
         let rE = (0..log2(W_i.E.len())).map(|_| Fr::rand(&mut rng)).collect();
         let u_i = Witness::commit::<Pedersen<Projective>, false>(&w_i, &pedersen_params, x, rE)?;
 
-        let (proof, claim) =
-            PointVsLine::prove(&mut transcript_p, &U_i, &u_i, &W_i, &w_i)?;
+        let (proof, claim) = PointVsLine::prove(&mut transcript_p, &U_i, &u_i, &W_i, &w_i)?;
 
         let result = PointVsLine::verify(
             &mut transcript_v,

@@ -85,6 +85,7 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> {
         proof: &PointVsLineProof<C>,
         mleE1_prime: &<C>::ScalarField,
         mleE2_prime: &<C>::ScalarField,
+        rE_prime_p: &[<C>::ScalarField], // the rE_prime of the prover
     ) -> Result<
         Vec<<C>::ScalarField>, // rE=rE1'=rE2'.
         Error,
@@ -119,6 +120,9 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> {
             .map(|(&r1, r2)| r1 - r2)
             .collect();
         let rE_prime = compute_l(&ci1.rE, &r1_sub_r2, beta)?;
+        if rE_prime != rE_prime_p {
+            return Err(Error::NotEqual);
+        }
 
         Ok(rE_prime)
     }

@@ -34,9 +34,8 @@ pub struct CommittedInstance<C: Curve> {
 }
 
 impl<C: Curve> Absorb for CommittedInstance<C> {
-    fn to_sponge_bytes(&self, _dest: &mut Vec<u8>) {
-        // This is never called
-        unimplemented!()
+    fn to_sponge_bytes(&self, dest: &mut Vec<u8>) {
+        C::ScalarField::batch_to_sponge_bytes(&self.to_sponge_field_elements_as_vec(), dest);
     }
 
     fn to_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
@@ -120,6 +119,7 @@ pub struct Proof<C: Curve> {
     pub mleE1_prime: C::ScalarField,
     pub mleE2_prime: C::ScalarField,
     pub mleT: C::ScalarField,
+    pub rE_prime: Vec<C::ScalarField>,
 }
 
 /// Implements the Non-Interactive Folding Scheme described in section 4 of
@@ -264,6 +264,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
             mleE1_prime,
             mleE2_prime,
             mleT: mleT_evaluated,
+            rE_prime,
         };
         Ok((
             w,
@@ -294,6 +295,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
             &proof.h_proof,
             &proof.mleE1_prime,
             &proof.mleE2_prime,
+            &proof.rE_prime,
         )?;
 
         transcript.absorb(&proof.mleE1_prime);

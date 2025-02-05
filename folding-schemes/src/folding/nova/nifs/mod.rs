@@ -20,6 +20,7 @@ use crate::transcript::{Transcript, TranscriptVar};
 use crate::{Curve, Error};
 
 pub mod mova;
+mod mova_matrix;
 pub mod nova;
 pub mod nova_circuits;
 pub mod ova;

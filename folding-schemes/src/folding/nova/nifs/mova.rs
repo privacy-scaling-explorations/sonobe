@@ -6,14 +6,13 @@ use ark_poly::Polynomial;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{log2, marker::PhantomData, rand::RngCore, One, UniformRand, Zero};
 
-use super::{
-    nova::NIFS as NovaNIFS,
-    pointvsline::{PointVsLine, PointVsLineProof, PointvsLineEvaluationClaim},
-    NIFSTrait,
-};
+use super::{nova::NIFS as NovaNIFS, NIFSTrait};
 use crate::arith::{r1cs::R1CS, Arith, ArithRelation};
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::CF1;
+use crate::folding::nova::nifs::pointvsline::{
+    PointVsLine, PointVsLineEvaluationClaimR1CS, PointVsLineProofR1CS, PointVsLineR1CS,
+};
 use crate::folding::traits::Dummy;
 use crate::transcript::Transcript;
 use crate::utils::{
@@ -34,9 +33,8 @@ pub struct CommittedInstance<C: Curve> {
 }
 
 impl<C: Curve> Absorb for CommittedInstance<C> {
-    fn to_sponge_bytes(&self, _dest: &mut Vec<u8>) {
-        // This is never called
-        unimplemented!()
+    fn to_sponge_bytes(&self, dest: &mut Vec<u8>) {
+        C::ScalarField::batch_to_sponge_bytes(&self.to_sponge_field_elements_as_vec(), dest);
     }
 
     fn to_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
@@ -116,10 +114,11 @@ impl<C: Curve> Witness<C> {
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<C: Curve> {
-    pub h_proof: PointVsLineProof<C>,
+    pub h_proof: PointVsLineProofR1CS<C>,
     pub mleE1_prime: C::ScalarField,
     pub mleE2_prime: C::ScalarField,
     pub mleT: C::ScalarField,
+    pub rE_prime: Vec<C::ScalarField>,
 }
 
 /// Implements the Non-Interactive Folding Scheme described in section 4 of
@@ -219,12 +218,12 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         // Protocol 6
         let (
             h_proof,
-            PointvsLineEvaluationClaim {
+            PointVsLineEvaluationClaimR1CS {
                 mleE1_prime,
                 mleE2_prime,
                 rE_prime,
             },
-        ) = PointVsLine::<C, T>::prove(transcript, U_i, u_i, W_i, w_i)?;
+        ) = PointVsLineR1CS::<C, T>::prove(transcript, Some(U_i), u_i, W_i, w_i)?;
 
         // Protocol 7
 
@@ -264,6 +263,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
             mleE1_prime,
             mleE2_prime,
             mleT: mleT_evaluated,
+            rE_prime,
         };
         Ok((
             w,
@@ -287,13 +287,14 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         transcript.absorb(&pp_hash);
         transcript.absorb(U_i);
         transcript.absorb(u_i);
-        let rE_prime = PointVsLine::<C, T>::verify(
+        let rE_prime = PointVsLineR1CS::<C, T>::verify(
             transcript,
-            U_i,
+            Some(U_i),
             u_i,
             &proof.h_proof,
-            &proof.mleE1_prime,
+            Some(&proof.mleE1_prime),
             &proof.mleE2_prime,
+            &proof.rE_prime,
         )?;
 
         transcript.absorb(&proof.mleE1_prime);

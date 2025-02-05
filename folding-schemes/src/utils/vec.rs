@@ -5,7 +5,9 @@ use ark_poly::{
 pub use ark_relations::r1cs::Matrix as R1CSMatrix;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::cfg_iter;
+use ark_std::iterable::Iterable;
 use ark_std::rand::Rng;
+use num_integer::Roots;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use crate::{folding::traits::Dummy, Error};
@@ -131,6 +133,46 @@ pub fn mat_vec_mul_dense<F: PrimeField>(M: &[Vec<F>], z: &[F]) -> Result<Vec<F>,
         .collect())
 }
 
+/// This function assumes flattened squared matrices
+pub fn mat_mat_mul_dense<F: PrimeField>(M1: &[F], M2: &[F]) -> Result<Vec<F>, Error> {
+    if M1.is_empty() || M2.is_empty() {
+        return Err(Error::Empty);
+    }
+    if M1.len() != M2.len() {
+        return Err(Error::NotSameLength(
+            "M1.len()".to_string(),
+            M1.len(),
+            "M2.len()".to_string(),
+            M2.len(),
+        ));
+    }
+
+    let rows = M1.len().sqrt();
+    let cols = rows;
+    let m_len = rows * cols;
+    if rows * cols != M1.len() {
+        return Err(Error::NotExpectedLength(m_len, M1.len()));
+    }
+
+    let indices: Vec<_> = (0..rows).collect();
+
+    let results: Vec<_> = cfg_iter!(&indices)
+        .map(|&i| {
+            let mut row = vec![F::zero(); rows];
+            for j in 0..cols {
+                let mut sum = F::zero();
+                for k in 0..rows {
+                    sum += M1[i * rows + k] * M2[k * cols + j];
+                }
+                row[j] = sum;
+            }
+            row
+        })
+        .collect();
+
+    Ok(results.into_iter().flatten().collect())
+}
+
 pub fn mat_vec_mul<F: PrimeField>(M: &SparseMatrix<F>, z: &[F]) -> Result<Vec<F>, Error> {
     if M.n_cols != z.len() {
         return Err(Error::NotSameLength(
@@ -247,6 +289,25 @@ pub mod tests {
         let a: Vec<Fr> = to_F_vec::<Fr>(vec![1, 2, 3, 4, 5, 6]);
         let b: Vec<Fr> = to_F_vec(vec![7, 8, 9, 10, 11, 12]);
         assert_eq!(vec_add(&a, &b)?, to_F_vec(vec![8, 10, 12, 14, 16, 18]));
+        Ok(())
+    }
+
+    #[test]
+    fn test_mat_mat_mul_dense_1() -> Result<(), Error> {
+        let a = to_F_vec::<Fr>(vec![1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        let b = to_F_vec::<Fr>(vec![1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        assert_eq!(
+            mat_mat_mul_dense(&a, &b)?,
+            to_F_vec(vec![30, 36, 42, 66, 81, 96, 102, 126, 150])
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_mat_mat_mul_dense_2() -> Result<(), Error> {
+        let a = to_F_vec::<Fr>(vec![1, 2, 3, 4]);
+        let b = to_F_vec::<Fr>(vec![4, 3, 2, 1]);
+        assert_eq!(mat_mat_mul_dense(&a, &b)?, to_F_vec(vec![8, 5, 20, 13]));
         Ok(())
     }
 }

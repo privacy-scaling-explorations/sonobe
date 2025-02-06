@@ -6,3 +6,6 @@ members = [
     "experimental-frontends"
 ]
 resolver = "2"
+
+[patch.crates-io]
+ark-r1cs-std = {git = "https://github.com/yelhousni/r1cs-std", branch="perf/sw"}

@@ -3,23 +3,25 @@ use std::{
     cmp::{max, min},
 };
 
-use ark_ff::{BigInteger, Field, One, PrimeField, Zero};
+use ark_ff::{BigInteger, Fp, FpConfig, One, PrimeField, Zero};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
+    convert::ToBitsGadget,
     fields::{fp::FpVar, FieldVar},
     prelude::EqGadget,
     select::CondSelectGadget,
-    R1CSVar, ToBitsGadget, ToConstraintFieldGadget,
+    R1CSVar,
 };
 use ark_relations::r1cs::{ConstraintSystemRef, Namespace, SynthesisError};
 use num_bigint::BigUint;
 use num_integer::Integer;
 
 use crate::{
-    folding::traits::Inputize,
+    folding::traits::{Inputize, InputizeNonNative},
     transcript::{AbsorbNonNative, AbsorbNonNativeGadget},
     utils::gadgets::{EquivalenceGadget, MatrixGadget, SparseMatrixVar, VectorGadget},
+    Field,
 };
 
 /// `LimbVar` represents a single limb of a non-native unsigned integer in the
@@ -37,12 +39,12 @@ pub struct LimbVar<F: PrimeField> {
 impl<F: PrimeField, B: AsRef<[Boolean<F>]>> From<B> for LimbVar<F> {
     fn from(bits: B) -> Self {
         Self {
-            // `Boolean::le_bits_to_fp_var` will return an error if the internal
+            // `Boolean::le_bits_to_fp` will return an error if the internal
             // invocation of `Boolean::enforce_in_field_le` fails.
             // However, this method is only called when the length of `bits` is
             // greater than `F::MODULUS_BIT_SIZE`, which should not happen in
             // our case where `bits` is guaranteed to be short.
-            v: Boolean::le_bits_to_fp_var(bits.as_ref()).unwrap(),
+            v: Boolean::le_bits_to_fp(bits.as_ref()).unwrap(),
             ub: (BigUint::one() << bits.as_ref().len()) - BigUint::one(),
         }
     }
@@ -165,7 +167,7 @@ impl<F: PrimeField> ToBitsGadget<F> for LimbVar<F> {
             Vec::new_witness(cs, || Ok(bits))?
         };
 
-        Boolean::le_bits_to_fp_var(&bits)?.enforce_equal(&self.v)?;
+        Boolean::le_bits_to_fp(&bits)?.enforce_equal(&self.v)?;
 
         Ok(bits)
     }
@@ -201,8 +203,8 @@ impl<F: PrimeField> NonNativeUintVar<F> {
         // Thus, 55 allows us to compute `Az∘Bz` without the expensive alignment
         // operation.
         //
-        // TODO (@winderica): either make it a global const, or compute an
-        // optimal value based on the modulus size
+        // TODO: either make it a global const, or compute an optimal value
+        // based on the modulus size.
         55
     }
 }
@@ -265,23 +267,6 @@ impl<F: PrimeField, G: Field> AllocVar<G, F> for NonNativeUintVar<F> {
         }
 
         Ok(Self(limbs))
-    }
-}
-
-impl<F: PrimeField, T: Field> Inputize<F, NonNativeUintVar<F>> for T {
-    fn inputize(&self) -> Vec<F> {
-        assert_eq!(T::extension_degree(), 1);
-        // `unwrap` is safe because `T` is a field with extension degree 1, and
-        // thus `T::to_base_prime_field_elements` should return an iterator with
-        // exactly one element.
-        self.to_base_prime_field_elements()
-            .next()
-            .unwrap()
-            .into_bigint()
-            .to_bits_le()
-            .chunks(NonNativeUintVar::<F>::bits_per_limb())
-            .map(|chunk| F::from(F::BigInt::from_bits_le(chunk)))
-            .collect()
     }
 }
 
@@ -518,20 +503,6 @@ impl<F: PrimeField> ToBitsGadget<F> for NonNativeUintVar<F> {
     }
 }
 
-impl<F: PrimeField> ToConstraintFieldGadget<F> for NonNativeUintVar<F> {
-    fn to_constraint_field(&self) -> Result<Vec<FpVar<F>>, SynthesisError> {
-        let bits_per_limb = F::MODULUS_BIT_SIZE as usize - 1;
-
-        let limbs = self
-            .to_bits_le()?
-            .chunks(bits_per_limb)
-            .map(Boolean::le_bits_to_fp_var)
-            .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(limbs)
-    }
-}
-
 impl<F: PrimeField> CondSelectGadget<F> for NonNativeUintVar<F> {
     fn conditionally_select(
         cond: &Boolean<F>,
@@ -569,7 +540,7 @@ impl<F: PrimeField> NonNativeUintVar<F> {
             Vec::new_witness(cs, || Ok(bits))?
         };
 
-        Boolean::le_bits_to_fp_var(&bits)?.enforce_equal(x)?;
+        Boolean::le_bits_to_fp(&bits)?.enforce_equal(x)?;
 
         Ok(bits)
     }
@@ -610,7 +581,7 @@ impl<F: PrimeField> NonNativeUintVar<F> {
         )?;
 
         // Below is equivalent to but more efficient than
-        // `Boolean::le_bits_to_fp_var(&bits)?.enforce_equal(&is_neg.select(&x.negate()?, &x)?)?`
+        // `Boolean::le_bits_to_fp(&bits)?.enforce_equal(&is_neg.select(&x.negate()?, &x)?)?`
         // Note that this enforces:
         // 1. The claimed absolute value `is_neg.select(&x.negate()?, &x)?` has
         //    exactly `length` bits.
@@ -627,7 +598,7 @@ impl<F: PrimeField> NonNativeUintVar<F> {
         //           `is_neg.select(&x.negate()?, &x)?` returns `x`, which is
         //           greater than `(|F| - 1) / 2` and cannot fit in `length`
         //           bits.
-        FpVar::from(is_neg).mul_equals(&x.double()?, &(x - Boolean::le_bits_to_fp_var(&bits)?))?;
+        FpVar::from(is_neg).mul_equals(&x.double()?, &(x - Boolean::le_bits_to_fp(&bits)?))?;
 
         Ok(bits)
     }
@@ -828,59 +799,55 @@ impl<F: PrimeField, B: AsRef<[Boolean<F>]>> From<B> for NonNativeUintVar<F> {
     }
 }
 
-// If we impl `AbsorbNonNative` directly for `PrimeField`, rustc will complain
-// that this impl conflicts with the impl for `CurveGroup`.
-// Therefore, we instead impl `AbsorbNonNative` for a slice of `PrimeField` as a
-// workaround.
-impl<TargetField: PrimeField, BaseField: PrimeField> AbsorbNonNative<BaseField>
-    for [TargetField]
-{
-    fn to_native_sponge_field_elements(&self, dest: &mut Vec<BaseField>) {
-        self.iter()
-            .for_each(|x| dest.extend(&nonnative_field_to_field_elements(x)));
+impl<P: FpConfig<N>, const N: usize> AbsorbNonNative for Fp<P, N> {
+    fn to_native_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
+        let bits_per_limb = F::MODULUS_BIT_SIZE as usize - 1;
+        let num_limbs = (Fp::<P, N>::MODULUS_BIT_SIZE as usize).div_ceil(bits_per_limb);
+
+        let mut limbs = self
+            .into_bigint()
+            .to_bits_le()
+            .chunks(bits_per_limb)
+            .map(|chunk| F::from(F::BigInt::from_bits_le(chunk)))
+            .collect::<Vec<F>>();
+        limbs.resize(num_limbs, F::zero());
+
+        dest.extend(&limbs)
     }
 }
 
 impl<F: PrimeField> AbsorbNonNativeGadget<F> for NonNativeUintVar<F> {
     fn to_native_sponge_field_elements(&self) -> Result<Vec<FpVar<F>>, SynthesisError> {
-        self.to_constraint_field()
+        let bits_per_limb = F::MODULUS_BIT_SIZE as usize - 1;
+
+        let limbs = self
+            .to_bits_le()?
+            .chunks(bits_per_limb)
+            .map(Boolean::le_bits_to_fp)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(limbs)
     }
 }
 
-/// The out-circuit counterpart of `NonNativeUintVar::to_constraint_field`
-pub(super) fn nonnative_field_to_field_elements<TargetField: Field, BaseField: PrimeField>(
-    f: &TargetField,
-) -> Vec<BaseField> {
-    assert_eq!(TargetField::extension_degree(), 1);
-    // `unwrap` is safe because `TargetField` is a field with extension degree
-    // 1, and thus `TargetField::to_base_prime_field_elements` should return an
-    // iterator with exactly one element.
-    let bits = f
-        .to_base_prime_field_elements()
-        .next()
-        .unwrap()
-        .into_bigint()
-        .to_bits_le();
+impl<P: FpConfig<N>, const N: usize> Inputize<Self> for Fp<P, N> {
+    /// Returns the internal representation in the same order as how the value
+    /// is allocated in `FpVar::new_input`.
+    fn inputize(&self) -> Vec<Self> {
+        vec![*self]
+    }
+}
 
-    let bits_per_limb = BaseField::MODULUS_BIT_SIZE as usize - 1;
-    let num_limbs =
-        (TargetField::BasePrimeField::MODULUS_BIT_SIZE as usize).div_ceil(bits_per_limb);
-
-    let mut limbs = bits
-        .chunks(bits_per_limb)
-        .map(|chunk| {
-            let mut limb = BaseField::zero();
-            let mut w = BaseField::one();
-            for &b in chunk.iter() {
-                limb += BaseField::from(b) * w;
-                w.double_in_place();
-            }
-            limb
-        })
-        .collect::<Vec<BaseField>>();
-    limbs.resize(num_limbs, BaseField::zero());
-
-    limbs
+impl<F: PrimeField, P: Field> InputizeNonNative<F> for P {
+    /// Returns the internal representation in the same order as how the value
+    /// is allocated in `NonNativeUintVar::new_input`.
+    fn inputize_nonnative(&self) -> Vec<F> {
+        self.into_bigint()
+            .to_bits_le()
+            .chunks(NonNativeUintVar::<F>::bits_per_limb())
+            .map(|chunk| F::from(F::BigInt::from_bits_le(chunk)))
+            .collect()
+    }
 }
 
 impl<F: PrimeField> VectorGadget<NonNativeUintVar<F>> for [NonNativeUintVar<F>] {
@@ -945,16 +912,17 @@ impl<CF: PrimeField> MatrixGadget<NonNativeUintVar<CF>> for SparseMatrixVar<NonN
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
-    use super::*;
+    use ark_ff::Field;
     use ark_pallas::{Fq, Fr};
     use ark_relations::r1cs::ConstraintSystem;
     use ark_std::{test_rng, UniformRand};
     use num_bigint::RandBigInt;
 
+    use super::*;
+    use crate::Error;
+
     #[test]
-    fn test_mul_biguint() -> Result<(), Box<dyn Error>> {
+    fn test_mul_biguint() -> Result<(), Error> {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         let size = 256;
@@ -990,7 +958,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mul_fq() -> Result<(), Box<dyn Error>> {
+    fn test_mul_fq() -> Result<(), Error> {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         let rng = &mut test_rng();
@@ -1021,7 +989,7 @@ mod tests {
     }
 
     #[test]
-    fn test_pow() -> Result<(), Box<dyn Error>> {
+    fn test_pow() -> Result<(), Error> {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         let rng = &mut test_rng();
@@ -1041,7 +1009,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vec_vec_mul() -> Result<(), Box<dyn Error>> {
+    fn test_vec_vec_mul() -> Result<(), Error> {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         let len = 1000;

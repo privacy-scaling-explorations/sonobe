@@ -79,14 +79,13 @@ mod tests {
         ProtocolVerifierKey,
     };
     use ark_bn254::{Bn254, Fr};
-    use ark_crypto_primitives::snark::SNARK;
     use ark_ec::AffineRepr;
     use ark_ff::{BigInt, BigInteger, PrimeField};
     use ark_groth16::Groth16;
+    use ark_snark::SNARK;
     use ark_std::rand::{RngCore, SeedableRng};
     use ark_std::test_rng;
     use askama::Template;
-    use itertools::chain;
 
     use super::Groth16Verifier;
     use crate::verifiers::tests::{setup, DEFAULT_SETUP_LEN};
@@ -121,19 +120,19 @@ mod tests {
         let (a_x, a_y) = proof.a.xy().unwrap();
         let (b_x, b_y) = proof.b.xy().unwrap();
         let (c_x, c_y) = proof.c.xy().unwrap();
-        let mut calldata: Vec<u8> = chain![
-            FUNCTION_SELECTOR_GROTH16_VERIFY_PROOF,
-            a_x.into_bigint().to_bytes_be(),
-            a_y.into_bigint().to_bytes_be(),
-            b_x.c1.into_bigint().to_bytes_be(),
-            b_x.c0.into_bigint().to_bytes_be(),
-            b_y.c1.into_bigint().to_bytes_be(),
-            b_y.c0.into_bigint().to_bytes_be(),
-            c_x.into_bigint().to_bytes_be(),
-            c_y.into_bigint().to_bytes_be(),
-            BigInt::from(Fr::from(circuit.z)).to_bytes_be(),
+        let mut calldata: Vec<u8> = [
+            &FUNCTION_SELECTOR_GROTH16_VERIFY_PROOF[..],
+            &a_x.into_bigint().to_bytes_be(),
+            &a_y.into_bigint().to_bytes_be(),
+            &b_x.c1.into_bigint().to_bytes_be(),
+            &b_x.c0.into_bigint().to_bytes_be(),
+            &b_y.c1.into_bigint().to_bytes_be(),
+            &b_y.c0.into_bigint().to_bytes_be(),
+            &c_x.into_bigint().to_bytes_be(),
+            &c_y.into_bigint().to_bytes_be(),
+            &BigInt::from(Fr::from(circuit.z)).to_bytes_be(),
         ]
-        .collect();
+        .concat();
         let (_, output) = evm.call(verifier_address, calldata.clone());
         assert_eq!(*output.last().unwrap(), 1);
 

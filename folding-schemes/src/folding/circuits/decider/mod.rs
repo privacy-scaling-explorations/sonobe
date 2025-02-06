@@ -1,13 +1,11 @@
 use ark_crypto_primitives::sponge::{
     poseidon::constraints::PoseidonSpongeVar, CryptographicSponge,
 };
-use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_poly::Polynomial;
 use ark_r1cs_std::{
     fields::{fp::FpVar, FieldVar},
     poly::{domain::Radix2DomainVar, evaluations::univariate::EvaluationsVar},
-    ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::SynthesisError;
 use ark_std::log2;
@@ -15,8 +13,8 @@ use ark_std::log2;
 use crate::folding::traits::{CommittedInstanceOps, CommittedInstanceVarOps, Dummy, WitnessOps};
 use crate::transcript::{Transcript, TranscriptVar};
 use crate::utils::vec::poly_from_vec;
-use crate::Error;
-use crate::{arith::Arith, folding::circuits::CF1};
+use crate::{arith::ArithRelation, folding::circuits::CF1};
+use crate::{Curve, Error};
 
 pub mod off_chain;
 pub mod on_chain;
@@ -26,11 +24,7 @@ pub mod on_chain;
 pub struct KZGChallengesGadget {}
 
 impl KZGChallengesGadget {
-    pub fn get_challenges_native<
-        C: CurveGroup,
-        T: Transcript<CF1<C>>,
-        U: CommittedInstanceOps<C>,
-    >(
+    pub fn get_challenges_native<C: Curve, T: Transcript<CF1<C>>, U: CommittedInstanceOps<C>>(
         transcript: &mut T,
         U_i: &U,
     ) -> Vec<CF1<C>> {
@@ -43,7 +37,7 @@ impl KZGChallengesGadget {
     }
 
     pub fn get_challenges_gadget<
-        C: CurveGroup,
+        C: Curve,
         S: CryptographicSponge,
         T: TranscriptVar<CF1<C>, S>,
         U: CommittedInstanceVarOps<C>,
@@ -53,7 +47,7 @@ impl KZGChallengesGadget {
     ) -> Result<Vec<FpVar<CF1<C>>>, SynthesisError> {
         let mut challenges = vec![];
         for cm in U_i.get_commitments() {
-            transcript.absorb(&cm.to_constraint_field()?)?;
+            transcript.absorb_nonnative(&cm)?;
             challenges.push(transcript.get_challenge()?);
         }
         Ok(challenges)
@@ -101,11 +95,11 @@ impl EvalGadget {
 /// In the future, we may introduce a better solution that uses a trait for all
 /// folding schemes that specifies their native and in-circuit behaviors.
 pub trait DeciderEnabledNIFS<
-    C: CurveGroup,
+    C: Curve,
     RU: CommittedInstanceOps<C>, // Running instance
     IU: CommittedInstanceOps<C>, // Incoming instance
     W: WitnessOps<CF1<C>>,
-    A: Arith<W, RU>,
+    A: ArithRelation<W, RU>,
 >
 {
     type ProofDummyCfg;
@@ -155,7 +149,7 @@ pub mod tests {
 
     // checks that the gadget and native implementations of the challenge computation match
     #[test]
-    fn test_kzg_challenge_gadget() {
+    fn test_kzg_challenge_gadget() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_canonical_config::<Fr>();
         let mut transcript = PoseidonSponge::<Fr>::new(&poseidon_config);
@@ -172,20 +166,20 @@ pub mod tests {
 
         let cs = ConstraintSystem::<Fr>::new_ref();
         let U_iVar =
-            CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || Ok(U_i.clone()))
-                .unwrap();
+            CommittedInstanceVar::<Projective>::new_witness(cs.clone(), || Ok(U_i.clone()))?;
         let mut transcript_var = PoseidonSpongeVar::<Fr>::new(cs.clone(), &poseidon_config);
 
         let challenges_var =
-            KZGChallengesGadget::get_challenges_gadget(&mut transcript_var, &U_iVar).unwrap();
-        assert!(cs.is_satisfied().unwrap());
+            KZGChallengesGadget::get_challenges_gadget(&mut transcript_var, &U_iVar)?;
+        assert!(cs.is_satisfied()?);
 
         // check that the natively computed and in-circuit computed hashes match
-        assert_eq!(challenges_var.value().unwrap(), challenges);
+        assert_eq!(challenges_var.value()?, challenges);
+        Ok(())
     }
 
     #[test]
-    fn test_polynomial_interpolation() {
+    fn test_polynomial_interpolation() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
         let n = 12;
         let l = 1 << n;
@@ -196,16 +190,17 @@ pub mod tests {
         let challenge = Fr::rand(&mut rng);
 
         use ark_poly::Polynomial;
-        let polynomial = poly_from_vec(v.to_vec()).unwrap();
+        let polynomial = poly_from_vec(v.to_vec())?;
         let eval = polynomial.evaluate(&challenge);
 
         let cs = ConstraintSystem::<Fr>::new_ref();
-        let vVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(v)).unwrap();
-        let challengeVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(challenge)).unwrap();
+        let vVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(v))?;
+        let challengeVar = FpVar::<Fr>::new_witness(cs.clone(), || Ok(challenge))?;
 
-        let evalVar = EvalGadget::evaluate_gadget(&vVar, &challengeVar).unwrap();
+        let evalVar = EvalGadget::evaluate_gadget(&vVar, &challengeVar)?;
 
-        assert_eq!(evalVar.value().unwrap(), eval);
-        assert!(cs.is_satisfied().unwrap());
+        assert_eq!(evalVar.value()?, eval);
+        assert!(cs.is_satisfied()?);
+        Ok(())
     }
 }

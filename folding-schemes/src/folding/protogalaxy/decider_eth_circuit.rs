@@ -3,16 +3,13 @@
 use ark_crypto_primitives::sponge::{
     constraints::CryptographicSpongeVar,
     poseidon::{constraints::PoseidonSpongeVar, PoseidonSponge},
-    Absorb, CryptographicSponge,
+    CryptographicSponge,
 };
-use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     eq::EqGadget,
     fields::fp::FpVar,
-    groups::CurveVar,
-    ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
 use ark_std::{borrow::Borrow, marker::PhantomData};
@@ -26,12 +23,12 @@ use crate::{
                 on_chain::GenericOnchainDeciderCircuit, DeciderEnabledNIFS, EvalGadget,
                 KZGChallengesGadget,
             },
-            CF1, CF2,
+            CF1,
         },
         traits::{WitnessOps, WitnessVarOps},
     },
     frontend::FCircuit,
-    Error,
+    Curve, Error,
 };
 
 use super::{
@@ -71,10 +68,9 @@ impl<F: PrimeField> WitnessVarOps<F> for WitnessVar<F> {
     }
 }
 
-pub type DeciderEthCircuit<C1, C2, GC2> = GenericOnchainDeciderCircuit<
+pub type DeciderEthCircuit<C1, C2> = GenericOnchainDeciderCircuit<
     C1,
     C2,
-    GC2,
     CommittedInstance<C1, RUNNING>,
     CommittedInstance<C1, INCOMING>,
     Witness<CF1<C1>>,
@@ -85,21 +81,17 @@ pub type DeciderEthCircuit<C1, C2, GC2> = GenericOnchainDeciderCircuit<
 
 /// returns an instance of the DeciderEthCircuit from the given ProtoGalaxy struct
 impl<
-        C1: CurveGroup,
-        GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
-        C2: CurveGroup,
-        GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+        C1: Curve,
+        C2: Curve,
         FC: FCircuit<C1::ScalarField>,
         CS1: CommitmentScheme<C1, false>,
         // enforce that the CS2 is Pedersen commitment scheme, since we're at Ethereum's EVM decider
         CS2: CommitmentScheme<C2, false, ProverParams = PedersenParams<C2>>,
-    > TryFrom<ProtoGalaxy<C1, GC1, C2, GC2, FC, CS1, CS2>> for DeciderEthCircuit<C1, C2, GC2>
-where
-    CF1<C1>: Absorb,
+    > TryFrom<ProtoGalaxy<C1, C2, FC, CS1, CS2>> for DeciderEthCircuit<C1, C2>
 {
     type Error = Error;
 
-    fn try_from(protogalaxy: ProtoGalaxy<C1, GC1, C2, GC2, FC, CS1, CS2>) -> Result<Self, Error> {
+    fn try_from(protogalaxy: ProtoGalaxy<C1, C2, FC, CS1, CS2>) -> Result<Self, Error> {
         let mut transcript = PoseidonSponge::<C1::ScalarField>::new(&protogalaxy.poseidon_config);
 
         let (U_i1, W_i1, proof, aux) = Folding::prove(
@@ -123,7 +115,6 @@ where
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Self {
-            _gc2: PhantomData,
             _avar: PhantomData,
             arith: protogalaxy.r1cs,
             cf_arith: protogalaxy.cf_r1cs,
@@ -151,7 +142,7 @@ where
 
 pub struct DeciderProtoGalaxyGadget;
 
-impl<C: CurveGroup>
+impl<C: Curve>
     DeciderEnabledNIFS<
         C,
         CommittedInstance<C, RUNNING>,
@@ -201,8 +192,8 @@ impl<C: CurveGroup>
 
 #[cfg(test)]
 pub mod tests {
-    use ark_bn254::{constraints::GVar, Fr, G1Projective as Projective};
-    use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
+    use ark_bn254::{Fr, G1Projective as Projective};
+    use ark_grumpkin::Projective as Projective2;
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 
     use super::*;
@@ -213,40 +204,38 @@ pub mod tests {
     use crate::FoldingScheme;
 
     #[test]
-    fn test_decider_circuit() {
+    fn test_decider_circuit() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
-        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
+        let F_circuit = CubicFCircuit::<Fr>::new(())?;
         let z_0 = vec![Fr::from(3_u32)];
 
         type PG = ProtoGalaxy<
             Projective,
-            GVar,
             Projective2,
-            GVar2,
             CubicFCircuit<Fr>,
             Pedersen<Projective>,
             Pedersen<Projective2>,
         >;
-        let pg_params = PG::preprocess(&mut rng, &(poseidon_config, F_circuit)).unwrap();
+        let pg_params = PG::preprocess(&mut rng, &(poseidon_config, F_circuit))?;
 
         // generate a Nova instance and do a step of it
-        let mut protogalaxy = PG::init(&pg_params, F_circuit, z_0.clone()).unwrap();
-        protogalaxy.prove_step(&mut rng, vec![], None).unwrap();
+        let mut protogalaxy = PG::init(&pg_params, F_circuit, z_0.clone())?;
+        protogalaxy.prove_step(&mut rng, (), None)?;
 
         let ivc_proof = protogalaxy.ivc_proof();
-        PG::verify(pg_params.1, ivc_proof).unwrap();
+        PG::verify(pg_params.1, ivc_proof)?;
 
         // load the DeciderEthCircuit from the generated Nova instance
-        let decider_circuit =
-            DeciderEthCircuit::<Projective, Projective2, GVar2>::try_from(protogalaxy).unwrap();
+        let decider_circuit = DeciderEthCircuit::<Projective, Projective2>::try_from(protogalaxy)?;
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         // generate the constraints and check that are satisfied by the inputs
-        decider_circuit.generate_constraints(cs.clone()).unwrap();
-        assert!(cs.is_satisfied().unwrap());
+        decider_circuit.generate_constraints(cs.clone())?;
+        assert!(cs.is_satisfied()?);
         dbg!(cs.num_constraints());
+        Ok(())
     }
 }

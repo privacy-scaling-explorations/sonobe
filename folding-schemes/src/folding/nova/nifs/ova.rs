@@ -1,7 +1,6 @@
 /// This module contains the implementation the NIFSTrait for the
 /// [Ova](https://hackmd.io/V4838nnlRKal9ZiTHiGYzw) NIFS (Non-Interactive Folding Scheme).
 use ark_crypto_primitives::sponge::Absorb;
-use ark_ec::{CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::fmt::Debug;
@@ -12,13 +11,13 @@ use std::marker::PhantomData;
 use super::nova::ChallengeGadget;
 use super::ova_circuits::CommittedInstanceVar;
 use super::NIFSTrait;
-use crate::arith::r1cs::R1CS;
+use crate::arith::{r1cs::R1CS, Arith};
 use crate::commitment::CommitmentScheme;
 use crate::folding::traits::{CommittedInstanceOps, Inputize};
 use crate::folding::{circuits::CF1, traits::Dummy};
-use crate::transcript::{AbsorbNonNative, Transcript};
+use crate::transcript::Transcript;
 use crate::utils::vec::{hadamard, mat_vec_mul, vec_scalar_mul, vec_sub};
-use crate::Error;
+use crate::{Curve, Error};
 
 /// A CommittedInstance in [Ova](https://hackmd.io/V4838nnlRKal9ZiTHiGYzw) is represented by `W` or
 /// `W'`. It is the result of the commitment to a vector that contains the witness `w` concatenated
@@ -26,16 +25,13 @@ use crate::Error;
 /// document `u` is denoted as `mu`, in this implementation we use `u` so it follows the original
 /// Nova notation, so code is easier to follow).
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CommittedInstance<C: CurveGroup> {
+pub struct CommittedInstance<C: Curve> {
     pub u: C::ScalarField, // in the Ova document is denoted as `mu`
     pub x: Vec<C::ScalarField>,
     pub cmWE: C,
 }
 
-impl<C: CurveGroup> Absorb for CommittedInstance<C>
-where
-    C::ScalarField: Absorb,
-{
+impl<C: Curve> Absorb for CommittedInstance<C> {
     fn to_sponge_bytes(&self, dest: &mut Vec<u8>) {
         C::ScalarField::batch_to_sponge_bytes(&self.to_sponge_field_elements_as_vec(), dest);
     }
@@ -43,16 +39,11 @@ where
     fn to_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
         self.u.to_sponge_field_elements(dest);
         self.x.to_sponge_field_elements(dest);
-        // We cannot call `to_native_sponge_field_elements(dest)` directly, as
-        // `to_native_sponge_field_elements` needs `F` to be `C::ScalarField`,
-        // but here `F` is a generic `PrimeField`.
-        self.cmWE
-            .to_native_sponge_field_elements_as_vec()
-            .to_sponge_field_elements(dest);
+        self.cmWE.to_native_sponge_field_elements(dest);
     }
 }
 
-impl<C: CurveGroup> CommittedInstanceOps<C> for CommittedInstance<C> {
+impl<C: Curve> CommittedInstanceOps<C> for CommittedInstance<C> {
     type Var = CommittedInstanceVar<C>;
 
     fn get_commitments(&self) -> Vec<C> {
@@ -64,21 +55,23 @@ impl<C: CurveGroup> CommittedInstanceOps<C> for CommittedInstance<C> {
     }
 }
 
-impl<C: CurveGroup> Inputize<C::ScalarField, CommittedInstanceVar<C>> for CommittedInstance<C> {
-    fn inputize(&self) -> Vec<C::ScalarField> {
-        [&[self.u][..], &self.x, &self.cmWE.inputize()].concat()
+impl<C: Curve> Inputize<CF1<C>> for CommittedInstance<C> {
+    /// Returns the internal representation in the same order as how the value
+    /// is allocated in `CommittedInstanceVar::new_input`.
+    fn inputize(&self) -> Vec<CF1<C>> {
+        [&[self.u][..], &self.x, &self.cmWE.inputize_nonnative()].concat()
     }
 }
 
 /// A Witness in Ova is represented by `w`. It also contains a blinder which can or not be used
 /// when committing to the witness itself.
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Witness<C: CurveGroup> {
+pub struct Witness<C: Curve> {
     pub w: Vec<C::ScalarField>,
     pub rW: C::ScalarField,
 }
 
-impl<C: CurveGroup> Witness<C> {
+impl<C: Curve> Witness<C> {
     /// Generates a new `Witness` instance from a given witness vector.
     /// If `H = true`, then we assume we want to blind it at commitment time,
     /// hence sampling `rW` from the randomness passed.
@@ -111,10 +104,10 @@ impl<C: CurveGroup> Witness<C> {
     }
 }
 
-impl<C: CurveGroup> Dummy<&R1CS<CF1<C>>> for Witness<C> {
+impl<C: Curve> Dummy<&R1CS<CF1<C>>> for Witness<C> {
     fn dummy(r1cs: &R1CS<CF1<C>>) -> Self {
         Self {
-            w: vec![C::ScalarField::zero(); r1cs.A.n_cols - 1 - r1cs.l],
+            w: vec![C::ScalarField::zero(); r1cs.n_witnesses()],
             rW: C::ScalarField::zero(),
         }
     }
@@ -122,7 +115,7 @@ impl<C: CurveGroup> Dummy<&R1CS<CF1<C>>> for Witness<C> {
 
 /// Implements the NIFS (Non-Interactive Folding Scheme) trait for Ova.
 pub struct NIFS<
-    C: CurveGroup,
+    C: Curve,
     CS: CommitmentScheme<C, H>,
     T: Transcript<C::ScalarField>,
     const H: bool = false,
@@ -132,11 +125,8 @@ pub struct NIFS<
     _t: PhantomData<T>,
 }
 
-impl<C: CurveGroup, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
+impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
     NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
-where
-    <C as Group>::ScalarField: Absorb,
-    <C as CurveGroup>::BaseField: PrimeField,
 {
     type CommittedInstance = CommittedInstance<C>;
     type Witness = Witness<C>;
@@ -241,7 +231,7 @@ where
 
 /// Computes the E parameter (error terms) for the given R1CS and the instance's z and u. This
 /// method is used by the verifier to obtain E in order to check the RelaxedR1CS relation.
-pub fn compute_E<C: CurveGroup>(
+pub fn compute_E<C: Curve>(
     r1cs: &R1CS<C::ScalarField>,
     z: &[C::ScalarField],
     u: C::ScalarField,
@@ -264,22 +254,22 @@ pub mod tests {
     use super::*;
     use ark_pallas::{Fr, Projective};
 
-    use crate::arith::{r1cs::tests::get_test_r1cs, Arith};
+    use crate::arith::{r1cs::tests::get_test_r1cs, ArithRelation};
     use crate::commitment::pedersen::Pedersen;
     use crate::folding::nova::nifs::tests::test_nifs_opt;
     use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
 
     // Simple auxiliary structure mainly used to help pass a witness for which we can check
     // easily an R1CS relation.
-    // Notice that checking it requires us to have `E` as per [`Arith`] trait definition.
+    // Notice that checking it requires us to have `E` as per [`ArithRelation`] trait definition.
     // But since we don't hold `E` nor `e` within the NIFS, we create this structure to pass
     // `e` such that the check can be done.
     #[derive(Debug, Clone)]
-    pub(crate) struct TestingWitness<C: CurveGroup> {
+    pub(crate) struct TestingWitness<C: Curve> {
         pub(crate) w: Vec<C::ScalarField>,
         pub(crate) e: Vec<C::ScalarField>,
     }
-    impl<C: CurveGroup> Arith<TestingWitness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
+    impl<C: Curve> ArithRelation<TestingWitness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
         type Evaluation = Vec<CF1<C>>;
 
         fn eval_relation(
@@ -300,14 +290,14 @@ pub mod tests {
     }
 
     #[test]
-    fn test_nifs_ova() {
-        let (W, U) = test_nifs_opt::<NIFS<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>>();
+    fn test_nifs_ova() -> Result<(), Error> {
+        let (W, U) = test_nifs_opt::<NIFS<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>>()?;
 
         // check the last folded instance relation
         let r1cs = get_test_r1cs();
         let z: Vec<Fr> = [&[U.u][..], &U.x, &W.w].concat();
-        let e = compute_E::<Projective>(&r1cs, &z, U.u).unwrap();
-        r1cs.check_relation(&TestingWitness::<Projective> { e, w: W.w.clone() }, &U)
-            .unwrap();
+        let e = compute_E::<Projective>(&r1cs, &z, U.u)?;
+        r1cs.check_relation(&TestingWitness::<Projective> { e, w: W.w.clone() }, &U)?;
+        Ok(())
     }
 }

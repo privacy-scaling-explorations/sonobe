@@ -1,5 +1,5 @@
 use crate::{
-    arith::ArithGadget,
+    arith::ArithRelationGadget,
     utils::gadgets::{EquivalenceGadget, MatrixGadget, SparseMatrixVar, VectorGadget},
 };
 use ark_ff::PrimeField;
@@ -59,7 +59,7 @@ where
     }
 }
 
-impl<M, FVar, WVar: AsRef<[FVar]>, UVar: AsRef<[FVar]>> ArithGadget<WVar, UVar>
+impl<M, FVar, WVar: AsRef<[FVar]>, UVar: AsRef<[FVar]>> ArithRelationGadget<WVar, UVar>
     for R1CSMatricesVar<M, FVar>
 where
     SparseMatrixVar<FVar>: MatrixGadget<FVar>,
@@ -86,8 +86,6 @@ where
 
 #[cfg(test)]
 pub mod tests {
-    use std::cmp::max;
-
     use ark_crypto_primitives::crh::{
         sha256::{
             constraints::{Sha256Gadget, UnitVar},
@@ -95,16 +93,17 @@ pub mod tests {
         },
         CRHScheme, CRHSchemeGadget,
     };
-    use ark_ec::CurveGroup;
+
     use ark_ff::BigInteger;
     use ark_pallas::{Fq, Fr, Projective};
-    use ark_r1cs_std::{bits::uint8::UInt8, eq::EqGadget, fields::fp::FpVar};
+    use ark_r1cs_std::{eq::EqGadget, fields::fp::FpVar, uint8::UInt8};
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef};
     use ark_std::{
+        cmp::max,
         rand::{thread_rng, Rng},
         One, UniformRand,
     };
-    use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
+    use ark_vesta::Projective as Projective2;
 
     use super::*;
     use crate::arith::{
@@ -112,7 +111,7 @@ pub mod tests {
             extract_r1cs, extract_w_x,
             tests::{get_test_r1cs, get_test_z},
         },
-        Arith,
+        Arith, ArithRelation,
     };
     use crate::commitment::{pedersen::Pedersen, CommitmentScheme};
     use crate::folding::{
@@ -126,92 +125,95 @@ pub mod tests {
         },
     };
     use crate::frontend::{
-        utils::{CubicFCircuit, CustomFCircuit, WrapperCircuit},
+        utils::{
+            cubic_step_native, custom_step_native, CubicFCircuit, CustomFCircuit, WrapperCircuit,
+        },
         FCircuit,
     };
+    use crate::{Curve, Error};
 
-    pub fn prepare_instances<C: CurveGroup, CS: CommitmentScheme<C>, R: Rng>(
+    fn prepare_instances<C: Curve, CS: CommitmentScheme<C>, R: Rng>(
         mut rng: R,
         r1cs: &R1CS<C::ScalarField>,
         z: &[C::ScalarField],
-    ) -> (Witness<C>, CommittedInstance<C>) {
+    ) -> Result<(Witness<C>, CommittedInstance<C>), Error> {
         let (w, x) = r1cs.split_z(z);
 
-        let (cs_pp, _) = CS::setup(&mut rng, max(w.len(), r1cs.A.n_rows)).unwrap();
+        let (cs_pp, _) = CS::setup(&mut rng, max(w.len(), r1cs.A.n_rows))?;
 
         let mut w = Witness::new::<false>(w, r1cs.A.n_rows, &mut rng);
-        w.E = r1cs.eval_at_z(z).unwrap();
-        let mut u = w.commit::<CS, false>(&cs_pp, x).unwrap();
+        w.E = r1cs.eval_at_z(z)?;
+        let mut u = w.commit::<CS, false>(&cs_pp, x)?;
         u.u = z[0];
 
-        (w, u)
+        Ok((w, u))
     }
 
     #[test]
-    fn test_relaxed_r1cs_small_gadget_handcrafted() {
+    fn test_relaxed_r1cs_small_gadget_handcrafted() -> Result<(), Error> {
         let rng = &mut thread_rng();
 
         let r1cs: R1CS<Fr> = get_test_r1cs();
         let mut z = get_test_z(3);
         z[0] = Fr::rand(rng);
-        let (w, u) = prepare_instances::<_, Pedersen<Projective>, _>(rng, &r1cs, &z);
+        let (w, u) = prepare_instances::<_, Pedersen<Projective>, _>(rng, &r1cs, &z)?;
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        let wVar = WitnessVar::new_witness(cs.clone(), || Ok(w)).unwrap();
-        let uVar = CommittedInstanceVar::new_witness(cs.clone(), || Ok(u)).unwrap();
-        let r1csVar =
-            R1CSMatricesVar::<Fr, FpVar<Fr>>::new_witness(cs.clone(), || Ok(r1cs)).unwrap();
+        let wVar = WitnessVar::new_witness(cs.clone(), || Ok(w))?;
+        let uVar = CommittedInstanceVar::new_witness(cs.clone(), || Ok(u))?;
+        let r1csVar = R1CSMatricesVar::<Fr, FpVar<Fr>>::new_witness(cs.clone(), || Ok(r1cs))?;
 
-        r1csVar.enforce_relation(&wVar, &uVar).unwrap();
-        assert!(cs.is_satisfied().unwrap());
+        r1csVar.enforce_relation(&wVar, &uVar)?;
+        assert!(cs.is_satisfied()?);
+        Ok(())
     }
 
     // gets as input a circuit that implements the ConstraintSynthesizer trait, and that has been
     // initialized.
-    fn test_relaxed_r1cs_gadget<CS: ConstraintSynthesizer<Fr>>(circuit: CS) {
+    fn test_relaxed_r1cs_gadget<CS: ConstraintSynthesizer<Fr>>(circuit: CS) -> Result<(), Error> {
         let rng = &mut thread_rng();
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        circuit.generate_constraints(cs.clone()).unwrap();
+        circuit.generate_constraints(cs.clone())?;
         cs.finalize();
-        assert!(cs.is_satisfied().unwrap());
+        assert!(cs.is_satisfied()?);
 
-        let cs = cs.into_inner().unwrap();
+        let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
 
-        let r1cs = extract_r1cs::<Fr>(&cs).unwrap();
+        let r1cs = extract_r1cs::<Fr>(&cs)?;
         let (w, x) = extract_w_x::<Fr>(&cs);
-        r1cs.check_relation(&w, &x).unwrap();
+        r1cs.check_relation(&w, &x)?;
         let mut z = [vec![Fr::one()], x, w].concat();
         z[0] = Fr::rand(rng);
 
-        let (w, u) = prepare_instances::<_, Pedersen<Projective>, _>(rng, &r1cs, &z);
-        r1cs.check_relation(&w, &u).unwrap();
+        let (w, u) = prepare_instances::<_, Pedersen<Projective>, _>(rng, &r1cs, &z)?;
+        r1cs.check_relation(&w, &u)?;
 
         // set new CS for the circuit that checks the RelaxedR1CS of our original circuit
         let cs = ConstraintSystem::<Fr>::new_ref();
         // prepare the inputs for our circuit
-        let wVar = WitnessVar::new_witness(cs.clone(), || Ok(w)).unwrap();
-        let uVar = CommittedInstanceVar::new_witness(cs.clone(), || Ok(u)).unwrap();
-        let r1csVar =
-            R1CSMatricesVar::<Fr, FpVar<Fr>>::new_witness(cs.clone(), || Ok(r1cs)).unwrap();
+        let wVar = WitnessVar::new_witness(cs.clone(), || Ok(w))?;
+        let uVar = CommittedInstanceVar::new_witness(cs.clone(), || Ok(u))?;
+        let r1csVar = R1CSMatricesVar::<Fr, FpVar<Fr>>::new_witness(cs.clone(), || Ok(r1cs))?;
 
-        r1csVar.enforce_relation(&wVar, &uVar).unwrap();
-        assert!(cs.is_satisfied().unwrap());
+        r1csVar.enforce_relation(&wVar, &uVar)?;
+        assert!(cs.is_satisfied()?);
+        Ok(())
     }
 
     #[test]
-    fn test_relaxed_r1cs_small_gadget_arkworks() {
+    fn test_relaxed_r1cs_small_gadget_arkworks() -> Result<(), Error> {
         let z_i = vec![Fr::from(3_u32)];
-        let cubic_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
+        let cubic_circuit = CubicFCircuit::<Fr>::new(())?;
         let circuit = WrapperCircuit::<Fr, CubicFCircuit<Fr>> {
             FC: cubic_circuit,
             z_i: Some(z_i.clone()),
-            z_i1: Some(cubic_circuit.step_native(0, z_i, vec![]).unwrap()),
+            z_i1: Some(cubic_step_native(z_i)),
         };
 
-        test_relaxed_r1cs_gadget(circuit);
+        test_relaxed_r1cs_gadget(circuit)
     }
 
     struct Sha256TestCircuit<F: PrimeField> {
@@ -231,71 +233,71 @@ pub mod tests {
         }
     }
     #[test]
-    fn test_relaxed_r1cs_medium_gadget_arkworks() {
+    fn test_relaxed_r1cs_medium_gadget_arkworks() -> Result<(), Error> {
         let x = Fr::from(5_u32).into_bigint().to_bytes_le();
-        let y = <Sha256 as CRHScheme>::evaluate(&(), x.clone()).unwrap();
+        let y =
+            <Sha256 as CRHScheme>::evaluate(&(), x.clone()).map_err(|_| Error::EvaluationFail)?;
 
         let circuit = Sha256TestCircuit::<Fr> {
             _f: PhantomData,
             x,
             y,
         };
-        test_relaxed_r1cs_gadget(circuit);
+        test_relaxed_r1cs_gadget(circuit)
     }
 
     #[test]
-    fn test_relaxed_r1cs_custom_circuit() {
+    fn test_relaxed_r1cs_custom_circuit() -> Result<(), Error> {
         let n_constraints = 10_000;
-        let custom_circuit = CustomFCircuit::<Fr>::new(n_constraints).unwrap();
+        let custom_circuit = CustomFCircuit::<Fr>::new(n_constraints)?;
         let z_i = vec![Fr::from(5_u32)];
         let circuit = WrapperCircuit::<Fr, CustomFCircuit<Fr>> {
             FC: custom_circuit,
             z_i: Some(z_i.clone()),
-            z_i1: Some(custom_circuit.step_native(0, z_i, vec![]).unwrap()),
+            z_i1: Some(custom_step_native(z_i, n_constraints)),
         };
-        test_relaxed_r1cs_gadget(circuit);
+        test_relaxed_r1cs_gadget(circuit)
     }
 
     #[test]
-    fn test_relaxed_r1cs_nonnative_circuit() {
+    fn test_relaxed_r1cs_nonnative_circuit() -> Result<(), Error> {
+        let n_constraints = 10;
         let rng = &mut thread_rng();
 
         let cs = ConstraintSystem::<Fq>::new_ref();
         // in practice we would use CycleFoldCircuit, but is a very big circuit (when computed
         // non-natively inside the RelaxedR1CS circuit), so in order to have a short test we use a
         // custom circuit.
-        let custom_circuit = CustomFCircuit::<Fq>::new(10).unwrap();
+        let custom_circuit = CustomFCircuit::<Fq>::new(n_constraints)?;
         let z_i = vec![Fq::from(5_u32)];
         let circuit = WrapperCircuit::<Fq, CustomFCircuit<Fq>> {
             FC: custom_circuit,
             z_i: Some(z_i.clone()),
-            z_i1: Some(custom_circuit.step_native(0, z_i, vec![]).unwrap()),
+            z_i1: Some(custom_step_native(z_i, n_constraints)),
         };
-        circuit.generate_constraints(cs.clone()).unwrap();
+        circuit.generate_constraints(cs.clone())?;
         cs.finalize();
-        let cs = cs.into_inner().unwrap();
-        let r1cs = extract_r1cs::<Fq>(&cs).unwrap();
+        let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
+        let r1cs = extract_r1cs::<Fq>(&cs)?;
         let (w, x) = extract_w_x::<Fq>(&cs);
         let z = [vec![Fq::rand(rng)], x, w].concat();
 
-        let (w, u) = prepare_instances::<_, Pedersen<Projective2>, _>(rng, &r1cs, &z);
+        let (w, u) = prepare_instances::<_, Pedersen<Projective2>, _>(rng, &r1cs, &z)?;
 
         // natively
         let cs = ConstraintSystem::<Fq>::new_ref();
-        let wVar = WitnessVar::new_witness(cs.clone(), || Ok(&w)).unwrap();
-        let uVar = CommittedInstanceVar::new_witness(cs.clone(), || Ok(&u)).unwrap();
-        let r1csVar =
-            R1CSMatricesVar::<Fq, FpVar<Fq>>::new_witness(cs.clone(), || Ok(&r1cs)).unwrap();
-        r1csVar.enforce_relation(&wVar, &uVar).unwrap();
+        let wVar = WitnessVar::new_witness(cs.clone(), || Ok(&w))?;
+        let uVar = CommittedInstanceVar::new_witness(cs.clone(), || Ok(&u))?;
+        let r1csVar = R1CSMatricesVar::<Fq, FpVar<Fq>>::new_witness(cs.clone(), || Ok(&r1cs))?;
+        r1csVar.enforce_relation(&wVar, &uVar)?;
 
         // non-natively
         let cs = ConstraintSystem::<Fr>::new_ref();
-        let wVar = CycleFoldWitnessVar::new_witness(cs.clone(), || Ok(w)).unwrap();
-        let uVar =
-            CycleFoldCommittedInstanceVar::<_, GVar2>::new_witness(cs.clone(), || Ok(u)).unwrap();
+        let wVar = CycleFoldWitnessVar::new_witness(cs.clone(), || Ok(w))?;
+        let uVar = CycleFoldCommittedInstanceVar::new_witness(cs.clone(), || Ok(u))?;
         let r1csVar =
-            R1CSMatricesVar::<Fq, NonNativeUintVar<Fr>>::new_witness(cs.clone(), || Ok(r1cs))
-                .unwrap();
-        r1csVar.enforce_relation(&wVar, &uVar).unwrap();
+            R1CSMatricesVar::<Fq, NonNativeUintVar<Fr>>::new_witness(cs.clone(), || Ok(r1cs))?;
+        r1csVar.enforce_relation(&wVar, &uVar)?;
+        Ok(())
     }
 }

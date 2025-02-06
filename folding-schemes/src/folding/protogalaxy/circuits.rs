@@ -1,22 +1,22 @@
 use ark_crypto_primitives::sponge::{
     constraints::CryptographicSpongeVar,
     poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig, PoseidonSponge},
-    Absorb, CryptographicSponge,
+    CryptographicSponge,
 };
-use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_poly::{univariate::DensePolynomial, EvaluationDomain, GeneralEvaluationDomain};
 use ark_r1cs_std::{
     alloc::AllocVar,
     boolean::Boolean,
+    convert::ToBitsGadget,
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
     groups::CurveVar,
     poly::polynomial::univariate::dense::DensePolynomialVar,
-    R1CSVar, ToBitsGadget, ToConstraintFieldGadget,
+    R1CSVar,
 };
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-use ark_std::{fmt::Debug, marker::PhantomData, One, Zero};
+use ark_std::{fmt::Debug, One, Zero};
 
 use super::{
     folding::lagrange_polys,
@@ -31,20 +31,21 @@ use crate::{
                 CycleFoldCommittedInstanceVar, CycleFoldConfig, NIFSFullGadget,
             },
             nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
-            CF1, CF2,
+            CF1,
         },
         traits::{CommittedInstanceVarOps, Dummy},
     },
     frontend::FCircuit,
     transcript::{AbsorbNonNativeGadget, TranscriptVar},
     utils::gadgets::VectorGadget,
+    Curve,
 };
 
 pub struct FoldingGadget {}
 
 impl FoldingGadget {
     #[allow(clippy::type_complexity)]
-    pub fn fold_committed_instance<C: CurveGroup, S: CryptographicSponge>(
+    pub fn fold_committed_instance<C: Curve, S: CryptographicSponge>(
         transcript: &mut impl TranscriptVar<C::ScalarField, S>,
         // running instance
         instance: &CommittedInstanceVar<C, true>,
@@ -134,7 +135,7 @@ pub struct AugmentationGadget;
 
 impl AugmentationGadget {
     #[allow(clippy::type_complexity)]
-    pub fn prepare_and_fold_primary<C: CurveGroup, S: CryptographicSponge>(
+    pub fn prepare_and_fold_primary<C: Curve, S: CryptographicSponge>(
         transcript: &mut impl TranscriptVar<CF1<C>, S>,
         U: CommittedInstanceVar<C, true>,
         u_phis: Vec<NonNativeAffineVar<C>>,
@@ -170,21 +171,17 @@ impl AugmentationGadget {
     }
 
     pub fn prepare_and_fold_cyclefold<
-        C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-        C2: CurveGroup,
-        GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+        C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+        C2: Curve,
         S: CryptographicSponge,
     >(
         transcript: &mut PoseidonSpongeVar<CF1<C1>>,
         pp_hash: FpVar<CF1<C1>>,
-        mut cf_U: CycleFoldCommittedInstanceVar<C2, GC2>,
-        cf_u_cmWs: Vec<GC2>,
+        mut cf_U: CycleFoldCommittedInstanceVar<C2>,
+        cf_u_cmWs: Vec<C2::Var>,
         cf_u_xs: Vec<Vec<NonNativeUintVar<CF1<C1>>>>,
-        cf_cmTs: Vec<GC2>,
-    ) -> Result<CycleFoldCommittedInstanceVar<C2, GC2>, SynthesisError>
-    where
-        C2::BaseField: PrimeField + Absorb,
-    {
+        cf_cmTs: Vec<C2::Var>,
+    ) -> Result<CycleFoldCommittedInstanceVar<C2>, SynthesisError> {
         assert_eq!(cf_u_cmWs.len(), cf_u_xs.len());
         assert_eq!(cf_u_xs.len(), cf_cmTs.len());
 
@@ -197,7 +194,7 @@ impl AugmentationGadget {
             // For each CycleFold instance `cf_u`, we have `cf_u.cmE = 0`, and
             // `cf_u.u = 1`.
             let cf_u = CycleFoldCommittedInstanceVar {
-                cmE: GC2::zero(),
+                cmE: C2::Var::zero(),
                 u: NonNativeUintVar::new_constant(ConstraintSystemRef::None, C1::BaseField::one())?,
                 cmW,
                 x,
@@ -234,27 +231,20 @@ impl AugmentationGadget {
 /// defined in [CycleFold](https://eprint.iacr.org/2023/1192.pdf). These extra
 /// constraints verify the correct folding of CycleFold instances.
 #[derive(Debug, Clone)]
-pub struct AugmentedFCircuit<
-    C1: CurveGroup,
-    C2: CurveGroup,
-    GC2: CurveVar<C2, CF2<C2>>,
-    FC: FCircuit<CF1<C1>>,
-> {
-    pub(super) _gc2: PhantomData<GC2>,
+pub struct AugmentedFCircuit<C1: Curve, C2: Curve, FC: FCircuit<CF1<C1>>> {
     pub(super) poseidon_config: PoseidonConfig<CF1<C1>>,
     pub(super) pp_hash: CF1<C1>,
     pub(super) i: CF1<C1>,
     pub(super) i_usize: usize,
     pub(super) z_0: Vec<CF1<C1>>,
     pub(super) z_i: Vec<CF1<C1>>,
-    pub(super) external_inputs: Vec<CF1<C1>>,
+    pub(super) external_inputs: FC::ExternalInputs,
     pub(super) F: FC, // F circuit
     pub(super) u_i_phi: C1,
     pub(super) U_i: CommittedInstance<C1, true>,
     pub(super) U_i1_phi: C1,
     pub(super) F_coeffs: Vec<CF1<C1>>,
     pub(super) K_coeffs: Vec<CF1<C1>>,
-    pub(super) x: Option<CF1<C1>>, // public input (u_{i+1}.x[0])
 
     pub(super) phi_stars: Vec<C1>,
 
@@ -263,12 +253,9 @@ pub struct AugmentedFCircuit<
     pub(super) cf_U_i: CycleFoldCommittedInstance<C2>, // input
     pub(super) cf1_cmT: C2,
     pub(super) cf2_cmT: C2,
-    pub(super) cf_x: Option<CF1<C1>>, // public input (u_{i+1}.x[1])
 }
 
-impl<C1: CurveGroup, C2: CurveGroup, GC2: CurveVar<C2, CF2<C2>>, FC: FCircuit<CF1<C1>>>
-    AugmentedFCircuit<C1, C2, GC2, FC>
-{
+impl<C1: Curve, C2: Curve, FC: FCircuit<CF1<C1>>> AugmentedFCircuit<C1, C2, FC> {
     pub fn empty(
         poseidon_config: &PoseidonConfig<CF1<C1>>,
         F_circuit: FC,
@@ -281,14 +268,13 @@ impl<C1: CurveGroup, C2: CurveGroup, GC2: CurveVar<C2, CF2<C2>>, FC: FCircuit<CF
             CycleFoldCommittedInstance::dummy(ProtoGalaxyCycleFoldConfig::<C1>::IO_LEN);
 
         Self {
-            _gc2: PhantomData,
             poseidon_config: poseidon_config.clone(),
             pp_hash: CF1::<C1>::zero(),
             i: CF1::<C1>::zero(),
             i_usize: 0,
             z_0: vec![CF1::<C1>::zero(); F_circuit.state_len()],
             z_i: vec![CF1::<C1>::zero(); F_circuit.state_len()],
-            external_inputs: vec![CF1::<C1>::zero(); F_circuit.external_inputs_len()],
+            external_inputs: FC::ExternalInputs::default(),
             u_i_phi: C1::zero(),
             U_i: u_dummy,
             U_i1_phi: C1::zero(),
@@ -296,33 +282,32 @@ impl<C1: CurveGroup, C2: CurveGroup, GC2: CurveVar<C2, CF2<C2>>, FC: FCircuit<CF
             K_coeffs: vec![CF1::<C1>::zero(); d * k + 1],
             phi_stars: vec![C1::zero(); k],
             F: F_circuit,
-            x: None,
             // cyclefold values
             cf1_u_i_cmW: C2::zero(),
             cf2_u_i_cmW: C2::zero(),
             cf_U_i: cf_u_dummy,
             cf1_cmT: C2::zero(),
             cf2_cmT: C2::zero(),
-            cf_x: None,
         }
     }
 }
 
-impl<C1, C2, GC2, FC> ConstraintSynthesizer<CF1<C1>> for AugmentedFCircuit<C1, C2, GC2, FC>
+impl<C1, C2, FC> AugmentedFCircuit<C1, C2, FC>
 where
-    C1: CurveGroup<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2: CurveGroup,
-    GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: Curve,
     FC: FCircuit<CF1<C1>>,
-    C2::BaseField: PrimeField + Absorb,
 {
-    fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
+    pub fn compute_next_state(
+        self,
+        cs: ConstraintSystemRef<CF1<C1>>,
+    ) -> Result<Vec<FpVar<CF1<C1>>>, SynthesisError> {
         let pp_hash = FpVar::<CF1<C1>>::new_witness(cs.clone(), || Ok(self.pp_hash))?;
         let i = FpVar::<CF1<C1>>::new_witness(cs.clone(), || Ok(self.i))?;
         let z_0 = Vec::<FpVar<CF1<C1>>>::new_witness(cs.clone(), || Ok(self.z_0))?;
         let z_i = Vec::<FpVar<CF1<C1>>>::new_witness(cs.clone(), || Ok(self.z_i))?;
         let external_inputs =
-            Vec::<FpVar<CF1<C1>>>::new_witness(cs.clone(), || Ok(self.external_inputs))?;
+            FC::ExternalInputsVar::new_witness(cs.clone(), || Ok(self.external_inputs))?;
 
         let u_dummy = CommittedInstance::<C1, true>::dummy((2, self.U_i.betas.len()));
         let U_i = CommittedInstanceVar::<C1, true>::new_witness(cs.clone(), || Ok(self.U_i))?;
@@ -334,9 +319,9 @@ where
         let cf_u_dummy =
             CycleFoldCommittedInstance::dummy(ProtoGalaxyCycleFoldConfig::<C1>::IO_LEN);
         let cf_U_i =
-            CycleFoldCommittedInstanceVar::<C2, GC2>::new_witness(cs.clone(), || Ok(self.cf_U_i))?;
-        let cf1_cmT = GC2::new_witness(cs.clone(), || Ok(self.cf1_cmT))?;
-        let cf2_cmT = GC2::new_witness(cs.clone(), || Ok(self.cf2_cmT))?;
+            CycleFoldCommittedInstanceVar::<C2>::new_witness(cs.clone(), || Ok(self.cf_U_i))?;
+        let cf1_cmT = C2::Var::new_witness(cs.clone(), || Ok(self.cf1_cmT))?;
+        let cf2_cmT = C2::Var::new_witness(cs.clone(), || Ok(self.cf2_cmT))?;
 
         let F_coeffs = Vec::new_witness(cs.clone(), || Ok(self.F_coeffs))?;
         let K_coeffs = Vec::new_witness(cs.clone(), || Ok(self.K_coeffs))?;
@@ -390,8 +375,17 @@ where
             &z_0,
             &z_i1,
         )?;
-        let x = FpVar::new_input(cs.clone(), || Ok(self.x.unwrap_or(u_i1_x_base.value()?)))?;
-        x.enforce_equal(&is_basecase.select(&u_i1_x_base, &u_i1_x)?)?;
+        let x = is_basecase.select(&u_i1_x_base, &u_i1_x)?;
+        // This line "converts" `x` from a witness to a public input.
+        // Instead of directly modifying the constraint system, we explicitly
+        // allocate a public input and enforce that its value is indeed `x`.
+        // While comparing `x` with itself seems redundant, this is necessary
+        // because:
+        // - `.value()` allows an honest prover to extract public inputs without
+        //   computing them outside the circuit.
+        // - `.enforce_equal()` prevents a malicious prover from claiming wrong
+        //   public inputs that are not the honest `x` computed in-circuit.
+        FpVar::new_input(cs.clone(), || x.value())?.enforce_equal(&x)?;
 
         // CycleFold part
         // C.1. Compute cf1_u_i.x and cf2_u_i.x
@@ -441,13 +435,13 @@ where
         // C.2. Prepare incoming CycleFold instances
         // C.3. Fold incoming CycleFold instances into the running instance
         let cf_U_i1 =
-            AugmentationGadget::prepare_and_fold_cyclefold::<C1, C2, GC2, PoseidonSponge<CF1<C1>>>(
+            AugmentationGadget::prepare_and_fold_cyclefold::<C1, C2, PoseidonSponge<CF1<C1>>>(
                 &mut transcript,
                 pp_hash.clone(),
                 cf_U_i,
                 vec![
-                    GC2::new_witness(cs.clone(), || Ok(self.cf1_u_i_cmW))?,
-                    GC2::new_witness(cs.clone(), || Ok(self.cf2_u_i_cmW))?,
+                    C2::Var::new_witness(cs.clone(), || Ok(self.cf1_u_i_cmW))?,
+                    C2::Var::new_witness(cs.clone(), || Ok(self.cf2_u_i_cmW))?,
                 ],
                 vec![cf1_x, cf2_x],
                 vec![cf1_cmT, cf2_cmT],
@@ -459,35 +453,53 @@ where
         // Non-base case: u_{i+1}.x[1] == H(cf_U_{i+1})
         let (cf_u_i1_x, _) = cf_U_i1.clone().hash(&sponge, pp_hash.clone())?;
         let (cf_u_i1_x_base, _) =
-            CycleFoldCommittedInstanceVar::<C2, GC2>::new_constant(cs.clone(), cf_u_dummy)?
+            CycleFoldCommittedInstanceVar::<C2>::new_constant(cs.clone(), cf_u_dummy)?
                 .hash(&sponge, pp_hash.clone())?;
-        let cf_x = FpVar::new_input(cs.clone(), || {
-            Ok(self.cf_x.unwrap_or(cf_u_i1_x_base.value()?))
-        })?;
-        cf_x.enforce_equal(&is_basecase.select(&cf_u_i1_x_base, &cf_u_i1_x)?)?;
+        let cf_x = is_basecase.select(&cf_u_i1_x_base, &cf_u_i1_x)?;
+        // This line "converts" `cf_x` from a witness to a public input.
+        // Instead of directly modifying the constraint system, we explicitly
+        // allocate a public input and enforce that its value is indeed `cf_x`.
+        // While comparing `cf_x` with itself seems redundant, this is necessary
+        // because:
+        // - `.value()` allows an honest prover to extract public inputs without
+        //   computing them outside the circuit.
+        // - `.enforce_equal()` prevents a malicious prover from claiming wrong
+        //   public inputs that are not the honest `cf_x` computed in-circuit.
+        FpVar::new_input(cs.clone(), || cf_x.value())?.enforce_equal(&cf_x)?;
 
-        Ok(())
+        Ok(z_i1)
+    }
+}
+
+impl<C1, C2, FC> ConstraintSynthesizer<CF1<C1>> for AugmentedFCircuit<C1, C2, FC>
+where
+    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
+    C2: Curve,
+    FC: FCircuit<CF1<C1>>,
+{
+    fn generate_constraints(self, cs: ConstraintSystemRef<CF1<C1>>) -> Result<(), SynthesisError> {
+        self.compute_next_state(cs).map(|_| ())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
 
     use super::*;
     use crate::{
         arith::r1cs::tests::get_test_r1cs,
         folding::protogalaxy::folding::{tests::prepare_inputs, Folding},
         transcript::poseidon::poseidon_canonical_config,
+        Error,
     };
 
     use ark_bn254::{Fr, G1Projective as Projective};
     use ark_relations::r1cs::ConstraintSystem;
 
     #[test]
-    fn test_folding_gadget() -> Result<(), Box<dyn Error>> {
+    fn test_folding_gadget() -> Result<(), Error> {
         let k = 7;
-        let (witness, instance, witnesses, instances) = prepare_inputs(k);
+        let (witness, instance, witnesses, instances) = prepare_inputs(k)?;
         let r1cs = get_test_r1cs::<Fr>();
 
         // init Prover & Verifier's transcript
@@ -525,7 +537,6 @@ mod tests {
         assert_eq!(folded_instance.e, folded_instance_var.e.value()?);
         assert_eq!(folded_instance.x, folded_instance_var.x.value()?);
         assert!(cs.is_satisfied()?);
-
         Ok(())
     }
 }

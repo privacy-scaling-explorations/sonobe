@@ -1,26 +1,27 @@
 /// contains [Nova](https://eprint.iacr.org/2021/370.pdf) NIFS related circuits
-use ark_crypto_primitives::sponge::{constraints::AbsorbGadget, Absorb, CryptographicSponge};
-use ark_ec::{CurveGroup, Group};
+use ark_crypto_primitives::sponge::{constraints::AbsorbGadget, CryptographicSponge};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
     uint8::UInt8,
-    ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{ConstraintSystemRef, Namespace, SynthesisError};
 use ark_std::{fmt::Debug, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::NIFSGadgetTrait;
-use crate::folding::circuits::{
-    nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
-    CF1, CF2,
-};
-use crate::folding::nova::CommittedInstance;
 use crate::folding::traits::CommittedInstanceVarOps;
 use crate::transcript::TranscriptVar;
+use crate::{
+    folding::circuits::{
+        nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
+        CF1, CF2,
+    },
+    Curve,
+};
+use crate::{folding::nova::CommittedInstance, transcript::AbsorbNonNativeGadget};
 
 use super::nova::ChallengeGadget;
 
@@ -28,17 +29,14 @@ use super::nova::ChallengeGadget;
 /// constraints field (E1::Fr, where E1 is the main curve). The peculiarity is that cmE and cmW are
 /// represented non-natively over the constraint field.
 #[derive(Debug, Clone)]
-pub struct CommittedInstanceVar<C: CurveGroup> {
+pub struct CommittedInstanceVar<C: Curve> {
     pub u: FpVar<C::ScalarField>,
     pub x: Vec<FpVar<C::ScalarField>>,
     pub cmE: NonNativeAffineVar<C>,
     pub cmW: NonNativeAffineVar<C>,
 }
 
-impl<C> AllocVar<CommittedInstance<C>, CF1<C>> for CommittedInstanceVar<C>
-where
-    C: CurveGroup,
-{
+impl<C: Curve> AllocVar<CommittedInstance<C>, CF1<C>> for CommittedInstanceVar<C> {
     fn new_variable<T: Borrow<CommittedInstance<C>>>(
         cs: impl Into<Namespace<CF1<C>>>,
         f: impl FnOnce() -> Result<T, SynthesisError>,
@@ -61,10 +59,7 @@ where
     }
 }
 
-impl<C> AbsorbGadget<C::ScalarField> for CommittedInstanceVar<C>
-where
-    C: CurveGroup,
-{
+impl<C: Curve> AbsorbGadget<C::ScalarField> for CommittedInstanceVar<C> {
     fn to_sponge_bytes(&self) -> Result<Vec<UInt8<C::ScalarField>>, SynthesisError> {
         FpVar::batch_to_sponge_bytes(&self.to_sponge_field_elements()?)
     }
@@ -73,14 +68,14 @@ where
         Ok([
             vec![self.u.clone()],
             self.x.clone(),
-            self.cmE.to_constraint_field()?,
-            self.cmW.to_constraint_field()?,
+            self.cmE.to_native_sponge_field_elements()?,
+            self.cmW.to_native_sponge_field_elements()?,
         ]
         .concat())
     }
 }
 
-impl<C: CurveGroup> CommittedInstanceVarOps<C> for CommittedInstanceVar<C> {
+impl<C: Curve> CommittedInstanceVarOps<C> for CommittedInstanceVar<C> {
     type PointVar = NonNativeAffineVar<C>;
 
     fn get_commitments(&self) -> Vec<Self::PointVar> {
@@ -107,7 +102,7 @@ impl<C: CurveGroup> CommittedInstanceVarOps<C> for CommittedInstanceVar<C> {
 /// Implements the circuit that does the checks of the Non-Interactive Folding Scheme Verifier
 /// described in section 4 of [Nova](https://eprint.iacr.org/2021/370.pdf), where the cmE & cmW checks are
 /// delegated to the NIFSCycleFoldGadget.
-pub struct NIFSGadget<C: CurveGroup, S: CryptographicSponge, T: TranscriptVar<CF1<C>, S>> {
+pub struct NIFSGadget<C: Curve, S: CryptographicSponge, T: TranscriptVar<CF1<C>, S>> {
     _c: PhantomData<C>,
     _s: PhantomData<S>,
     _t: PhantomData<T>,
@@ -115,10 +110,9 @@ pub struct NIFSGadget<C: CurveGroup, S: CryptographicSponge, T: TranscriptVar<CF
 
 impl<C, S, T> NIFSGadgetTrait<C, S, T> for NIFSGadget<C, S, T>
 where
-    C: CurveGroup,
+    C: Curve,
     S: CryptographicSponge,
     T: TranscriptVar<CF1<C>, S>,
-    <C as Group>::ScalarField: Absorb,
 {
     type CommittedInstance = CommittedInstance<C>;
     type CommittedInstanceVar = CommittedInstanceVar<C>;
@@ -141,7 +135,7 @@ where
             u_i.clone(),
             cmT.clone(),
         )?;
-        let r = Boolean::le_bits_to_fp_var(&r_bits)?;
+        let r = Boolean::le_bits_to_fp(&r_bits)?;
 
         Ok((
             Self::CommittedInstanceVar {
@@ -179,9 +173,10 @@ pub mod tests {
             test_nifs_gadget_opt,
         },
     };
+    use crate::Error;
 
     #[test]
-    fn test_nifs_gadget() {
+    fn test_nifs_gadget() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
         // prepare the committed instances to test in-circuit
         let ci: Vec<CommittedInstance<Projective>> = (0..2)
@@ -198,14 +193,14 @@ pub mod tests {
         let (ci_out, ciVar_out) = test_nifs_gadget_opt::<
             NIFS<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>,
             NIFSGadget<Projective, PoseidonSponge<Fr>, PoseidonSpongeVar<Fr>>,
-        >(ci, cmT)
-        .unwrap();
-        assert_eq!(ciVar_out.u.value().unwrap(), ci_out.u);
-        assert_eq!(ciVar_out.x.value().unwrap(), ci_out.x);
+        >(ci, cmT)?;
+        assert_eq!(ciVar_out.u.value()?, ci_out.u);
+        assert_eq!(ciVar_out.x.value()?, ci_out.x);
+        Ok(())
     }
 
     #[test]
-    fn test_committed_instance_to_sponge_preimage() {
+    fn test_committed_instance_to_sponge_preimage() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
         let ci = CommittedInstance::<Projective> {
             cmE: Projective::rand(&mut rng),
@@ -217,11 +212,12 @@ pub mod tests {
         test_committed_instance_to_sponge_preimage_opt::<
             NIFS<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>,
             NIFSGadget<Projective, PoseidonSponge<Fr>, PoseidonSpongeVar<Fr>>,
-        >(ci);
+        >(ci)?;
+        Ok(())
     }
 
     #[test]
-    fn test_committed_instance_hash() {
+    fn test_committed_instance_hash() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
         let ci = CommittedInstance::<Projective> {
             cmE: Projective::rand(&mut rng),
@@ -232,6 +228,7 @@ pub mod tests {
         test_committed_instance_hash_opt::<
             NIFS<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>,
             NIFSGadget<Projective, PoseidonSponge<Fr>, PoseidonSpongeVar<Fr>>,
-        >(ci);
+        >(ci)?;
+        Ok(())
     }
 }

@@ -8,119 +8,40 @@ use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisE
 use ark_std::fmt::Debug;
 use folding_schemes::{frontend::FCircuit, utils::PathOrBin, Error};
 use num_bigint::BigInt;
-use std::fmt;
-use std::rc::Rc;
 
 pub mod utils;
+use crate::utils::{VecF, VecFpVar};
 use utils::CircomWrapper;
 
-type ClosurePointer<F> = Rc<dyn Fn(usize, Vec<F>, Vec<F>) -> Result<Vec<F>, Error>>;
-
-#[derive(Clone)]
-struct CustomStepNative<F: PrimeField> {
-    func: ClosurePointer<F>,
-}
-
-impl<F: PrimeField> fmt::Debug for CustomStepNative<F> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Function pointer: {:?}",
-            std::any::type_name::<fn(usize, Vec<F>, Vec<F>) -> Result<Vec<F>, Error>>()
-        )
-    }
-}
-
-/// Define CircomFCircuit
+/// Define CircomFCircuit. The parameter `L` indicates the length of the ExternalInputs vector of
+/// field elements.
 #[derive(Clone, Debug)]
-pub struct CircomFCircuit<F: PrimeField> {
+pub struct CircomFCircuit<F: PrimeField, const L: usize> {
     circom_wrapper: CircomWrapper<F>,
     pub state_len: usize,
-    pub external_inputs_len: usize,
     r1cs: CircomR1CS<F>,
-    custom_step_native_code: Option<CustomStepNative<F>>,
 }
 
-impl<F: PrimeField> CircomFCircuit<F> {
-    pub fn set_custom_step_native(&mut self, func: ClosurePointer<F>) {
-        self.custom_step_native_code = Some(CustomStepNative::<F> { func });
-    }
-
-    pub fn execute_custom_step_native(
-        &self,
-        _i: usize,
-        z_i: Vec<F>,
-        external_inputs: Vec<F>,
-    ) -> Result<Vec<F>, Error> {
-        if let Some(code) = &self.custom_step_native_code {
-            (code.func)(_i, z_i, external_inputs)
-        } else {
-            #[cfg(test)]
-            assert_eq!(z_i.len(), self.state_len());
-            #[cfg(test)]
-            assert_eq!(external_inputs.len(), self.external_inputs_len());
-
-            let inputs_bi = z_i
-                .iter()
-                .map(|val| self.circom_wrapper.ark_primefield_to_num_bigint(*val))
-                .collect::<Vec<BigInt>>();
-            let mut inputs_map = vec![("ivc_input".to_string(), inputs_bi)];
-
-            if self.external_inputs_len() > 0 {
-                let external_inputs_bi = external_inputs
-                    .iter()
-                    .map(|val| self.circom_wrapper.ark_primefield_to_num_bigint(*val))
-                    .collect::<Vec<BigInt>>();
-                inputs_map.push(("external_inputs".to_string(), external_inputs_bi));
-            }
-
-            // Computes witness
-            let witness = self
-                .circom_wrapper
-                .extract_witness(&inputs_map)
-                .map_err(|e| {
-                    Error::WitnessCalculationError(format!("Failed to calculate witness: {}", e))
-                })?;
-
-            // Extracts the z_i1(next state) from the witness vector.
-            let z_i1 = witness[1..1 + self.state_len()].to_vec();
-            Ok(z_i1)
-        }
-    }
-}
-
-impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
-    /// (r1cs_path, wasm_path, state_len, external_inputs_len)
-    type Params = (PathOrBin, PathOrBin, usize, usize);
+impl<F: PrimeField, const L: usize> FCircuit<F> for CircomFCircuit<F, L> {
+    /// (r1cs_path, wasm_path, state_len)
+    type Params = (PathOrBin, PathOrBin, usize);
+    type ExternalInputs = VecF<F, L>;
+    type ExternalInputsVar = VecFpVar<F, L>;
 
     fn new(params: Self::Params) -> Result<Self, Error> {
-        let (r1cs_path, wasm_path, state_len, external_inputs_len) = params;
+        let (r1cs_path, wasm_path, state_len) = params;
         let circom_wrapper = CircomWrapper::new(r1cs_path, wasm_path)?;
 
         let r1cs = circom_wrapper.extract_r1cs()?;
         Ok(Self {
             circom_wrapper,
             state_len,
-            external_inputs_len,
             r1cs,
-            custom_step_native_code: None,
         })
     }
 
     fn state_len(&self) -> usize {
         self.state_len
-    }
-    fn external_inputs_len(&self) -> usize {
-        self.external_inputs_len
-    }
-
-    fn step_native(
-        &self,
-        _i: usize,
-        z_i: Vec<F>,
-        external_inputs: Vec<F>,
-    ) -> Result<Vec<F>, Error> {
-        self.execute_custom_step_native(_i, z_i, external_inputs)
     }
 
     fn generate_step_constraints(
@@ -128,18 +49,18 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
         cs: ConstraintSystemRef<F>,
         _i: usize,
         z_i: Vec<FpVar<F>>,
-        external_inputs: Vec<FpVar<F>>,
+        external_inputs: Self::ExternalInputsVar,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         #[cfg(test)]
         assert_eq!(z_i.len(), self.state_len());
         #[cfg(test)]
-        assert_eq!(external_inputs.len(), self.external_inputs_len());
+        assert_eq!(external_inputs.0.len(), L);
 
         let input_values = self.fpvars_to_bigints(&z_i)?;
         let mut inputs_map = vec![("ivc_input".to_string(), input_values)];
 
-        if self.external_inputs_len() > 0 {
-            let external_inputs_bi = self.fpvars_to_bigints(&external_inputs)?;
+        if L > 0 {
+            let external_inputs_bi = self.fpvars_to_bigints(&external_inputs.0)?;
             inputs_map.push(("external_inputs".to_string(), external_inputs_bi));
         }
 
@@ -184,7 +105,7 @@ impl<F: PrimeField> FCircuit<F> for CircomFCircuit<F> {
     }
 }
 
-impl<F: PrimeField> CircomFCircuit<F> {
+impl<F: PrimeField, const L: usize> CircomFCircuit<F, L> {
     fn fpvars_to_bigints(&self, fpvars: &[FpVar<F>]) -> Result<Vec<BigInt>, SynthesisError> {
         let mut input_values = Vec::new();
         // converts each FpVar to PrimeField value, then to num_bigint::BigInt.
@@ -208,173 +129,188 @@ pub mod tests {
     use ark_relations::r1cs::ConstraintSystem;
     use std::path::PathBuf;
 
+    /// Native implementation of `src/circom/test_folder/cubic_circuit.r1cs`
+    fn cubic_step_native<F: PrimeField>(z_i: Vec<F>) -> Vec<F> {
+        let z = z_i[0];
+        vec![z * z * z + z + F::from(5)]
+    }
+
+    /// Native implementation of `src/circom/test_folder/with_external_inputs.r1cs`
+    fn external_inputs_step_native<F: PrimeField>(z_i: Vec<F>, external_inputs: Vec<F>) -> Vec<F> {
+        let temp1 = z_i[0] * z_i[0];
+        let temp2 = z_i[0] * external_inputs[0];
+        vec![temp1 * z_i[0] + temp2 + external_inputs[1]]
+    }
+
+    /// Native implementation of `src/circom/test_folder/no_external_inputs.r1cs`
+    fn no_external_inputs_step_native<F: PrimeField>(z_i: Vec<F>) -> Vec<F> {
+        let temp1 = z_i[0] * z_i[1];
+        let temp2 = temp1 * z_i[2];
+        vec![
+            temp1 * z_i[0],
+            temp1 * z_i[1] + temp1,
+            temp1 * z_i[2] + temp2,
+        ]
+    }
+
     // Tests the step_native function of CircomFCircuit.
     #[test]
-    fn test_circom_step_native() {
-        let r1cs_path = PathBuf::from("./src/circom/test_folder/cubic_circuit.r1cs");
-        let wasm_path =
-            PathBuf::from("./src/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
-
-        let circom_fcircuit =
-            CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 1, 0)).unwrap(); // state_len:1, external_inputs_len:0
-
+    fn test_circom_step_native() -> Result<(), Error> {
         let z_i = vec![Fr::from(3u32)];
-        let z_i1 = circom_fcircuit.step_native(1, z_i, vec![]).unwrap();
+        let z_i1 = cubic_step_native(z_i);
         assert_eq!(z_i1, vec![Fr::from(35u32)]);
+        Ok(())
     }
 
     // Tests the generate_step_constraints function of CircomFCircuit.
     #[test]
-    fn test_circom_step_constraints() {
+    fn test_circom_step_constraints() -> Result<(), Error> {
         let r1cs_path = PathBuf::from("./src/circom/test_folder/cubic_circuit.r1cs");
         let wasm_path =
             PathBuf::from("./src/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
         let circom_fcircuit =
-            CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 1, 0)).unwrap(); // state_len:1, external_inputs_len:0
+            CircomFCircuit::<Fr, 0>::new((r1cs_path.into(), wasm_path.into(), 1))?; // state_len:1, external_inputs_len:0
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         let z_i = vec![Fr::from(3u32)];
 
-        let z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i)).unwrap();
-        let z_i1_var = circom_fcircuit
-            .generate_step_constraints(cs.clone(), 1, z_i_var, vec![])
-            .unwrap();
-        assert_eq!(z_i1_var.value().unwrap(), vec![Fr::from(35u32)]);
+        let z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i))?;
+        let z_i1_var =
+            circom_fcircuit.generate_step_constraints(cs.clone(), 1, z_i_var, VecFpVar(vec![]))?;
+        assert_eq!(z_i1_var.value()?, vec![Fr::from(35u32)]);
+        Ok(())
     }
 
     // Tests the WrapperCircuit with CircomFCircuit.
     #[test]
-    fn test_wrapper_circomtofcircuit() {
+    fn test_wrapper_circomtofcircuit() -> Result<(), Error> {
         let r1cs_path = PathBuf::from("./src/circom/test_folder/cubic_circuit.r1cs");
         let wasm_path =
             PathBuf::from("./src/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
         let circom_fcircuit =
-            CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 1, 0)).unwrap(); // state_len:1, external_inputs_len:0
+            CircomFCircuit::<Fr, 0>::new((r1cs_path.into(), wasm_path.into(), 1))?; // state_len:1, external_inputs_len:0
 
         // Allocates z_i1 by using step_native function.
         let z_i = vec![Fr::from(3_u32)];
         let wrapper_circuit = folding_schemes::frontend::utils::WrapperCircuit {
             FC: circom_fcircuit.clone(),
             z_i: Some(z_i.clone()),
-            z_i1: Some(circom_fcircuit.step_native(0, z_i.clone(), vec![]).unwrap()),
+            z_i1: Some(cubic_step_native(z_i)),
         };
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        wrapper_circuit.generate_constraints(cs.clone()).unwrap();
-        assert!(
-            cs.is_satisfied().unwrap(),
-            "Constraint system is not satisfied"
-        );
+        wrapper_circuit.generate_constraints(cs.clone())?;
+        assert!(cs.is_satisfied()?, "Constraint system is not satisfied");
+        Ok(())
     }
 
     #[test]
-    fn test_circom_external_inputs() {
+    fn test_circom_external_inputs() -> Result<(), Error> {
         let r1cs_path = PathBuf::from("./src/circom/test_folder/with_external_inputs.r1cs");
         let wasm_path = PathBuf::from(
             "./src/circom/test_folder/with_external_inputs_js/with_external_inputs.wasm",
         );
         let circom_fcircuit =
-            CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 1, 2)).unwrap(); // state_len:1, external_inputs_len:2
+            CircomFCircuit::<Fr, 2>::new((r1cs_path.into(), wasm_path.into(), 1))?; // state_len:1, external_inputs_len:2
         let cs = ConstraintSystem::<Fr>::new_ref();
         let z_i = vec![Fr::from(3u32)];
         let external_inputs = vec![Fr::from(6u32), Fr::from(7u32)];
 
         // run native step
-        let z_i1_native = circom_fcircuit
-            .step_native(1, z_i.clone(), external_inputs.clone())
-            .unwrap();
+        let z_i1_native = external_inputs_step_native(z_i.clone(), external_inputs.clone());
 
         // run gadget step
-        let z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i)).unwrap();
+        let z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i))?;
         let external_inputs_var =
-            Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(external_inputs.clone())).unwrap();
-        let z_i1_var = circom_fcircuit
-            .generate_step_constraints(cs.clone(), 1, z_i_var, external_inputs_var)
-            .unwrap();
+            Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(external_inputs.clone()))?;
+        let z_i1_var = circom_fcircuit.generate_step_constraints(
+            cs.clone(),
+            1,
+            z_i_var,
+            VecFpVar(external_inputs_var),
+        )?;
 
-        assert_eq!(z_i1_var.value().unwrap(), z_i1_native);
+        assert_eq!(z_i1_var.value()?, z_i1_native);
 
         // re-init cs and run gadget step with wrong ivc inputs (first ivc should not be zero)
         let cs = ConstraintSystem::<Fr>::new_ref();
         let wrong_z_i = vec![Fr::from(0)];
-        let wrong_z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(wrong_z_i)).unwrap();
+        let wrong_z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(wrong_z_i))?;
         let external_inputs_var =
-            Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(external_inputs)).unwrap();
+            Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(external_inputs))?;
         let _z_i1_var = circom_fcircuit.generate_step_constraints(
             cs.clone(),
             1,
             wrong_z_i_var,
-            external_inputs_var,
+            VecFpVar(external_inputs_var),
         );
         // TODO:: https://github.com/privacy-scaling-explorations/sonobe/issues/104
         // Disable check for now
         // assert!(z_i1_var.is_err());
+        Ok(())
     }
 
     #[test]
-    fn test_circom_no_external_inputs() {
+    fn test_circom_no_external_inputs() -> Result<(), Error> {
         let r1cs_path = PathBuf::from("./src/circom/test_folder/no_external_inputs.r1cs");
         let wasm_path =
             PathBuf::from("./src/circom/test_folder/no_external_inputs_js/no_external_inputs.wasm");
         let circom_fcircuit =
-            CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 3, 0)).unwrap();
+            CircomFCircuit::<Fr, 0>::new((r1cs_path.into(), wasm_path.into(), 3))?;
         let cs = ConstraintSystem::<Fr>::new_ref();
         let z_i = vec![Fr::from(3u32), Fr::from(4u32), Fr::from(5u32)];
-        let z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i.clone())).unwrap();
+        let z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i.clone()))?;
 
         // run native step
-        let z_i1_native = circom_fcircuit.step_native(1, z_i.clone(), vec![]).unwrap();
+        let z_i1_native = no_external_inputs_step_native(z_i.clone());
 
         // run gadget step
-        let z_i1_var = circom_fcircuit
-            .generate_step_constraints(cs.clone(), 1, z_i_var, vec![])
-            .unwrap();
+        let z_i1_var =
+            circom_fcircuit.generate_step_constraints(cs.clone(), 1, z_i_var, VecFpVar(vec![]))?;
 
-        assert_eq!(z_i1_var.value().unwrap(), z_i1_native);
+        assert_eq!(z_i1_var.value()?, z_i1_native);
 
         // re-init cs and run gadget step with wrong ivc inputs (first ivc input should not be zero)
         let cs = ConstraintSystem::<Fr>::new_ref();
         let wrong_z_i = vec![Fr::from(0u32), Fr::from(4u32), Fr::from(5u32)];
-        let wrong_z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(wrong_z_i)).unwrap();
-        let _z_i1_var =
-            circom_fcircuit.generate_step_constraints(cs.clone(), 1, wrong_z_i_var, vec![]);
+        let wrong_z_i_var = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(wrong_z_i))?;
+        let _z_i1_var = circom_fcircuit.generate_step_constraints(
+            cs.clone(),
+            1,
+            wrong_z_i_var,
+            VecFpVar(vec![]),
+        );
         // TODO:: https://github.com/privacy-scaling-explorations/sonobe/issues/104
         // Disable check for now
         // assert!(z_i1_var.is_err())
+        Ok(())
     }
 
     #[test]
-    fn test_custom_code() {
+    fn test_custom_code() -> Result<(), Error> {
         let r1cs_path = PathBuf::from("./src/circom/test_folder/cubic_circuit.r1cs");
         let wasm_path =
             PathBuf::from("./src/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
-        let mut circom_fcircuit =
-            CircomFCircuit::<Fr>::new((r1cs_path.into(), wasm_path.into(), 1, 0)).unwrap(); // state_len:1, external_inputs_len:0
-
-        circom_fcircuit.set_custom_step_native(Rc::new(|_i, z_i, _external| {
-            let z = z_i[0];
-            Ok(vec![z * z * z + z + Fr::from(5)])
-        }));
+        let circom_fcircuit =
+            CircomFCircuit::<Fr, 0>::new((r1cs_path.into(), wasm_path.into(), 1))?; // state_len:1, external_inputs_len:0
 
         // Allocates z_i1 by using step_native function.
         let z_i = vec![Fr::from(3_u32)];
         let wrapper_circuit = folding_schemes::frontend::utils::WrapperCircuit {
             FC: circom_fcircuit.clone(),
             z_i: Some(z_i.clone()),
-            z_i1: Some(circom_fcircuit.step_native(0, z_i.clone(), vec![]).unwrap()),
+            z_i1: Some(cubic_step_native(z_i)),
         };
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        wrapper_circuit.generate_constraints(cs.clone()).unwrap();
-        assert!(
-            cs.is_satisfied().unwrap(),
-            "Constraint system is not satisfied"
-        );
+        wrapper_circuit.generate_constraints(cs.clone())?;
+        assert!(cs.is_satisfied()?, "Constraint system is not satisfied");
+        Ok(())
     }
 }

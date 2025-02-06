@@ -4,43 +4,37 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ark-ec = "0.4"
-ark-ff = "0.4"
-ark-poly = "0.4"
-ark-std = "0.4"
-ark-groth16 = "0.4"
+ark-groth16 = "^0.5.0"
+ark-bn254 = { version = "^0.5.0", default-features = false, features = ["r1cs"] }
+ark-poly-commit = "^0.5.0"
+ark-serialize = "^0.5.0"
 askama = { version = "0.12.0", features = ["config"], default-features = false }
-ark-bn254 = "0.4.0"
-ark-poly-commit = "0.4.0"
-itertools = "0.12.1"
-ark-serialize = "0.4.1"
 revm = {version="3.5.0", default-features=false, features=["std"]}
 rust-crypto = "0.2"
 num-bigint = "0.4.3"
 folding-schemes = { path = "../folding-schemes/"} # without 'light-test' enabled
 
 [dev-dependencies]
-ark-crypto-primitives = "0.4.0"
-ark-r1cs-std = "0.4.0"
-ark-relations = "0.4.0"
-tracing = { version = "0.1", default-features = false, features = [ "attributes" ] }
-tracing-subscriber = { version = "0.2" }
-ark-bn254 = {version="0.4.0", features=["r1cs"]}
-ark-grumpkin = {version="0.4.0", features=["r1cs"]}
-rand = "0.8.5"
+ark-ec = { version = "^0.5.0", default-features = false, features = ["parallel"] }
+ark-ff = { version = "^0.5.0", default-features = false, features = ["parallel", "asm"] }
+ark-std = { version = "^0.5.0", default-features = false, features = ["parallel"] }
+ark-crypto-primitives = { version = "^0.5.0", default-features = false, features = ["sponge", "parallel"] }
+ark-snark = { version = "^0.5.0", default-features = false }
+ark-relations = { version = "^0.5.0", default-features = false }
+ark-r1cs-std = { version = "^0.5.0", default-features = false, features = ["parallel"] }
+ark-grumpkin = { version = "^0.5.0", default-features = false, features = ["r1cs"] }
 folding-schemes = { path = "../folding-schemes/", features=["light-test"]}
-frontends = { path = "../frontends/"}
+experimental-frontends = { path = "../experimental-frontends/"}
 noname = { git = "https://github.com/dmpierre/noname" }
 
 [features]
 default = ["parallel"]
 
 parallel = [ 
-    "ark-std/parallel", 
-    "ark-ff/parallel",  
-    "ark-poly/parallel", 
-    ]
-
+    "ark-groth16/parallel", 
+    "ark-poly-commit/parallel",  
+    "folding-schemes/parallel",
+]
 
 [[example]]
 name = "full_flow"

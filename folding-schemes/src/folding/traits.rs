@@ -3,16 +3,18 @@ use ark_crypto_primitives::sponge::{
     poseidon::constraints::PoseidonSpongeVar,
     Absorb,
 };
-use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
-use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, ToConstraintFieldGadget};
+use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar};
 use ark_relations::r1cs::SynthesisError;
 
-use crate::{transcript::Transcript, Error};
+use crate::{
+    transcript::{AbsorbNonNativeGadget, Transcript},
+    Curve, Error,
+};
 
 use super::circuits::CF1;
 
-pub trait CommittedInstanceOps<C: CurveGroup>: Inputize<CF1<C>, Self::Var> {
+pub trait CommittedInstanceOps<C: Curve>: Inputize<CF1<C>> {
     /// The in-circuit representation of the committed instance.
     type Var: AllocVar<Self, CF1<C>> + CommittedInstanceVarOps<C>;
     /// `hash` implements the committed instance hash compatible with the
@@ -29,7 +31,6 @@ pub trait CommittedInstanceOps<C: CurveGroup>: Inputize<CF1<C>, Self::Var> {
         z_i: &[CF1<C>],
     ) -> CF1<C>
     where
-        CF1<C>: Absorb,
         Self: Sized + Absorb,
     {
         let mut sponge = sponge.clone();
@@ -56,8 +57,8 @@ pub trait CommittedInstanceOps<C: CurveGroup>: Inputize<CF1<C>, Self::Var> {
     }
 }
 
-pub trait CommittedInstanceVarOps<C: CurveGroup> {
-    type PointVar: ToConstraintFieldGadget<CF1<C>>;
+pub trait CommittedInstanceVarOps<C: Curve> {
+    type PointVar: AbsorbNonNativeGadget<CF1<C>>;
     /// `hash` implements the in-circuit committed instance hash compatible with
     /// the native implementation from `CommittedInstanceOps::hash`.
     /// Returns `H(i, z_0, z_i, U_i)`, where `i` can be `i` but also `i+1`, and
@@ -141,8 +142,37 @@ impl<T: Default> Dummy<()> for T {
 }
 
 /// Converts a value `self` into a vector of field elements, ordered in the same
-/// way as how a variable of type `Var` would be represented in the circuit.
+/// way as how a variable of type `Var` would be represented *natively* in the
+/// circuit.
+///
 /// This is useful for the verifier to compute the public inputs.
-pub trait Inputize<F, Var> {
+pub trait Inputize<F> {
     fn inputize(&self) -> Vec<F>;
+}
+
+/// Converts a value `self` into a vector of field elements, ordered in the same
+/// way as how a variable of type `Var` would be represented *non-natively* in
+/// the circuit.
+///
+/// This is useful for the verifier to compute the public inputs.
+///
+/// Note that we require this trait because we need to distinguish between some
+/// data types that are represented both natively and non-natively in-circuit
+/// (e.g., field elements can have type `FpVar` and `NonNativeUintVar`).
+pub trait InputizeNonNative<F> {
+    fn inputize_nonnative(&self) -> Vec<F>;
+}
+
+impl<F, T: Inputize<F>> Inputize<F> for [T] {
+    fn inputize(&self) -> Vec<F> {
+        self.iter().flat_map(Inputize::<F>::inputize).collect()
+    }
+}
+
+impl<F, T: InputizeNonNative<F>> InputizeNonNative<F> for [T] {
+    fn inputize_nonnative(&self) -> Vec<F> {
+        self.iter()
+            .flat_map(InputizeNonNative::<F>::inputize_nonnative)
+            .collect()
+    }
 }

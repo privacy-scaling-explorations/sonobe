@@ -1,7 +1,6 @@
 /// This module contains the implementation the NIFSTrait for the
 /// [Nova](https://eprint.iacr.org/2021/370.pdf) NIFS (Non-Interactive Folding Scheme).
 use ark_crypto_primitives::sponge::{constraints::AbsorbGadget, Absorb, CryptographicSponge};
-use ark_ec::{CurveGroup, Group};
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{boolean::Boolean, fields::fp::FpVar};
 use ark_relations::r1cs::SynthesisError;
@@ -21,20 +20,15 @@ use crate::folding::circuits::{
 use crate::folding::nova::{CommittedInstance, Witness};
 use crate::transcript::{Transcript, TranscriptVar};
 use crate::utils::vec::{hadamard, mat_vec_mul, vec_add, vec_scalar_mul, vec_sub};
-use crate::Error;
+use crate::{Curve, Error};
 
 /// ChallengeGadget computes the RO challenge used for the Nova instances NIFS, it contains a
 /// rust-native and a in-circuit compatible versions.
-pub struct ChallengeGadget<C: CurveGroup, CI: Absorb> {
+pub struct ChallengeGadget<C: Curve, CI: Absorb> {
     _c: PhantomData<C>,
     _ci: PhantomData<CI>,
 }
-impl<C: CurveGroup, CI: Absorb> ChallengeGadget<C, CI>
-where
-    C: CurveGroup,
-    // <C as CurveGroup>::BaseField: PrimeField,
-    <C as Group>::ScalarField: Absorb,
-{
+impl<C: Curve, CI: Absorb> ChallengeGadget<C, CI> {
     pub fn get_challenge_native<T: Transcript<C::ScalarField>>(
         transcript: &mut T,
         pp_hash: C::ScalarField, // public params hash
@@ -79,7 +73,7 @@ where
 /// [Nova](https://eprint.iacr.org/2021/370.pdf).
 /// `H` specifies whether the NIFS will use a blinding factor
 pub struct NIFS<
-    C: CurveGroup,
+    C: Curve,
     CS: CommitmentScheme<C, H>,
     T: Transcript<C::ScalarField>,
     const H: bool = false,
@@ -89,10 +83,8 @@ pub struct NIFS<
     _t: PhantomData<T>,
 }
 
-impl<C: CurveGroup, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
+impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
     NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
-where
-    <C as Group>::ScalarField: Absorb,
 {
     type CommittedInstance = CommittedInstance<C>;
     type Witness = Witness<C>;
@@ -159,7 +151,7 @@ where
         // compute the cross terms
         let z1: Vec<C::ScalarField> = [vec![U_i.u], U_i.x.to_vec(), W_i.W.to_vec()].concat();
         let z2: Vec<C::ScalarField> = [vec![u_i.u], u_i.x.to_vec(), w_i.W.to_vec()].concat();
-        let T = Self::compute_T(r1cs, U_i.u, u_i.u, &z1, &z2)?;
+        let T = Self::compute_T(r1cs, U_i.u, u_i.u, &z1, &z2, &W_i.E, &w_i.E)?;
 
         // use r_T=0 since we don't need hiding property for cm(T)
         let cmT = CS::commit(cs_prover_params, &T, &C::ScalarField::zero())?;
@@ -202,35 +194,31 @@ where
     }
 }
 
-impl<C: CurveGroup, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
+impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
     NIFS<C, CS, T, H>
-where
-    <C as Group>::ScalarField: Absorb,
 {
-    /// compute_T: compute cross-terms T
+    /// compute_T: compute cross-terms T. We use the approach described in
+    /// [Mova](https://eprint.iacr.org/2024/1220.pdf)'s section 5.2.
     pub fn compute_T(
         r1cs: &R1CS<C::ScalarField>,
         u1: C::ScalarField,
         u2: C::ScalarField,
         z1: &[C::ScalarField],
         z2: &[C::ScalarField],
+        E1: &[C::ScalarField],
+        E2: &[C::ScalarField],
     ) -> Result<Vec<C::ScalarField>, Error> {
-        let (A, B, C) = (r1cs.A.clone(), r1cs.B.clone(), r1cs.C.clone());
+        let z = vec_add(z1, z2)?;
 
         // this is parallelizable (for the future)
-        let Az1 = mat_vec_mul(&A, z1)?;
-        let Bz1 = mat_vec_mul(&B, z1)?;
-        let Cz1 = mat_vec_mul(&C, z1)?;
-        let Az2 = mat_vec_mul(&A, z2)?;
-        let Bz2 = mat_vec_mul(&B, z2)?;
-        let Cz2 = mat_vec_mul(&C, z2)?;
-
-        let Az1_Bz2 = hadamard(&Az1, &Bz2)?;
-        let Az2_Bz1 = hadamard(&Az2, &Bz1)?;
-        let u1Cz2 = vec_scalar_mul(&Cz2, &u1);
-        let u2Cz1 = vec_scalar_mul(&Cz1, &u2);
-
-        vec_sub(&vec_sub(&vec_add(&Az1_Bz2, &Az2_Bz1)?, &u1Cz2)?, &u2Cz1)
+        let Az = mat_vec_mul(&r1cs.A, &z)?;
+        let Bz = mat_vec_mul(&r1cs.B, &z)?;
+        let Cz = mat_vec_mul(&r1cs.C, &z)?;
+        let u = u1 + u2;
+        let uCz = vec_scalar_mul(&Cz, &u);
+        let AzBz = hadamard(&Az, &Bz)?;
+        let lhs = vec_sub(&AzBz, &uCz)?;
+        vec_sub(&vec_sub(&lhs, E1)?, E2)
     }
 
     pub fn compute_cyclefold_cmT(
@@ -240,15 +228,12 @@ where
         ci1: &CycleFoldCommittedInstance<C>,
         w2: &CycleFoldWitness<C>,
         ci2: &CycleFoldCommittedInstance<C>,
-    ) -> Result<(Vec<C::ScalarField>, C), Error>
-    where
-        <C as ark_ec::CurveGroup>::BaseField: ark_ff::PrimeField,
-    {
+    ) -> Result<(Vec<C::ScalarField>, C), Error> {
         let z1: Vec<C::ScalarField> = [vec![ci1.u], ci1.x.to_vec(), w1.W.to_vec()].concat();
         let z2: Vec<C::ScalarField> = [vec![ci2.u], ci2.x.to_vec(), w2.W.to_vec()].concat();
 
         // compute cross terms
-        let T = Self::compute_T(r1cs, ci1.u, ci2.u, &z1, &z2)?;
+        let T = Self::compute_T(r1cs, ci1.u, ci2.u, &z1, &z2, &w1.E, &w2.E)?;
         // use r_T=0 since we don't need hiding property for cm(T)
         let cmT = CS::commit(cs_prover_params, &T, &C::ScalarField::zero())?;
         Ok((T, cmT))
@@ -297,16 +282,17 @@ pub mod tests {
     use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
     use ark_pallas::{Fr, Projective};
 
-    use crate::arith::{r1cs::tests::get_test_r1cs, Arith};
+    use crate::arith::{r1cs::tests::get_test_r1cs, ArithRelation};
     use crate::commitment::pedersen::Pedersen;
     use crate::folding::nova::nifs::tests::test_nifs_opt;
 
     #[test]
-    fn test_nifs_nova() {
-        let (W, U) = test_nifs_opt::<NIFS<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>>();
+    fn test_nifs_nova() -> Result<(), Error> {
+        let (W, U) = test_nifs_opt::<NIFS<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>>()?;
 
         // check the last folded instance relation
         let r1cs = get_test_r1cs();
-        r1cs.check_relation(&W, &U).unwrap();
+        r1cs.check_relation(&W, &U)?;
+        Ok(())
     }
 }

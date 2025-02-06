@@ -1,9 +1,7 @@
 use ark_crypto_primitives::sponge::{constraints::CryptographicSpongeVar, CryptographicSponge};
 use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
-use ark_r1cs_std::{
-    boolean::Boolean, fields::fp::FpVar, groups::CurveVar, ToConstraintFieldGadget,
-};
+use ark_r1cs_std::{boolean::Boolean, fields::fp::FpVar, groups::CurveVar};
 use ark_relations::r1cs::SynthesisError;
 
 pub mod poseidon;
@@ -11,14 +9,14 @@ pub mod poseidon;
 /// An interface for objects that can be absorbed by a `Transcript`.
 ///
 /// Matches `Absorb` in `ark-crypto-primitives`.
-pub trait AbsorbNonNative<F: PrimeField> {
+pub trait AbsorbNonNative {
     /// Converts the object into field elements that can be absorbed by a `Transcript`.
     /// Append the list to `dest`
-    fn to_native_sponge_field_elements(&self, dest: &mut Vec<F>);
+    fn to_native_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>);
 
     /// Converts the object into field elements that can be absorbed by a `Transcript`.
     /// Return the list as `Vec`
-    fn to_native_sponge_field_elements_as_vec(&self) -> Vec<F> {
+    fn to_native_sponge_field_elements_as_vec<F: PrimeField>(&self) -> Vec<F> {
         let mut result = Vec::new();
         self.to_native_sponge_field_elements(&mut result);
         result
@@ -32,6 +30,30 @@ pub trait AbsorbNonNative<F: PrimeField> {
 pub trait AbsorbNonNativeGadget<F: PrimeField> {
     /// Converts the object into field elements that can be absorbed by a `TranscriptVar`.
     fn to_native_sponge_field_elements(&self) -> Result<Vec<FpVar<F>>, SynthesisError>;
+}
+
+impl<T: AbsorbNonNative> AbsorbNonNative for [T] {
+    fn to_native_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
+        for t in self.iter() {
+            t.to_native_sponge_field_elements(dest);
+        }
+    }
+}
+
+impl<F: PrimeField, T: AbsorbNonNativeGadget<F>> AbsorbNonNativeGadget<F> for &T {
+    fn to_native_sponge_field_elements(&self) -> Result<Vec<FpVar<F>>, SynthesisError> {
+        T::to_native_sponge_field_elements(self)
+    }
+}
+
+impl<F: PrimeField, T: AbsorbNonNativeGadget<F>> AbsorbNonNativeGadget<F> for [T] {
+    fn to_native_sponge_field_elements(&self) -> Result<Vec<FpVar<F>>, SynthesisError> {
+        let mut result = Vec::new();
+        for t in self.iter() {
+            result.extend(t.to_native_sponge_field_elements()?);
+        }
+        Ok(result)
+    }
 }
 
 pub trait Transcript<F: PrimeField>: CryptographicSponge {
@@ -57,7 +79,7 @@ pub trait Transcript<F: PrimeField>: CryptographicSponge {
     ///   Note that although a `CommittedInstance` for `AugmentedFCircuit` on
     ///   the primary curve also contains non-native elements, we still regard
     ///   it as native, because the sponge is on the same curve.
-    fn absorb_nonnative<V: AbsorbNonNative<F>>(&mut self, v: &V);
+    fn absorb_nonnative<V: AbsorbNonNative>(&mut self, v: &V);
 
     fn get_challenge(&mut self) -> F;
     /// get_challenge_nbits returns a field element of size nbits
@@ -74,7 +96,7 @@ pub trait TranscriptVar<F: PrimeField, S: CryptographicSponge>:
     ///
     /// If the sponge field `F` is `C::ScalarField`, call `absorb_nonnative`
     /// instead.
-    fn absorb_point<C: CurveGroup<BaseField = F>, GC: CurveVar<C, F> + ToConstraintFieldGadget<F>>(
+    fn absorb_point<C: CurveGroup<BaseField = F>, GC: CurveVar<C, F>>(
         &mut self,
         v: &GC,
     ) -> Result<(), SynthesisError>;

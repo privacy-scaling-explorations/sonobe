@@ -7,8 +7,8 @@ use ark_r1cs_std::{
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
 use ark_std::borrow::Borrow;
+
 /// CCSMatricesVar contains the matrices 'M' of the CCS without the rest of CCS parameters.
-///
 #[derive(Debug, Clone)]
 pub struct CCSMatricesVar<F: PrimeField> {
     // we only need native representation, so the constraint field==F

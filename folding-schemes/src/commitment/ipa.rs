@@ -7,14 +7,15 @@
 /// i. <s, b> computation is done in log time following a modification of the equation 3 in section
 /// 3.2 from the paper.
 /// ii. s computation is done in 2^{k+1}-2 instead of k*2^k.
-use ark_ec::{AffineRepr, CurveGroup};
+use ark_ec::AffineRepr;
 use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     boolean::Boolean,
-    fields::{nonnative::NonNativeFieldVar, FieldVar},
+    convert::ToBitsGadget,
+    eq::EqGadget,
+    fields::{emulated_fp::EmulatedFpVar, FieldVar},
     prelude::CurveVar,
-    ToBitsGadget,
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -23,15 +24,16 @@ use core::{borrow::Borrow, marker::PhantomData};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use super::{pedersen::Params as PedersenParams, CommitmentScheme};
+use crate::folding::circuits::CF2;
 use crate::transcript::Transcript;
 use crate::utils::{
     powers_of,
     vec::{vec_add, vec_scalar_mul},
 };
-use crate::Error;
+use crate::{Curve, Error};
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Proof<C: CurveGroup> {
+pub struct Proof<C: Curve> {
     a: C::ScalarField,
     l: Vec<C::ScalarField>,
     r: Vec<C::ScalarField>,
@@ -42,12 +44,12 @@ pub struct Proof<C: CurveGroup> {
 /// IPA implements the Inner Product Argument protocol following the CommitmentScheme trait. The
 /// `H` parameter indicates if to use the commitment in hiding mode or not.
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct IPA<C: CurveGroup, const H: bool = false> {
+pub struct IPA<C: Curve, const H: bool = false> {
     _c: PhantomData<C>,
 }
 
 /// Implements the CommitmentScheme trait for IPA
-impl<C: CurveGroup, const H: bool> CommitmentScheme<C, H> for IPA<C, H> {
+impl<C: Curve, const H: bool> CommitmentScheme<C, H> for IPA<C, H> {
     type ProverParams = PedersenParams<C>;
     type VerifierParams = PedersenParams<C>;
     type Proof = (Proof<C>, C::ScalarField, C::ScalarField); // (proof, v=p(x), r=blinding factor)
@@ -363,12 +365,12 @@ fn build_s<F: PrimeField>(u: &[F], u_invs: &[F], k: usize) -> Result<Vec<F>, Err
 /// taking 2^{k+1}-2.
 /// src: https://github.com/zcash/halo2/blob/81729eca91ba4755e247f49c3a72a4232864ec9e/halo2_proofs/src/poly/commitment/verifier.rs#L156
 fn build_s_gadget<F: PrimeField, CF: PrimeField>(
-    u: &[NonNativeFieldVar<F, CF>],
-    u_invs: &[NonNativeFieldVar<F, CF>],
+    u: &[EmulatedFpVar<F, CF>],
+    u_invs: &[EmulatedFpVar<F, CF>],
     k: usize,
-) -> Result<Vec<NonNativeFieldVar<F, CF>>, SynthesisError> {
+) -> Result<Vec<EmulatedFpVar<F, CF>>, SynthesisError> {
     let d: usize = 2_u64.pow(k as u32) as usize;
-    let mut s: Vec<NonNativeFieldVar<F, CF>> = vec![NonNativeFieldVar::one(); d];
+    let mut s: Vec<EmulatedFpVar<F, CF>> = vec![EmulatedFpVar::one(); d];
     for (len, (u_j, u_j_inv)) in u
         .iter()
         .zip(u_invs)
@@ -422,10 +424,10 @@ fn s_b_inner<F: PrimeField>(u: &[F], x: &F) -> Result<F, Error> {
 // g(x, u_1, u_2, ..., u_k) = <s, b>, naively takes linear, but can compute in log time through
 // g(x, u_1, u_2, ..., u_k) = \Prod u_i x^{2^i} + u_i^-1
 fn s_b_inner_gadget<F: PrimeField, CF: PrimeField>(
-    u: &[NonNativeFieldVar<F, CF>],
-    x: &NonNativeFieldVar<F, CF>,
-) -> Result<NonNativeFieldVar<F, CF>, SynthesisError> {
-    let mut c: NonNativeFieldVar<F, CF> = NonNativeFieldVar::<F, CF>::one();
+    u: &[EmulatedFpVar<F, CF>],
+    x: &EmulatedFpVar<F, CF>,
+) -> Result<EmulatedFpVar<F, CF>, SynthesisError> {
+    let mut c: EmulatedFpVar<F, CF> = EmulatedFpVar::<F, CF>::one();
     let mut x_2_i = x.clone(); // x_2_i is x^{2^i}, starting from x^{2^0}=x
     for u_i in u.iter() {
         c *= u_i.clone() * x_2_i.clone() + u_i.inverse()?;
@@ -434,40 +436,35 @@ fn s_b_inner_gadget<F: PrimeField, CF: PrimeField>(
     Ok(c)
 }
 
-pub type CF<C> = <<C as CurveGroup>::BaseField as Field>::BasePrimeField;
-
-pub struct ProofVar<C: CurveGroup, GC: CurveVar<C, CF<C>>> {
-    a: NonNativeFieldVar<C::ScalarField, CF<C>>,
-    l: Vec<NonNativeFieldVar<C::ScalarField, CF<C>>>,
-    r: Vec<NonNativeFieldVar<C::ScalarField, CF<C>>>,
-    L: Vec<GC>,
-    R: Vec<GC>,
+pub struct ProofVar<C: Curve> {
+    a: EmulatedFpVar<C::ScalarField, CF2<C>>,
+    l: Vec<EmulatedFpVar<C::ScalarField, CF2<C>>>,
+    r: Vec<EmulatedFpVar<C::ScalarField, CF2<C>>>,
+    L: Vec<C::Var>,
+    R: Vec<C::Var>,
 }
-impl<C, GC> AllocVar<Proof<C>, CF<C>> for ProofVar<C, GC>
-where
-    C: CurveGroup,
-    GC: CurveVar<C, CF<C>>,
-    <C as ark_ec::CurveGroup>::BaseField: PrimeField,
-{
+impl<C: Curve> AllocVar<Proof<C>, CF2<C>> for ProofVar<C> {
     fn new_variable<T: Borrow<Proof<C>>>(
-        cs: impl Into<Namespace<CF<C>>>,
+        cs: impl Into<Namespace<CF2<C>>>,
         f: impl FnOnce() -> Result<T, SynthesisError>,
         mode: AllocationMode,
     ) -> Result<Self, SynthesisError> {
         f().and_then(|val| {
             let cs = cs.into();
 
-            let a = NonNativeFieldVar::<C::ScalarField, CF<C>>::new_variable(
+            let a = EmulatedFpVar::<C::ScalarField, CF2<C>>::new_variable(
                 cs.clone(),
                 || Ok(val.borrow().a),
                 mode,
             )?;
-            let l: Vec<NonNativeFieldVar<C::ScalarField, CF<C>>> =
+            let l: Vec<EmulatedFpVar<C::ScalarField, CF2<C>>> =
                 Vec::new_variable(cs.clone(), || Ok(val.borrow().l.clone()), mode)?;
-            let r: Vec<NonNativeFieldVar<C::ScalarField, CF<C>>> =
+            let r: Vec<EmulatedFpVar<C::ScalarField, CF2<C>>> =
                 Vec::new_variable(cs.clone(), || Ok(val.borrow().r.clone()), mode)?;
-            let L: Vec<GC> = Vec::new_variable(cs.clone(), || Ok(val.borrow().L.clone()), mode)?;
-            let R: Vec<GC> = Vec::new_variable(cs.clone(), || Ok(val.borrow().R.clone()), mode)?;
+            let L: Vec<C::Var> =
+                Vec::new_variable(cs.clone(), || Ok(val.borrow().L.clone()), mode)?;
+            let R: Vec<C::Var> =
+                Vec::new_variable(cs.clone(), || Ok(val.borrow().R.clone()), mode)?;
 
             Ok(Self { a, l, r, L, R })
         })
@@ -477,36 +474,26 @@ where
 /// IPAGadget implements the circuit that verifies an IPA Proof. The `H` parameter indicates if to
 /// use the commitment in hiding mode or not, reducing a bit the number of constraints needed in
 /// the later case.
-pub struct IPAGadget<C, GC, const H: bool = false>
-where
-    C: CurveGroup,
-    GC: CurveVar<C, CF<C>>,
-{
-    _cf: PhantomData<CF<C>>,
+pub struct IPAGadget<C: Curve, const H: bool = false> {
     _c: PhantomData<C>,
-    _gc: PhantomData<GC>,
 }
 
-impl<C, GC, const H: bool> IPAGadget<C, GC, H>
-where
-    C: CurveGroup,
-    GC: CurveVar<C, CF<C>>,
-{
+impl<C: Curve, const H: bool> IPAGadget<C, H> {
     /// Verify the IPA opening proof, K=log2(d), where d is the degree of the committed polynomial,
     /// and H indicates if the commitment is in hiding mode and thus uses blinding factors, if not,
     /// there are some constraints saved.
     #[allow(clippy::too_many_arguments)]
     pub fn verify<const K: usize>(
-        g: &[GC],                                     // params.generators
-        h: &GC,                                       // params.h
-        x: &NonNativeFieldVar<C::ScalarField, CF<C>>, // evaluation point, challenge
-        v: &NonNativeFieldVar<C::ScalarField, CF<C>>, // value at evaluation point
-        P: &GC,                                       // commitment
-        p: &ProofVar<C, GC>,
-        r: &NonNativeFieldVar<C::ScalarField, CF<C>>, // blinding factor
-        u: &[NonNativeFieldVar<C::ScalarField, CF<C>>; K], // challenges
-        U: &GC,                                       // challenge
-    ) -> Result<Boolean<CF<C>>, SynthesisError> {
+        g: &[C::Var],                              // params.generators
+        h: &C::Var,                                // params.h
+        x: &EmulatedFpVar<C::ScalarField, CF2<C>>, // evaluation point, challenge
+        v: &EmulatedFpVar<C::ScalarField, CF2<C>>, // value at evaluation point
+        P: &C::Var,                                // commitment
+        p: &ProofVar<C>,
+        r: &EmulatedFpVar<C::ScalarField, CF2<C>>, // blinding factor
+        u: &[EmulatedFpVar<C::ScalarField, CF2<C>>; K], // challenges
+        U: &C::Var,                                // challenge
+    ) -> Result<Boolean<CF2<C>>, SynthesisError> {
         if p.L.len() != K || p.R.len() != K {
             return Err(SynthesisError::Unsatisfiable);
         }
@@ -516,7 +503,7 @@ where
         let mut r = r.clone();
 
         // compute u[i]^-1 once
-        let mut u_invs = vec![NonNativeFieldVar::<C::ScalarField, CF<C>>::zero(); u.len()];
+        let mut u_invs = vec![EmulatedFpVar::<C::ScalarField, CF2<C>>::zero(); u.len()];
         for (j, u_j) in u.iter().enumerate() {
             u_invs[j] = u_j.inverse()?;
         }
@@ -531,15 +518,23 @@ where
         }
 
         // msm: G=<G, s>
-        let mut G = GC::zero();
+        let mut G = C::Var::zero();
         let n = s.len();
-        if n%2 == 1 {
-            G += g[n-1].scalar_mul_le(s[n-1].to_bits_le()?.iter())?;
+        if n % 2 == 1 {
+            G += g[n - 1].scalar_mul_le(s[n - 1].to_bits_le()?.iter())?;
         } else {
-            G += g[n-1].joint_scalar_mul_be(&g[n-2], s[n-1].to_bits_le()?.iter(), s[n-2].to_bits_le()?.iter())?;
+            G += g[n - 1].joint_scalar_mul_be(
+                &g[n - 2],
+                s[n - 1].to_bits_le()?.iter(),
+                s[n - 2].to_bits_le()?.iter(),
+            )?;
         }
-        for i in (1..n-2).step_by(2) {
-            G += g[i-1].joint_scalar_mul_be(&g[i], s[i-1].to_bits_le()?.iter(), s[i].to_bits_le()?.iter())?;
+        for i in (1..n - 2).step_by(2) {
+            G += g[i - 1].joint_scalar_mul_be(
+                &g[i],
+                s[i - 1].to_bits_le()?.iter(),
+                s[i].to_bits_le()?.iter(),
+            )?;
         }
 
         for (j, u_j) in u.iter().enumerate() {
@@ -556,9 +551,17 @@ where
 
         let q_1 = if H {
             G.scalar_mul_le(p.a.to_bits_le()?.iter())?
-                + h.joint_scalar_mul_be(&U, r.to_bits_le()?.iter(), (p.a.clone() * b).to_bits_le()?.iter())?
+                + h.joint_scalar_mul_be(
+                    &U,
+                    r.to_bits_le()?.iter(),
+                    (p.a.clone() * b).to_bits_le()?.iter(),
+                )?
         } else {
-            G.joint_scalar_mul_be(&U, p.a.to_bits_le()?.iter(), (p.a.clone() * b).to_bits_le()?.iter())?
+            G.joint_scalar_mul_be(
+                &U,
+                p.a.to_bits_le()?.iter(),
+                (p.a.clone() * b).to_bits_le()?.iter(),
+            )?
         };
         // q_0 == q_1
         q_0.is_eq(&q_1)
@@ -568,28 +571,28 @@ where
 #[cfg(test)]
 mod tests {
     use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, CryptographicSponge};
-    use ark_ec::Group;
+    use ark_ec::PrimeGroup;
     use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
     use ark_r1cs_std::eq::EqGadget;
     use ark_relations::r1cs::ConstraintSystem;
-    use std::ops::Mul;
 
     use super::*;
     use crate::transcript::poseidon::poseidon_canonical_config;
 
     #[test]
-    fn test_ipa() {
-        test_ipa_opt::<false>();
-        test_ipa_opt::<true>();
+    fn test_ipa() -> Result<(), Error> {
+        let _ = test_ipa_opt::<false>()?;
+        let _ = test_ipa_opt::<true>()?;
+        Ok(())
     }
-    fn test_ipa_opt<const hiding: bool>() {
+    fn test_ipa_opt<const hiding: bool>() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
 
         const k: usize = 4;
         const d: usize = 2_u64.pow(k as u32) as usize;
 
         // setup params
-        let (params, _) = IPA::<Projective, hiding>::setup(&mut rng, d).unwrap();
+        let (params, _) = IPA::<Projective, hiding>::setup(&mut rng, d)?;
 
         let poseidon_config = poseidon_canonical_config::<Fr>();
         // init Prover's transcript
@@ -606,7 +609,7 @@ mod tests {
         } else {
             Fr::zero()
         };
-        let cm = IPA::<Projective, hiding>::commit(&params, &a, &r_blind).unwrap();
+        let cm = IPA::<Projective, hiding>::commit(&params, &a, &r_blind)?;
 
         let proof = IPA::<Projective, hiding>::prove(
             &params,
@@ -615,25 +618,26 @@ mod tests {
             &a,
             &r_blind,
             Some(&mut rng),
-        )
-        .unwrap();
+        )?;
 
-        IPA::<Projective, hiding>::verify(&params, &mut transcript_v, &cm, &proof).unwrap();
+        IPA::<Projective, hiding>::verify(&params, &mut transcript_v, &cm, &proof)?;
+        Ok(())
     }
 
     #[test]
-    fn test_ipa_gadget() {
-        test_ipa_gadget_opt::<false>();
-        // test_ipa_gadget_opt::<true>();
+    fn test_ipa_gadget() -> Result<(), Error> {
+        let _ = test_ipa_gadget_opt::<false>()?;
+        let _ = test_ipa_gadget_opt::<true>()?;
+        Ok(())
     }
-    fn test_ipa_gadget_opt<const hiding: bool>() {
+    fn test_ipa_gadget_opt<const hiding: bool>() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
 
         const k: usize = 3;
         const d: usize = 2_u64.pow(k as u32) as usize;
 
         // setup params
-        let (params, _) = IPA::<Projective, hiding>::setup(&mut rng, d).unwrap();
+        let (params, _) = IPA::<Projective, hiding>::setup(&mut rng, d)?;
 
         let poseidon_config = poseidon_canonical_config::<Fr>();
         // init Prover's transcript
@@ -650,7 +654,7 @@ mod tests {
         } else {
             Fr::zero()
         };
-        let cm = IPA::<Projective, hiding>::commit(&params, &a, &r_blind).unwrap();
+        let cm = IPA::<Projective, hiding>::commit(&params, &a, &r_blind)?;
 
         let proof = IPA::<Projective, hiding>::prove(
             &params,
@@ -659,10 +663,9 @@ mod tests {
             &a,
             &r_blind,
             Some(&mut rng),
-        )
-        .unwrap();
+        )?;
 
-        IPA::<Projective, hiding>::verify(&params, &mut transcript_v, &cm, &proof).unwrap();
+        IPA::<Projective, hiding>::verify(&params, &mut transcript_v, &cm, &proof)?;
 
         // circuit
         let cs = ConstraintSystem::<Fq>::new_ref();
@@ -671,7 +674,7 @@ mod tests {
         transcript_v.absorb_nonnative(&cm);
         let challenge = transcript_v.get_challenge(); // challenge value at which we evaluate
         let s = transcript_v.get_challenge();
-        let U = Projective::generator().mul(s);
+        let U = Projective::generator() * s;
         let mut u: Vec<Fr> = vec![Fr::zero(); k];
         for i in (0..k).rev() {
             transcript_v.absorb_nonnative(&proof.0.L[i]);
@@ -680,21 +683,24 @@ mod tests {
         }
 
         // prepare inputs
-        let gVar = Vec::<GVar>::new_constant(cs.clone(), params.generators).unwrap();
-        let hVar = GVar::new_constant(cs.clone(), params.h).unwrap();
-        let challengeVar =
-            NonNativeFieldVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(challenge)).unwrap();
-        let vVar = NonNativeFieldVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(proof.1)).unwrap();
-        let cmVar = GVar::new_witness(cs.clone(), || Ok(cm)).unwrap();
-        let proofVar =
-            ProofVar::<Projective, GVar>::new_witness(cs.clone(), || Ok(proof.0)).unwrap();
-        let r_blindVar =
-            NonNativeFieldVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(r_blind)).unwrap();
-        let uVar_vec = Vec::<NonNativeFieldVar<Fr, Fq>>::new_witness(cs.clone(), || Ok(u)).unwrap();
-        let uVar: [NonNativeFieldVar<Fr, Fq>; k] = uVar_vec.try_into().unwrap();
-        let UVar = GVar::new_witness(cs.clone(), || Ok(U)).unwrap();
+        let gVar = Vec::<GVar>::new_constant(cs.clone(), params.generators)?;
+        let hVar = GVar::new_constant(cs.clone(), params.h)?;
+        let challengeVar = EmulatedFpVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(challenge))?;
+        let vVar = EmulatedFpVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(proof.1))?;
+        let cmVar = GVar::new_witness(cs.clone(), || Ok(cm))?;
+        let proofVar = ProofVar::<Projective>::new_witness(cs.clone(), || Ok(proof.0))?;
+        let r_blindVar = EmulatedFpVar::<Fr, Fq>::new_witness(cs.clone(), || Ok(r_blind))?;
+        let uVar_vec = Vec::<EmulatedFpVar<Fr, Fq>>::new_witness(cs.clone(), || Ok(u))?;
+        let uVar: [EmulatedFpVar<Fr, Fq>; k] = uVar_vec.try_into().map_err(|_| {
+            Error::ConversionError(
+                "Vec<_>".to_string(),
+                "[_; 1]".to_string(),
+                "variable name: uVar".to_string(),
+            )
+        })?;
+        let UVar = GVar::new_witness(cs.clone(), || Ok(U))?;
 
-        let v = IPAGadget::<Projective, GVar, hiding>::verify::<k>(
+        let v = IPAGadget::<Projective, hiding>::verify::<k>(
             &gVar,
             &hVar,
             &challengeVar,
@@ -704,14 +710,9 @@ mod tests {
             &r_blindVar,
             &uVar,
             &UVar,
-        )
-        .unwrap();
-        v.enforce_equal(&Boolean::TRUE).unwrap();
-        assert!(cs.is_satisfied().unwrap());
-        println!(
-            "num_constraints IPA verify circuit: {}",
-            cs.num_constraints()
-        );
-
+        )?;
+        v.enforce_equal(&Boolean::TRUE)?;
+        assert!(cs.is_satisfied()?);
+        Ok(())
     }
 }

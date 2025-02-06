@@ -1,5 +1,4 @@
 use ark_crypto_primitives::sponge::Absorb;
-use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
@@ -7,20 +6,19 @@ use ark_std::{rand::Rng, sync::Arc, One, Zero};
 
 use super::circuits::CCCSVar;
 use super::Witness;
-use crate::arith::{ccs::CCS, Arith};
+use crate::arith::{ccs::CCS, Arith, ArithRelation};
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::CF1;
 use crate::folding::traits::Inputize;
 use crate::folding::traits::{CommittedInstanceOps, Dummy};
-use crate::transcript::AbsorbNonNative;
 use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::utils::vec::{is_zero_vec, mat_vec_mul};
 use crate::utils::virtual_polynomial::{build_eq_x_r_vec, VirtualPolynomial};
-use crate::Error;
+use crate::{Curve, Error};
 
 /// Committed CCS instance
 #[derive(Debug, Clone, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CCCS<C: CurveGroup> {
+pub struct CCCS<C: Curve> {
     // Commitment to witness
     pub C: C,
     // Public input/output
@@ -32,41 +30,38 @@ impl<F: PrimeField> CCS<F> {
         &self,
         rng: &mut R,
         cs_params: &CS::ProverParams,
-        z: &[C::ScalarField],
-    ) -> Result<(CCCS<C>, Witness<C::ScalarField>), Error>
+        z: &[F],
+    ) -> Result<(CCCS<C>, Witness<F>), Error>
     where
         // enforce that CCS's F is the C::ScalarField
-        C: CurveGroup<ScalarField = F>,
+        C: Curve<ScalarField = F>,
     {
-        let w: Vec<C::ScalarField> = z[(1 + self.l)..].to_vec();
+        let (w, x) = self.split_z(z);
 
         // if the commitment scheme is set to be hiding, set the random blinding parameter
         let r_w = if CS::is_hiding() {
-            C::ScalarField::rand(rng)
+            F::rand(rng)
         } else {
-            C::ScalarField::zero()
+            F::zero()
         };
         let C = CS::commit(cs_params, &w, &r_w)?;
 
-        Ok((
-            CCCS::<C> {
-                C,
-                x: z[1..(1 + self.l)].to_vec(),
-            },
-            Witness::<C::ScalarField> { w, r_w },
-        ))
+        Ok((CCCS::<C> { C, x }, Witness::<F> { w, r_w }))
     }
 
     /// Computes q(x) = \sum^q c_i * \prod_{j \in S_i} ( \sum_{y \in {0,1}^s'} M_j(x, y) * z(y) )
     /// polynomial over x
     pub fn compute_q(&self, z: &[F]) -> Result<VirtualPolynomial<F>, Error> {
         let mut q_x = VirtualPolynomial::<F>::new(self.s);
-        for i in 0..self.q {
+        for (S_i, &c_i) in self.S.iter().zip(&self.c) {
             let mut Q_k = vec![];
-            for &j in self.S[i].iter() {
-                Q_k.push(dense_vec_to_dense_mle(self.s, &mat_vec_mul(&self.M[j], z)?));
+            for &j in S_i {
+                Q_k.push(Arc::new(dense_vec_to_dense_mle(
+                    self.s,
+                    &mat_vec_mul(&self.M[j], z)?,
+                )));
             }
-            q_x.add_mle_list(Q_k.iter().map(|v| Arc::new(v.clone())), self.c[i])?;
+            q_x.add_mle_list(Q_k, c_i)?;
         }
         Ok(q_x)
     }
@@ -76,31 +71,34 @@ impl<F: PrimeField> CCS<F> {
     /// polynomial over x
     pub fn compute_Q(&self, z: &[F], beta: &[F]) -> Result<VirtualPolynomial<F>, Error> {
         let eq_beta = build_eq_x_r_vec(beta)?;
-        let eq_beta_mle = dense_vec_to_dense_mle(self.s, &eq_beta);
+        let eq_beta_mle = Arc::new(dense_vec_to_dense_mle(self.s, &eq_beta));
 
         let mut Q = VirtualPolynomial::<F>::new(self.s);
-        for i in 0..self.q {
+        for (S_i, &c_i) in self.S.iter().zip(&self.c) {
             let mut Q_k = vec![];
-            for &j in self.S[i].iter() {
-                Q_k.push(dense_vec_to_dense_mle(self.s, &mat_vec_mul(&self.M[j], z)?));
+            for &j in S_i {
+                Q_k.push(Arc::new(dense_vec_to_dense_mle(
+                    self.s,
+                    &mat_vec_mul(&self.M[j], z)?,
+                )));
             }
             Q_k.push(eq_beta_mle.clone());
-            Q.add_mle_list(Q_k.iter().map(|v| Arc::new(v.clone())), self.c[i])?;
+            Q.add_mle_list(Q_k, c_i)?;
         }
         Ok(Q)
     }
 }
 
-impl<C: CurveGroup> Dummy<&CCS<CF1<C>>> for CCCS<C> {
+impl<C: Curve> Dummy<&CCS<CF1<C>>> for CCCS<C> {
     fn dummy(ccs: &CCS<CF1<C>>) -> Self {
         Self {
             C: C::zero(),
-            x: vec![CF1::<C>::zero(); ccs.l],
+            x: vec![CF1::<C>::zero(); ccs.n_public_inputs()],
         }
     }
 }
 
-impl<C: CurveGroup> Arith<Witness<CF1<C>>, CCCS<C>> for CCS<CF1<C>> {
+impl<C: Curve> ArithRelation<Witness<CF1<C>>, CCCS<C>> for CCS<CF1<C>> {
     type Evaluation = Vec<CF1<C>>;
 
     fn eval_relation(&self, w: &Witness<CF1<C>>, u: &CCCS<C>) -> Result<Self::Evaluation, Error> {
@@ -122,26 +120,18 @@ impl<C: CurveGroup> Arith<Witness<CF1<C>>, CCCS<C>> for CCS<CF1<C>> {
     }
 }
 
-impl<C: CurveGroup> Absorb for CCCS<C>
-where
-    C::ScalarField: Absorb,
-{
+impl<C: Curve> Absorb for CCCS<C> {
     fn to_sponge_bytes(&self, dest: &mut Vec<u8>) {
         C::ScalarField::batch_to_sponge_bytes(&self.to_sponge_field_elements_as_vec(), dest);
     }
 
     fn to_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
-        // We cannot call `to_native_sponge_field_elements(dest)` directly, as
-        // `to_native_sponge_field_elements` needs `F` to be `C::ScalarField`,
-        // but here `F` is a generic `PrimeField`.
-        self.C
-            .to_native_sponge_field_elements_as_vec()
-            .to_sponge_field_elements(dest);
+        self.C.to_native_sponge_field_elements(dest);
         self.x.to_sponge_field_elements(dest);
     }
 }
 
-impl<C: CurveGroup> CommittedInstanceOps<C> for CCCS<C> {
+impl<C: Curve> CommittedInstanceOps<C> for CCCS<C> {
     type Var = CCCSVar<C>;
 
     fn get_commitments(&self) -> Vec<C> {
@@ -153,9 +143,11 @@ impl<C: CurveGroup> CommittedInstanceOps<C> for CCCS<C> {
     }
 }
 
-impl<C: CurveGroup> Inputize<C::ScalarField, CCCSVar<C>> for CCCS<C> {
-    fn inputize(&self) -> Vec<C::ScalarField> {
-        [&self.C.inputize()[..], &self.x].concat()
+impl<C: Curve> Inputize<CF1<C>> for CCCS<C> {
+    /// Returns the internal representation in the same order as how the value
+    /// is allocated in `CCCSVar::new_input`.
+    fn inputize(&self) -> Vec<CF1<C>> {
+        [&self.C.inputize_nonnative()[..], &self.x].concat()
     }
 }
 
@@ -172,38 +164,39 @@ pub mod tests {
     /// Do some sanity checks on q(x). It's a multivariable polynomial and it should evaluate to zero inside the
     /// hypercube, but to not-zero outside the hypercube.
     #[test]
-    fn test_compute_q() {
+    fn test_compute_q() -> Result<(), Error> {
         let mut rng = test_rng();
 
         let ccs = get_test_ccs::<Fr>();
         let z = get_test_z(3);
 
-        let q = ccs.compute_q(&z).unwrap();
+        let q = ccs.compute_q(&z)?;
 
         // Evaluate inside the hypercube
         for x in BooleanHypercube::new(ccs.s) {
-            assert_eq!(Fr::zero(), q.evaluate(&x).unwrap());
+            assert_eq!(Fr::zero(), q.evaluate(&x)?);
         }
 
         // Evaluate outside the hypercube
         let beta: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
-        assert_ne!(Fr::zero(), q.evaluate(&beta).unwrap());
+        assert_ne!(Fr::zero(), q.evaluate(&beta)?);
+        Ok(())
     }
 
     /// Perform some sanity checks on Q(x).
     #[test]
-    fn test_compute_Q() {
+    fn test_compute_Q() -> Result<(), Error> {
         let mut rng = test_rng();
 
         let ccs: CCS<Fr> = get_test_ccs();
         let z = get_test_z(3);
         let (w, x) = ccs.split_z(&z);
-        ccs.check_relation(&w, &x).unwrap();
+        ccs.check_relation(&w, &x)?;
 
         let beta: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
 
         // Compute Q(x) = eq(beta, x) * q(x).
-        let Q = ccs.compute_Q(&z, &beta).unwrap();
+        let Q = ccs.compute_Q(&z, &beta)?;
 
         // Let's consider the multilinear polynomial G(x) = \sum_{y \in {0, 1}^s} eq(x, y) q(y)
         // which interpolates the multivariate polynomial q(x) inside the hypercube.
@@ -218,44 +211,53 @@ pub mod tests {
 
         // Now sum Q(x) evaluations in the hypercube and expect it to be 0
         let r = BooleanHypercube::new(ccs.s)
-            .map(|x| Q.evaluate(&x).unwrap())
+            .map(|x| Q.evaluate(&x))
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
             .fold(Fr::zero(), |acc, result| acc + result);
         assert_eq!(r, Fr::zero());
+        Ok(())
     }
 
     /// The polynomial G(x) (see above) interpolates q(x) inside the hypercube.
     /// Summing Q(x) over the hypercube is equivalent to evaluating G(x) at some point.
     /// This test makes sure that G(x) agrees with q(x) inside the hypercube, but not outside
     #[test]
-    fn test_Q_against_q() {
+    fn test_Q_against_q() -> Result<(), Error> {
         let mut rng = test_rng();
 
         let ccs: CCS<Fr> = get_test_ccs();
         let z = get_test_z(3);
         let (w, x) = ccs.split_z(&z);
-        ccs.check_relation(&w, &x).unwrap();
+        ccs.check_relation(&w, &x)?;
 
         // Now test that if we create Q(x) with eq(d,y) where d is inside the hypercube, \sum Q(x) should be G(d) which
         // should be equal to q(d), since G(x) interpolates q(x) inside the hypercube
-        let q = ccs.compute_q(&z).unwrap();
+        let q = ccs.compute_q(&z)?;
         for d in BooleanHypercube::new(ccs.s) {
-            let Q_at_d = ccs.compute_Q(&z, &d).unwrap();
+            let Q_at_d = ccs.compute_Q(&z, &d)?;
 
             // Get G(d) by summing over Q_d(x) over the hypercube
             let G_at_d = BooleanHypercube::new(ccs.s)
-                .map(|x| Q_at_d.evaluate(&x).unwrap())
+                .map(|x| Q_at_d.evaluate(&x))
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
                 .fold(Fr::zero(), |acc, result| acc + result);
-            assert_eq!(G_at_d, q.evaluate(&d).unwrap());
+            assert_eq!(G_at_d, q.evaluate(&d)?);
         }
 
         // Now test that they should disagree outside of the hypercube
         let r: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
-        let Q_at_r = ccs.compute_Q(&z, &r).unwrap();
+        let Q_at_r = ccs.compute_Q(&z, &r)?;
 
         // Get G(d) by summing over Q_d(x) over the hypercube
         let G_at_r = BooleanHypercube::new(ccs.s)
-            .map(|x| Q_at_r.evaluate(&x).unwrap())
+            .map(|x| Q_at_r.evaluate(&x))
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
             .fold(Fr::zero(), |acc, result| acc + result);
-        assert_ne!(G_at_r, q.evaluate(&r).unwrap());
+
+        assert_ne!(G_at_r, q.evaluate(&r)?);
+        Ok(())
     }
 }

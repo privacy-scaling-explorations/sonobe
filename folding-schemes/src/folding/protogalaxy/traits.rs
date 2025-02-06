@@ -1,11 +1,9 @@
 use ark_crypto_primitives::sponge::{constraints::AbsorbGadget, Absorb};
-use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_r1cs_std::{
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
     uint8::UInt8,
-    ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::SynthesisError;
 use ark_std::{cfg_into_iter, log2, One};
@@ -19,27 +17,22 @@ use super::{
 use crate::{
     arith::{
         r1cs::{circuits::R1CSMatricesVar, R1CS},
-        Arith, ArithGadget,
+        ArithRelation, ArithRelationGadget,
     },
     folding::circuits::CF1,
-    transcript::AbsorbNonNative,
+    transcript::AbsorbNonNativeGadget,
     utils::vec::is_zero_vec,
-    Error,
+    Curve, Error,
 };
 
 // Implements the trait for absorbing ProtoGalaxy's CommittedInstance.
-impl<C: CurveGroup, const TYPE: bool> Absorb for CommittedInstance<C, TYPE>
-where
-    C::ScalarField: Absorb,
-{
+impl<C: Curve, const TYPE: bool> Absorb for CommittedInstance<C, TYPE> {
     fn to_sponge_bytes(&self, dest: &mut Vec<u8>) {
         C::ScalarField::batch_to_sponge_bytes(&self.to_sponge_field_elements_as_vec(), dest);
     }
 
     fn to_sponge_field_elements<F: PrimeField>(&self, dest: &mut Vec<F>) {
-        self.phi
-            .to_native_sponge_field_elements_as_vec()
-            .to_sponge_field_elements(dest);
+        self.phi.to_native_sponge_field_elements(dest);
         self.betas.to_sponge_field_elements(dest);
         self.e.to_sponge_field_elements(dest);
         self.x.to_sponge_field_elements(dest);
@@ -47,16 +40,14 @@ where
 }
 
 // Implements the trait for absorbing ProtoGalaxy's CommittedInstanceVar in-circuit.
-impl<C: CurveGroup, const TYPE: bool> AbsorbGadget<C::ScalarField>
-    for CommittedInstanceVar<C, TYPE>
-{
+impl<C: Curve, const TYPE: bool> AbsorbGadget<C::ScalarField> for CommittedInstanceVar<C, TYPE> {
     fn to_sponge_bytes(&self) -> Result<Vec<UInt8<C::ScalarField>>, SynthesisError> {
         FpVar::batch_to_sponge_bytes(&self.to_sponge_field_elements()?)
     }
 
     fn to_sponge_field_elements(&self) -> Result<Vec<FpVar<C::ScalarField>>, SynthesisError> {
         Ok([
-            self.phi.to_constraint_field()?,
+            self.phi.to_native_sponge_field_elements()?,
             self.betas.to_sponge_field_elements()?,
             self.e.to_sponge_field_elements()?,
             self.x.to_sponge_field_elements()?,
@@ -65,14 +56,14 @@ impl<C: CurveGroup, const TYPE: bool> AbsorbGadget<C::ScalarField>
     }
 }
 
-/// Implements `Arith` for R1CS, where the witness is of type [`Witness`], and
-/// the committed instance is of type [`CommittedInstance`].
+/// Implements [`ArithRelation`] for R1CS, where the witness is of type
+/// [`Witness`], and the committed instance is of type [`CommittedInstance`].
 ///
 /// Due to the error term `CommittedInstance.e`, R1CS here is considered as a
 /// relaxed R1CS.
 ///
 /// See `nova/traits.rs` for the rationale behind the design.
-impl<C: CurveGroup, const TYPE: bool> Arith<Witness<CF1<C>>, CommittedInstance<C, TYPE>>
+impl<C: Curve, const TYPE: bool> ArithRelation<Witness<CF1<C>>, CommittedInstance<C, TYPE>>
     for R1CS<CF1<C>>
 {
     type Evaluation = Vec<CF1<C>>;
@@ -113,7 +104,7 @@ impl<C: CurveGroup, const TYPE: bool> Arith<Witness<CF1<C>>, CommittedInstance<C
 
 /// Unlike its native counterpart, we only need to support running instances in
 /// circuit, as the decider circuit only checks running instance satisfiability.
-impl<C: CurveGroup> ArithGadget<WitnessVar<CF1<C>>, CommittedInstanceVar<C, RUNNING>>
+impl<C: Curve> ArithRelationGadget<WitnessVar<CF1<C>>, CommittedInstanceVar<C, RUNNING>>
     for R1CSMatricesVar<CF1<C>, FpVar<CF1<C>>>
 {
     type Evaluation = (Vec<FpVar<CF1<C>>>, Vec<FpVar<CF1<C>>>);
@@ -154,7 +145,7 @@ pub mod tests {
     /// test that checks the native CommittedInstance.to_sponge_{bytes,field_elements}
     /// vs the R1CS constraints version
     #[test]
-    pub fn test_committed_instance_to_sponge_preimage() {
+    pub fn test_committed_instance_to_sponge_preimage() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
 
         let t = rng.gen::<u8>() as usize;
@@ -173,15 +164,15 @@ pub mod tests {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
         let ciVar =
-            CommittedInstanceVar::<Projective, true>::new_witness(cs.clone(), || Ok(ci.clone()))
-                .unwrap();
-        let bytes_var = ciVar.to_sponge_bytes().unwrap();
-        let field_elements_var = ciVar.to_sponge_field_elements().unwrap();
+            CommittedInstanceVar::<Projective, true>::new_witness(cs.clone(), || Ok(ci.clone()))?;
+        let bytes_var = ciVar.to_sponge_bytes()?;
+        let field_elements_var = ciVar.to_sponge_field_elements()?;
 
-        assert!(cs.is_satisfied().unwrap());
+        assert!(cs.is_satisfied()?);
 
         // check that the natively computed and in-circuit computed hashes match
-        assert_eq!(bytes_var.value().unwrap(), bytes);
-        assert_eq!(field_elements_var.value().unwrap(), field_elements);
+        assert_eq!(bytes_var.value()?, bytes);
+        assert_eq!(field_elements_var.value()?, field_elements);
+        Ok(())
     }
 }

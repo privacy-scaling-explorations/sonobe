@@ -10,8 +10,8 @@ use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 use core::marker::PhantomData;
 use std::time::Instant;
 
-use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as Projective};
-use ark_grumpkin::{constraints::GVar as GVar2, Projective as Projective2};
+use ark_bn254::{Bn254, Fr, G1Projective as Projective};
+use ark_grumpkin::Projective as Projective2;
 
 use folding_schemes::commitment::{kzg::KZG, pedersen::Pedersen};
 use folding_schemes::folding::nova::{Nova, PreprocessorParam};
@@ -30,6 +30,8 @@ pub struct MultiInputsFCircuit<F: PrimeField> {
 }
 impl<F: PrimeField> FCircuit<F> for MultiInputsFCircuit<F> {
     type Params = ();
+    type ExternalInputs = ();
+    type ExternalInputsVar = ();
 
     fn new(_params: Self::Params) -> Result<Self, Error> {
         Ok(Self { _f: PhantomData })
@@ -37,34 +39,13 @@ impl<F: PrimeField> FCircuit<F> for MultiInputsFCircuit<F> {
     fn state_len(&self) -> usize {
         5
     }
-    fn external_inputs_len(&self) -> usize {
-        0
-    }
-
-    /// computes the next state values in place, assigning z_{i+1} into z_i, and computing the new
-    /// z_{i+1}
-    fn step_native(
-        &self,
-        _i: usize,
-        z_i: Vec<F>,
-        _external_inputs: Vec<F>,
-    ) -> Result<Vec<F>, Error> {
-        let a = z_i[0] + F::from(4_u32);
-        let b = z_i[1] + F::from(40_u32);
-        let c = z_i[2] * F::from(4_u32);
-        let d = z_i[3] * F::from(40_u32);
-        let e = z_i[4] + F::from(100_u32);
-
-        Ok(vec![a, b, c, d, e])
-    }
-
     /// generates the constraints for the step of F for the given z_i
     fn generate_step_constraints(
         &self,
         cs: ConstraintSystemRef<F>,
         _i: usize,
         z_i: Vec<FpVar<F>>,
-        _external_inputs: Vec<FpVar<F>>,
+        _external_inputs: Self::ExternalInputsVar,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let four = FpVar::<F>::new_constant(cs.clone(), F::from(4u32))?;
         let forty = FpVar::<F>::new_constant(cs.clone(), F::from(40u32))?;
@@ -86,12 +67,22 @@ pub mod tests {
     use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
     use ark_relations::r1cs::ConstraintSystem;
 
+    fn multi_inputs_step_native<F: PrimeField>(z_i: Vec<F>) -> Vec<F> {
+        let a = z_i[0] + F::from(4_u32);
+        let b = z_i[1] + F::from(40_u32);
+        let c = z_i[2] * F::from(4_u32);
+        let d = z_i[3] * F::from(40_u32);
+        let e = z_i[4] + F::from(100_u32);
+
+        vec![a, b, c, d, e]
+    }
+
     // test to check that the MultiInputsFCircuit computes the same values inside and outside the circuit
     #[test]
-    fn test_f_circuit() {
+    fn test_f_circuit() -> Result<(), Error> {
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        let circuit = MultiInputsFCircuit::<Fr>::new(()).unwrap();
+        let circuit = MultiInputsFCircuit::<Fr>::new(())?;
         let z_i = vec![
             Fr::from(1_u32),
             Fr::from(1_u32),
@@ -100,18 +91,18 @@ pub mod tests {
             Fr::from(1_u32),
         ];
 
-        let z_i1 = circuit.step_native(0, z_i.clone(), vec![]).unwrap();
+        let z_i1 = multi_inputs_step_native(z_i.clone());
 
-        let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i)).unwrap();
-        let computed_z_i1Var = circuit
-            .generate_step_constraints(cs.clone(), 0, z_iVar.clone(), vec![])
-            .unwrap();
-        assert_eq!(computed_z_i1Var.value().unwrap(), z_i1);
+        let z_iVar = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(z_i))?;
+        let computed_z_i1Var =
+            circuit.generate_step_constraints(cs.clone(), 0, z_iVar.clone(), ())?;
+        assert_eq!(computed_z_i1Var.value()?, z_i1);
+        Ok(())
     }
 }
 
 /// cargo run --release --example multi_inputs
-fn main() {
+fn main() -> Result<(), Error> {
     let num_steps = 10;
     let initial_state = vec![
         Fr::from(1_u32),
@@ -121,7 +112,7 @@ fn main() {
         Fr::from(1_u32),
     ];
 
-    let F_circuit = MultiInputsFCircuit::<Fr>::new(()).unwrap();
+    let F_circuit = MultiInputsFCircuit::<Fr>::new(())?;
 
     let poseidon_config = poseidon_canonical_config::<Fr>();
     let mut rng = rand::rngs::OsRng;
@@ -131,9 +122,7 @@ fn main() {
     /// trait, and the rest of our code would be working without needing to be updated.
     type N = Nova<
         Projective,
-        GVar,
         Projective2,
-        GVar2,
         MultiInputsFCircuit<Fr>,
         KZG<'static, Bn254>,
         Pedersen<Projective2>,
@@ -142,15 +131,15 @@ fn main() {
 
     println!("Prepare Nova ProverParams & VerifierParams");
     let nova_preprocess_params = PreprocessorParam::new(poseidon_config, F_circuit);
-    let nova_params = N::preprocess(&mut rng, &nova_preprocess_params).unwrap();
+    let nova_params = N::preprocess(&mut rng, &nova_preprocess_params)?;
 
     println!("Initialize FoldingScheme");
-    let mut folding_scheme = N::init(&nova_params, F_circuit, initial_state.clone()).unwrap();
+    let mut folding_scheme = N::init(&nova_params, F_circuit, initial_state.clone())?;
 
     // compute a step of the IVC
     for i in 0..num_steps {
         let start = Instant::now();
-        folding_scheme.prove_step(rng, vec![], None).unwrap();
+        folding_scheme.prove_step(rng, (), None)?;
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
 
@@ -159,6 +148,6 @@ fn main() {
     N::verify(
         nova_params.1, // Nova's verifier params
         ivc_proof,
-    )
-    .unwrap();
+    )?;
+    Ok(())
 }

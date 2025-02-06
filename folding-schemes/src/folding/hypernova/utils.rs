@@ -1,6 +1,4 @@
-use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
-use ark_poly::DenseMultilinearExtension;
 use ark_poly::MultilinearExtension;
 use ark_std::One;
 use std::sync::Arc;
@@ -11,7 +9,7 @@ use crate::arith::ccs::CCS;
 use crate::utils::mle::dense_vec_to_dense_mle;
 use crate::utils::vec::mat_vec_mul;
 use crate::utils::virtual_polynomial::{build_eq_x_r_vec, eq_eval, VirtualPolynomial};
-use crate::Error;
+use crate::{Curve, Error};
 
 /// Compute the arrays of sigma_i and theta_i from step 4 corresponding to the LCCCS and CCCS
 /// instances
@@ -23,27 +21,27 @@ pub fn compute_sigmas_thetas<F: PrimeField>(
 ) -> Result<SigmasThetas<F>, Error> {
     let mut sigmas: Vec<Vec<F>> = Vec::new();
     for z_lcccs_i in z_lcccs {
-        let mut Mzs: Vec<DenseMultilinearExtension<F>> = vec![];
-        for M_j in ccs.M.iter() {
-            Mzs.push(dense_vec_to_dense_mle(ccs.s, &mat_vec_mul(M_j, z_lcccs_i)?));
-        }
-        let sigma_i = Mzs
+        let sigma_i = ccs
+            .M
             .iter()
-            .map(|Mz| Mz.evaluate(r_x_prime).ok_or(Error::EvaluationFail))
-            .collect::<Result<_, Error>>()?;
+            .map(|M_j| {
+                let Mz = dense_vec_to_dense_mle(ccs.s, &mat_vec_mul(M_j, z_lcccs_i)?);
+                Ok(Mz.fix_variables(r_x_prime)[0])
+            })
+            .collect::<Result<Vec<F>, Error>>()?;
         sigmas.push(sigma_i);
     }
 
     let mut thetas: Vec<Vec<F>> = Vec::new();
     for z_cccs_i in z_cccs {
-        let mut Mzs: Vec<DenseMultilinearExtension<F>> = vec![];
-        for M_j in ccs.M.iter() {
-            Mzs.push(dense_vec_to_dense_mle(ccs.s, &mat_vec_mul(M_j, z_cccs_i)?));
-        }
-        let theta_i = Mzs
+        let theta_i = ccs
+            .M
             .iter()
-            .map(|Mz| Mz.evaluate(r_x_prime).ok_or(Error::EvaluationFail))
-            .collect::<Result<_, Error>>()?;
+            .map(|M_j| {
+                let Mz = dense_vec_to_dense_mle(ccs.s, &mat_vec_mul(M_j, z_cccs_i)?);
+                Ok(Mz.fix_variables(r_x_prime)[0])
+            })
+            .collect::<Result<Vec<F>, Error>>()?;
         thetas.push(theta_i);
     }
     Ok(SigmasThetas(sigmas, thetas))
@@ -83,14 +81,14 @@ pub fn compute_c<F: PrimeField>(
     let e2 = eq_eval(beta, r_x_prime)?;
     for (k, thetas) in vec_thetas.iter().enumerate() {
         // + gamma^{t+1} * e2 * sum c_i * prod theta_j
-        let mut lhs = F::zero();
-        for i in 0..ccs.q {
+        let prods = ccs.S.iter().zip(&ccs.c).map(|(S_i, &c_i)| {
             let mut prod = F::one();
-            for j in ccs.S[i].clone() {
+            for &j in S_i {
                 prod *= thetas[j];
             }
-            lhs += ccs.c[i] * prod;
-        }
+            c_i * prod
+        });
+        let lhs = F::sum(prods);
         let gamma_t1 = gamma.pow([(mu * ccs.t + k) as u64]);
         c += gamma_t1 * e2 * lhs;
     }
@@ -98,17 +96,14 @@ pub fn compute_c<F: PrimeField>(
 }
 
 /// Compute g(x) polynomial for the given inputs.
-pub fn compute_g<C: CurveGroup>(
+pub fn compute_g<C: Curve>(
     ccs: &CCS<C::ScalarField>,
     running_instances: &[LCCCS<C>],
     z_lcccs: &[Vec<C::ScalarField>],
     z_cccs: &[Vec<C::ScalarField>],
     gamma: C::ScalarField,
     beta: &[C::ScalarField],
-) -> Result<VirtualPolynomial<C::ScalarField>, Error>
-where
-    C::ScalarField: PrimeField,
-{
+) -> Result<VirtualPolynomial<C::ScalarField>, Error> {
     assert_eq!(running_instances.len(), z_lcccs.len());
 
     let mut g = VirtualPolynomial::<C::ScalarField>::new(ccs.s);
@@ -133,24 +128,21 @@ where
     }
 
     let eq_beta = build_eq_x_r_vec(beta)?;
-    let eq_beta_mle = dense_vec_to_dense_mle(ccs.s, &eq_beta);
+    let eq_beta_mle = Arc::new(dense_vec_to_dense_mle(ccs.s, &eq_beta));
 
     #[allow(clippy::needless_range_loop)]
     for k in 0..nu {
         // Q_k
-        for i in 0..ccs.q {
+        for (S_i, &c_i) in ccs.S.iter().zip(&ccs.c) {
             let mut Q_k = vec![];
-            for &j in ccs.S[i].iter() {
-                Q_k.push(dense_vec_to_dense_mle(
+            for &j in S_i {
+                Q_k.push(Arc::new(dense_vec_to_dense_mle(
                     ccs.s,
                     &mat_vec_mul(&ccs.M[j], &z_cccs[k])?,
-                ));
+                )));
             }
             Q_k.push(eq_beta_mle.clone());
-            g.add_mle_list(
-                Q_k.iter().map(|v| Arc::new(v.clone())),
-                ccs.c[i] * gamma_pow,
-            )?;
+            g.add_mle_list(Q_k, c_i * gamma_pow)?;
         }
         gamma_pow *= gamma;
     }
@@ -169,7 +161,7 @@ pub mod tests {
     use super::*;
     use crate::arith::{
         ccs::tests::{get_test_ccs, get_test_z},
-        Arith,
+        Arith, ArithRelation,
     };
     use crate::commitment::{pedersen::Pedersen, CommitmentScheme};
     use crate::folding::hypernova::lcccs::tests::compute_Ls;
@@ -198,7 +190,7 @@ pub mod tests {
     /// of the matrix and the z vector. This technique is also used extensively in "An Algebraic Framework for
     /// Universal and Updatable SNARKs".
     #[test]
-    fn test_compute_M_r_y_compression() {
+    fn test_compute_M_r_y_compression() -> Result<(), Error> {
         let mut rng = test_rng();
 
         // s = 2, s' = 3
@@ -223,17 +215,18 @@ pub mod tests {
 
             assert_eq!(M_r_y.evaluations[j], rlc);
         }
+        Ok(())
     }
 
     #[test]
-    fn test_compute_sigmas_thetas() {
+    fn test_compute_sigmas_thetas() -> Result<(), Error> {
         let ccs = get_test_ccs();
         let z1 = get_test_z(3);
         let z2 = get_test_z(4);
         let (w1, x1) = ccs.split_z(&z1);
         let (w2, x2) = ccs.split_z(&z2);
-        ccs.check_relation(&w1, &x1).unwrap();
-        ccs.check_relation(&w2, &x2).unwrap();
+        ccs.check_relation(&w1, &x1)?;
+        ccs.check_relation(&w2, &x2)?;
 
         let mut rng = test_rng();
         let gamma: Fr = Fr::rand(&mut rng);
@@ -241,14 +234,11 @@ pub mod tests {
         let r_x_prime: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
 
         // Initialize a multifolding object
-        let (pedersen_params, _) =
-            Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
-        let (lcccs_instance, _) = ccs
-            .to_lcccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &z1)
-            .unwrap();
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n_witnesses())?;
+        let (lcccs_instance, _) =
+            ccs.to_lcccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &z1)?;
 
-        let sigmas_thetas =
-            compute_sigmas_thetas(&ccs, &[z1.clone()], &[z2.clone()], &r_x_prime).unwrap();
+        let sigmas_thetas = compute_sigmas_thetas(&ccs, &[z1.clone()], &[z2.clone()], &r_x_prime)?;
 
         let g = compute_g(
             &ccs,
@@ -257,13 +247,12 @@ pub mod tests {
             &[z2.clone()],
             gamma,
             &beta,
-        )
-        .unwrap();
+        )?;
 
         // we expect g(r_x_prime) to be equal to:
         // c = (sum gamma^j * e1 * sigma_j) + gamma^{t+1} * e2 * sum c_i * prod theta_j
         // from compute_c
-        let expected_c = g.evaluate(&r_x_prime).unwrap();
+        let expected_c = g.evaluate(&r_x_prime)?;
         let c = compute_c::<Fr>(
             &ccs,
             &sigmas_thetas,
@@ -271,13 +260,13 @@ pub mod tests {
             &beta,
             &vec![lcccs_instance.r_x],
             &r_x_prime,
-        )
-        .unwrap();
+        )?;
         assert_eq!(c, expected_c);
+        Ok(())
     }
 
     #[test]
-    fn test_compute_g() {
+    fn test_compute_g() -> Result<(), Error> {
         let mut rng = test_rng();
 
         // generate test CCS & z vectors
@@ -286,18 +275,16 @@ pub mod tests {
         let z2 = get_test_z(4);
         let (w1, x1) = ccs.split_z(&z1);
         let (w2, x2) = ccs.split_z(&z2);
-        ccs.check_relation(&w1, &x1).unwrap();
-        ccs.check_relation(&w2, &x2).unwrap();
+        ccs.check_relation(&w1, &x1)?;
+        ccs.check_relation(&w2, &x2)?;
 
         let gamma: Fr = Fr::rand(&mut rng);
         let beta: Vec<Fr> = (0..ccs.s).map(|_| Fr::rand(&mut rng)).collect();
 
         // Initialize a multifolding object
-        let (pedersen_params, _) =
-            Pedersen::<Projective>::setup(&mut rng, ccs.n - ccs.l - 1).unwrap();
-        let (lcccs_instance, _) = ccs
-            .to_lcccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &z1)
-            .unwrap();
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n_witnesses())?;
+        let (lcccs_instance, _) =
+            ccs.to_lcccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &z1)?;
 
         // Compute g(x) with that r_x
         let g = compute_g::<Projective>(
@@ -307,13 +294,12 @@ pub mod tests {
             &[z2.clone()],
             gamma,
             &beta,
-        )
-        .unwrap();
+        )?;
 
         // evaluate g(x) over x \in {0,1}^s
         let mut g_on_bhc = Fr::zero();
         for x in BooleanHypercube::new(ccs.s) {
-            g_on_bhc += g.evaluate(&x).unwrap();
+            g_on_bhc += g.evaluate(&x)?;
         }
 
         // Q(x) over bhc is assumed to be zero, as checked in the test 'test_compute_Q'
@@ -331,16 +317,17 @@ pub mod tests {
 
         // evaluate sum_{j \in [t]} (gamma^j * Lj(x)) over x \in {0,1}^s
         let mut sum_Lj_on_bhc = Fr::zero();
-        let vec_L = compute_Ls(&ccs, &lcccs_instance, &z1);
+        let vec_L = compute_Ls(&ccs, &lcccs_instance, &z1)?;
         for x in BooleanHypercube::new(ccs.s) {
             for (j, Lj) in vec_L.iter().enumerate() {
                 let gamma_j = gamma.pow([j as u64]);
-                sum_Lj_on_bhc += Lj.evaluate(&x).unwrap() * gamma_j;
+                sum_Lj_on_bhc += Lj.evaluate(&x)? * gamma_j;
             }
         }
 
         // evaluating g(x) over the boolean hypercube should give the same result as evaluating the
         // sum of gamma^j * Lj(x) over the boolean hypercube
         assert_eq!(g_on_bhc, sum_Lj_on_bhc);
+        Ok(())
     }
 }

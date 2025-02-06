@@ -4,7 +4,8 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::rand::Rng;
 
 use super::ccs::CCS;
-use super::{Arith, ArithSerializer};
+use super::{Arith, ArithRelation, ArithSerializer};
+use crate::folding::traits::Dummy;
 use crate::utils::vec::{
     hadamard, is_zero_vec, mat_vec_mul, vec_scalar_mul, vec_sub, SparseMatrix,
 };
@@ -14,14 +15,14 @@ pub mod circuits;
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct R1CS<F: PrimeField> {
-    pub l: usize, // io len
+    l: usize, // io len
     pub A: SparseMatrix<F>,
     pub B: SparseMatrix<F>,
     pub C: SparseMatrix<F>,
 }
 
 impl<F: PrimeField> R1CS<F> {
-    /// Evaluates the CCS relation at a given vector of variables `z`
+    /// Evaluates the R1CS relation at a given vector of variables `z`
     pub fn eval_at_z(&self, z: &[F]) -> Result<Vec<F>, Error> {
         if z.len() != self.A.n_cols {
             return Err(Error::NotSameLength(
@@ -43,7 +44,38 @@ impl<F: PrimeField> R1CS<F> {
     }
 }
 
-impl<F: PrimeField, W: AsRef<[F]>, U: AsRef<[F]>> Arith<W, U> for R1CS<F> {
+impl<F: PrimeField> Arith for R1CS<F> {
+    #[inline]
+    fn degree(&self) -> usize {
+        2
+    }
+
+    #[inline]
+    fn n_constraints(&self) -> usize {
+        self.A.n_rows
+    }
+
+    #[inline]
+    fn n_variables(&self) -> usize {
+        self.A.n_cols
+    }
+
+    #[inline]
+    fn n_public_inputs(&self) -> usize {
+        self.l
+    }
+
+    #[inline]
+    fn n_witnesses(&self) -> usize {
+        self.n_variables() - self.n_public_inputs() - 1
+    }
+
+    fn split_z<P: PrimeField>(&self, z: &[P]) -> (Vec<P>, Vec<P>) {
+        (z[self.l + 1..].to_vec(), z[1..self.l + 1].to_vec())
+    }
+}
+
+impl<F: PrimeField, W: AsRef<[F]>, U: AsRef<[F]>> ArithRelation<W, U> for R1CS<F> {
     type Evaluation = Vec<F>;
 
     fn eval_relation(&self, w: &W, u: &U) -> Result<Self::Evaluation, Error> {
@@ -66,14 +98,20 @@ impl<F: PrimeField> ArithSerializer for R1CS<F> {
     }
 }
 
+impl<F: PrimeField> Dummy<(usize, usize, usize)> for R1CS<F> {
+    fn dummy((n_constraints, n_variables, n_public_inputs): (usize, usize, usize)) -> Self {
+        Self {
+            l: n_public_inputs,
+            A: SparseMatrix::dummy((n_constraints, n_variables)),
+            B: SparseMatrix::dummy((n_constraints, n_variables)),
+            C: SparseMatrix::dummy((n_constraints, n_variables)),
+        }
+    }
+}
+
 impl<F: PrimeField> R1CS<F> {
     pub fn empty() -> Self {
-        R1CS {
-            l: 0,
-            A: SparseMatrix::empty(),
-            B: SparseMatrix::empty(),
-            C: SparseMatrix::empty(),
-        }
+        Self::dummy((0, 0, 0))
     }
     pub fn rand<R: Rng>(rng: &mut R, n_rows: usize, n_cols: usize) -> Self {
         Self {
@@ -83,37 +121,12 @@ impl<F: PrimeField> R1CS<F> {
             C: SparseMatrix::rand(rng, n_rows, n_cols),
         }
     }
-
-    #[inline]
-    pub fn num_constraints(&self) -> usize {
-        self.A.n_rows
-    }
-
-    #[inline]
-    pub fn num_public_inputs(&self) -> usize {
-        self.l
-    }
-
-    #[inline]
-    pub fn num_variables(&self) -> usize {
-        self.A.n_cols
-    }
-
-    #[inline]
-    pub fn num_witnesses(&self) -> usize {
-        self.num_variables() - self.num_public_inputs() - 1
-    }
-
-    /// returns a tuple containing (w, x) (witness and public inputs respectively)
-    pub fn split_z(&self, z: &[F]) -> (Vec<F>, Vec<F>) {
-        (z[self.l + 1..].to_vec(), z[1..self.l + 1].to_vec())
-    }
 }
 
 impl<F: PrimeField> From<CCS<F>> for R1CS<F> {
     fn from(ccs: CCS<F>) -> Self {
         R1CS::<F> {
-            l: ccs.l,
+            l: ccs.n_public_inputs(),
             A: ccs.M[0].clone(),
             B: ccs.M[1].clone(),
             C: ccs.M[2].clone(),
@@ -232,23 +245,25 @@ pub mod tests {
     }
 
     #[test]
-    fn test_eval_r1cs_relation() {
+    fn test_eval_r1cs_relation() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
         let r1cs = get_test_r1cs::<Fr>();
         let (_, x, mut w) = get_test_z_split::<Fr>(rng.gen::<u16>() as usize);
 
-        let f_w = r1cs.eval_relation(&w, &x).unwrap();
+        let f_w = r1cs.eval_relation(&w, &x)?;
         assert!(is_zero_vec(&f_w));
 
         w[1] = Fr::from(111);
-        let f_w = r1cs.eval_relation(&w, &x).unwrap();
+        let f_w = r1cs.eval_relation(&w, &x)?;
         assert!(!is_zero_vec(&f_w));
+        Ok(())
     }
 
     #[test]
-    fn test_check_r1cs_relation() {
+    fn test_check_r1cs_relation() -> Result<(), Error> {
         let r1cs = get_test_r1cs::<Fr>();
         let (_, x, w) = get_test_z_split(5);
-        r1cs.check_relation(&w, &x).unwrap();
+        r1cs.check_relation(&w, &x)?;
+        Ok(())
     }
 }

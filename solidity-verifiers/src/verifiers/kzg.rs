@@ -86,7 +86,6 @@ mod tests {
     use ark_std::Zero;
     use ark_std::{test_rng, UniformRand};
     use askama::Template;
-    use itertools::chain;
 
     use folding_schemes::{
         commitment::{kzg::KZG, CommitmentScheme},
@@ -161,16 +160,16 @@ mod tests {
         let x = transcript_v.get_challenge();
 
         let x = x.into_bigint().to_bytes_be();
-        let mut calldata: Vec<u8> = chain![
-            FUNCTION_SELECTOR_KZG10_CHECK,
-            x_comm.into_bigint().to_bytes_be(),
-            y_comm.into_bigint().to_bytes_be(),
-            x_proof.into_bigint().to_bytes_be(),
-            y_proof.into_bigint().to_bytes_be(),
-            x.clone(),
-            y,
+        let mut calldata: Vec<u8> = [
+            &FUNCTION_SELECTOR_KZG10_CHECK[..],
+            &x_comm.into_bigint().to_bytes_be(),
+            &y_comm.into_bigint().to_bytes_be(),
+            &x_proof.into_bigint().to_bytes_be(),
+            &y_proof.into_bigint().to_bytes_be(),
+            &x,
+            &y,
         ]
-        .collect();
+        .concat();
 
         let (_, output) = evm.call(verifier_address, calldata.clone());
         assert_eq!(*output.last().unwrap(), 1);

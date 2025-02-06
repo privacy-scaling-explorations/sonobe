@@ -1,10 +1,9 @@
-use ark_ec::CurveGroup;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::fmt::Debug;
 use ark_std::rand::RngCore;
 
 use crate::transcript::Transcript;
-use crate::Error;
+use crate::{Curve, Error};
 
 pub mod ipa;
 pub mod kzg;
@@ -12,7 +11,7 @@ pub mod pedersen;
 
 /// CommitmentScheme defines the vector commitment scheme trait. Where `H` indicates if to use the
 /// commitment in hiding mode or not.
-pub trait CommitmentScheme<C: CurveGroup, const H: bool = false>: Clone + Debug {
+pub trait CommitmentScheme<C: Curve, const H: bool = false>: Clone + Debug {
     type ProverParams: Clone + Debug + CanonicalSerialize + CanonicalDeserialize;
     type VerifierParams: Clone + Debug + CanonicalSerialize + CanonicalDeserialize;
     type Proof: Clone + Debug + CanonicalSerialize + CanonicalDeserialize;
@@ -74,7 +73,7 @@ mod tests {
     use ark_bn254::{Bn254, Fr, G1Projective as G1};
     use ark_crypto_primitives::sponge::{
         poseidon::{PoseidonConfig, PoseidonSponge},
-        Absorb, CryptographicSponge,
+        CryptographicSponge,
     };
     use ark_poly_commit::kzg10::VerifierKey;
     use ark_std::Zero;
@@ -86,7 +85,7 @@ mod tests {
     use crate::transcript::poseidon::poseidon_canonical_config;
 
     #[test]
-    fn test_homomorphic_property_using_Commitment_trait() {
+    fn test_homomorphic_property_using_Commitment_trait() -> Result<(), Error> {
         let mut rng = &mut test_rng();
         let poseidon_config = poseidon_canonical_config::<Fr>();
         let n: usize = 128;
@@ -98,55 +97,50 @@ mod tests {
         let r = Fr::rand(rng);
 
         // setup params for Pedersen & KZG
-        let (pedersen_params, _) = Pedersen::<G1>::setup(&mut rng, n).unwrap();
-        let (kzg_pk, kzg_vk): (ProverKey<G1>, VerifierKey<Bn254>) =
-            KZG::<Bn254>::setup(rng, n).unwrap();
+        let (pedersen_params, _) = Pedersen::<G1>::setup(&mut rng, n)?;
+        let (kzg_pk, kzg_vk): (ProverKey<G1>, VerifierKey<Bn254>) = KZG::<Bn254>::setup(rng, n)?;
 
         // test with Pedersen
-        test_homomorphic_property_using_Commitment_trait_opt::<G1, Pedersen<G1>>(
+        let _ = test_homomorphic_property_using_Commitment_trait_opt::<G1, Pedersen<G1>>(
             &poseidon_config,
             &pedersen_params,
             &pedersen_params,
             r,
             &v_1,
             &v_2,
-        );
+        )?;
         // test with IPA
-        test_homomorphic_property_using_Commitment_trait_opt::<G1, IPA<G1>>(
+        let _ = test_homomorphic_property_using_Commitment_trait_opt::<G1, IPA<G1>>(
             &poseidon_config,
             &pedersen_params,
             &pedersen_params,
             r,
             &v_1,
             &v_2,
-        );
+        )?;
         // test with KZG
-        test_homomorphic_property_using_Commitment_trait_opt::<G1, KZG<Bn254>>(
+        let _ = test_homomorphic_property_using_Commitment_trait_opt::<G1, KZG<Bn254>>(
             &poseidon_config,
             &kzg_pk,
             &kzg_vk,
             r,
             &v_1,
             &v_2,
-        );
+        )?;
+        Ok(())
     }
 
-    fn test_homomorphic_property_using_Commitment_trait_opt<
-        C: CurveGroup,
-        CS: CommitmentScheme<C>,
-    >(
+    fn test_homomorphic_property_using_Commitment_trait_opt<C: Curve, CS: CommitmentScheme<C>>(
         poseidon_config: &PoseidonConfig<C::ScalarField>,
         prover_params: &CS::ProverParams,
         verifier_params: &CS::VerifierParams,
         r: C::ScalarField,
         v_1: &[C::ScalarField],
         v_2: &[C::ScalarField],
-    ) where
-        <C as ark_ec::Group>::ScalarField: Absorb,
-    {
+    ) -> Result<(), Error> {
         // compute the commitment of the two vectors using the given CommitmentScheme
-        let cm_1 = CS::commit(prover_params, v_1, &C::ScalarField::zero()).unwrap();
-        let cm_2 = CS::commit(prover_params, v_2, &C::ScalarField::zero()).unwrap();
+        let cm_1 = CS::commit(prover_params, v_1, &C::ScalarField::zero())?;
+        let cm_2 = CS::commit(prover_params, v_2, &C::ScalarField::zero())?;
 
         // random linear combination of the commitments and their witnesses (vectors v_i)
         let cm_3 = cm_1 + cm_2.mul(r);
@@ -161,11 +155,11 @@ mod tests {
             &v_3,
             &C::ScalarField::zero(),
             None,
-        )
-        .unwrap();
+        )?;
 
         // verify the opening proof
         let transcript_v = &mut PoseidonSponge::<C::ScalarField>::new(poseidon_config);
-        CS::verify(verifier_params, transcript_v, &cm_3, &proof).unwrap();
+        CS::verify(verifier_params, transcript_v, &cm_3, &proof)?;
+        Ok(())
     }
 }

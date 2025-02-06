@@ -1,4 +1,3 @@
-use ark_ec::CurveGroup;
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_relations::r1cs::SynthesisError;
 use ark_std::{rand::RngCore, UniformRand};
@@ -8,15 +7,15 @@ use super::nifs::nova_circuits::CommittedInstanceVar;
 use super::{CommittedInstance, Witness};
 use crate::arith::{
     r1cs::{circuits::R1CSMatricesVar, R1CS},
-    Arith, ArithGadget, ArithSampler,
+    Arith, ArithRelation, ArithRelationGadget, ArithSampler,
 };
 use crate::commitment::CommitmentScheme;
 use crate::folding::circuits::CF1;
 use crate::utils::gadgets::{EquivalenceGadget, VectorGadget};
-use crate::Error;
+use crate::{Curve, Error};
 
-/// Implements `Arith` for R1CS, where the witness is of type [`Witness`], and
-/// the committed instance is of type [`CommittedInstance`].
+/// Implements [`ArithRelation`] for R1CS, where the witness is of type
+/// [`Witness`], and the committed instance is of type [`CommittedInstance`].
 ///
 /// Due to the error terms `Witness.E` and `CommittedInstance.u`, R1CS here is
 /// considered as a relaxed R1CS.
@@ -29,20 +28,20 @@ use crate::Error;
 /// struct, but are part of the witness and committed instance.
 ///
 /// As a follow-up, one may further ask why not providing a trait for relaxed
-/// R1CS and implement it for the `R1CS` struct, where the relaxed R1CS trait
-/// has methods for relaxed satisfiability check, while the `Arith` trait that
-/// `R1CS` implements has methods for plain satisfiability check.
+/// R1CS and implement it for the [`R1CS`] struct, where the relaxed R1CS trait
+/// has methods for relaxed satisfiability check, while the [`ArithRelation`]
+/// trait that [`R1CS`] implements has methods for plain satisfiability check.
 /// However, it would be more ideal if we have a single method that can smartly
 /// choose the type of satisfiability check, which would make the code more
 /// generic and easier to maintain.
 ///
-/// This is achieved thanks to the new design of the [`Arith`] trait, where we
-/// can implement the trait for the same constraint system with different types
-/// of witnesses and committed instances.
+/// This is achieved thanks to the new design of the [`ArithRelation`] trait,
+/// where we can implement the trait for the same constraint system with
+/// different types of witnesses and committed instances.
 /// For R1CS, whether it is relaxed or not is now determined by the types of `W`
 /// and `U`: the satisfiability check is relaxed if `W` and `U` are defined by
 /// folding schemes, and plain if they are vectors of field elements.
-impl<C: CurveGroup> Arith<Witness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
+impl<C: Curve> ArithRelation<Witness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
     type Evaluation = Vec<CF1<C>>;
 
     fn eval_relation(
@@ -62,7 +61,7 @@ impl<C: CurveGroup> Arith<Witness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
     }
 }
 
-impl<C: CurveGroup> ArithSampler<C, Witness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
+impl<C: Curve> ArithSampler<C, Witness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
     fn sample_witness_instance<CS: CommitmentScheme<C, true>>(
         &self,
         params: &CS::ProverParams,
@@ -74,10 +73,10 @@ impl<C: CurveGroup> ArithSampler<C, Witness<C>, CommittedInstance<C>> for R1CS<C
         let rE = C::ScalarField::rand(&mut rng);
         let rW = C::ScalarField::rand(&mut rng);
 
-        let W = (0..self.A.n_cols - self.l - 1)
+        let W = (0..self.n_witnesses())
             .map(|_| C::ScalarField::rand(&mut rng))
             .collect();
-        let x = (0..self.l)
+        let x = (0..self.n_public_inputs())
             .map(|_| C::ScalarField::rand(&mut rng))
             .collect::<Vec<C::ScalarField>>();
         let mut z = vec![u];
@@ -103,7 +102,7 @@ impl<C: CurveGroup> ArithSampler<C, Witness<C>, CommittedInstance<C>> for R1CS<C
     }
 }
 
-impl<C: CurveGroup> ArithGadget<WitnessVar<C>, CommittedInstanceVar<C>>
+impl<C: Curve> ArithRelationGadget<WitnessVar<C>, CommittedInstanceVar<C>>
     for R1CSMatricesVar<C::ScalarField, FpVar<C::ScalarField>>
 {
     type Evaluation = (Vec<FpVar<C::ScalarField>>, Vec<FpVar<C::ScalarField>>);

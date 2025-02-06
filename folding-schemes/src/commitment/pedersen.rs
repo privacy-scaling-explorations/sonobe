@@ -1,37 +1,34 @@
-use ark_ec::CurveGroup;
-use ark_ff::Field;
-use ark_r1cs_std::{boolean::Boolean, prelude::CurveVar};
+use ark_r1cs_std::{boolean::Boolean, convert::ToBitsGadget, prelude::CurveVar};
 use ark_relations::r1cs::SynthesisError;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::Zero;
-use ark_std::{rand::RngCore, UniformRand};
-use core::marker::PhantomData;
+use ark_std::{marker::PhantomData, rand::RngCore, UniformRand, Zero};
 
 use super::CommitmentScheme;
+use crate::folding::circuits::CF2;
 use crate::transcript::Transcript;
 use crate::utils::vec::{vec_add, vec_scalar_mul};
-use crate::Error;
+use crate::{Curve, Error};
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Proof<C: CurveGroup> {
+pub struct Proof<C: Curve> {
     pub R: C,
     pub u: Vec<C::ScalarField>,
     pub r_u: C::ScalarField, // blind
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Params<C: CurveGroup> {
+pub struct Params<C: Curve> {
     pub h: C,
     pub generators: Vec<C::Affine>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct Pedersen<C: CurveGroup, const H: bool = false> {
+pub struct Pedersen<C: Curve, const H: bool = false> {
     _c: PhantomData<C>,
 }
 
 /// Implements the CommitmentScheme trait for Pedersen commitments
-impl<C: CurveGroup, const H: bool> CommitmentScheme<C, H> for Pedersen<C, H> {
+impl<C: Curve, const H: bool> CommitmentScheme<C, H> for Pedersen<C, H> {
     type ProverParams = Params<C>;
     type VerifierParams = Params<C>;
     type Proof = Proof<C>;
@@ -177,42 +174,37 @@ impl<C: CurveGroup, const H: bool> CommitmentScheme<C, H> for Pedersen<C, H> {
     }
 }
 
-pub type CF<C> = <<C as CurveGroup>::BaseField as Field>::BasePrimeField;
-
-pub struct PedersenGadget<C, GC, const H: bool = false>
-where
-    C: CurveGroup,
-    GC: CurveVar<C, CF<C>>,
-{
-    _cf: PhantomData<CF<C>>,
+pub struct PedersenGadget<C: Curve, const H: bool = false> {
     _c: PhantomData<C>,
-    _gc: PhantomData<GC>,
 }
 
-use ark_r1cs_std::ToBitsGadget;
-impl<C, GC, const H: bool> PedersenGadget<C, GC, H>
-where
-    C: CurveGroup,
-    GC: CurveVar<C, CF<C>>,
-{
+impl<C: Curve, const H: bool> PedersenGadget<C, H> {
     pub fn commit(
-        h: &GC,
-        g: &[GC],
-        v: &[Vec<Boolean<CF<C>>>],
-        r: &[Boolean<CF<C>>],
-    ) -> Result<GC, SynthesisError> {
-        let mut res = GC::zero();
+        h: &C::Var,
+        g: &[C::Var],
+        v: &[Vec<Boolean<CF2<C>>>],
+        r: &[Boolean<CF2<C>>],
+    ) -> Result<C::Var, SynthesisError> {
+        let mut res = C::Var::zero();
         if H {
             res += h.scalar_mul_le(r.iter())?;
         }
         let n = v.len();
-        if n%2 == 1 {
-            res += g[n-1].scalar_mul_le(v[n-1].to_bits_le()?.iter())?;
+        if n % 2 == 1 {
+            res += g[n - 1].scalar_mul_le(v[n - 1].to_bits_le()?.iter())?;
         } else {
-            res += g[n-1].joint_scalar_mul_be(&g[n-2], v[n-1].to_bits_le()?.iter(), v[n-2].to_bits_le()?.iter())?;
+            res += g[n - 1].joint_scalar_mul_be(
+                &g[n - 2],
+                v[n - 1].to_bits_le()?.iter(),
+                v[n - 2].to_bits_le()?.iter(),
+            )?;
         }
-        for i in (1..n-2).step_by(2) {
-            res += g[i-1].joint_scalar_mul_be(&g[i], v[i-1].to_bits_le()?.iter(), v[i].to_bits_le()?.iter())?;
+        for i in (1..n - 2).step_by(2) {
+            res += g[i - 1].joint_scalar_mul_be(
+                &g[i],
+                v[i - 1].to_bits_le()?.iter(),
+                v[i].to_bits_le()?.iter(),
+            )?;
         }
         Ok(res)
     }
@@ -230,16 +222,17 @@ mod tests {
     use crate::transcript::poseidon::poseidon_canonical_config;
 
     #[test]
-    fn test_pedersen() {
-        test_pedersen_opt::<false>();
-        test_pedersen_opt::<true>();
+    fn test_pedersen() -> Result<(), Error> {
+        let _ = test_pedersen_opt::<false>()?;
+        let _ = test_pedersen_opt::<true>()?;
+        Ok(())
     }
-    fn test_pedersen_opt<const hiding: bool>() {
+    fn test_pedersen_opt<const hiding: bool>() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
 
         let n: usize = 10;
         // setup params
-        let (params, _) = Pedersen::<Projective>::setup(&mut rng, n).unwrap();
+        let (params, _) = Pedersen::<Projective>::setup(&mut rng, n)?;
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
         // init Prover's transcript
@@ -256,30 +249,25 @@ mod tests {
         } else {
             Fr::zero()
         };
-        let cm = Pedersen::<Projective, hiding>::commit(&params, &v, &r).unwrap();
+        let cm = Pedersen::<Projective, hiding>::commit(&params, &v, &r)?;
         let proof =
-            Pedersen::<Projective, hiding>::prove(&params, &mut transcript_p, &cm, &v, &r, None)
-                .unwrap();
-        Pedersen::<Projective, hiding>::verify(&params, &mut transcript_v, &cm, &proof).unwrap();
+            Pedersen::<Projective, hiding>::prove(&params, &mut transcript_p, &cm, &v, &r, None)?;
+        Pedersen::<Projective, hiding>::verify(&params, &mut transcript_v, &cm, &proof)?;
+        Ok(())
     }
 
-    /// To run this test:
-    /// > cargo test --release test_pedersen_circuit -- --nocapture
     #[test]
-    fn test_pedersen_circuit() {
-        test_pedersen_circuit_opt::<false>();
-        // test_pedersen_circuit_opt::<true>();
+    fn test_pedersen_circuit() -> Result<(), Error> {
+        let _ = test_pedersen_circuit_opt::<false>()?;
+        let _ = test_pedersen_circuit_opt::<true>()?;
+        Ok(())
     }
-    fn test_pedersen_circuit_opt<const hiding: bool>() {
+    fn test_pedersen_circuit_opt<const hiding: bool>() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
 
-        // toy value:
-        // let n: usize = 8;
-        // real CycleFold value:
-        let n: usize = 1355;
-
+        let n: usize = 8;
         // setup params
-        let (params, _) = Pedersen::<Projective, hiding>::setup(&mut rng, n).unwrap();
+        let (params, _) = Pedersen::<Projective, hiding>::setup(&mut rng, n)?;
 
         let v: Vec<Fr> = std::iter::repeat_with(|| Fr::rand(&mut rng))
             .take(n)
@@ -290,7 +278,7 @@ mod tests {
         } else {
             Fr::zero()
         };
-        let cm = Pedersen::<Projective, hiding>::commit(&params, &v, &r).unwrap();
+        let cm = Pedersen::<Projective, hiding>::commit(&params, &v, &r)?;
 
         let v_bits: Vec<Vec<bool>> = v.iter().map(|val| val.into_bigint().to_bits_le()).collect();
         let r_bits: Vec<bool> = r.into_bigint().to_bits_le();
@@ -301,24 +289,16 @@ mod tests {
         // prepare inputs
         let vVar: Vec<Vec<Boolean<Fq>>> = v_bits
             .iter()
-            .map(|val_bits| {
-                Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(val_bits.clone())).unwrap()
-            })
-            .collect();
-        let rVar = Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(r_bits)).unwrap();
-        let gVar = Vec::<GVar>::new_witness(cs.clone(), || Ok(params.generators)).unwrap();
-        let hVar = GVar::new_witness(cs.clone(), || Ok(params.h)).unwrap();
-        let expected_cmVar = GVar::new_witness(cs.clone(), || Ok(cm)).unwrap();
+            .map(|val_bits| Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(val_bits.clone())))
+            .collect::<Result<_, _>>()?;
+        let rVar = Vec::<Boolean<Fq>>::new_witness(cs.clone(), || Ok(r_bits))?;
+        let gVar = Vec::<GVar>::new_witness(cs.clone(), || Ok(params.generators))?;
+        let hVar = GVar::new_witness(cs.clone(), || Ok(params.h))?;
+        let expected_cmVar = GVar::new_witness(cs.clone(), || Ok(cm))?;
 
         // use the gadget
-        // THIS is the method that takes ~3.5M r1cs constraints (and in the actual circuit we do
-        // this circuit 2 times):
-        let cmVar =
-            PedersenGadget::<Projective, GVar, hiding>::commit(&hVar, &gVar, &vVar, &rVar).unwrap();
-        cmVar.enforce_equal(&expected_cmVar).unwrap();
-        println!(
-            "num_constraints Pedersen check natively: {}",
-            cs.num_constraints()
-        );
+        let cmVar = PedersenGadget::<Projective, hiding>::commit(&hVar, &gVar, &vVar, &rVar)?;
+        cmVar.enforce_equal(&expected_cmVar)?;
+        Ok(())
     }
 }

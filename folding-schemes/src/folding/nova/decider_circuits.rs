@@ -2,10 +2,9 @@
 /// DeciderEthCircuit.
 /// More details can be found at the documentation page:
 /// https://privacy-scaling-explorations.github.io/sonobe-docs/design/nova-decider-offchain.html
-use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, Absorb, CryptographicSponge};
-use ark_ec::CurveGroup;
+use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, CryptographicSponge};
 use ark_ff::{BigInteger, PrimeField};
-use ark_r1cs_std::{fields::fp::FpVar, prelude::CurveVar, ToConstraintFieldGadget};
+use ark_r1cs_std::fields::fp::FpVar;
 use core::marker::PhantomData;
 
 use super::{
@@ -13,12 +12,8 @@ use super::{
     nifs::{nova::NIFS, NIFSTrait},
     CommittedInstance, Nova, Witness,
 };
-use crate::folding::{
-    circuits::{CF1, CF2},
-    traits::WitnessOps,
-};
+use crate::folding::{circuits::CF1, traits::WitnessOps};
 use crate::frontend::FCircuit;
-use crate::Error;
 use crate::{
     arith::r1cs::{circuits::R1CSMatricesVar, R1CS},
     folding::circuits::decider::{
@@ -27,14 +22,14 @@ use crate::{
     },
 };
 use crate::{commitment::CommitmentScheme, transcript::poseidon::poseidon_canonical_config};
+use crate::{Curve, Error};
 
 /// Circuit that implements part of the in-circuit checks needed for the offchain verification over
 /// the Curve2's BaseField (=Curve1's ScalarField).
 
-pub type DeciderCircuit1<C1, C2, GC2> = GenericOffchainDeciderCircuit1<
+pub type DeciderCircuit1<C1, C2> = GenericOffchainDeciderCircuit1<
     C1,
     C2,
-    GC2,
     CommittedInstance<C1>,
     CommittedInstance<C1>,
     Witness<C1>,
@@ -44,22 +39,17 @@ pub type DeciderCircuit1<C1, C2, GC2> = GenericOffchainDeciderCircuit1<
 >;
 
 impl<
-        C1: CurveGroup,
-        GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
-        C2: CurveGroup,
-        GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+        C1: Curve,
+        C2: Curve,
         FC: FCircuit<C1::ScalarField>,
         CS1: CommitmentScheme<C1, H>,
         CS2: CommitmentScheme<C2, H>,
         const H: bool,
-    > TryFrom<Nova<C1, GC1, C2, GC2, FC, CS1, CS2, H>> for DeciderCircuit1<C1, C2, GC2>
-where
-    CF1<C1>: Absorb,
-    <C1 as CurveGroup>::BaseField: PrimeField,
+    > TryFrom<Nova<C1, C2, FC, CS1, CS2, H>> for DeciderCircuit1<C1, C2>
 {
     type Error = Error;
 
-    fn try_from(nova: Nova<C1, GC1, C2, GC2, FC, CS1, CS2, H>) -> Result<Self, Error> {
+    fn try_from(nova: Nova<C1, C2, FC, CS1, CS2, H>) -> Result<Self, Error> {
         let mut transcript = PoseidonSponge::<C1::ScalarField>::new(&nova.poseidon_config);
         // pp_hash is absorbed to transcript at the NIFS::prove call
 
@@ -89,7 +79,6 @@ where
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Self {
-            _gc2: PhantomData,
             _avar: PhantomData,
             arith: nova.r1cs,
             poseidon_config: nova.poseidon_config,
@@ -117,21 +106,17 @@ where
 pub type DeciderCircuit2<C2> = GenericOffchainDeciderCircuit2<C2>;
 
 impl<
-        C1: CurveGroup,
-        GC1: CurveVar<C1, CF2<C1>> + ToConstraintFieldGadget<CF2<C1>>,
-        C2: CurveGroup,
-        GC2: CurveVar<C2, CF2<C2>> + ToConstraintFieldGadget<CF2<C2>>,
+        C1: Curve,
+        C2: Curve,
         FC: FCircuit<C1::ScalarField>,
         CS1: CommitmentScheme<C1, H>,
         CS2: CommitmentScheme<C2, H>,
         const H: bool,
-    > TryFrom<Nova<C1, GC1, C2, GC2, FC, CS1, CS2, H>> for DeciderCircuit2<C2>
-where
-    CF1<C2>: Absorb,
+    > TryFrom<Nova<C1, C2, FC, CS1, CS2, H>> for DeciderCircuit2<C2>
 {
     type Error = Error;
 
-    fn try_from(nova: Nova<C1, GC1, C2, GC2, FC, CS1, CS2, H>) -> Result<Self, Error> {
+    fn try_from(nova: Nova<C1, C2, FC, CS1, CS2, H>) -> Result<Self, Error> {
         // compute the Commitment Scheme challenges of the CycleFold instance commitments, used as
         // inputs in the circuit
         let poseidon_config = poseidon_canonical_config::<C2::ScalarField>();
@@ -167,9 +152,9 @@ where
 
 #[cfg(test)]
 pub mod tests {
-    use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
+    use ark_pallas::{Fq, Fr, Projective};
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
-    use ark_vesta::{constraints::GVar as GVar2, Projective as Projective2};
+    use ark_vesta::Projective as Projective2;
 
     use super::*;
     use crate::commitment::pedersen::Pedersen;
@@ -179,18 +164,16 @@ pub mod tests {
     use crate::FoldingScheme;
 
     #[test]
-    fn test_decider_circuits() {
+    fn test_decider_circuits() -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
         let poseidon_config = poseidon_canonical_config::<Fr>();
 
-        let F_circuit = CubicFCircuit::<Fr>::new(()).unwrap();
+        let F_circuit = CubicFCircuit::<Fr>::new(())?;
         let z_0 = vec![Fr::from(3_u32)];
 
         type N = Nova<
             Projective,
-            GVar,
             Projective2,
-            GVar2,
             CubicFCircuit<Fr>,
             Pedersen<Projective>,
             Pedersen<Projective2>,
@@ -205,26 +188,26 @@ pub mod tests {
             Pedersen<Projective2>,
             false,
         >::new(poseidon_config, F_circuit);
-        let nova_params = N::preprocess(&mut rng, &prep_param).unwrap();
+        let nova_params = N::preprocess(&mut rng, &prep_param)?;
 
         // generate a Nova instance and do a step of it
-        let mut nova = N::init(&nova_params, F_circuit, z_0.clone()).unwrap();
-        nova.prove_step(&mut rng, vec![], None).unwrap();
+        let mut nova = N::init(&nova_params, F_circuit, z_0.clone())?;
+        nova.prove_step(&mut rng, (), None)?;
         // verify the IVC
         let ivc_proof = nova.ivc_proof();
-        N::verify(nova_params.1, ivc_proof).unwrap();
+        N::verify(nova_params.1, ivc_proof)?;
 
         // load the DeciderCircuit 1 & 2 from the Nova instance
-        let decider_circuit1 =
-            DeciderCircuit1::<Projective, Projective2, GVar2>::try_from(nova.clone()).unwrap();
-        let decider_circuit2 = DeciderCircuit2::<Projective2>::try_from(nova).unwrap();
+        let decider_circuit1 = DeciderCircuit1::<Projective, Projective2>::try_from(nova.clone())?;
+        let decider_circuit2 = DeciderCircuit2::<Projective2>::try_from(nova)?;
 
         // generate the constraints of both circuits and check that are satisfied by the inputs
         let cs1 = ConstraintSystem::<Fr>::new_ref();
-        decider_circuit1.generate_constraints(cs1.clone()).unwrap();
-        assert!(cs1.is_satisfied().unwrap());
+        decider_circuit1.generate_constraints(cs1.clone())?;
+        assert!(cs1.is_satisfied()?);
         let cs2 = ConstraintSystem::<Fq>::new_ref();
-        decider_circuit2.generate_constraints(cs2.clone()).unwrap();
-        assert!(cs2.is_satisfied().unwrap());
+        decider_circuit2.generate_constraints(cs2.clone())?;
+        assert!(cs2.is_satisfied()?);
+        Ok(())
     }
 }

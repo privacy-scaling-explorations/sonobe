@@ -4,20 +4,19 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ark-ec = { version = "^0.4.0", default-features = false, features = ["parallel"] }
-ark-ff = { version = "^0.4.0", default-features = false, features = ["parallel", "asm"] }
-ark-poly = { version = "^0.4.0", default-features = false, features = ["parallel"] }
-ark-std = { version = "^0.4.0", default-features = false, features = ["parallel"] }
-ark-crypto-primitives = { version = "^0.4.0", default-features = false, features = ["r1cs", "sponge", "crh", "parallel"] }
-ark-poly-commit = { version = "^0.4.0", default-features = false, features = ["parallel"] }
-ark-relations = { version = "^0.4.0", default-features = false }
-# ark-r1cs-std is patched at the workspace level
-ark-r1cs-std = { version = "0.4.0", default-features = false, features = ["parallel"] }
-ark-snark = { version = "^0.4.0", default-features = false }
-ark-serialize = { version = "^0.4.0", default-features = false }
-ark-groth16 = { version = "^0.4.0", default-features = false, features = ["parallel"]}
-ark-bn254 = { version = "^0.4.0", default-features = false }
-ark-grumpkin = { version = "0.4.0", default-features = false }
+ark-ec = { version = "^0.5.0", default-features = false, features = ["parallel"] }
+ark-ff = { version = "^0.5.0", default-features = false, features = ["parallel", "asm"] }
+ark-poly = { version = "^0.5.0", default-features = false, features = ["parallel"] }
+ark-std = { version = "^0.5.0", default-features = false, features = ["parallel"] }
+ark-crypto-primitives = { version = "^0.5.0", default-features = false, features = ["r1cs", "sponge", "crh", "parallel"] }
+ark-poly-commit = { version = "^0.5.0", default-features = false, features = ["parallel"] }
+ark-relations = { version = "^0.5.0", default-features = false }
+ark-r1cs-std = { version = "^0.5.0", default-features = false, features = ["parallel"] }
+ark-snark = { version = "^0.5.0", default-features = false }
+ark-serialize = { version = "^0.5.0", default-features = false }
+ark-groth16 = { version = "^0.5.0", default-features = false, features = ["parallel"]}
+ark-bn254 = { version = "^0.5.0", default-features = false }
+ark-grumpkin = { version = "^0.5.0", default-features = false }
 thiserror = "1.0"
 rayon = "1"
 num-bigint = "0.4"
@@ -25,22 +24,23 @@ num-integer = "0.1"
 sha3 = "0.10"
 log = "0.4"
 
-# tmp import for espresso's sumcheck
-espresso_subroutines = {git="https://github.com/EspressoSystems/hyperplonk", package="subroutines"}
-
 [dev-dependencies]
-ark-pallas = {version="0.4.0", features=["r1cs"]}
-ark-vesta = {version="0.4.0", features=["r1cs"]}
-ark-bn254 = {version="0.4.0", features=["r1cs"]}
-ark-grumpkin = {version="0.4.0", features=["r1cs"]}
+ark-pallas = {version="^0.5.0", features=["r1cs"]}
+ark-vesta = {version="^0.5.0", features=["r1cs"]}
+ark-bn254 = {version="^0.5.0", features=["r1cs"]}
+ark-grumpkin = {version="^0.5.0", features=["r1cs"]}
 # Note: do not use the MNTx_298 curves in practice due security reasons, here
 # we only use them in the tests.
-ark-mnt4-298 = {version="0.4.0", features=["r1cs"]}
-ark-mnt6-298 = {version="0.4.0", features=["r1cs"]}
+ark-mnt4-298 = {version="^0.5.0", features=["r1cs"]}
+ark-mnt6-298 = {version="^0.5.0", features=["r1cs"]}
 rand = "0.8.5"
 num-bigint = {version = "0.4", features = ["rand"]}
 tracing = { version = "0.1", default-features = false, features = [ "attributes" ] }
 tracing-subscriber = { version = "0.2" }
+
+# for benchmarks
+criterion = "0.5"
+pprof = { version = "0.13", features = ["criterion", "flamegraph"] }
 
 # This allows the crate to be built when targeting WASM.
 # See more at: https://docs.rs/getrandom/#webassembly-support 
@@ -52,6 +52,21 @@ default = ["parallel"]
 parallel = []
 light-test = []
 
+
+[[bench]]
+name = "nova"
+path = "../benches/nova.rs"
+harness = false
+
+[[bench]]
+name = "hypernova"
+path = "../benches/hypernova.rs"
+harness = false
+
+[[bench]]
+name = "protogalaxy"
+path = "../benches/protogalaxy.rs"
+harness = false
 
 [[example]]
 name = "sha256"

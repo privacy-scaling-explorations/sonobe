@@ -8,7 +8,7 @@ use ark_std::cfg_iter;
 use ark_std::rand::Rng;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
-use crate::Error;
+use crate::{folding::traits::Dummy, Error};
 
 #[derive(Clone, Debug, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct SparseMatrix<F: PrimeField> {
@@ -19,14 +19,22 @@ pub struct SparseMatrix<F: PrimeField> {
     pub coeffs: R1CSMatrix<F>,
 }
 
-impl<F: PrimeField> SparseMatrix<F> {
-    pub fn empty() -> Self {
+impl<F: PrimeField> Dummy<(usize, usize)> for SparseMatrix<F> {
+    fn dummy((n_rows, n_cols): (usize, usize)) -> Self {
         Self {
-            n_rows: 0,
-            n_cols: 0,
-            coeffs: vec![],
+            n_rows,
+            n_cols,
+            // unnecessary to allocate each row as the matrix is sparse
+            coeffs: vec![vec![]; n_rows],
         }
     }
+}
+
+impl<F: PrimeField> SparseMatrix<F> {
+    pub fn empty() -> Self {
+        Self::dummy((0, 0))
+    }
+
     pub fn rand<R: Rng>(rng: &mut R, n_rows: usize, n_cols: usize) -> Self {
         const ZERO_VAL_PROBABILITY: f64 = 0.8f64;
 
@@ -200,7 +208,7 @@ pub mod tests {
 
     // test mat_vec_mul & mat_vec_mul_sparse
     #[test]
-    fn test_mat_vec_mul() {
+    fn test_mat_vec_mul() -> Result<(), Error> {
         let A = to_F_matrix::<Fr>(vec![
             vec![0, 1, 0, 0, 0, 0],
             vec![0, 0, 0, 1, 0, 0],
@@ -209,12 +217,9 @@ pub mod tests {
         ])
         .to_dense();
         let z = to_F_vec(vec![1, 3, 35, 9, 27, 30]);
+        assert_eq!(mat_vec_mul_dense(&A, &z)?, to_F_vec(vec![3, 9, 30, 35]));
         assert_eq!(
-            mat_vec_mul_dense(&A, &z).unwrap(),
-            to_F_vec(vec![3, 9, 30, 35])
-        );
-        assert_eq!(
-            mat_vec_mul(&dense_matrix_to_sparse(A), &z).unwrap(),
+            mat_vec_mul(&dense_matrix_to_sparse(A), &z)?,
             to_F_vec(vec![3, 9, 30, 35])
         );
 
@@ -222,29 +227,26 @@ pub mod tests {
         let v = to_F_vec(vec![19, 55, 50, 3]);
 
         assert_eq!(
-            mat_vec_mul_dense(&A.to_dense(), &v).unwrap(),
+            mat_vec_mul_dense(&A.to_dense(), &v)?,
             to_F_vec(vec![418, 1158, 979])
         );
-        assert_eq!(mat_vec_mul(&A, &v).unwrap(), to_F_vec(vec![418, 1158, 979]));
+        assert_eq!(mat_vec_mul(&A, &v)?, to_F_vec(vec![418, 1158, 979]));
+        Ok(())
     }
 
     #[test]
-    fn test_hadamard_product() {
+    fn test_hadamard_product() -> Result<(), Error> {
         let a = to_F_vec::<Fr>(vec![1, 2, 3, 4, 5, 6]);
         let b = to_F_vec(vec![7, 8, 9, 10, 11, 12]);
-        assert_eq!(
-            hadamard(&a, &b).unwrap(),
-            to_F_vec(vec![7, 16, 27, 40, 55, 72])
-        );
+        assert_eq!(hadamard(&a, &b)?, to_F_vec(vec![7, 16, 27, 40, 55, 72]));
+        Ok(())
     }
 
     #[test]
-    fn test_vec_add() {
+    fn test_vec_add() -> Result<(), Error> {
         let a: Vec<Fr> = to_F_vec::<Fr>(vec![1, 2, 3, 4, 5, 6]);
         let b: Vec<Fr> = to_F_vec(vec![7, 8, 9, 10, 11, 12]);
-        assert_eq!(
-            vec_add(&a, &b).unwrap(),
-            to_F_vec(vec![8, 10, 12, 14, 16, 18])
-        );
+        assert_eq!(vec_add(&a, &b)?, to_F_vec(vec![8, 10, 12, 14, 16, 18]));
+        Ok(())
     }
 }

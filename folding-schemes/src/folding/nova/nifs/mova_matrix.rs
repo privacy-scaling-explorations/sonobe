@@ -228,7 +228,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
     /// Returns a proof for the pt-vs-line operations along with the folded committed instance
     /// instances and witness
     #[allow(clippy::type_complexity)]
-    fn prove(
+    pub fn prove(
         transcript: &mut T,
         pp_hash: C::ScalarField,
         simple_witness: &Witness<C>,
@@ -319,7 +319,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
     /// It verifies the results from the proof
     /// Both the folding and the pt-vs-line proof
     /// returns the folded committed instance
-    fn verify(
+    pub fn verify(
         transcript: &mut T,
         pp_hash: C::ScalarField,
         simple_instance: &RelaxedCommittedRelation<C>,

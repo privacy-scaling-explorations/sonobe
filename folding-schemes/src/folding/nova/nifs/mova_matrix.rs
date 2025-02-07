@@ -584,8 +584,9 @@ pub mod tests {
         let r1cs: R1CS<Fr> = get_test_r1cs();
 
         // Keep track of the accumulated state
-        let mut current_acc_wit = instances.remove(0).0;
-        let mut current_acc_inst = instances.remove(0).1;
+        let first_instance = instances.remove(0);
+        let mut current_acc_wit = first_instance.0;
+        let mut current_acc_inst = first_instance.1;
 
         // Fold through all remaining instances
         for (next_w, next_i) in instances {

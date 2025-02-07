@@ -1,12 +1,11 @@
+#![allow(dead_code)]
 /// Mova-like folding for matrix multiplications as described in "Folding and Lookup Arguments for Proving Inference of Deep Learning Models" by Nethermind Research
 /// Currently, we are not interested in the hiding properties, so we ignore the hiding factors and focus on the succinctness property.
 /// Please note the code could be easily extended so support hiding.
-use crate::arith::r1cs::R1CS;
 use crate::commitment::CommitmentScheme;
 use crate::folding::nova::nifs::pointvsline::{
     PointVsLine, PointVsLineEvaluationClaimMatrix, PointVsLineMatrix, PointVsLineProofMatrix,
 };
-use crate::folding::nova::nifs::NIFSTrait;
 use crate::folding::traits::Dummy;
 use crate::transcript::Transcript;
 use crate::utils::mle::dense_vec_to_dense_mle;
@@ -171,15 +170,10 @@ pub struct NIFS<
 }
 
 impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
-    NIFSTrait<C, CS, T, H> for NIFS<C, CS, T, H>
+    NIFS<C, CS, T, H>
 {
-    type CommittedInstance = RelaxedCommittedRelation<C>;
-    type Witness = Witness<C>;
-    type ProverAux = Vec<C::ScalarField>; // T in Mova's notation
-    type Proof = Proof<C>;
-
     // Right now we are packing the 4 matrices in a single vector to achieve compatibility with NIFStrait.
-    fn new_witness(abce: Vec<C::ScalarField>, e_len: usize, _rng: impl RngCore) -> Self::Witness {
+    fn new_witness(abce: Vec<C::ScalarField>, e_len: usize, _rng: impl RngCore) -> Witness<C> {
         assert_eq!(
             abce.len() % 4,
             0,
@@ -197,10 +191,9 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
     fn new_instance(
         mut rng: impl RngCore,
         params: &CS::ProverParams,
-        witness: &Self::Witness,
-        _x: Vec<C::ScalarField>,
+        witness: Witness<C>,
         aux: Vec<C::ScalarField>, // rE in MOVA notation.
-    ) -> Result<Self::CommittedInstance, Error> {
+    ) -> Result<RelaxedCommittedRelation<C>, Error> {
         let mut rE = aux;
         if is_zero_vec(&rE) {
             // means that we're in a fresh instance, so generate value of length 2 * log2(n)
@@ -216,7 +209,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         alpha: C::ScalarField,     // Random challenge
         simple_wit: &Witness<C>,   // Simple witness
         acc_wit: &Witness<C>,      // Accumulated witness
-        aux: &Vec<C::ScalarField>, // T in Mova's notation
+        aux: &[C::ScalarField], // T in Mova's notation
     ) -> Result<Witness<C>, Error> {
         let a_acc = vec_add(&vec_scalar_mul(&simple_wit.A, &alpha), &acc_wit.A)?;
         let b_acc = vec_add(&vec_scalar_mul(&simple_wit.B, &alpha), &acc_wit.B)?;
@@ -236,23 +229,13 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
     /// instances and witness
     #[allow(clippy::type_complexity)]
     fn prove(
-        _cs_prover_params: &CS::ProverParams, // not used in Mova since we don't commit to T
-        _r1cs: &R1CS<C::ScalarField>,
         transcript: &mut T,
         pp_hash: C::ScalarField,
         simple_witness: &Witness<C>,
         simple_instance: &RelaxedCommittedRelation<C>,
         acc_witness: &Witness<C>,
         acc_instance: &RelaxedCommittedRelation<C>,
-    ) -> Result<
-        (
-            Self::Witness,
-            Self::CommittedInstance,
-            Self::Proof,
-            Vec<bool>,
-        ),
-        Error,
-    > {
+    ) -> Result<(Witness<C>, RelaxedCommittedRelation<C>, Proof<C>, Vec<bool>), Error> {
         // Verify instances have the correct form.
         // 2 simple instances can be folded, a simple and an accumulated instance can also be folded. 2 accumulated instances cannot be folded
         if simple_instance.is_accumulated() {
@@ -318,7 +301,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         )?;
         let w = Self::fold_witness(alpha, simple_witness, acc_witness, &T)?;
 
-        let proof = Self::Proof {
+        let proof = Proof::<C> {
             h_proof,
             mleE2_prime,
             mleT: mleT_evaluated,
@@ -342,7 +325,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         simple_instance: &RelaxedCommittedRelation<C>,
         acc_instance: &RelaxedCommittedRelation<C>,
         proof: &Proof<C>,
-    ) -> Result<(Self::CommittedInstance, Vec<bool>), Error> {
+    ) -> Result<(RelaxedCommittedRelation<C>, Vec<bool>), Error> {
         transcript.absorb(&pp_hash);
         transcript.absorb(simple_instance);
         transcript.absorb(acc_instance);
@@ -421,7 +404,6 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::arith::r1cs::tests::get_test_r1cs;
     use crate::commitment::pedersen::Pedersen;
     use crate::transcript::poseidon::poseidon_canonical_config;
     use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, CryptographicSponge};
@@ -480,13 +462,10 @@ pub mod tests {
                 &pedersen_params,
             );
 
-        let r1cs: R1CS<Fr> = get_test_r1cs();
         for i in 0..instances.len() - 1 {
             // Fold
             let (_wit_acc, instance_acc, proof, _) =
                 NIFS::<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>::prove(
-                    &pedersen_params,
-                    &r1cs,
                     &mut transcript_p,
                     pp_hash,
                     &instances[i].0,
@@ -536,8 +515,6 @@ pub mod tests {
                 &pedersen_params,
             );
 
-        let r1cs: R1CS<Fr> = get_test_r1cs();
-
         // Keep track of the accumulated state
         let mut current_acc_wit = instances.remove(0).0;
         let mut current_acc_inst = instances.remove(0).1;
@@ -547,8 +524,6 @@ pub mod tests {
             // Fold
             let (wit_acc, inst_acc, proof, _) =
                 NIFS::<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>::prove(
-                    &pedersen_params,
-                    &r1cs,
                     &mut transcript_p,
                     pp_hash,
                     &next_w,

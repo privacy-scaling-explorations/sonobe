@@ -68,6 +68,11 @@ name = "protogalaxy"
 path = "../benches/protogalaxy.rs"
 harness = false
 
+[[bench]]
+name = "mova_matrix"
+path = "../benches/mova_matrix.rs"
+harness = false
+
 [[example]]
 name = "sha256"
 path = "../examples/sha256.rs"

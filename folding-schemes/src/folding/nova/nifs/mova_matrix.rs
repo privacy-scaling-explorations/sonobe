@@ -206,10 +206,10 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
 
     // Protocol 5 - point 8 (Page 25)
     fn fold_witness(
-        alpha: C::ScalarField,     // Random challenge
-        simple_wit: &Witness<C>,   // Simple witness
-        acc_wit: &Witness<C>,      // Accumulated witness
-        aux: &[C::ScalarField], // T in Mova's notation
+        alpha: C::ScalarField,   // Random challenge
+        simple_wit: &Witness<C>, // Simple witness
+        acc_wit: &Witness<C>,    // Accumulated witness
+        aux: &[C::ScalarField],  // T in Mova's notation
     ) -> Result<Witness<C>, Error> {
         let a_acc = vec_add(&vec_scalar_mul(&simple_wit.A, &alpha), &acc_wit.A)?;
         let b_acc = vec_add(&vec_scalar_mul(&simple_wit.B, &alpha), &acc_wit.B)?;

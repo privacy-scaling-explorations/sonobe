@@ -7,10 +7,10 @@ use folding_schemes::commitment::pedersen::Pedersen;
 use folding_schemes::commitment::CommitmentScheme;
 use folding_schemes::folding::nova::nifs::mova_matrix::{RelaxedCommittedRelation, Witness, NIFS};
 use folding_schemes::transcript::poseidon::poseidon_canonical_config;
-use folding_schemes::utils::vec::{mat_mat_mul_dense};
+use folding_schemes::utils::vec::mat_mat_mul_dense;
 use folding_schemes::Curve;
 use rand::RngCore;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const NUM_OF_PRECONDITION_FOLDS: &[usize] = &[1, 10, 100, 1000];
 
@@ -43,49 +43,61 @@ fn get_instances<C: Curve, CS: CommitmentScheme<C>>(
 }
 
 fn bench_mova_matrix(c: &mut Criterion) {
-    let mut group = c.benchmark_group("mova_matrix_single_fold");
+    let mut group = c.benchmark_group("mova_matrix_sequential_folding");
     let mut rng = ark_std::test_rng();
     let mat_dim = 4; // 4x4 matrices
 
-    // Set up transcript and commitment scheme
-    let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, mat_dim * mat_dim).unwrap();
-    let poseidon_config = poseidon_canonical_config::<Fr>();
-    let mut transcript_p = PoseidonSponge::<Fr>::new(&poseidon_config);
-    let pp_hash = Fr::rand(&mut rng);
-
     for count in NUM_OF_PRECONDITION_FOLDS {
-        let mut instances: Vec<(Witness<Projective>, RelaxedCommittedRelation<Projective>)> =
-            get_instances::<Projective, Pedersen<Projective>>(
-                count + 1, // we want the number of folds plus one for the acc_instance
-                mat_dim,
-                &mut rng,
-                &pedersen_params,
-            );
+        group
+            .measurement_time(Duration::from_secs(20 * (*count as u64)))
+            .bench_function(&format!("{count}"), |b| {
+                // Set up transcript and commitment scheme
+                let (pedersen_params, _) =
+                    Pedersen::<Projective>::setup(&mut rng, mat_dim * mat_dim).unwrap();
+                let poseidon_config = poseidon_canonical_config::<Fr>();
+                let pp_hash = Fr::rand(&mut rng);
 
-        // Keep track of the accumulated state
-        let mut current_acc_wit = instances.remove(0).0;
-        let mut current_acc_inst = instances.remove(0).1;
-        group.bench_function("Placeholder ID", |b| {
-            b.iter(|| {
-                for (next_w, next_i) in instances.clone() {
-                    // Fold
-                    let (wit_acc, inst_acc, _, _) =
-                        NIFS::<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>::prove(
-                            &mut transcript_p,
-                            pp_hash,
-                            &next_w,
-                            &next_i,
-                            &current_acc_wit,
-                            &current_acc_inst,
-                        )
-                        .unwrap();
+                b.iter_custom(|iters| {
+                    let mut total_duration = Duration::ZERO;
+                    for _ in 0..iters {
+                        let mut instances: Vec<(
+                            Witness<Projective>,
+                            RelaxedCommittedRelation<Projective>,
+                        )> = get_instances::<Projective, Pedersen<Projective>>(
+                            count + 1, // we want the number of folds plus one for the acc_instance
+                            mat_dim,
+                            &mut rng,
+                            &pedersen_params,
+                        );
+                        let mut transcript_p = PoseidonSponge::<Fr>::new(&poseidon_config);
+                        let mut acc = instances.pop().unwrap();
 
-                    // Update state for next iteration
-                    current_acc_wit = wit_acc;
-                    current_acc_inst = inst_acc;
-                }
-            })
-        });
+                        for _ in 0..*count {
+                            let next = instances.pop().unwrap();
+                            total_duration += {
+                                let timer = Instant::now();
+                                let (wit_acc, inst_acc, _, _) = NIFS::<
+                                    Projective,
+                                    Pedersen<Projective>,
+                                    PoseidonSponge<Fr>,
+                                >::prove(
+                                    &mut transcript_p,
+                                    pp_hash,
+                                    &next.0,
+                                    &next.1,
+                                    &acc.0,
+                                    &acc.1,
+                                )
+                                .unwrap();
+                                let time = timer.elapsed();
+                                acc = (wit_acc, inst_acc);
+                                time
+                            };
+                        }
+                    }
+                    total_duration
+                });
+            });
     }
 }
 
@@ -94,7 +106,6 @@ fn custom_criterion() -> Criterion {
         .measurement_time(Duration::from_secs(100))
         .sample_size(10)
 }
-
 
 criterion_group! {
     name = benches;

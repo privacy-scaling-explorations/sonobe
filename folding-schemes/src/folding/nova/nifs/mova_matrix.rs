@@ -173,7 +173,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
     NIFS<C, CS, T, H>
 {
     // Right now we are packing the 4 matrices in a single vector to achieve compatibility with NIFStrait.
-    fn new_witness(abce: Vec<C::ScalarField>, e_len: usize, _rng: impl RngCore) -> Witness<C> {
+    fn new_witness(abce: Vec<C::ScalarField>, e_len: usize,) -> Witness<C> {
         assert_eq!(
             abce.len() % 4,
             0,

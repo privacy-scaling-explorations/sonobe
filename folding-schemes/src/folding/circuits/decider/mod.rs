@@ -158,6 +158,7 @@ pub mod tests {
             u: Fr::rand(&mut rng),
             cmW: Projective::rand(&mut rng),
             x: vec![Fr::rand(&mut rng); 1],
+            cmV: None,
         };
 
         // compute the challenge natively

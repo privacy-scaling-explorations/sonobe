@@ -212,7 +212,7 @@ impl<C1: Curve, C2: Curve, FC: FCircuit<CF1<C1>>> AugmentedFCircuit<C1, C2, FC> 
     ) -> Self {
         let u_dummy = CommittedInstance::dummy((2, t));
         let cf_u_dummy =
-            CycleFoldCommittedInstance::dummy(ProtoGalaxyCycleFoldConfig::<C1>::IO_LEN);
+            CycleFoldCommittedInstance::dummy((ProtoGalaxyCycleFoldConfig::<C1>::IO_LEN, false));
 
         Self {
             poseidon_config: poseidon_config.clone(),
@@ -259,7 +259,7 @@ where
         let U_i1_phi = NonNativeAffineVar::new_witness(cs.clone(), || Ok(self.U_i1_phi))?;
 
         let cf_u_dummy =
-            CycleFoldCommittedInstance::dummy(ProtoGalaxyCycleFoldConfig::<C1>::IO_LEN);
+            CycleFoldCommittedInstance::dummy((ProtoGalaxyCycleFoldConfig::<C1>::IO_LEN, false));
         let cf_U_i =
             CycleFoldCommittedInstanceVar::<C2>::new_witness(cs.clone(), || Ok(self.cf_U_i))?;
         let cf_cmT = C2::Var::new_witness(cs.clone(), || Ok(self.cf_cmT))?;

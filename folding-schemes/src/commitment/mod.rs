@@ -1,6 +1,6 @@
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::fmt::Debug;
-use ark_std::rand::RngCore;
+use ark_std::{rand::RngCore, UniformRand, Zero};
 
 use crate::transcript::Transcript;
 use crate::{Curve, Error};
@@ -30,6 +30,20 @@ pub trait CommitmentScheme<C: Curve, const H: bool = false>: Clone + Debug {
         v: &[C::ScalarField],
         blind: &C::ScalarField,
     ) -> Result<C, Error>;
+
+    fn commit_with_rng(
+        params: &Self::ProverParams,
+        v: &[C::ScalarField],
+        mut rng: impl RngCore,
+    ) -> Result<(C, C::ScalarField), Error> {
+        let blind = if H {
+            C::ScalarField::rand(&mut rng)
+        } else {
+            C::ScalarField::zero()
+        };
+        let cm = Self::commit(params, v, &blind)?;
+        Ok((cm, blind))
+    }
 
     fn prove(
         params: &Self::ProverParams,

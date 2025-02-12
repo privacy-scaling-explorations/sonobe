@@ -703,8 +703,10 @@ where
             Ok(self.nimfs_proof.unwrap_or(nimfs_proof_dummy))
         })?;
 
-        let cf_u_dummy =
-            CycleFoldCommittedInstance::dummy(HyperNovaCycleFoldConfig::<C1, MU, NU>::IO_LEN);
+        let cf_u_dummy = CycleFoldCommittedInstance::dummy((
+            HyperNovaCycleFoldConfig::<C1, MU, NU>::IO_LEN,
+            false,
+        ));
         let cf_U_i = CycleFoldCommittedInstanceVar::<C2>::new_witness(cs.clone(), || {
             Ok(self.cf_U_i.unwrap_or(cf_u_dummy.clone()))
         })?;

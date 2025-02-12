@@ -18,8 +18,7 @@ use super::{
     },
     CommittedInstance, NovaCycleFoldConfig,
 };
-use crate::folding::traits::{CommittedInstanceVarOps, Dummy};
-use crate::frontend::FCircuit;
+use crate::frontend::{logup::LogUp, FCircuit};
 use crate::Curve;
 use crate::{
     folding::circuits::{
@@ -31,6 +30,10 @@ use crate::{
         CF1,
     },
     transcript::TranscriptVar,
+};
+use crate::{
+    folding::traits::{CommittedInstanceVarOps, Dummy},
+    frontend::alloc::{ConstraintSystemStatistics, Query},
 };
 
 /// `AugmentedFCircuit` enhances the original step function `F`, so that it can
@@ -48,51 +51,62 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct AugmentedFCircuit<C1: Curve, C2: Curve, FC: FCircuit<CF1<C1>>> {
     pub(super) poseidon_config: PoseidonConfig<CF1<C1>>,
-    pub(super) pp_hash: Option<CF1<C1>>,
-    pub(super) i: Option<CF1<C1>>,
-    pub(super) i_usize: Option<usize>,
-    pub(super) z_0: Option<Vec<C1::ScalarField>>,
-    pub(super) z_i: Option<Vec<C1::ScalarField>>,
-    pub(super) external_inputs: Option<FC::ExternalInputs>,
-    pub(super) u_i_cmW: Option<C1>,
+    pub(super) pp_hash: CF1<C1>,
+    pub(super) i: CF1<C1>,
+    pub(super) i_usize: usize,
+    pub(super) z_0: Vec<C1::ScalarField>,
+    pub(super) z_i: Vec<C1::ScalarField>,
+    pub(super) external_inputs: FC::ExternalInputs,
+    pub(super) u_i_cmW: C1,
+    pub(super) u_i_cmV: Option<C1>,
     pub(super) U_i: Option<CommittedInstance<C1>>,
-    pub(super) U_i1_cmE: Option<C1>,
-    pub(super) U_i1_cmW: Option<C1>,
-    pub(super) cmT: Option<C1>,
+    pub(super) U_i1_cmW: C1,
+    pub(super) U_i1_cmV: Option<C1>,
+    pub(super) U_i1_cmE: C1,
+    pub(super) cmT: C1,
     pub(super) F: FC, // F circuit
 
     // cyclefold verifier on C1
     // Here 'cf1, cf2' are for each of the CycleFold circuits, corresponding to the fold of cmW and
     // cmE respectively
-    pub(super) cf1_u_i_cmW: Option<C2>, // input
-    pub(super) cf2_u_i_cmW: Option<C2>, // input
-    pub(super) cf_U_i: Option<CycleFoldCommittedInstance<C2>>, // input
-    pub(super) cf1_cmT: Option<C2>,
-    pub(super) cf2_cmT: Option<C2>,
+    pub(super) cf1_u_i_cmW: C2,                        // input
+    pub(super) cf2_u_i_cmW: C2,                        // input
+    pub(super) cf3_u_i_cmW: Option<C2>,                // input
+    pub(super) cf_U_i: CycleFoldCommittedInstance<C2>, // input
+    pub(super) cf1_cmT: C2,
+    pub(super) cf2_cmT: C2,
+    pub(super) cf3_cmT: Option<C2>,
 }
 
 impl<C1: Curve, C2: Curve, FC: FCircuit<CF1<C1>>> AugmentedFCircuit<C1, C2, FC> {
     pub fn empty(poseidon_config: &PoseidonConfig<CF1<C1>>, F_circuit: FC) -> Self {
+        let cf_u_dummy =
+            CycleFoldCommittedInstance::dummy((NovaCycleFoldConfig::<C1>::IO_LEN, false));
+
         Self {
             poseidon_config: poseidon_config.clone(),
-            pp_hash: None,
-            i: None,
-            i_usize: None,
-            z_0: None,
-            z_i: None,
-            external_inputs: None,
-            u_i_cmW: None,
+            pp_hash: Zero::zero(),
+            i: Zero::zero(),
+            i_usize: 0,
+            z_0: vec![Zero::zero(); F_circuit.state_len()],
+            z_i: vec![Zero::zero(); F_circuit.state_len()],
+            external_inputs: FC::ExternalInputs::default(),
+            u_i_cmW: Zero::zero(),
+            u_i_cmV: None,
             U_i: None,
-            U_i1_cmE: None,
-            U_i1_cmW: None,
-            cmT: None,
+            U_i1_cmW: Zero::zero(),
+            U_i1_cmV: None,
+            U_i1_cmE: Zero::zero(),
+            cmT: Zero::zero(),
             F: F_circuit,
             // cyclefold values
-            cf1_u_i_cmW: None,
-            cf2_u_i_cmW: None,
-            cf_U_i: None,
-            cf1_cmT: None,
-            cf2_cmT: None,
+            cf1_u_i_cmW: Zero::zero(),
+            cf2_u_i_cmW: Zero::zero(),
+            cf3_u_i_cmW: None,
+            cf_U_i: cf_u_dummy,
+            cf1_cmT: Zero::zero(),
+            cf2_cmT: Zero::zero(),
+            cf3_cmT: None,
         }
     }
 }
@@ -107,48 +121,67 @@ where
         self,
         cs: ConstraintSystemRef<CF1<C1>>,
     ) -> Result<Vec<FpVar<CF1<C1>>>, SynthesisError> {
-        let pp_hash = FpVar::<CF1<C1>>::new_witness(cs.clone(), || {
-            Ok(self.pp_hash.unwrap_or_else(CF1::<C1>::zero))
-        })?;
-        let i = FpVar::<CF1<C1>>::new_witness(cs.clone(), || {
-            Ok(self.i.unwrap_or_else(CF1::<C1>::zero))
-        })?;
-        let z_0 = Vec::<FpVar<CF1<C1>>>::new_witness(cs.clone(), || {
-            Ok(self
-                .z_0
-                .unwrap_or(vec![CF1::<C1>::zero(); self.F.state_len()]))
-        })?;
-        let z_i = Vec::<FpVar<CF1<C1>>>::new_witness(cs.clone(), || {
-            Ok(self
-                .z_i
-                .unwrap_or(vec![CF1::<C1>::zero(); self.F.state_len()]))
-        })?;
-        let external_inputs = FC::ExternalInputsVar::new_witness(cs.clone(), || {
-            Ok(self.external_inputs.unwrap_or_default())
-        })?;
+        let pp_hash = FpVar::<CF1<C1>>::new_witness(cs.clone(), || Ok(self.pp_hash))?;
+        let i = FpVar::<CF1<C1>>::new_witness(cs.clone(), || Ok(self.i))?;
+        let z_0 = Vec::<FpVar<CF1<C1>>>::new_witness(cs.clone(), || Ok(self.z_0))?;
+        let z_i = Vec::<FpVar<CF1<C1>>>::new_witness(cs.clone(), || Ok(self.z_i))?;
+        let external_inputs =
+            FC::ExternalInputsVar::new_witness(cs.clone(), || Ok(self.external_inputs))?;
 
-        let u_dummy = CommittedInstance::dummy(2);
+        // get z_{i+1} from the F circuit
+        let z_i1 = self.F.generate_step_constraints(
+            cs.clone(),
+            self.i_usize,
+            z_i.clone(),
+            external_inputs,
+        )?;
+
+        let lookup_enabled = cs.has_variables_of_type::<Query>();
+
+        let u_dummy = CommittedInstance::dummy(if lookup_enabled {
+            (3, true)
+        } else {
+            (2, false)
+        });
         let U_i = CommittedInstanceVar::<C1>::new_witness(cs.clone(), || {
-            Ok(self.U_i.unwrap_or(u_dummy.clone()))
+            if cs.is_in_setup_mode() {
+                Ok(u_dummy.clone())
+            } else {
+                self.U_i.ok_or(SynthesisError::AssignmentMissing)
+            }
         })?;
-        let U_i1_cmE = NonNativeAffineVar::new_witness(cs.clone(), || {
-            Ok(self.U_i1_cmE.unwrap_or_else(C1::zero))
-        })?;
-        let U_i1_cmW = NonNativeAffineVar::new_witness(cs.clone(), || {
-            Ok(self.U_i1_cmW.unwrap_or_else(C1::zero))
-        })?;
+        let u_i_cmW = NonNativeAffineVar::new_witness(cs.clone(), || Ok(self.u_i_cmW))?;
+        let u_i_cmV = if lookup_enabled {
+            Some(NonNativeAffineVar::new_witness(cs.clone(), || {
+                if cs.is_in_setup_mode() {
+                    Ok(Zero::zero())
+                } else {
+                    self.u_i_cmV.ok_or(SynthesisError::AssignmentMissing)
+                }
+            })?)
+        } else {
+            None
+        };
 
-        let cmT =
-            NonNativeAffineVar::new_witness(cs.clone(), || Ok(self.cmT.unwrap_or_else(C1::zero)))?;
+        let cmT = NonNativeAffineVar::new_witness(cs.clone(), || Ok(self.cmT))?;
 
-        let cf_u_dummy = CycleFoldCommittedInstance::dummy(NovaCycleFoldConfig::<C1>::IO_LEN);
-        let cf_U_i = CycleFoldCommittedInstanceVar::<C2>::new_witness(cs.clone(), || {
-            Ok(self.cf_U_i.unwrap_or(cf_u_dummy.clone()))
-        })?;
-        let cf1_cmT =
-            C2::Var::new_witness(cs.clone(), || Ok(self.cf1_cmT.unwrap_or_else(C2::zero)))?;
-        let cf2_cmT =
-            C2::Var::new_witness(cs.clone(), || Ok(self.cf2_cmT.unwrap_or_else(C2::zero)))?;
+        let cf_u_dummy =
+            CycleFoldCommittedInstance::dummy((NovaCycleFoldConfig::<C1>::IO_LEN, false));
+        let cf_U_i =
+            CycleFoldCommittedInstanceVar::<C2>::new_witness(cs.clone(), || Ok(self.cf_U_i))?;
+        let cf1_cmT = C2::Var::new_witness(cs.clone(), || Ok(self.cf1_cmT))?;
+        let cf2_cmT = C2::Var::new_witness(cs.clone(), || Ok(self.cf2_cmT))?;
+        let cf3_cmT = if lookup_enabled {
+            Some(C2::Var::new_witness(cs.clone(), || {
+                if cs.is_in_setup_mode() {
+                    Ok(Zero::zero())
+                } else {
+                    self.cf3_cmT.ok_or(SynthesisError::AssignmentMissing)
+                }
+            })?)
+        } else {
+            None
+        };
 
         // `sponge` is for digest computation.
         let sponge = PoseidonSpongeVar::<C1::ScalarField>::new_with_pp_hash(
@@ -163,9 +196,15 @@ where
         // Primary Part
         // P.1. Compute u_i.x
         // u_i.x[0] = H(i, z_0, z_i, U_i)
-        let (u_i_x, U_i_vec) = U_i.clone().hash(&sponge, &i, &z_0, &z_i)?;
+        let (x0, U_i_vec) = U_i.clone().hash(&sponge, &i, &z_0, &z_i)?;
         // u_i.x[1] = H(cf_U_i)
-        let (cf_u_i_x, _) = cf_U_i.clone().hash(&sponge)?;
+        let (x1, _) = cf_U_i.clone().hash(&sponge)?;
+        // u_i.x[2] = H...
+        let x2 = if lookup_enabled {
+            Some(LogUp::challenge_gadget(&sponge, &u_i_cmW)?)
+        } else {
+            None
+        };
 
         // P.2. Construct u_i
         let u_i = CommittedInstanceVar {
@@ -174,11 +213,14 @@ where
             // u_i.u = 1
             u: FpVar::one(),
             // u_i.cmW is provided by the prover as witness
-            cmW: NonNativeAffineVar::new_witness(cs.clone(), || {
-                Ok(self.u_i_cmW.unwrap_or(C1::zero()))
-            })?,
+            cmW: u_i_cmW,
+            cmV: u_i_cmV,
             // u_i.x is computed in step 1
-            x: vec![u_i_x, cf_u_i_x],
+            x: if let Some(x2) = x2 {
+                vec![x0, x1, x2]
+            } else {
+                vec![x0, x1]
+            },
         };
 
         // P.3. nifs.verify, obtains U_{i+1} by folding u_i & U_i.
@@ -197,17 +239,21 @@ where
             u_i.clone(),
             Some(cmT.clone()),
         )?;
-        U_i1.cmE = U_i1_cmE;
-        U_i1.cmW = U_i1_cmW;
+        U_i1.cmE = NonNativeAffineVar::new_witness(cs.clone(), || Ok(self.U_i1_cmE))?;
+        U_i1.cmW = NonNativeAffineVar::new_witness(cs.clone(), || Ok(self.U_i1_cmW))?;
+        U_i1.cmV = if lookup_enabled {
+            Some(NonNativeAffineVar::new_witness(cs.clone(), || {
+                if cs.is_in_setup_mode() {
+                    Ok(Zero::zero())
+                } else {
+                    self.U_i1_cmV.ok_or(SynthesisError::AssignmentMissing)
+                }
+            })?)
+        } else {
+            None
+        };
 
         // P.4.a compute and check the first output of F'
-
-        // get z_{i+1} from the F circuit
-        let i_usize = self.i_usize.unwrap_or(0);
-        let z_i1 = self
-            .F
-            .generate_step_constraints(cs.clone(), i_usize, z_i, external_inputs)?;
-
         // Base case: u_{i+1}.x[0] == H((i+1, z_0, z_{i+1}, U_{\bot})
         // Non-base case: u_{i+1}.x[0] == H((i+1, z_0, z_{i+1}, U_{i+1})
         let (u_i1_x, _) =
@@ -236,29 +282,56 @@ where
         // C.2. Construct `cf1_u_i` and `cf2_u_i`
         let cf1_u_i = CycleFoldCommittedInstanceVar::new_incoming_from_components(
             // `cf1_u_i.cmW` is provided by the prover as witness.
-            C2::Var::new_witness(cs.clone(), || Ok(self.cf1_u_i_cmW.unwrap_or(C2::zero())))?,
+            C2::Var::new_witness(cs.clone(), || Ok(self.cf1_u_i_cmW))?,
             // To construct `cf1_u_i.x`, we need to provide the randomness
-            // `r_bits` and the `cmW` component in committed instances `U_i`,
-            // `u_i`, and `U_{i+1}`.
-            &r_bits,
-            vec![U_i.cmW, u_i.cmW, U_i1.cmW],
-        )?;
-        let cf2_u_i = CycleFoldCommittedInstanceVar::new_incoming_from_components(
-            // `cf2_u_i.cmW` is provided by the prover as witness.
-            C2::Var::new_witness(cs.clone(), || Ok(self.cf2_u_i_cmW.unwrap_or(C2::zero())))?,
-            // To construct `cf2_u_i.x`, we need to provide the randomness
             // `r_bits`, the `cmE` component in running instances `U_i` and
             // `U_{i+1}`, and the cross term commitment `cmT`.
             &r_bits,
             vec![U_i.cmE, cmT, U_i1.cmE],
         )?;
+        let cf2_u_i = CycleFoldCommittedInstanceVar::new_incoming_from_components(
+            // `cf2_u_i.cmW` is provided by the prover as witness.
+            C2::Var::new_witness(cs.clone(), || Ok(self.cf2_u_i_cmW))?,
+            // To construct `cf2_u_i.x`, we need to provide the randomness
+            // `r_bits` and the `cmW` component in committed instances `U_i`,
+            // `u_i`, and `U_{i+1}`.
+            &r_bits,
+            vec![U_i.cmW, u_i.cmW, U_i1.cmW],
+        )?;
+        let cf3_u_i = if lookup_enabled {
+            Some(CycleFoldCommittedInstanceVar::new_incoming_from_components(
+                // `cf3_u_i.cmW` is provided by the prover as witness.
+                C2::Var::new_witness(cs.clone(), || {
+                    if cs.is_in_setup_mode() {
+                        Ok(Zero::zero())
+                    } else {
+                        self.cf3_u_i_cmW.ok_or(SynthesisError::AssignmentMissing)
+                    }
+                })?,
+                // To construct `cf3_u_i.x`, we need to provide the randomness
+                // `r_bits` and the `cmW` component in committed instances `U_i`,
+                // `u_i`, and `U_{i+1}`.
+                &r_bits,
+                vec![U_i.cmV.unwrap(), u_i.cmV.unwrap(), U_i1.cmV.unwrap()],
+            )?)
+        } else {
+            None
+        };
 
         // C.3. nifs.verify, obtains cf_U_{i+1} by folding cf1_u_i and cf2_u_i into cf_U.
         let cf_U_i1 = CycleFoldAugmentationGadget::fold_gadget(
             &mut transcript,
             cf_U_i,
-            vec![cf1_u_i, cf2_u_i],
-            vec![cf1_cmT, cf2_cmT],
+            if let Some(cf3_u_i) = cf3_u_i {
+                vec![cf1_u_i, cf2_u_i, cf3_u_i]
+            } else {
+                vec![cf1_u_i, cf2_u_i]
+            },
+            if let Some(cf3_cmT) = cf3_cmT {
+                vec![cf1_cmT, cf2_cmT, cf3_cmT]
+            } else {
+                vec![cf1_cmT, cf2_cmT]
+            },
         )?;
 
         // Back to Primary Part
@@ -323,12 +396,14 @@ pub mod tests {
             cmE: Projective::rand(&mut rng),
             u: Fr::rand(&mut rng),
             cmW: Projective::rand(&mut rng),
+            cmV: None,
             x: vec![Fr::rand(&mut rng); 1],
         };
         let U_i = CommittedInstance::<Projective> {
             cmE: Projective::rand(&mut rng),
             u: Fr::rand(&mut rng),
             cmW: Projective::rand(&mut rng),
+            cmV: None,
             x: vec![Fr::rand(&mut rng); 1],
         };
         let cmT = Projective::rand(&mut rng);

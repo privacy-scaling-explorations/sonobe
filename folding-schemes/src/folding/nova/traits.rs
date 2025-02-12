@@ -49,7 +49,7 @@ impl<C: Curve> Arith<Witness<C>, CommittedInstance<C>> for R1CS<CF1<C>> {
         w: &Witness<C>,
         u: &CommittedInstance<C>,
     ) -> Result<Self::Evaluation, Error> {
-        self.eval_at_z(&[&[u.u][..], &u.x, &w.W].concat())
+        self.eval_at_z(&[&[u.u][..], &u.x, &w.W, &w.V].concat())
     }
 
     fn check_evaluation(
@@ -85,7 +85,14 @@ impl<C: Curve> ArithSampler<C, Witness<C>, CommittedInstance<C>> for R1CS<CF1<C>
 
         let E = self.eval_at_z(&z)?;
 
-        let witness = Witness { E, rE, W, rW };
+        let witness = Witness {
+            E,
+            rE,
+            W,
+            rW,
+            V: vec![],
+            rV: None,
+        };
         let mut cm_witness = witness.commit::<CS, true>(params, x)?;
 
         // witness.commit() sets u to 1, we set it to the sampled u value
@@ -112,7 +119,7 @@ impl<C: Curve> ArithGadget<WitnessVar<C>, CommittedInstanceVar<C>>
         w: &WitnessVar<C>,
         u: &CommittedInstanceVar<C>,
     ) -> Result<Self::Evaluation, SynthesisError> {
-        self.eval_at_z(&[&[u.u.clone()][..], &u.x, &w.W].concat())
+        self.eval_at_z(&[&[u.u.clone()][..], &u.x, &w.W, &w.V].concat())
     }
 
     fn enforce_evaluation(

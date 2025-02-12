@@ -43,6 +43,8 @@ pub struct WitnessVar<C: Curve> {
     pub rE: FpVar<C::ScalarField>,
     pub W: Vec<FpVar<C::ScalarField>>,
     pub rW: FpVar<C::ScalarField>,
+    pub V: Vec<FpVar<C::ScalarField>>,
+    pub rV: Option<FpVar<C::ScalarField>>,
 }
 
 impl<C: Curve> AllocVar<Witness<C>, CF1<C>> for WitnessVar<C> {
@@ -64,14 +66,40 @@ impl<C: Curve> AllocVar<Witness<C>, CF1<C>> for WitnessVar<C> {
             let rW =
                 FpVar::<C::ScalarField>::new_variable(cs.clone(), || Ok(val.borrow().rW), mode)?;
 
-            Ok(Self { E, rE, W, rW })
+            let V: Vec<FpVar<C::ScalarField>> =
+                Vec::new_variable(cs.clone(), || Ok(val.borrow().V.clone()), mode)?;
+            let rV = match val.borrow().rV {
+                Some(rV) => Some(FpVar::<C::ScalarField>::new_variable(
+                    cs.clone(),
+                    || Ok(rV),
+                    mode,
+                )?),
+                None => None,
+            };
+
+            Ok(Self {
+                E,
+                rE,
+                W,
+                rW,
+                V,
+                rV,
+            })
         })
     }
 }
 
 impl<C: Curve> WitnessVarOps<C::ScalarField> for WitnessVar<C> {
     fn get_openings(&self) -> Vec<(&[FpVar<C::ScalarField>], FpVar<C::ScalarField>)> {
-        vec![(&self.W, self.rW.clone()), (&self.E, self.rE.clone())]
+        if let Some(rV) = &self.rV {
+            vec![
+                (&self.W, self.rW.clone()),
+                (&self.V, rV.clone()),
+                (&self.E, self.rE.clone()),
+            ]
+        } else {
+            vec![(&self.W, self.rW.clone()), (&self.E, self.rE.clone())]
+        }
     }
 }
 

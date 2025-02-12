@@ -5,6 +5,7 @@ use ark_std::rand::Rng;
 
 use super::ccs::CCS;
 use super::{Arith, ArithSerializer};
+use crate::frontend::alloc::{Committed, ConstraintSystemStatistics, Multiplicity, Query};
 use crate::utils::vec::{
     hadamard, is_zero_vec, mat_vec_mul, vec_scalar_mul, vec_sub, SparseMatrix,
 };
@@ -15,6 +16,9 @@ pub mod circuits;
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct R1CS<F: PrimeField> {
     pub l: usize, // io len
+    pub n_queries: usize,
+    pub n_multiplicities: usize,
+    pub n_committed: usize,
     pub A: SparseMatrix<F>,
     pub B: SparseMatrix<F>,
     pub C: SparseMatrix<F>,
@@ -70,6 +74,9 @@ impl<F: PrimeField> R1CS<F> {
     pub fn empty() -> Self {
         R1CS {
             l: 0,
+            n_queries: 0,
+            n_multiplicities: 0,
+            n_committed: 0,
             A: SparseMatrix::empty(),
             B: SparseMatrix::empty(),
             C: SparseMatrix::empty(),
@@ -78,6 +85,9 @@ impl<F: PrimeField> R1CS<F> {
     pub fn rand<R: Rng>(rng: &mut R, n_rows: usize, n_cols: usize) -> Self {
         Self {
             l: 1,
+            n_queries: 0,
+            n_multiplicities: 0,
+            n_committed: 0,
             A: SparseMatrix::rand(rng, n_rows, n_cols),
             B: SparseMatrix::rand(rng, n_rows, n_cols),
             C: SparseMatrix::rand(rng, n_rows, n_cols),
@@ -114,6 +124,9 @@ impl<F: PrimeField> From<CCS<F>> for R1CS<F> {
     fn from(ccs: CCS<F>) -> Self {
         R1CS::<F> {
             l: ccs.l,
+            n_queries: 0,
+            n_multiplicities: 0,
+            n_committed: 0,
             A: ccs.M[0].clone(),
             B: ccs.M[1].clone(),
             C: ccs.M[2].clone(),
@@ -153,6 +166,9 @@ pub fn extract_r1cs<F: PrimeField>(cs: &ConstraintSystem<F>) -> Result<R1CS<F>, 
 
     Ok(R1CS::<F> {
         l: cs.num_instance_variables - 1, // -1 to subtract the first '1'
+        n_queries: cs.num_variables_of_type::<Query>(),
+        n_multiplicities: cs.num_variables_of_type::<Multiplicity>(),
+        n_committed: cs.num_variables_of_type::<Committed>(),
         A,
         B,
         C,
@@ -200,7 +216,15 @@ pub mod tests {
             vec![0, 0, 1, 0, 0, 0],
         ]);
 
-        R1CS::<F> { l: 1, A, B, C }
+        R1CS::<F> {
+            l: 1,
+            n_queries: 0,
+            n_multiplicities: 0,
+            n_committed: 0,
+            A,
+            B,
+            C,
+        }
     }
 
     pub fn get_test_z<F: PrimeField>(input: usize) -> Vec<F> {

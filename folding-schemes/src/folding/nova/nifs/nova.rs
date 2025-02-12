@@ -98,7 +98,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         x: Vec<C::ScalarField>,
         _aux: Vec<C::ScalarField>,
     ) -> Result<Self::CommittedInstance, Error> {
-        W.commit::<CS, H>(params, x)
+        unimplemented!()
     }
 
     fn fold_witness(
@@ -123,7 +123,24 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
             .collect();
 
         let rW = W_i.rW + r * w_i.rW;
-        Ok(Self::Witness { E, rE, W, rW })
+        let V: Vec<C::ScalarField> = W_i
+            .V
+            .iter()
+            .zip(&w_i.V)
+            .map(|(a, b)| *a + (r * b))
+            .collect();
+        let rV = match (W_i.rV, w_i.rV) {
+            (Some(a), Some(b)) => Some(a + r * b),
+            _ => None,
+        };
+        Ok(Self::Witness {
+            E,
+            rE,
+            W,
+            rW,
+            V,
+            rV,
+        })
     }
 
     fn prove(
@@ -144,8 +161,8 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         Error,
     > {
         // compute the cross terms
-        let z1: Vec<C::ScalarField> = [vec![U_i.u], U_i.x.to_vec(), W_i.W.to_vec()].concat();
-        let z2: Vec<C::ScalarField> = [vec![u_i.u], u_i.x.to_vec(), w_i.W.to_vec()].concat();
+        let z1: Vec<C::ScalarField> = [&[U_i.u][..], &U_i.x, &W_i.W, &W_i.V].concat();
+        let z2: Vec<C::ScalarField> = [&[u_i.u][..], &u_i.x, &w_i.W, &w_i.V].concat();
         let T = Self::compute_T(r1cs, U_i.u, u_i.u, &z1, &z2, &W_i.E, &w_i.E)?;
 
         // use r_T=0 since we don't need hiding property for cm(T)
@@ -243,6 +260,10 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         let cmE = U_i.cmE + cmT.mul(r) + u_i.cmE.mul(r2);
         let u = U_i.u + r * u_i.u;
         let cmW = U_i.cmW + u_i.cmW.mul(r);
+        let cmV = match (U_i.cmV, u_i.cmV) {
+            (Some(a), Some(b)) => Some(a + b.mul(r)),
+            _ => None,
+        };
         let x = U_i
             .x
             .iter()
@@ -250,7 +271,13 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
             .map(|(a, b)| *a + (r * b))
             .collect::<Vec<C::ScalarField>>();
 
-        CommittedInstance { cmE, u, cmW, x }
+        CommittedInstance {
+            cmE,
+            u,
+            cmW,
+            cmV,
+            x,
+        }
     }
 
     pub fn prove_commitments(

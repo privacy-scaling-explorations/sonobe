@@ -208,6 +208,7 @@ pub mod tests {
         let poseidon_config = poseidon_canonical_config::<Fr>();
         let F_circuit = CubicFCircuit::<Fr>::new(())?;
         let (_, nova) = test_ivc_opt::<
+            _,
             Pedersen<Projective, true>,
             Pedersen<Projective2, true>,
             true,
@@ -235,6 +236,7 @@ pub mod tests {
         let poseidon_config = poseidon_canonical_config::<Fr>();
         let F_circuit = CubicFCircuit::<Fr>::new(())?;
         let (_, nova) = test_ivc_opt::<
+            _,
             Pedersen<Projective, true>,
             Pedersen<Projective2, true>,
             true,
@@ -262,6 +264,7 @@ pub mod tests {
         let poseidon_config = poseidon_canonical_config::<Fr>();
         let F_circuit = CubicFCircuit::<Fr>::new(())?;
         let (_, nova) = test_ivc_opt::<
+            _,
             Pedersen<Projective, true>,
             Pedersen<Projective2, true>,
             true,
@@ -296,6 +299,7 @@ pub mod tests {
         let poseidon_config = poseidon_canonical_config::<Fr>();
         let F_circuit = CubicFCircuit::<Fr>::new(())?;
         let (_, nova) = test_ivc_opt::<
+            _,
             Pedersen<Projective, true>,
             Pedersen<Projective2, true>,
             true,

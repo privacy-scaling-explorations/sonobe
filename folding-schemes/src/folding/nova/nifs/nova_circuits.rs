@@ -32,8 +32,9 @@ use super::nova::ChallengeGadget;
 pub struct CommittedInstanceVar<C: Curve> {
     pub u: FpVar<C::ScalarField>,
     pub x: Vec<FpVar<C::ScalarField>>,
-    pub cmE: NonNativeAffineVar<C>,
     pub cmW: NonNativeAffineVar<C>,
+    pub cmV: Option<NonNativeAffineVar<C>>,
+    pub cmE: NonNativeAffineVar<C>,
 }
 
 impl<C: Curve> AllocVar<CommittedInstance<C>, CF1<C>> for CommittedInstanceVar<C> {
@@ -49,12 +50,27 @@ impl<C: Curve> AllocVar<CommittedInstance<C>, CF1<C>> for CommittedInstanceVar<C
             let x: Vec<FpVar<C::ScalarField>> =
                 Vec::new_variable(cs.clone(), || Ok(val.borrow().x.clone()), mode)?;
 
-            let cmE =
-                NonNativeAffineVar::<C>::new_variable(cs.clone(), || Ok(val.borrow().cmE), mode)?;
             let cmW =
                 NonNativeAffineVar::<C>::new_variable(cs.clone(), || Ok(val.borrow().cmW), mode)?;
+            let cmV = if let Some(cmV) = val.borrow().cmV {
+                Some(NonNativeAffineVar::<C>::new_variable(
+                    cs.clone(),
+                    || Ok(cmV),
+                    mode,
+                )?)
+            } else {
+                None
+            };
+            let cmE =
+                NonNativeAffineVar::<C>::new_variable(cs.clone(), || Ok(val.borrow().cmE), mode)?;
 
-            Ok(Self { u, x, cmE, cmW })
+            Ok(Self {
+                u,
+                x,
+                cmW,
+                cmV,
+                cmE,
+            })
         })
     }
 }
@@ -68,8 +84,13 @@ impl<C: Curve> AbsorbGadget<C::ScalarField> for CommittedInstanceVar<C> {
         Ok([
             vec![self.u.clone()],
             self.x.clone(),
-            self.cmE.to_native_sponge_field_elements()?,
             self.cmW.to_native_sponge_field_elements()?,
+            if let Some(cmV) = &self.cmV {
+                cmV.to_native_sponge_field_elements()?
+            } else {
+                vec![]
+            },
+            self.cmE.to_native_sponge_field_elements()?,
         ]
         .concat())
     }
@@ -79,7 +100,11 @@ impl<C: Curve> CommittedInstanceVarOps<C> for CommittedInstanceVar<C> {
     type PointVar = NonNativeAffineVar<C>;
 
     fn get_commitments(&self) -> Vec<Self::PointVar> {
-        vec![self.cmW.clone(), self.cmE.clone()]
+        if let Some(cmV) = &self.cmV {
+            vec![self.cmW.clone(), cmV.clone(), self.cmE.clone()]
+        } else {
+            vec![self.cmW.clone(), self.cmE.clone()]
+        }
     }
 
     fn get_public_inputs(&self) -> &[FpVar<CF1<C>>] {
@@ -139,6 +164,14 @@ where
             Self::CommittedInstanceVar {
                 cmE: NonNativeAffineVar::new_constant(ConstraintSystemRef::None, C::zero())?,
                 cmW: NonNativeAffineVar::new_constant(ConstraintSystemRef::None, C::zero())?,
+                cmV: if U_i.cmV.is_some() {
+                    Some(NonNativeAffineVar::new_constant(
+                        ConstraintSystemRef::None,
+                        C::zero(),
+                    )?)
+                } else {
+                    None
+                },
                 // ci3.u = U_i.u + r * u_i.u
                 u: U_i.u + &r * u_i.u,
                 // ci3.x = U_i.x + r * u_i.x
@@ -183,6 +216,7 @@ pub mod tests {
                 cmE: Projective::rand(&mut rng),
                 u: Fr::rand(&mut rng),
                 cmW: Projective::rand(&mut rng),
+                cmV: None,
                 x: vec![Fr::rand(&mut rng); 1],
             })
             .collect();
@@ -204,6 +238,7 @@ pub mod tests {
             cmE: Projective::rand(&mut rng),
             u: Fr::rand(&mut rng),
             cmW: Projective::rand(&mut rng),
+            cmV: None,
             x: vec![Fr::rand(&mut rng); 1],
         };
 
@@ -221,6 +256,7 @@ pub mod tests {
             cmE: Projective::rand(&mut rng),
             u: Fr::rand(&mut rng),
             cmW: Projective::rand(&mut rng),
+            cmV: None,
             x: vec![Fr::rand(&mut rng); 1],
         };
         test_committed_instance_hash_opt::<

@@ -816,6 +816,7 @@ pub mod tests {
                 cmE: Projective::rand(&mut rng),
                 u: Fr::rand(&mut rng),
                 cmW: Projective::rand(&mut rng),
+                cmV: None,
                 x: vec![Fr::rand(&mut rng); 1],
             })
             .collect();
@@ -861,6 +862,7 @@ pub mod tests {
             cmE: Projective::zero(), // zero on purpose, so we test also the zero point case
             u: Fr::zero(),
             cmW: Projective::rand(&mut rng),
+            cmV: None,
             x: std::iter::repeat_with(|| Fr::rand(&mut rng))
                 .take(TestCycleFoldConfig::<Projective, 2>::IO_LEN)
                 .collect(),
@@ -869,6 +871,7 @@ pub mod tests {
             cmE: Projective::rand(&mut rng),
             u: Fr::rand(&mut rng),
             cmW: Projective::rand(&mut rng),
+            cmV: None,
             x: std::iter::repeat_with(|| Fr::rand(&mut rng))
                 .take(TestCycleFoldConfig::<Projective, 2>::IO_LEN)
                 .collect(),
@@ -922,6 +925,7 @@ pub mod tests {
             cmE: Projective::rand(&mut rng),
             u: Fr::rand(&mut rng),
             cmW: Projective::rand(&mut rng),
+            cmV: None,
             x: std::iter::repeat_with(|| Fr::rand(&mut rng))
                 .take(TestCycleFoldConfig::<Projective, 2>::IO_LEN)
                 .collect(),

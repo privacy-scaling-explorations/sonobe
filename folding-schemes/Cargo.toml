@@ -1,51 +1,51 @@
 [package]
 name = "folding-schemes"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
-ark-ec = { version = "^0.5.0", default-features = false, features = ["parallel"] }
-ark-ff = { version = "^0.5.0", default-features = false, features = ["parallel", "asm"] }
-ark-poly = { version = "^0.5.0", default-features = false, features = ["parallel"] }
-ark-std = { version = "^0.5.0", default-features = false, features = ["parallel"] }
-ark-crypto-primitives = { version = "^0.5.0", default-features = false, features = ["r1cs", "sponge", "crh", "parallel"] }
-ark-poly-commit = { version = "^0.5.0", default-features = false, features = ["parallel"] }
-ark-relations = { version = "^0.5.0", default-features = false }
-ark-r1cs-std = { version = "^0.5.0", default-features = false, features = ["parallel"] }
-ark-snark = { version = "^0.5.0", default-features = false }
-ark-serialize = { version = "^0.5.0", default-features = false }
-ark-groth16 = { version = "^0.5.0", default-features = false, features = ["parallel"]}
-ark-bn254 = { version = "^0.5.0", default-features = false }
-ark-grumpkin = { version = "^0.5.0", default-features = false }
-thiserror = "1.0"
-rayon = "1"
-num-bigint = "0.4"
-num-integer = "0.1"
-sha3 = "0.10"
-log = "0.4"
+ark-ec = { workspace = true, features = ["parallel"] }
+ark-ff = { workspace = true, features = ["parallel", "asm"] }
+ark-poly = { workspace = true, features = ["parallel"] }
+ark-std = { workspace = true, features = ["parallel"] }
+ark-crypto-primitives = { workspace = true, features = ["r1cs", "sponge", "crh", "parallel"] }
+ark-poly-commit = { workspace = true, features = ["parallel"] }
+ark-relations = { workspace = true }
+ark-r1cs-std = { workspace = true, features = ["parallel"] }
+ark-snark = { workspace = true }
+ark-serialize = { workspace = true }
+ark-groth16 = { workspace = true, features = ["parallel"] }
+ark-bn254 = { workspace = true }
+ark-grumpkin = { workspace = true }
+thiserror = { workspace = true }
+rayon = { workspace = true }
+num-bigint = { workspace = true }
+num-integer = { workspace = true }
+sha3 = { workspace = true }
+log = { workspace = true }
 
 [dev-dependencies]
-ark-pallas = {version="^0.5.0", features=["r1cs"]}
-ark-vesta = {version="^0.5.0", features=["r1cs"]}
-ark-bn254 = {version="^0.5.0", features=["r1cs"]}
-ark-grumpkin = {version="^0.5.0", features=["r1cs"]}
+ark-pallas = { workspace = true, features = ["r1cs"] }
+ark-vesta = { workspace = true, features = ["r1cs"] }
+ark-bn254 = { workspace = true, features = ["r1cs"] }
+ark-grumpkin = { workspace = true, features = ["r1cs"] }
 # Note: do not use the MNTx_298 curves in practice due security reasons, here
 # we only use them in the tests.
-ark-mnt4-298 = {version="^0.5.0", features=["r1cs"]}
-ark-mnt6-298 = {version="^0.5.0", features=["r1cs"]}
-rand = "0.8.5"
-num-bigint = {version = "0.4", features = ["rand"]}
-tracing = { version = "0.1", default-features = false, features = [ "attributes" ] }
-tracing-subscriber = { version = "0.2" }
+ark-mnt4-298 = { workspace = true, features = ["r1cs"] }
+ark-mnt6-298 = { workspace = true, features = ["r1cs"] }
+rand = { workspace = true }
+num-bigint = { workspace = true, features = ["rand"] }
 
 # for benchmarks
-criterion = "0.5"
-pprof = { version = "0.13", features = ["criterion", "flamegraph"] }
+criterion = { workspace = true }
+pprof = { workspace = true, features = ["criterion", "flamegraph"] }
 
 # This allows the crate to be built when targeting WASM.
 # See more at: https://docs.rs/getrandom/#webassembly-support 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
-getrandom = { version = "0.2", features = ["js"] }
+getrandom = { workspace = true, features = ["js"] }
 
 [features]
 default = ["parallel"]

@@ -46,15 +46,15 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> {
         let mleE2 = dense_vec_to_dense_mle(n_vars, &w2.E);
 
         // We have l(0) = r1, l(1) = r2 so we know that l(x) = r1 + x(r2-r1) thats why we need r2-r1
-        let r1_sub_r2: Vec<<C>::ScalarField> = ci1
+        let r2_sub_r1: Vec<<C>::ScalarField> = ci1
             .rE
             .iter()
             .zip(&ci2.rE)
-            .map(|(&r1, r2)| r1 - r2)
+            .map(|(&r1, r2)| *r2 - r1)
             .collect();
 
-        let h1 = compute_h(&mleE1, &ci1.rE, &r1_sub_r2)?;
-        let h2 = compute_h(&mleE2, &ci1.rE, &r1_sub_r2)?;
+        let h1 = compute_h(&mleE1, &ci1.rE, &r2_sub_r1)?;
+        let h2 = compute_h(&mleE2, &ci1.rE, &r2_sub_r1)?;
 
         transcript.absorb(&h1.coeffs());
         transcript.absorb(&h2.coeffs());
@@ -66,7 +66,7 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> {
         let mleE1_prime = h1.evaluate(&beta);
         let mleE2_prime = h2.evaluate(&beta);
 
-        let rE_prime = compute_l(&ci1.rE, &r1_sub_r2, beta)?;
+        let rE_prime = compute_l(&ci1.rE, &r2_sub_r1, beta)?;
 
         Ok((
             PointVsLineProof { h1, h2 },
@@ -85,6 +85,7 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> {
         proof: &PointVsLineProof<C>,
         mleE1_prime: &<C>::ScalarField,
         mleE2_prime: &<C>::ScalarField,
+        rE_prime_p: &[<C>::ScalarField], // the rE_prime of the prover
     ) -> Result<
         Vec<<C>::ScalarField>, // rE=rE1'=rE2'.
         Error,
@@ -112,13 +113,16 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> {
             return Err(Error::NotEqual);
         }
 
-        let r1_sub_r2: Vec<<C>::ScalarField> = ci1
+        let r2_sub_r1: Vec<<C>::ScalarField> = ci1
             .rE
             .iter()
             .zip(&ci2.rE)
-            .map(|(&r1, r2)| r1 - r2)
+            .map(|(&r1, r2)| *r2 - r1)
             .collect();
-        let rE_prime = compute_l(&ci1.rE, &r1_sub_r2, beta)?;
+        let rE_prime = compute_l(&ci1.rE, &r2_sub_r1, beta)?;
+        if rE_prime != rE_prime_p {
+            return Err(Error::NotEqual);
+        }
 
         Ok(rE_prime)
     }
@@ -127,10 +131,10 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> {
 fn compute_h<F: PrimeField>(
     mle: &DenseMultilinearExtension<F>,
     r1: &[F],
-    r1_sub_r2: &[F],
+    r2_sub_r1: &[F],
 ) -> Result<DensePolynomial<F>, Error> {
     let n_vars: usize = mle.num_vars;
-    if r1.len() != r1_sub_r2.len() || r1.len() != n_vars {
+    if r1.len() != r2_sub_r1.len() || r1.len() != n_vars {
         return Err(Error::NotEqual);
     }
 
@@ -142,9 +146,9 @@ fn compute_h<F: PrimeField>(
         .map(|&x| DensePolynomial::from_coefficients_slice(&[x]))
         .collect();
 
-    for (i, (&r1_i, &r1_sub_r2_i)) in r1.iter().zip(r1_sub_r2.iter()).enumerate().take(n_vars) {
-        // Create a linear polynomial r(X) = r1_i + (r1_sub_r2_i) * X (basically l)
-        let r = DensePolynomial::from_coefficients_slice(&[r1_i, r1_sub_r2_i]);
+    for (i, (&r1_i, &r2_sub_r1_i)) in r1.iter().zip(r2_sub_r1.iter()).enumerate().take(n_vars) {
+        // Create a linear polynomial r(X) = r1_i + (r2_sub_r1_i) * X (basically l)
+        let r = DensePolynomial::from_coefficients_slice(&[r1_i, r2_sub_r1_i]);
         let half_len = 1 << (n_vars - i - 1);
 
         for b in 0..half_len {
@@ -158,25 +162,35 @@ fn compute_h<F: PrimeField>(
     Ok(poly.swap_remove(0))
 }
 
-fn compute_l<F: PrimeField>(r1: &[F], r1_sub_r2: &[F], x: F) -> Result<Vec<F>, Error> {
-    if r1.len() != r1_sub_r2.len() {
+fn compute_l<F: PrimeField>(r1: &[F], r2_sub_r1: &[F], x: F) -> Result<Vec<F>, Error> {
+    if r1.len() != r2_sub_r1.len() {
         return Err(Error::NotEqual);
     }
 
     // we have l(x) = r1 + x(r2-r1) so return the result
     Ok(r1
         .iter()
-        .zip(r1_sub_r2)
+        .zip(r2_sub_r1)
         .map(|(&r1, &r1_sub_r0)| r1 + x * r1_sub_r0)
         .collect())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{compute_h, compute_l};
+    use super::{compute_h, compute_l, PointVsLine};
+    use crate::commitment::pedersen::Pedersen;
+    use crate::commitment::CommitmentScheme;
+    use crate::transcript::poseidon::poseidon_canonical_config;
     use crate::Error;
-    use ark_pallas::Fq;
     use ark_poly::{DenseMultilinearExtension, DenseUVPolynomial};
+    use ark_std::{log2, UniformRand};
+
+    use crate::folding::nova::nifs::mova::Witness;
+
+    use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
+    use ark_crypto_primitives::sponge::CryptographicSponge;
+    use ark_ff::Zero;
+    use ark_pallas::{Fq, Fr, Projective};
 
     #[test]
     fn test_compute_h() -> Result<(), Error> {
@@ -264,7 +278,7 @@ mod tests {
     fn test_compute_l() -> Result<(), Error> {
         // Test with simple non-zero values
         let r1 = vec![Fq::from(1), Fq::from(2), Fq::from(3)];
-        let r1_sub_r2 = vec![Fq::from(4), Fq::from(5), Fq::from(6)];
+        let r2_sub_r1 = vec![Fq::from(4), Fq::from(5), Fq::from(6)];
         let x = Fq::from(2);
 
         let expected = vec![
@@ -273,8 +287,72 @@ mod tests {
             Fq::from(3) + Fq::from(2) * Fq::from(6),
         ];
 
-        let result = compute_l(&r1, &r1_sub_r2, x)?;
+        let result = compute_l(&r1, &r2_sub_r1, x)?;
         assert_eq!(result, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_evaluations_R1CS() -> Result<(), Error> {
+        // Basic test with no zero error term to ensure that the folding is correct.
+        // This test mainly focuses on if the evaluation of h0 and h1 are correct.
+        let mut rng = ark_std::test_rng();
+
+        let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, 4)?;
+        let poseidon_config = poseidon_canonical_config::<Fr>();
+        let mut transcript_p = PoseidonSponge::<Fr>::new(&poseidon_config);
+        let mut transcript_v = PoseidonSponge::<Fr>::new(&poseidon_config);
+
+        let W_i = Witness {
+            E: vec![Fr::from(25), Fr::from(50), Fr::from(0), Fr::from(0)],
+            W: vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)],
+            rW: Fr::zero(),
+        };
+        let rE = (0..log2(W_i.E.len())).map(|_| Fr::rand(&mut rng)).collect();
+        // x is not important
+        let x = vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)];
+        let U_i =
+            Witness::commit::<Pedersen<Projective>, false>(&W_i, &pedersen_params, x.clone(), rE)?;
+
+        let w_i = Witness {
+            E: vec![Fr::from(75), Fr::from(100), Fr::from(0), Fr::from(0)],
+            W: vec![Fr::from(35), Fr::from(9), Fr::from(27), Fr::from(30)],
+            rW: Fr::zero(),
+        };
+        let rE = (0..log2(W_i.E.len())).map(|_| Fr::rand(&mut rng)).collect();
+        let u_i = Witness::commit::<Pedersen<Projective>, false>(&w_i, &pedersen_params, x, rE)?;
+
+        let (proof, claim) = PointVsLine::prove(&mut transcript_p, &U_i, &u_i, &W_i, &w_i)?;
+
+        let result = PointVsLine::verify(
+            &mut transcript_v,
+            &U_i,
+            &u_i,
+            &proof,
+            &claim.mleE1_prime,
+            &claim.mleE2_prime,
+            &claim.rE_prime,
+        );
+
+        assert!(result.is_ok(), "Verification failed");
+        // Check if the re_prime is the same
+        let re_verified = result.unwrap();
+        assert!(re_verified == claim.rE_prime);
+        let mut transcript_v = PoseidonSponge::<Fr>::new(&poseidon_config);
+
+        // Pass the wrong committed instance which should result in a wrong evaluation in h returning an error
+        let result = PointVsLine::verify(
+            &mut transcript_v,
+            &U_i,
+            &U_i,
+            &proof,
+            &claim.mleE1_prime,
+            &claim.mleE2_prime,
+            &claim.rE_prime,
+        );
+
+        assert!(result.is_err(), "Verification was okay when it should fail");
+
         Ok(())
     }
 }

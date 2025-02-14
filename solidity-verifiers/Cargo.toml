@@ -1,38 +1,40 @@
 [package]
 name = "solidity-verifiers"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
-ark-groth16 = "^0.5.0"
-ark-bn254 = { version = "^0.5.0", default-features = false, features = ["r1cs"] }
-ark-poly-commit = "^0.5.0"
-ark-serialize = "^0.5.0"
-askama = { version = "0.12.0", features = ["config"], default-features = false }
-revm = {version="3.5.0", default-features=false, features=["std"]}
-rust-crypto = "0.2"
-num-bigint = "0.4.3"
-folding-schemes = { path = "../folding-schemes/"} # without 'light-test' enabled
+ark-groth16 = { workspace = true }
+ark-bn254 = { workspace = true, features = ["r1cs"] }
+ark-poly-commit = { workspace = true }
+ark-serialize = { workspace = true }
+askama = { workspace = true, features = ["config"] }
+revm = { workspace = true, features = ["std"] }
+rust-crypto = { workspace = true }
+num-bigint = { workspace = true }
+folding-schemes = { workspace = true } # without 'light-test' enabled
 
 [dev-dependencies]
-ark-ec = { version = "^0.5.0", default-features = false, features = ["parallel"] }
-ark-ff = { version = "^0.5.0", default-features = false, features = ["parallel", "asm"] }
-ark-std = { version = "^0.5.0", default-features = false, features = ["parallel"] }
-ark-crypto-primitives = { version = "^0.5.0", default-features = false, features = ["sponge", "parallel"] }
-ark-snark = { version = "^0.5.0", default-features = false }
-ark-relations = { version = "^0.5.0", default-features = false }
-ark-r1cs-std = { version = "^0.5.0", default-features = false, features = ["parallel"] }
-ark-grumpkin = { version = "^0.5.0", default-features = false, features = ["r1cs"] }
-folding-schemes = { path = "../folding-schemes/", features=["light-test"]}
-experimental-frontends = { path = "../experimental-frontends/"}
-noname = { git = "https://github.com/dmpierre/noname" }
+ark-ec = { workspace = true, features = ["parallel"] }
+ark-ff = { workspace = true, features = ["parallel", "asm"] }
+ark-std = { workspace = true, features = ["parallel"] }
+ark-crypto-primitives = { workspace = true, features = ["sponge", "parallel"] }
+ark-snark = { workspace = true }
+ark-relations = { workspace = true }
+ark-r1cs-std = { workspace = true, features = ["parallel"] }
+ark-grumpkin = { workspace = true, features = ["r1cs"] }
+folding-schemes = { workspace = true, features = ["light-test"] }
+experimental-frontends = { workspace = true }
+noname = { workspace = true }
 
 [features]
 default = ["parallel"]
 
-parallel = [ 
-    "ark-groth16/parallel", 
-    "ark-poly-commit/parallel",  
+parallel = [
+    "ark-groth16/parallel",
+    "ark-poly-commit/parallel",
     "folding-schemes/parallel",
 ]
 

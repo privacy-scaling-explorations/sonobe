@@ -552,13 +552,13 @@ impl<C: Curve, const H: bool> IPAGadget<C, H> {
         let q_1 = if H {
             G.scalar_mul_le(p.a.to_bits_le()?.iter())?
                 + h.joint_scalar_mul_be(
-                    &U,
+                    U,
                     r.to_bits_le()?.iter(),
                     (p.a.clone() * b).to_bits_le()?.iter(),
                 )?
         } else {
             G.joint_scalar_mul_be(
-                &U,
+                U,
                 p.a.to_bits_le()?.iter(),
                 (p.a.clone() * b).to_bits_le()?.iter(),
             )?

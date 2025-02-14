@@ -1,10 +1,10 @@
 pub use revm;
 use revm::{
-    primitives::{hex, Address, CreateScheme, ExecutionResult, Output, TransactTo, TxEnv},
-    InMemoryDB, EVM,
+    primitives::{hex, Address, ExecutionResult, Output, TransactTo, TxEnv},
+    Evm as EVM, EvmBuilder, InMemoryDB,
 };
 use std::{
-    fmt::{self, Debug, Formatter},
+    fmt::Debug,
     fs::{self, create_dir_all, File},
     io::{self, Write},
     path::PathBuf,
@@ -78,32 +78,20 @@ fn find_binary(stdout: &str, contract_name: &str) -> Option<Vec<u8>> {
 }
 
 /// Evm runner.
-pub struct Evm {
-    evm: EVM<InMemoryDB>,
+#[derive(Debug)]
+pub struct Evm<'a> {
+    evm: EVM<'a, (), InMemoryDB>,
 }
 
-impl Debug for Evm {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut debug_struct = f.debug_struct("Evm");
-        debug_struct
-            .field("env", &self.evm.env)
-            .field("db", &self.evm.db.as_ref().unwrap())
-            .finish()
-    }
-}
-
-impl Default for Evm {
+impl<'a> Default for Evm<'a> {
     fn default() -> Self {
         Self {
-            evm: EVM {
-                env: Default::default(),
-                db: Some(Default::default()),
-            },
+            evm: EvmBuilder::default().with_db(InMemoryDB::default()).build(),
         }
     }
 }
 
-impl Evm {
+impl<'a> Evm<'a> {
     /// Apply create transaction with given `bytecode` as creation bytecode.
     /// Return created `address`.
     ///
@@ -112,7 +100,7 @@ impl Evm {
     pub fn create(&mut self, bytecode: Vec<u8>) -> Address {
         let (_, output) = self.transact_success_or_panic(TxEnv {
             gas_limit: u64::MAX,
-            transact_to: TransactTo::Create(CreateScheme::Create),
+            transact_to: TransactTo::Create,
             data: bytecode.into(),
             ..Default::default()
         });
@@ -141,9 +129,8 @@ impl Evm {
     }
 
     fn transact_success_or_panic(&mut self, tx: TxEnv) -> (u64, Output) {
-        self.evm.env.tx = tx;
+        *self.evm.tx_mut() = tx;
         let result = self.evm.transact_commit().unwrap();
-        self.evm.env.tx = Default::default();
         match result {
             ExecutionResult::Success {
                 gas_used,
@@ -155,7 +142,7 @@ impl Evm {
                     println!("--- logs from {} ---", logs[0].address);
                     for (log_idx, log) in logs.iter().enumerate() {
                         println!("log#{log_idx}");
-                        for (topic_idx, topic) in log.topics.iter().enumerate() {
+                        for (topic_idx, topic) in log.topics().iter().enumerate() {
                             println!("  topic{topic_idx}: {topic:?}");
                         }
                     }

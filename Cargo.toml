@@ -30,7 +30,7 @@ serde_json = { version = "^1.0.0" }
 sha3 = { version = "0.10" }
 rand = { version = "0.8.5" }
 rayon = { version = "1" }
-revm = { version = "3.5.0", default-features = false }
+revm = { version = "19.5.0", default-features = false }
 rust-crypto = { version = "0.2" }
 thiserror = { version = "1.0" }
 

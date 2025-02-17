@@ -19,7 +19,7 @@ use std::{cmp::max, collections::HashMap, marker::PhantomData, ops::Add, sync::A
 use thiserror::Error;
 
 //-- aritherrors
-/// A `enum` specifying the possible failure modes of the arithmetics.
+/// A `enum` specifying the possible failure modes of the arithmetic.
 #[derive(Error, Debug)]
 pub enum ArithErrors {
     #[error("Invalid parameters: {0}")]

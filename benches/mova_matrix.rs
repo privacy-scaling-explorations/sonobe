@@ -10,11 +10,24 @@ use folding_schemes::transcript::poseidon::poseidon_canonical_config;
 use folding_schemes::utils::vec::mat_mat_mul_dense;
 use folding_schemes::Curve;
 use matrex::Matrix;
-use rand::RngCore;
+use rand::{Rng, RngCore};
 use std::time::{Duration, Instant};
 
 const NUM_OF_PRECONDITION_FOLDS: &[usize] = &[1, 10, 20, 40];
 
+fn random_sparse_matrix<C: Curve>(n: usize, rng: &mut impl RngCore) -> Matrix<C::ScalarField> {
+    let elements = (0..n)
+        .map(|row| {
+            (
+                row * n + rand::thread_rng().gen_range(0..n),
+                C::ScalarField::rand(rng),
+            )
+        })
+        .collect();
+    Matrix::sparse_from_vec(elements, n, n).unwrap()
+}
+
+// Helper functions
 fn get_instances<C: Curve, CS: CommitmentScheme<C>>(
     num: usize,
     n: usize,
@@ -24,23 +37,22 @@ fn get_instances<C: Curve, CS: CommitmentScheme<C>>(
     (0..num)
         .map(|_| -> (Witness<C>, RelaxedCommittedRelation<C>) {
             // A matrix
-            let a: Vec<C::ScalarField> = (0..n * n).map(|_| C::ScalarField::rand(rng)).collect();
+            let a = random_sparse_matrix::<C>(n, rng);
             // B matrix
-            let b: Vec<C::ScalarField> = (0..n * n).map(|_| C::ScalarField::rand(rng)).collect();
+            let b =
+                random_sparse_matrix::<C>(n, rng);
             // C = A * B matrix
-            let c: Vec<C::ScalarField> = mat_mat_mul_dense(&a, &b).unwrap();
+            let c = (a.clone() * b.clone()).unwrap();
             // Error matrix initialized to 0s
-            let e: Vec<C::ScalarField> = (0..n * n).map(|_| C::ScalarField::from(0)).collect();
+            let mut e = Matrix::zero(n, n);
+            e.to_dense();
             // Random challenge
             let rE = (0..2 * log2(n))
                 .map(|_| C::ScalarField::rand(rng))
                 .collect();
             // Witness
             let witness = Witness::new::<false>(
-                Matrix::dense_from_vec(a, n, n).unwrap(),
-                Matrix::dense_from_vec(b, n, n).unwrap(),
-                Matrix::dense_from_vec(c, n, n).unwrap(),
-                Matrix::dense_from_vec(e, n, n).unwrap(),
+                a,b,c,e
             );
             let instance = witness.commit::<CS, false>(params, rE).unwrap();
             (witness, instance)

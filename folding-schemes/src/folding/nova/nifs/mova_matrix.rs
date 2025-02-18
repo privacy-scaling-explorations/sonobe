@@ -8,14 +8,14 @@ use crate::folding::nova::nifs::pointvsline::{
 };
 use crate::transcript::Transcript;
 use crate::utils::mle::{dense_vec_to_dense_mle, vec_to_mle};
-use crate::utils::vec::{is_zero_vec, SparseMatrix};
+use crate::utils::vec::{is_zero_vec};
 use crate::{Curve, Error};
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ff::PrimeField;
 use ark_poly::Polynomial;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{log2, marker::PhantomData, rand::RngCore, One, UniformRand, Zero};
-use matrex::{Matrix};
+use matrex::Matrix;
 use num_integer::Roots;
 
 /// Represents a relaxed committed relation for matrix multiplication folded instances.
@@ -89,16 +89,19 @@ impl<C: Curve> Witness<C> {
     /// # Parameters
     /// * `self` - Witness instance to be committed.
     /// * `params` - Commitment scheme parameters.
-    /// * `rE` - Random evaluation point for the committed instance.
+    /// * `rE` - Random evaluation point forft the committed instance.
     pub fn commit<CS: CommitmentScheme<C, H>, const H: bool>(
         &self,
         params: &CS::ProverParams,
-        rE: Vec<C::ScalarField>
+        rE: Vec<C::ScalarField>,
     ) -> Result<RelaxedCommittedRelation<C>, Error> {
         let mut mleE = C::ScalarField::zero();
         if !Matrix::is_zero_matrix(&self.E) {
             // let E = dense_vec_to_dense_mle(log2(self.E.len()) as usize, &self.E.get_dense_elems());
-            let E = vec_to_mle(log2(self.E.len()) as usize, &self.E.get_sparse_elems().unwrap());
+            let E = vec_to_mle(
+                log2(self.E.len()) as usize,
+                &self.E.get_sparse_elems().unwrap(),
+            );
             mleE = E.evaluate(&rE);
         }
 
@@ -148,23 +151,18 @@ pub struct NIFS<
 impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
     NIFS<C, CS, T, H>
 {
-    fn new_witness(a: SparseMatrix<C> b: SparseMatrix<C>, e_len: usize) -> Witness<C> {
-        assert_eq!(
-            abce.len() % 4,
-            0,
-            "Input vector length must be a multiple of 4"
-        );
-        let chunk_size = e_len / 4;
+    fn new_witness(
+        a: Matrix<C::ScalarField>,
+        b: Matrix<C::ScalarField>,
+        c: Matrix<C::ScalarField>,
+        e: Matrix<C::ScalarField>,
+    ) -> Witness<C> {
 
-        // Split vector into matrices
-        let (a, rest) = abce.split_at(chunk_size);
-        let (b, rest) = rest.split_at(chunk_size);
-        let (c, e) = rest.split_at(chunk_size);
         Witness::new::<H>(
-            Matrix::dense_from_vec(a.to_vec(), e_len / 2, e_len / 2).unwrap(),
-            Matrix::dense_from_vec(b.to_vec(), e_len / 2, e_len / 2).unwrap(),
-            Matrix::dense_from_vec(c.to_vec(), e_len / 2, e_len / 2).unwrap(),
-            Matrix::dense_from_vec(e.to_vec(), e_len / 2, e_len / 2).unwrap(),
+            a,
+            b,
+            c,
+            e,
         )
     }
 
@@ -191,10 +189,10 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         acc_wit: &Witness<C>,        // Accumulated witness
         aux: Matrix<C::ScalarField>, // T in Mova's notation
     ) -> Result<Witness<C>, Error> {
+        //todo!(Remove clones)
         let a_acc = ((simple_wit.A.clone() * alpha) + acc_wit.A.clone()).unwrap();
         let b_acc = ((simple_wit.B.clone() * alpha) + acc_wit.B.clone()).unwrap();
         let c_acc = ((simple_wit.C.clone() * alpha) + acc_wit.C.clone()).unwrap();
-        // Need to fix E
         let e_acc = ((aux * alpha) + acc_wit.E.clone()).unwrap();
 
         // let a_acc = vec_add(&vec_scalar_mul(&simple_wit.A, &alpha), &acc_wit.A)?;
@@ -267,7 +265,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         // let u2c1: Vec<C::ScalarField> = vec_scalar_mul(&simple_witness.C, &acc_instance.u);
         let u2c1 = simple_witness.C.clone() * acc_instance.u;
         // let T = vec_sub(&vec_sub(&A1B2B1A2, &acc_witness.C)?, &u2c1)?;
-        let T = ((A1B2B1A2 - acc_witness.C.clone()).unwrap() - u2c1).unwrap();
+        let mut T: Matrix<C::ScalarField> = ((A1B2B1A2 - acc_witness.C.clone()).unwrap() - u2c1).unwrap();
 
         // Compute MLE_T
         let n_vars: usize = log2(simple_witness.E.len()) as usize;
@@ -275,6 +273,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
             return Err(Error::NotExpectedLength(T.len(), n_vars));
         }
 
+        T.to_dense();
         let mleT = dense_vec_to_dense_mle(n_vars, &T.get_dense_elems_reference().unwrap());
         let mleT_evaluated = mleT.evaluate(&rE_prime);
 
@@ -399,6 +398,21 @@ pub mod tests {
     use crate::transcript::poseidon::poseidon_canonical_config;
     use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, CryptographicSponge};
     use ark_pallas::{Fr, Projective};
+    use rand::Rng;
+    use matrex::{Matrix, SparseMatrix};
+
+
+    fn random_sparse_matrix<C: Curve>(n: usize, rng: &mut impl RngCore) -> Matrix<C::ScalarField> {
+        let elements = (0..n)
+            .map(|row| {
+                (
+                    row * n + rand::thread_rng().gen_range(0..n),
+                    C::ScalarField::rand(rng),
+                )
+            })
+            .collect();
+        Matrix::sparse_from_vec(elements, n, n).unwrap()
+    }
 
     // Helper functions
     fn get_instances<C: Curve, CS: CommitmentScheme<C>>(
@@ -410,25 +424,22 @@ pub mod tests {
         (0..num)
             .map(|_| -> (Witness<C>, RelaxedCommittedRelation<C>) {
                 // A matrix
-                let a: Vec<C::ScalarField> =
-                    (0..n * n).map(|_| C::ScalarField::rand(rng)).collect();
+                let a = random_sparse_matrix::<C>(n, rng);
                 // B matrix
-                let b: Vec<C::ScalarField> =
-                    (0..n * n).map(|_| C::ScalarField::rand(rng)).collect();
+                let b =
+                    random_sparse_matrix::<C>(n, rng);
                 // C = A * B matrix
-                let c: Vec<C::ScalarField> = mat_mat_mul_dense(&a, &b).unwrap();
+                let c = (a.clone() * b.clone()).unwrap();
                 // Error matrix initialized to 0s
-                let e: Vec<C::ScalarField> = (0..n * n).map(|_| C::ScalarField::from(0)).collect();
+                let mut e = Matrix::zero(n, n);
+                e.to_dense();
                 // Random challenge
                 let rE = (0..2 * log2(n))
                     .map(|_| C::ScalarField::rand(rng))
                     .collect();
                 // Witness
                 let witness = Witness::new::<false>(
-                    Matrix::dense_from_vec(a, n, n).unwrap(),
-                    Matrix::dense_from_vec(b, n, n).unwrap(),
-                    Matrix::dense_from_vec(c, n, n).unwrap(),
-                    Matrix::dense_from_vec(e, n, n).unwrap(),
+                    a,b,c,e
                 );
                 let instance = witness.commit::<CS, false>(params, rE).unwrap();
                 (witness, instance)

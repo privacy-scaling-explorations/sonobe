@@ -6,16 +6,16 @@ use crate::commitment::CommitmentScheme;
 use crate::folding::nova::nifs::pointvsline::{
     PointVsLine, PointVsLineEvaluationClaimMatrix, PointVsLineMatrix, PointVsLineProofMatrix,
 };
-use crate::folding::traits::Dummy;
 use crate::transcript::Transcript;
-use crate::utils::mle::dense_vec_to_dense_mle;
-use crate::utils::vec::{is_zero_vec, mat_mat_mul_dense, vec_add, vec_scalar_mul, vec_sub};
+use crate::utils::mle::{dense_vec_to_dense_mle, vec_to_mle};
+use crate::utils::vec::{is_zero_vec, SparseMatrix};
 use crate::{Curve, Error};
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ff::PrimeField;
 use ark_poly::Polynomial;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{log2, marker::PhantomData, rand::RngCore, One, UniformRand, Zero};
+use matrex::{Matrix};
 use num_integer::Roots;
 
 /// Represents a relaxed committed relation for matrix multiplication folded instances.
@@ -48,20 +48,6 @@ impl<C: Curve> Absorb for RelaxedCommittedRelation<C> {
     }
 }
 
-impl<C: Curve> Dummy<usize> for RelaxedCommittedRelation<C> {
-    // Matrices are expected to be square. size = nxn
-    fn dummy(size: usize) -> Self {
-        Self {
-            cmA: C::zero(),
-            cmB: C::zero(),
-            cmC: C::zero(),
-            u: C::ScalarField::zero(),
-            mleE: C::ScalarField::zero(),
-            rE: vec![C::ScalarField::zero(); 2 * log2(size.sqrt()) as usize],
-        }
-    }
-}
-
 impl<C: Curve> RelaxedCommittedRelation<C> {
     /// Checks if a Relaxed Committed Relation is simple (has not been folded).
     fn is_simple(&self) -> bool {
@@ -76,32 +62,20 @@ impl<C: Curve> RelaxedCommittedRelation<C> {
 /// Represents the private inputs for the protocol (witness)
 /// A, B, C, E are matrices such that A * B = u* C + E
 /// Matrices are, for Sonobe compatibility, represented as flattened vectors.
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Witness<C: Curve> {
-    pub A: Vec<C::ScalarField>, // Matrix A in flattened form
-    pub B: Vec<C::ScalarField>, // Matrix B in flattened form
-    pub C: Vec<C::ScalarField>, // Matrix C in flattened form
-    pub E: Vec<C::ScalarField>, // Error matrix E in flattened form
-}
-
-impl<C: Curve> Dummy<usize> for Witness<C> {
-    // Matrices are expected to be square. size = nxn
-    fn dummy(size: usize) -> Self {
-        Self {
-            A: vec![C::ScalarField::zero(); size],
-            B: vec![C::ScalarField::zero(); size],
-            C: vec![C::ScalarField::zero(); size],
-            E: vec![C::ScalarField::zero(); size],
-        }
-    }
+    pub A: Matrix<C::ScalarField>,
+    pub B: Matrix<C::ScalarField>,
+    pub C: Matrix<C::ScalarField>,
+    pub E: Matrix<C::ScalarField>,
 }
 
 impl<C: Curve> Witness<C> {
     pub fn new<const H: bool>(
-        a: Vec<C::ScalarField>,
-        b: Vec<C::ScalarField>,
-        c: Vec<C::ScalarField>,
-        e: Vec<C::ScalarField>,
+        a: Matrix<C::ScalarField>,
+        b: Matrix<C::ScalarField>,
+        c: Matrix<C::ScalarField>,
+        e: Matrix<C::ScalarField>,
     ) -> Self {
         Self {
             A: a,
@@ -110,6 +84,7 @@ impl<C: Curve> Witness<C> {
             E: e,
         }
     }
+
     /// Commits to a witness W and produces a RelaxedCommittedRelation
     /// # Parameters
     /// * `self` - Witness instance to be committed.
@@ -118,18 +93,19 @@ impl<C: Curve> Witness<C> {
     pub fn commit<CS: CommitmentScheme<C, H>, const H: bool>(
         &self,
         params: &CS::ProverParams,
-        rE: Vec<C::ScalarField>,
+        rE: Vec<C::ScalarField>
     ) -> Result<RelaxedCommittedRelation<C>, Error> {
         let mut mleE = C::ScalarField::zero();
-        if !is_zero_vec::<C::ScalarField>(&self.E) {
-            let E = dense_vec_to_dense_mle(log2(self.E.len()) as usize, &self.E);
+        if !Matrix::is_zero_matrix(&self.E) {
+            // let E = dense_vec_to_dense_mle(log2(self.E.len()) as usize, &self.E.get_dense_elems());
+            let E = vec_to_mle(log2(self.E.len()) as usize, &self.E.get_sparse_elems().unwrap());
             mleE = E.evaluate(&rE);
         }
 
         // Right now we are ignoring the hiding property and directly commit to the matrices
-        let com_a = CS::commit(params, &self.A, &C::ScalarField::zero())?;
-        let com_b = CS::commit(params, &self.B, &C::ScalarField::zero())?;
-        let com_c = CS::commit(params, &self.C, &C::ScalarField::zero())?;
+        let com_a = CS::commit(params, &self.A.clone().elems(), &C::ScalarField::zero())?;
+        let com_b = CS::commit(params, &self.B.clone().elems(), &C::ScalarField::zero())?;
+        let com_c = CS::commit(params, &self.C.clone().elems(), &C::ScalarField::zero())?;
 
         Ok(RelaxedCommittedRelation {
             cmA: com_a,
@@ -172,8 +148,7 @@ pub struct NIFS<
 impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const H: bool>
     NIFS<C, CS, T, H>
 {
-    // Right now we are packing the 4 matrices in a single vector to achieve compatibility with NIFStrait.
-    fn new_witness(abce: Vec<C::ScalarField>, e_len: usize) -> Witness<C> {
+    fn new_witness(a: SparseMatrix<C> b: SparseMatrix<C>, e_len: usize) -> Witness<C> {
         assert_eq!(
             abce.len() % 4,
             0,
@@ -185,7 +160,12 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         let (a, rest) = abce.split_at(chunk_size);
         let (b, rest) = rest.split_at(chunk_size);
         let (c, e) = rest.split_at(chunk_size);
-        Witness::new::<H>(a.to_vec(), b.to_vec(), c.to_vec(), e.to_vec())
+        Witness::new::<H>(
+            Matrix::dense_from_vec(a.to_vec(), e_len / 2, e_len / 2).unwrap(),
+            Matrix::dense_from_vec(b.to_vec(), e_len / 2, e_len / 2).unwrap(),
+            Matrix::dense_from_vec(c.to_vec(), e_len / 2, e_len / 2).unwrap(),
+            Matrix::dense_from_vec(e.to_vec(), e_len / 2, e_len / 2).unwrap(),
+        )
     }
 
     fn new_instance(
@@ -206,15 +186,21 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
 
     // Protocol 5 - point 8 (Page 25)
     fn fold_witness(
-        alpha: C::ScalarField,   // Random challenge
-        simple_wit: &Witness<C>, // Simple witness
-        acc_wit: &Witness<C>,    // Accumulated witness
-        aux: &[C::ScalarField],  // T in Mova's notation
+        alpha: C::ScalarField,       // Random challenge
+        simple_wit: &Witness<C>,     // Simple witness
+        acc_wit: &Witness<C>,        // Accumulated witness
+        aux: Matrix<C::ScalarField>, // T in Mova's notation
     ) -> Result<Witness<C>, Error> {
-        let a_acc = vec_add(&vec_scalar_mul(&simple_wit.A, &alpha), &acc_wit.A)?;
-        let b_acc = vec_add(&vec_scalar_mul(&simple_wit.B, &alpha), &acc_wit.B)?;
-        let c_acc = vec_add(&vec_scalar_mul(&simple_wit.C, &alpha), &acc_wit.C)?;
-        let e_acc = vec_add(&vec_scalar_mul(aux, &alpha), &acc_wit.E)?;
+        let a_acc = ((simple_wit.A.clone() * alpha) + acc_wit.A.clone()).unwrap();
+        let b_acc = ((simple_wit.B.clone() * alpha) + acc_wit.B.clone()).unwrap();
+        let c_acc = ((simple_wit.C.clone() * alpha) + acc_wit.C.clone()).unwrap();
+        // Need to fix E
+        let e_acc = ((aux * alpha) + acc_wit.E.clone()).unwrap();
+
+        // let a_acc = vec_add(&vec_scalar_mul(&simple_wit.A, &alpha), &acc_wit.A)?;
+        // let b_acc = vec_add(&vec_scalar_mul(&simple_wit.B, &alpha), &acc_wit.B)?;
+        // let c_acc = vec_add(&vec_scalar_mul(&simple_wit.C, &alpha), &acc_wit.C)?;
+        // let e_acc = vec_add(&vec_scalar_mul(aux, &alpha), &acc_wit.E)?;
 
         Ok(Witness::<C> {
             A: a_acc,
@@ -272,11 +258,16 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         transcript.absorb(&mleE2_prime);
 
         // Compute cross term T
-        let A1B2 = mat_mat_mul_dense(&simple_witness.A, &acc_witness.B)?;
-        let B1A2 = mat_mat_mul_dense(&acc_witness.A, &simple_witness.B)?;
-        let A1B2B1A2 = vec_add(&A1B2, &B1A2)?;
-        let u2c1: Vec<C::ScalarField> = vec_scalar_mul(&simple_witness.C, &acc_instance.u);
-        let T = vec_sub(&vec_sub(&A1B2B1A2, &acc_witness.C)?, &u2c1)?;
+        // let A1B2 = mat_mat_mul_dense(&simple_witness.A, &acc_witness.B)?;
+        let A1B2 = (simple_witness.A.clone() * acc_witness.B.clone()).unwrap();
+        // let B1A2 = mat_mat_mul_dense(&acc_witness.A, &simple_witness.B)?;
+        let B1A2 = (acc_witness.A.clone() * simple_witness.B.clone()).unwrap();
+        // let A1B2B1A2 = vec_add(&A1B2, &B1A2)?;
+        let A1B2B1A2 = (A1B2 + B1A2).unwrap();
+        // let u2c1: Vec<C::ScalarField> = vec_scalar_mul(&simple_witness.C, &acc_instance.u);
+        let u2c1 = simple_witness.C.clone() * acc_instance.u;
+        // let T = vec_sub(&vec_sub(&A1B2B1A2, &acc_witness.C)?, &u2c1)?;
+        let T = ((A1B2B1A2 - acc_witness.C.clone()).unwrap() - u2c1).unwrap();
 
         // Compute MLE_T
         let n_vars: usize = log2(simple_witness.E.len()) as usize;
@@ -284,7 +275,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
             return Err(Error::NotExpectedLength(T.len(), n_vars));
         }
 
-        let mleT = dense_vec_to_dense_mle(n_vars, &T);
+        let mleT = dense_vec_to_dense_mle(n_vars, &T.get_dense_elems_reference().unwrap());
         let mleT_evaluated = mleT.evaluate(&rE_prime);
 
         // Derive alpha
@@ -299,7 +290,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
             &mleE2_prime,
             &mleT_evaluated,
         )?;
-        let w = Self::fold_witness(alpha, simple_witness, acc_witness, &T)?;
+        let w = Self::fold_witness(alpha, simple_witness, acc_witness, T)?;
 
         let proof = Proof::<C> {
             h_proof,
@@ -433,7 +424,12 @@ pub mod tests {
                     .map(|_| C::ScalarField::rand(rng))
                     .collect();
                 // Witness
-                let witness = Witness::new::<false>(a, b, c, e);
+                let witness = Witness::new::<false>(
+                    Matrix::dense_from_vec(a, n, n).unwrap(),
+                    Matrix::dense_from_vec(b, n, n).unwrap(),
+                    Matrix::dense_from_vec(c, n, n).unwrap(),
+                    Matrix::dense_from_vec(e, n, n).unwrap(),
+                );
                 let instance = witness.commit::<CS, false>(params, rE).unwrap();
                 (witness, instance)
             })

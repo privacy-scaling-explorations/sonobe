@@ -9,10 +9,11 @@ use folding_schemes::folding::nova::nifs::mova_matrix::{RelaxedCommittedRelation
 use folding_schemes::transcript::poseidon::poseidon_canonical_config;
 use folding_schemes::utils::vec::mat_mat_mul_dense;
 use folding_schemes::Curve;
+use matrex::Matrix;
 use rand::RngCore;
 use std::time::{Duration, Instant};
 
-const NUM_OF_PRECONDITION_FOLDS: &[usize] = &[1, 10, 100, 1000];
+const NUM_OF_PRECONDITION_FOLDS: &[usize] = &[1, 10, 20, 40];
 
 fn get_instances<C: Curve, CS: CommitmentScheme<C>>(
     num: usize,
@@ -31,12 +32,17 @@ fn get_instances<C: Curve, CS: CommitmentScheme<C>>(
             // Error matrix initialized to 0s
             let e: Vec<C::ScalarField> = (0..n * n).map(|_| C::ScalarField::from(0)).collect();
             // Random challenge
-            let r_e = (0..2 * log2(n))
+            let rE = (0..2 * log2(n))
                 .map(|_| C::ScalarField::rand(rng))
                 .collect();
             // Witness
-            let witness = Witness::new::<false>(a, b, c, e);
-            let instance = witness.commit::<CS, false>(params, r_e).unwrap();
+            let witness = Witness::new::<false>(
+                Matrix::dense_from_vec(a, n, n).unwrap(),
+                Matrix::dense_from_vec(b, n, n).unwrap(),
+                Matrix::dense_from_vec(c, n, n).unwrap(),
+                Matrix::dense_from_vec(e, n, n).unwrap(),
+            );
+            let instance = witness.commit::<CS, false>(params, rE).unwrap();
             (witness, instance)
         })
         .collect()

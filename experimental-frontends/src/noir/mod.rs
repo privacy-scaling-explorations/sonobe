@@ -20,9 +20,8 @@ use folding_schemes::{frontend::FCircuit, utils::PathOrBin, Error};
 mod bridge;
 
 #[derive(Clone, Debug)]
-pub struct NoirFCircuit<F: PrimeField, const L: usize> {
+pub struct NoirFCircuit<F: PrimeField, const SL: usize, const EIL: usize> {
     pub circuit: Circuit<GenericFieldElement<F>>,
-    pub state_len: usize,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -34,13 +33,12 @@ pub struct ProgramArtifactGeneric<F: PrimeField> {
     pub bytecode: Program<GenericFieldElement<F>>,
 }
 
-impl<F: PrimeField, const L: usize> FCircuit<F> for NoirFCircuit<F, L> {
-    type Params = (PathOrBin, usize);
-    type ExternalInputs = VecF<F, L>;
-    type ExternalInputsVar = VecFpVar<F, L>;
+impl<F: PrimeField, const SL: usize, const EIL: usize> FCircuit<F> for NoirFCircuit<F, SL, EIL> {
+    type Params = PathOrBin;
+    type ExternalInputs = VecF<F, EIL>;
+    type ExternalInputsVar = VecFpVar<F, EIL>;
 
-    fn new(params: Self::Params) -> Result<Self, Error> {
-        let (source, state_len) = params;
+    fn new(source: Self::Params) -> Result<Self, Error> {
         let input_string = match source {
             PathOrBin::Path(path) => {
                 let file_path = path.with_extension("json");
@@ -63,11 +61,11 @@ impl<F: PrimeField, const L: usize> FCircuit<F> for NoirFCircuit<F, L> {
             ));
         }
 
-        Ok(NoirFCircuit { circuit, state_len })
+        Ok(NoirFCircuit { circuit })
     }
 
     fn state_len(&self) -> usize {
-        self.state_len
+        SL
     }
 
     fn generate_step_constraints(
@@ -193,12 +191,11 @@ mod tests {
         let cs = ConstraintSystem::<Fr>::new_ref();
         let cur_path = env::current_dir()?;
         // external inputs length: 2, state length: 2
-        let noirfcircuit = NoirFCircuit::<Fr, 2>::new((
+        let noirfcircuit = NoirFCircuit::<Fr, 2, 2>::new(
             cur_path
                 .join("src/noir/test_folder/test_circuit/target/test_circuit.json")
                 .into(),
-            2,
-        ))?;
+        )?;
         let inputs = vec![Fr::from(2), Fr::from(5)];
         let z_i = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs.clone()))?;
         let external_inputs = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs))?;
@@ -218,12 +215,11 @@ mod tests {
         let cs = ConstraintSystem::<Fr>::new_ref();
         let cur_path = env::current_dir()?;
         // external inputs length: 0, state length: 2
-        let noirfcircuit = NoirFCircuit::<Fr, 0>::new((
+        let noirfcircuit = NoirFCircuit::<Fr, 2, 0>::new(
             cur_path
                 .join("src/noir/test_folder/test_no_external_inputs/target/test_no_external_inputs.json")
-                .into(),
-            2,
-        ))
+                .into()
+)
         ?;
         let inputs = vec![Fr::from(2), Fr::from(5)];
         let z_i = Vec::<FpVar<Fr>>::new_witness(cs.clone(), || Ok(inputs.clone()))?;

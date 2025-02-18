@@ -9,7 +9,7 @@ resolver = "2"
 
 
 [patch.crates-io]
-ark-r1cs-std = {git = "https://github.com/yelhousni/r1cs-std", branch="perf/sw"}
+ark-r1cs-std = { git = "https://github.com/yelhousni/r1cs-std", rev = "440ca3" } # "perf/sw" branch
 
 [workspace.package]
 edition = "2021"
@@ -17,7 +17,7 @@ license = "MIT"
 repository = "https://github.com/privacy-scaling-explorations/sonobe/"
 
 [workspace.dependencies]
-acvm = { git = "https://github.com/winderica/noir", branch = "arkworks-next", default-features = false }
+acvm = { git = "https://github.com/winderica/noir", rev = "fc9e99", default-features = false } # "arkworks-next" branch
 askama = { version = "0.12.0", default-features = false }
 clap = { version = "4.4" }
 clap-verbosity-flag = { version = "2.1" }
@@ -25,7 +25,7 @@ criterion = { version = "0.5" }
 env_logger = { version = "0.10" }
 getrandom = { version = "0.2" }
 log = { version = "0.4" }
-noname = { git = "https://github.com/dmpierre/noname" }
+noname = { git = "https://github.com/dmpierre/noname", rev = "c34f17" }
 num-bigint = { version = "0.4.3" }
 num-integer = { version = "0.1" }
 pprof = { version = "0.13" }
@@ -40,7 +40,7 @@ thiserror = { version = "1.0" }
 
 # Arkworks family
 ark-bn254 = { version = "^0.5.0", default-features = false }
-ark-circom = { git = "https://github.com/winderica/circom-compat", branch = "arkworks-next", default-features = false }
+ark-circom = { git = "https://github.com/winderica/circom-compat", rev = "9f8d7c", default-features = false } # "arkworks-next" branch
 ark-crypto-primitives = { version = "^0.5.0", default-features = false }
 ark-ec = { version = "^0.5.0", default-features = false }
 ark-ff = { version = "^0.5.0", default-features = false }

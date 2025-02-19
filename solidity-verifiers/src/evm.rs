@@ -71,10 +71,15 @@ pub fn compile_solidity(solidity: impl AsRef<[u8]>, contract_name: &str) -> Vec<
 /// `contract_name` is provided since `solc` may compile multiple contracts or libraries.
 /// hence, we need to find the correct binary.
 fn find_binary(stdout: &str, contract_name: &str) -> Option<Vec<u8>> {
-    let start_contract = stdout.find(contract_name)?;
-    let stdout_contract = &stdout[start_contract..];
-    let start = stdout_contract.find("Binary:")? + 8;
-    Some(hex::decode(&stdout_contract[start..stdout_contract.len() - 1]).unwrap())
+    let intro_str = format!("======= <stdin>:{contract_name} =======\nBinary:\n");
+    let start = stdout.find(&intro_str)?;
+    let end = stdout[start + intro_str.len()..]
+        .find('\n')
+        .map(|pos| pos + start + intro_str.len())
+        .unwrap_or(stdout.len());
+    let binary_section = &stdout[start + intro_str.len()..end].trim();
+
+    Some(hex::decode(&binary_section).unwrap())
 }
 
 /// Evm runner.

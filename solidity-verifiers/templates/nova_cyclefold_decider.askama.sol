@@ -58,7 +58,7 @@ interface OpaqueDecider {
 
     /**
      * @notice  Verifies a Nova+CycleFold proof given all the proof inputs collected in a single array.
-     * @dev     This function should simpy reorganize arguments and pass them to the proper verification function.
+     * @dev     This function should simply reorganize arguments and pass them to the proper verification function.
      */
     function verifyOpaqueNovaProof(uint256[{{ 26 + z_len * 2 }}] calldata proof) external view returns (bool);
 }

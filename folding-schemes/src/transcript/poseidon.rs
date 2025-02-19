@@ -6,11 +6,17 @@ use ark_crypto_primitives::sponge::{
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{boolean::Boolean, fields::fp::FpVar, groups::CurveVar};
-use ark_relations::r1cs::SynthesisError;
+use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 
 use super::{AbsorbNonNative, AbsorbNonNativeGadget, Transcript, TranscriptVar};
 
 impl<F: PrimeField + Absorb> Transcript<F> for PoseidonSponge<F> {
+    fn new_with_pp_hash(config: &Self::Config, pp_hash: F) -> Self {
+        let mut sponge = Self::new(config);
+        sponge.absorb(&pp_hash);
+        sponge
+    }
+
     // Compatible with the in-circuit `TranscriptVar::absorb_point`
     fn absorb_point<C: CurveGroup<BaseField = F>>(&mut self, p: &C) {
         let (x, y) = p.into_affine().xy().unwrap_or_default();
@@ -38,6 +44,15 @@ impl<F: PrimeField + Absorb> Transcript<F> for PoseidonSponge<F> {
 }
 
 impl<F: PrimeField> TranscriptVar<F, PoseidonSponge<F>> for PoseidonSpongeVar<F> {
+    fn new_with_pp_hash(
+        config: &Self::Parameters,
+        pp_hash: &FpVar<F>,
+    ) -> Result<Self, SynthesisError> {
+        let mut sponge = Self::new(ConstraintSystemRef::None, config);
+        sponge.absorb(&pp_hash)?;
+        Ok(sponge)
+    }
+
     fn absorb_point<C: CurveGroup<BaseField = F>, GC: CurveVar<C, F>>(
         &mut self,
         v: &GC,

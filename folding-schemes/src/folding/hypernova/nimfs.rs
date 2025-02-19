@@ -393,18 +393,16 @@ impl<C: Curve, T: Transcript<C::ScalarField>> NIMFS<C, T> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
+    use ark_pallas::{Fr, Projective};
+    use ark_std::{test_rng, UniformRand};
+
     use crate::arith::{
         ccs::tests::{get_test_ccs, get_test_z},
         ArithRelation,
     };
-    use crate::transcript::poseidon::poseidon_canonical_config;
-    use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
-    use ark_crypto_primitives::sponge::CryptographicSponge;
-    use ark_std::test_rng;
-    use ark_std::UniformRand;
-
     use crate::commitment::{pedersen::Pedersen, CommitmentScheme};
-    use ark_pallas::{Fr, Projective};
+    use crate::transcript::poseidon::poseidon_canonical_config;
 
     #[test]
     fn test_fold() -> Result<(), Error> {
@@ -478,8 +476,10 @@ pub mod tests {
 
         // Prover's transcript
         let poseidon_config = poseidon_canonical_config::<Fr>();
-        let mut transcript_p: PoseidonSponge<Fr> = PoseidonSponge::<Fr>::new(&poseidon_config);
-        transcript_p.absorb(&Fr::from_le_bytes_mod_order(b"init init"));
+        let pp_hash = Fr::from_le_bytes_mod_order(b"init init");
+        let mut transcript_p = PoseidonSponge::new_with_pp_hash(&poseidon_config, pp_hash);
+        // Verifier's transcript
+        let mut transcript_v = transcript_p.clone();
 
         // Run the prover side of the multifolding
         let (proof, folded_lcccs, folded_witness, _) =
@@ -491,10 +491,6 @@ pub mod tests {
                 &[w1],
                 &[w2],
             )?;
-
-        // Verifier's transcript
-        let mut transcript_v: PoseidonSponge<Fr> = PoseidonSponge::<Fr>::new(&poseidon_config);
-        transcript_v.absorb(&Fr::from_le_bytes_mod_order(b"init init"));
 
         // Run the verifier side of the multifolding
         let folded_lcccs_v = NIMFS::<Projective, PoseidonSponge<Fr>>::verify(
@@ -526,12 +522,10 @@ pub mod tests {
             ccs.to_lcccs::<_, _, Pedersen<Projective>, false>(&mut rng, &pedersen_params, &z_1)?;
 
         let poseidon_config = poseidon_canonical_config::<Fr>();
-
-        let mut transcript_p: PoseidonSponge<Fr> = PoseidonSponge::<Fr>::new(&poseidon_config);
-        transcript_p.absorb(&Fr::from_le_bytes_mod_order(b"init init"));
-
-        let mut transcript_v: PoseidonSponge<Fr> = PoseidonSponge::<Fr>::new(&poseidon_config);
-        transcript_v.absorb(&Fr::from_le_bytes_mod_order(b"init init"));
+        let pp_hash = Fr::from_le_bytes_mod_order(b"init init");
+        let mut transcript_p = PoseidonSponge::new_with_pp_hash(&poseidon_config, pp_hash);
+        // Verifier's transcript
+        let mut transcript_v = transcript_p.clone();
 
         let n: usize = 10;
         for i in 3..n {
@@ -616,8 +610,10 @@ pub mod tests {
 
         // Prover's transcript
         let poseidon_config = poseidon_canonical_config::<Fr>();
-        let mut transcript_p: PoseidonSponge<Fr> = PoseidonSponge::<Fr>::new(&poseidon_config);
-        transcript_p.absorb(&Fr::from_le_bytes_mod_order(b"init init"));
+        let pp_hash = Fr::from_le_bytes_mod_order(b"init init");
+        let mut transcript_p = PoseidonSponge::new_with_pp_hash(&poseidon_config, pp_hash);
+        // Verifier's transcript
+        let mut transcript_v = transcript_p.clone();
 
         // Run the prover side of the multifolding
         let (proof, folded_lcccs, folded_witness, _) =
@@ -629,10 +625,6 @@ pub mod tests {
                 &w_lcccs,
                 &w_cccs,
             )?;
-
-        // Verifier's transcript
-        let mut transcript_v: PoseidonSponge<Fr> = PoseidonSponge::<Fr>::new(&poseidon_config);
-        transcript_v.absorb(&Fr::from_le_bytes_mod_order(b"init init"));
 
         // Run the verifier side of the multifolding
         let folded_lcccs_v = NIMFS::<Projective, PoseidonSponge<Fr>>::verify(
@@ -660,13 +652,11 @@ pub mod tests {
         let (pedersen_params, _) = Pedersen::<Projective>::setup(&mut rng, ccs.n_witnesses())?;
 
         let poseidon_config = poseidon_canonical_config::<Fr>();
+        let pp_hash = Fr::from_le_bytes_mod_order(b"init init");
         // Prover's transcript
-        let mut transcript_p: PoseidonSponge<Fr> = PoseidonSponge::<Fr>::new(&poseidon_config);
-        transcript_p.absorb(&Fr::from_le_bytes_mod_order(b"init init"));
-
+        let mut transcript_p = PoseidonSponge::new_with_pp_hash(&poseidon_config, pp_hash);
         // Verifier's transcript
-        let mut transcript_v: PoseidonSponge<Fr> = PoseidonSponge::<Fr>::new(&poseidon_config);
-        transcript_v.absorb(&Fr::from_le_bytes_mod_order(b"init init"));
+        let mut transcript_v = transcript_p.clone();
 
         let n_steps = 3;
 

@@ -178,8 +178,8 @@ contract NovaDecider is Groth16Verifier, KZG10Verifier {
         uint256[{{ z_len }}] calldata initial_state,
         uint256[{{ z_len }}] calldata final_state,
         uint256[25] calldata proof
-    ) external view override returns (bool) {
-        uint256[] memory i_z0_zi = new uint256[](1 + 2 * {{ z_len }});
+    ) public view returns (bool) {
+        uint256[1 + 2 * {{ z_len }}] memory i_z0_zi;
         i_z0_zi[0] = steps;
         for (uint256 i = 0; i < {{ z_len }}; i++) {
             i_z0_zi[i + 1] = initial_state[i];
@@ -195,7 +195,7 @@ contract NovaDecider is Groth16Verifier, KZG10Verifier {
         uint256[4] memory challenge_W_challenge_E_kzg_evals = [proof[17], proof[18], proof[19], proof[20]];
         uint256[2][2] memory kzg_proof = [[proof[21], proof[22]], [proof[23], proof[24]]];
 
-        return verifyNovaProof(
+        return this.verifyNovaProof(
             i_z0_zi,
             U_i_cmW_U_i_cmE,
             u_i_cmW,
@@ -208,17 +208,23 @@ contract NovaDecider is Groth16Verifier, KZG10Verifier {
         );
     }
 
-    function verifyOpaqueNovaProof(uint256[{{ 26 + z_len * 2 }}] calldata proof) external view override returns (bool) {
+    /**
+     * @notice  Verifies a Nova+CycleFold proof given all proof inputs concatenated.
+     * @dev     Simply reorganization of arguments and call to the `verifyNovaProof` function.
+     */
+    function verifyOpaqueNovaProof(uint256[{{ 26 + z_len * 2 }}] calldata proof) public view returns (bool) {
+        uint256[{{ z_len }}] memory z0;
+        uint256[{{ z_len }}] memory zi;
+        for (uint256 i = 0; i < {{ z_len }}; i++) {
+            z0[i] = proof[i + 1];
+            zi[i] = proof[i + 1 + {{ z_len }}];
+        }
+
         uint256[25] memory extracted_proof;
         for (uint256 i = 0; i < 25; i++) {
             extracted_proof[i] = proof[{{ 1 + 2 * z_len }} + i];
         }
 
-        return verifyOpaqueNovaProofWithInputs(
-            proof[0],
-            proof[1:{{ 1 + z_len }}],
-            proof[{{ 1 + z_len }}:{{ 1 + 2 * z_len }}],
-            extracted_proof
-        );
+        return this.verifyOpaqueNovaProofWithInputs(proof[0], z0, zi, extracted_proof);
     }
 }

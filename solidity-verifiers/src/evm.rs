@@ -77,9 +77,9 @@ fn find_binary(stdout: &str, contract_name: &str) -> Option<Vec<u8>> {
         .find('\n')
         .map(|pos| pos + start + intro_str.len())
         .unwrap_or(stdout.len());
-    let binary_section = &stdout[start + intro_str.len()..end].trim();
+    let binary_section = stdout[start + intro_str.len()..end].trim();
 
-    Some(hex::decode(&binary_section).unwrap())
+    Some(hex::decode(binary_section).unwrap())
 }
 
 /// Evm runner.

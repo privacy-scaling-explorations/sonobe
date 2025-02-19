@@ -1,6 +1,8 @@
 use ark_crypto_primitives::sponge::{
     constraints::CryptographicSpongeVar,
-    poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig, PoseidonSponge},
+    poseidon::{
+        constraints::PoseidonSpongeVar, find_poseidon_ark_and_mds, PoseidonConfig, PoseidonSponge,
+    },
     Absorb, CryptographicSponge,
 };
 use ark_ec::{AffineRepr, CurveGroup};
@@ -79,6 +81,25 @@ impl<F: PrimeField> TranscriptVar<F, PoseidonSponge<F>> for PoseidonSpongeVar<F>
     }
 }
 
+/// This Poseidon configuration generator produces a Poseidon configuration with custom parameters
+pub fn poseidon_custom_config<F: PrimeField>(
+    full_rounds: usize,
+    partial_rounds: usize,
+    alpha: u64,
+    rate: usize,
+    capacity: usize,
+) -> PoseidonConfig<F> {
+    let (ark, mds) = find_poseidon_ark_and_mds::<F>(
+        F::MODULUS_BIT_SIZE as u64,
+        rate,
+        full_rounds as u64,
+        partial_rounds as u64,
+        0,
+    );
+
+    PoseidonConfig::new(full_rounds, partial_rounds, alpha, mds, ark, rate, capacity)
+}
+
 /// This Poseidon configuration generator agrees with Circom's Poseidon(4) in the case of BN254's scalar field
 pub fn poseidon_canonical_config<F: PrimeField>() -> PoseidonConfig<F> {
     // 120 bit security target as in
@@ -90,23 +111,7 @@ pub fn poseidon_canonical_config<F: PrimeField>() -> PoseidonConfig<F> {
     let alpha = 5;
     let rate = 4;
 
-    let (ark, mds) = ark_crypto_primitives::sponge::poseidon::find_poseidon_ark_and_mds::<F>(
-        F::MODULUS_BIT_SIZE as u64,
-        rate,
-        full_rounds,
-        partial_rounds,
-        0,
-    );
-
-    PoseidonConfig::new(
-        full_rounds as usize,
-        partial_rounds as usize,
-        alpha,
-        mds,
-        ark,
-        rate,
-        1,
-    )
+    poseidon_custom_config(full_rounds, partial_rounds, alpha, rate, 1)
 }
 
 #[cfg(test)]

@@ -12,8 +12,8 @@ use super::{
     nifs::{nova::NIFS, NIFSTrait},
     CommittedInstance, Nova, Witness,
 };
+use crate::commitment::CommitmentScheme;
 use crate::folding::{circuits::CF1, traits::WitnessOps};
-use crate::frontend::FCircuit;
 use crate::{
     arith::r1cs::{circuits::R1CSMatricesVar, R1CS},
     folding::circuits::decider::{
@@ -21,7 +21,7 @@ use crate::{
         EvalGadget, KZGChallengesGadget,
     },
 };
-use crate::{commitment::CommitmentScheme, transcript::poseidon::poseidon_canonical_config};
+use crate::{frontend::FCircuit, transcript::poseidon::poseidon_custom_config};
 use crate::{Curve, Error};
 
 /// Circuit that implements part of the in-circuit checks needed for the offchain verification over
@@ -119,7 +119,13 @@ impl<
     fn try_from(nova: Nova<C1, C2, FC, CS1, CS2, H>) -> Result<Self, Error> {
         // compute the Commitment Scheme challenges of the CycleFold instance commitments, used as
         // inputs in the circuit
-        let poseidon_config = poseidon_canonical_config::<C2::ScalarField>();
+        let poseidon_config = poseidon_custom_config(
+            nova.poseidon_config.full_rounds,
+            nova.poseidon_config.partial_rounds,
+            nova.poseidon_config.alpha,
+            nova.poseidon_config.rate,
+            nova.poseidon_config.capacity,
+        );
         let mut transcript = PoseidonSponge::<C2::ScalarField>::new(&poseidon_config);
         let pp_hash_Fq =
             C2::ScalarField::from_le_bytes_mod_order(&nova.pp_hash.into_bigint().to_bytes_le());

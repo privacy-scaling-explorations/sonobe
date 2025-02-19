@@ -121,7 +121,7 @@ mod tests {
             .render()
             .unwrap();
 
-        let kzg_verifier_bytecode = compile_solidity(res, "KZG10");
+        let kzg_verifier_bytecode = compile_solidity(res, "KZG10Verifier");
         let mut evm = Evm::default();
         _ = evm.create(kzg_verifier_bytecode);
     }
@@ -147,7 +147,7 @@ mod tests {
             .render()
             .unwrap();
 
-        let kzg_verifier_bytecode = compile_solidity(template, "KZG10");
+        let kzg_verifier_bytecode = compile_solidity(template, "KZG10Verifier");
         let mut evm = Evm::default();
         let verifier_address = evm.create(kzg_verifier_bytecode);
 

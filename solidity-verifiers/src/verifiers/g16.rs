@@ -114,7 +114,7 @@ mod tests {
         let proof = Groth16::<Bn254>::prove(&g16_pk, circuit, &mut rng).unwrap();
         let res = Groth16Verifier::from(g16_vk).render().unwrap();
         save_solidity("groth16_verifier.sol", &res);
-        let groth16_verifier_bytecode = compile_solidity(&res, "Verifier");
+        let groth16_verifier_bytecode = compile_solidity(&res, "Groth16Verifier");
         let mut evm = Evm::default();
         let verifier_address = evm.create(groth16_verifier_bytecode);
         let (a_x, a_y) = proof.a.xy().unwrap();

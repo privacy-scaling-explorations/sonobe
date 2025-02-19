@@ -117,8 +117,11 @@ impl<
     type Error = Error;
 
     fn try_from(nova: Nova<C1, C2, FC, CS1, CS2, H>) -> Result<Self, Error> {
-        // compute the Commitment Scheme challenges of the CycleFold instance commitments, used as
-        // inputs in the circuit
+        // Create a poseidon config on `C2`'s scalar field for `circuit2`, with
+        // the same parameters (`full_rounds` etc.) as `circuit1` to ensure the
+        // security level is the same.
+        // Note: `ark` and `mds` will be different because they depend on the
+        // field, but they will not affect the security level.
         let poseidon_config = poseidon_custom_config(
             nova.poseidon_config.full_rounds,
             nova.poseidon_config.partial_rounds,

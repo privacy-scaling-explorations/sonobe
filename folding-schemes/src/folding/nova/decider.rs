@@ -149,6 +149,11 @@ where
         let pp_hash = nova_vp.pp_hash()?;
 
         let poseidon_config1 = nova_vp.poseidon_config;
+        // Create a poseidon config on `C2`'s scalar field for `circuit2`, with
+        // the same parameters (`full_rounds` etc.) as `circuit1` to ensure the
+        // security level is the same.
+        // Note: `ark` and `mds` will be different because they depend on the
+        // field, but they will not affect the security level.
         let poseidon_config2 = poseidon_custom_config(
             poseidon_config1.full_rounds,
             poseidon_config1.partial_rounds,

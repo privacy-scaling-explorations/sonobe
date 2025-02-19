@@ -64,16 +64,24 @@ fn main() -> Result<(), Error> {
         "./experimental-frontends/src/circom/test_folder/with_external_inputs_js/with_external_inputs.wasm",
     );
 
-    let f_circuit_params = (r1cs_path.into(), wasm_path.into(), 1); // state len = 1
-    const EXT_INP_LEN: usize = 2; // external inputs len = 2
-    let f_circuit = CircomFCircuit::<Fr, EXT_INP_LEN>::new(f_circuit_params)?;
+    let f_circuit_params = (r1cs_path.into(), wasm_path.into());
 
-    pub type N =
-        Nova<G1, G2, CircomFCircuit<Fr, EXT_INP_LEN>, KZG<'static, Bn254>, Pedersen<G2>, false>;
+    const STATE_LEN: usize = 1; // state len = 1, external
+    const EXT_INP_LEN: usize = 2; // external inputs len = 2
+    let f_circuit = CircomFCircuit::<Fr, STATE_LEN, EXT_INP_LEN>::new(f_circuit_params)?;
+
+    pub type N = Nova<
+        G1,
+        G2,
+        CircomFCircuit<Fr, STATE_LEN, EXT_INP_LEN>,
+        KZG<'static, Bn254>,
+        Pedersen<G2>,
+        false,
+    >;
     pub type D = DeciderEth<
         G1,
         G2,
-        CircomFCircuit<Fr, EXT_INP_LEN>,
+        CircomFCircuit<Fr, STATE_LEN, EXT_INP_LEN>,
         KZG<'static, Bn254>,
         Pedersen<G2>,
         Groth16<Bn254>,

@@ -43,17 +43,18 @@ fn main() -> Result<(), Error> {
 
     // initialize the noir fcircuit
     const EXT_INP_LEN: usize = 0;
-    let f_circuit = NoirFCircuit::<Fr, EXT_INP_LEN>::new((
+    const STATE_LEN: usize = 1;
+    let f_circuit = NoirFCircuit::<Fr, STATE_LEN, EXT_INP_LEN>::new(
         Path::new("./experimental-frontends/src/noir/test_folder/test_mimc/target/test_mimc.json")
             .into(),
-        1,
-    ))?;
+    )?;
 
-    pub type N = Nova<G1, G2, NoirFCircuit<Fr, EXT_INP_LEN>, KZG<'static, Bn254>, Pedersen<G2>>;
+    pub type N =
+        Nova<G1, G2, NoirFCircuit<Fr, STATE_LEN, EXT_INP_LEN>, KZG<'static, Bn254>, Pedersen<G2>>;
     pub type D = DeciderEth<
         G1,
         G2,
-        NoirFCircuit<Fr, EXT_INP_LEN>,
+        NoirFCircuit<Fr, STATE_LEN, EXT_INP_LEN>,
         KZG<'static, Bn254>,
         Pedersen<G2>,
         Groth16<Bn254>,

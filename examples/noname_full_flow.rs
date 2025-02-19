@@ -58,21 +58,23 @@ fn main() -> Result<(), Error> {
     ];
 
     // initialize the noname circuit
-    let f_circuit_params = (NONAME_CIRCUIT_EXTERNAL_INPUTS.to_owned(), 2); // state len = 2
+    let f_circuit_params = NONAME_CIRCUIT_EXTERNAL_INPUTS.to_owned();
+    const STATE_LEN: usize = 2;
     const EXT_INP_LEN: usize = 2;
-    let f_circuit = NonameFCircuit::<Fr, R1csBn254Field, EXT_INP_LEN>::new(f_circuit_params)?;
+    let f_circuit =
+        NonameFCircuit::<Fr, R1csBn254Field, STATE_LEN, EXT_INP_LEN>::new(f_circuit_params)?;
 
     pub type N = Nova<
         G1,
         G2,
-        NonameFCircuit<Fr, R1csBn254Field, EXT_INP_LEN>,
+        NonameFCircuit<Fr, R1csBn254Field, STATE_LEN, EXT_INP_LEN>,
         KZG<'static, Bn254>,
         Pedersen<G2>,
     >;
     pub type D = DeciderEth<
         G1,
         G2,
-        NonameFCircuit<Fr, R1csBn254Field, EXT_INP_LEN>,
+        NonameFCircuit<Fr, R1csBn254Field, STATE_LEN, EXT_INP_LEN>,
         KZG<'static, Bn254>,
         Pedersen<G2>,
         Groth16<Bn254>,

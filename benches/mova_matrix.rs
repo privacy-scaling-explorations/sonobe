@@ -39,21 +39,18 @@ fn get_instances<C: Curve, CS: CommitmentScheme<C>>(
             // A matrix
             let a = random_sparse_matrix::<C>(n, rng);
             // B matrix
-            let b =
-                random_sparse_matrix::<C>(n, rng);
+            let b = random_sparse_matrix::<C>(n, rng);
             // C = A * B matrix
             let c = (a.clone() * b.clone()).unwrap();
             // Error matrix initialized to 0s
             let mut e = Matrix::zero(n, n);
-            e.to_dense();
+            // e.to_dense();
             // Random challenge
             let rE = (0..2 * log2(n))
                 .map(|_| C::ScalarField::rand(rng))
                 .collect();
             // Witness
-            let witness = Witness::new::<false>(
-                a,b,c,e
-            );
+            let witness = Witness::new::<false>(a, b, c, e);
             let instance = witness.commit::<CS, false>(params, rE).unwrap();
             (witness, instance)
         })

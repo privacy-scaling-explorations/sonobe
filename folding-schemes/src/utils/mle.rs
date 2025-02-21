@@ -1,7 +1,14 @@
+use crate::utils::mle::MultilinearExtension::{DenseMLE, SparseMLE};
+use crate::utils::mle::SparseOrDensePolynomial::{DensePoly, SparsePoly};
 /// Some basic MLE utilities
-use ark_ff::PrimeField;
-use ark_poly::{DenseMultilinearExtension, SparseMultilinearExtension};
+use ark_ff::{Field, PrimeField};
+use ark_poly::univariate::{DenseOrSparsePolynomial, DensePolynomial, SparsePolynomial};
+use ark_poly::{
+    DenseMultilinearExtension, DenseUVPolynomial, Polynomial, SparseMultilinearExtension,
+};
 use ark_std::log2;
+use matrex::Matrix;
+use matrex::Matrix::{Dense, Sparse};
 
 use super::vec::SparseMatrix;
 
@@ -99,6 +106,130 @@ pub fn dense_vec_to_mle<F: PrimeField>(n_vars: usize, v: &[F]) -> SparseMultilin
         .collect::<Vec<(usize, F)>>();
     SparseMultilinearExtension::<F>::from_evaluations(n_vars, &v_sparse)
 }
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum SparseOrDensePolynomial<F: Field> {
+    SparsePoly(SparsePolynomial<F>),
+    DensePoly(DensePolynomial<F>),
+}
+
+impl<F: Field> SparseOrDensePolynomial<F> {
+    pub fn from_dense(dense: DensePolynomial<F>) -> Self {
+        DensePoly(dense)
+    }
+
+    pub fn from_sparse(sparse: SparsePolynomial<F>) -> Self {
+        SparsePoly(sparse)
+    }
+
+    pub fn coeffs(&self) -> Vec<F> {
+        match &self {
+            SparsePoly(poly) => poly
+                .to_vec() // returns Vec<(usize, F)>
+                .into_iter()
+                .map(|(_, coeff)| coeff) // extract just the F
+                .collect(),
+            DensePoly(poly) => Vec::from(poly.coeffs()),
+        }
+    }
+    pub fn evaluate(&self, point: &F) -> F {
+        match &self {
+            SparsePoly(poly) => poly.evaluate(&point),
+            DensePoly(poly) => poly.evaluate(&point),
+        }
+    }
+}
+#[derive(Debug)]
+pub enum MultilinearExtension<F: Field> {
+    DenseMLE(DenseMultilinearExtension<F>),
+    SparseMLE(SparseMultilinearExtension<F>),
+}
+
+impl<F: Field> MultilinearExtension<F> {
+    pub fn from_evaluations(matrix: &Matrix<F>, n_vars: usize) -> MultilinearExtension<F> {
+        match &matrix {
+            Dense(matrix) => {
+                let v_padded: Vec<F> = [
+                    matrix.elems.to_owned(),
+                    std::iter::repeat(F::zero())
+                        .take((1 << n_vars) - matrix.len())
+                        .collect(),
+                ]
+                .concat();
+                let mle = DenseMultilinearExtension::<F>::from_evaluations_vec(n_vars, v_padded);
+                DenseMLE(mle)
+            }
+            Sparse(matrix) => SparseMLE(SparseMultilinearExtension::<F>::from_evaluations(
+                n_vars,
+                &matrix.elems.to_owned(),
+            )),
+        }
+    }
+
+    pub fn evaluate(&self, points: &Vec<F>) -> F {
+        match &self {
+            DenseMLE(mle) => mle.evaluate(&points),
+            SparseMLE(mle) => mle.evaluate(&points),
+        }
+    }
+
+    pub fn num_vars(&self) -> usize {
+        match &self {
+            DenseMLE(mle) => mle.num_vars,
+            SparseMLE(mle) => mle.num_vars,
+        }
+    }
+
+    pub fn initialise_poly(&self) -> Vec<DenseOrSparsePolynomial<F>> {
+        match &self {
+            DenseMLE(mle) => mle
+                .evaluations
+                .iter()
+                .map(|&x| {
+                    DenseOrSparsePolynomial::DPolynomial(std::borrow::Cow::Owned(
+                        DensePolynomial::from_coefficients_slice(&[x]),
+                    ))
+                })
+                .collect(),
+
+            SparseMLE(mle) => mle
+                .evaluations
+                .iter()
+                // .map(|(&i, &v) | SparsePolynomial::from_coefficients_slice(&[(i, v)]))
+                .map(|(&i, &v)| {
+                    DenseOrSparsePolynomial::SPolynomial(std::borrow::Cow::Owned(
+                        SparsePolynomial::from_coefficients_slice(&[(i, v)]),
+                    ))
+                })
+                .collect(),
+        }
+    }
+}
+
+// pub fn evaluate_multilinear_extension<F: PrimeField>(
+//     matrix: &Matrix<F>,
+//     n_vars: usize,
+//     points: &Vec<F>,
+// ) -> F {
+//     match &matrix {
+//         Sparse(matrix) => {
+//             let mle =
+//                 SparseMultilinearExtension::<F>::from_evaluations(n_vars, &matrix.elems.to_owned());
+//             mle.evaluate(&points)
+//         }
+//         Dense(matrix) => {
+//             let v_padded: Vec<F> = [
+//                 matrix.elems.to_owned(),
+//                 std::iter::repeat(F::zero())
+//                     .take((1 << n_vars) - matrix.len())
+//                     .collect(),
+//             ]
+//             .concat();
+//             let mle = DenseMultilinearExtension::<F>::from_evaluations_vec(n_vars, v_padded);
+//             mle.evaluate(&points)
+//         }
+//     }
+// }
 
 #[cfg(test)]
 mod tests {

@@ -1,15 +1,16 @@
 use crate::folding::nova::nifs::mova::{CommittedInstance, Witness};
 use crate::folding::nova::nifs::mova_matrix::{RelaxedCommittedRelation, Witness as MatrixWitness};
 use crate::transcript::Transcript;
-use crate::utils::mle::dense_vec_to_dense_mle;
+use crate::utils::mle::{dense_vec_to_dense_mle, MultilinearExtension, SparseOrDensePolynomial};
 use crate::{Curve, Error};
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ff::{One, PrimeField};
-use ark_poly::univariate::DensePolynomial;
+use ark_poly::univariate::{DensePolynomial, SparsePolynomial};
 use ark_poly::{DenseMultilinearExtension, DenseUVPolynomial, Polynomial};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{log2, Zero};
 use std::fmt::Debug;
+use std::ops::{AddAssign, SubAssign};
 
 /// Implements the Points vs Line as described in
 /// [Mova](https://eprint.iacr.org/2024/1220.pdf) and Section 4.5.2 from Thaler’s book
@@ -31,9 +32,9 @@ pub struct PointVsLineEvaluationClaimMatrix<C: Curve> {
     pub rE_prime: Vec<C::ScalarField>,
 }
 /// Proof from step 1 protocol 6
-#[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct PointVsLineProofMatrix<C: Curve> {
-    pub h2: DensePolynomial<C::ScalarField>,
+    pub h2: SparseOrDensePolynomial<C::ScalarField>,
 }
 
 pub trait PointVsLine<C: Curve, T: Transcript<C::ScalarField>> {
@@ -191,22 +192,26 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> for PointVsLineM
         transcript: &mut T,
         _ci1: Option<&Self::CommittedInstance>,
         ci2: &Self::CommittedInstance,
-        w1: &Self::Witness,
+        _w1: &Self::Witness,
         w2: &Self::Witness,
     ) -> Result<(Self::PointVsLineProof, Self::PointVsLineEvaluationClaim), Error> {
         // Derive randomness
         let r1_scalar = C::ScalarField::from_le_bytes_mod_order(b"r1");
         transcript.absorb(&r1_scalar);
-        let r1 = transcript.get_challenges(ci2.rE.len());
+        let r1: Vec<C::ScalarField> = transcript.get_challenges(ci2.rE.len());
 
-        let n_vars: usize = log2(w1.E.len()) as usize;
-        let mleE2 = dense_vec_to_dense_mle(n_vars, &w2.E.get_dense_elems_reference().unwrap());
+        let n_vars: usize = log2(w2.E.len()) as usize;
+        // println!("{:?}", w2.E);
+        let mleE2 = MultilinearExtension::from_evaluations(&w2.E, n_vars);
+        // println!("{:?}", mleE2);
+        // println!("{:?}", ci2.mleE);
+
 
         // We have l(0) = r1, l(1) = r2 so we know that l(x) = r1 + x(r2-r1) that's why we need r2-r1
         let r2_sub_r1: Vec<<C>::ScalarField> =
             r1.iter().zip(&ci2.rE).map(|(&r1, r2)| *r2 - r1).collect();
 
-        let h2 = compute_h(&mleE2, &r1, &r2_sub_r1)?;
+        let h2 = compute_h2(&mleE2, &r1, &r2_sub_r1)?;
 
         transcript.absorb(&h2.coeffs());
 
@@ -280,6 +285,7 @@ fn compute_h<F: PrimeField>(
         .map(|&x| DensePolynomial::from_coefficients_slice(&[x]))
         .collect();
 
+
     for (i, (&r1_i, &r2_sub_r1_i)) in r1.iter().zip(r2_sub_r1.iter()).enumerate().take(n_vars) {
         // Create a linear polynomial r(X) = r1_i + (r2_sub_r1_i) * X (basically l)
         let r = DensePolynomial::from_coefficients_slice(&[r1_i, r2_sub_r1_i]);
@@ -294,6 +300,236 @@ fn compute_h<F: PrimeField>(
 
     // After the loop, we should be left with a single polynomial, so return it.
     Ok(poly.swap_remove(0))
+}
+
+// fn compute_h_2<'a, F: PrimeField>(
+//     mle: &MultilinearExtension<F>,
+//     r1: &[F],
+//     r2_sub_r1: &[F],
+// ) -> Result<DenseOrSparsePolynomial<'a, F>, Error> {
+//     let n_vars: usize = mle.num_vars();
+//     if r1.len() != r2_sub_r1.len() || r1.len() != n_vars {
+//         return Err(Error::NotEqual);
+//     }
+//
+//     let mut poly1: DenseOrSparsePolynomial<F>;
+//     for (i, (&r1_i, &r2_sub_r1_i)) in r1.iter().zip(r2_sub_r1.iter()).enumerate().take(n_vars) {
+//         let half_len = 1 << (n_vars - i - 1);
+//         match &mle {
+//             MultilinearExtension::DenseMLE(mle) => {
+//                 let mut poly: Vec<DensePolynomial<F>> = mle
+//                     .evaluations
+//                     .iter()
+//                     .map(|&x| DensePolynomial::from_coefficients_slice(&[x]))
+//                     .collect();
+//                 let r = DensePolynomial::from_coefficients_slice(&[r1_i, r2_sub_r1_i]);
+//
+//                 for b in 0..half_len {
+//                     let left = &poly[b << 1];
+//                     let right = &poly[(b << 1) + 1];
+//                     poly[b] = left + &(&r * &(right - left));
+//                 }
+//                 poly1 = DenseOrSparsePolynomial::from(poly.swap_remove(0));
+//             }
+//             MultilinearExtension::SparseMLE(mle) => {
+//                 let mut poly: Vec<SparsePolynomial<F>> = mle
+//                     .evaluations
+//                     .iter()
+//                     // .map(|(&i, &v) | SparsePolynomial::from_coefficients_slice(&[(i, v)]))
+//                     .map(|(&i, &v)| SparsePolynomial::from_coefficients_slice(&[(i, v)]))
+//                     .collect();
+//                 let r = SparsePolynomial::from_coefficients_slice(&[(0, r1_i), (1, r2_sub_r1_i)]);
+//
+//                 for b in 0..half_len {
+//                     let left_index = b << 1;
+//                     let right_index = left_index + 1;
+//
+//                     // First, split the slice at `right_index`:
+//                     let (head_slice, tail_slice) = poly.split_at_mut(right_index);
+//
+//                     // `head_slice` covers indices [0 .. right_index),
+//                     // `tail_slice` covers indices [right_index .. poly.len()].
+//
+//                     // So `head_slice[left_index]` is the "left" polynomial
+//                     // (immutable reference is safe since `head_slice` is borrowed immutably).
+//                     let left = &head_slice[left_index];
+//
+//                     // `tail_slice[0]` is the "right" polynomial at index `right_index`.
+//                     let right = &mut tail_slice[0];
+//
+//                     // Now you can safely do in-place modifications:
+//                     right.sub_assign(left);
+//                     poly[b] = left + &(&r.mul(right));
+//                 }
+//             }
+//         }
+//     }
+//
+//     // After the loop, we should be left with a single polynomial, so return it.
+//     Ok(poly1)
+// }
+
+pub fn compute_h2<F: PrimeField>(
+    mle: &MultilinearExtension<F>,
+    r1: &[F],
+    r2_sub_r1: &[F],
+) -> Result<SparseOrDensePolynomial<F>, Error> {
+    let n_vars = mle.num_vars();
+    // println!("n_vars {}", n_vars);
+
+    // Perhaps we should check that
+    if r1.len() != r2_sub_r1.len() || r1.len() != n_vars {
+        return Err(Error::NotEqual);
+    }
+
+    match mle {
+        //------------------------------------------------------------------
+        // Dense MLE case
+        //------------------------------------------------------------------
+        MultilinearExtension::DenseMLE(mle_dense) => {
+            // println!("eval {}", mle_dense.evaluations.len());
+
+            // Initialize poly as one constant polynomial per evaluation.
+            let mut poly: Vec<DensePolynomial<F>> = mle_dense
+                .evaluations
+                .iter()
+                .map(|&eval| DensePolynomial::from_coefficients_slice(&[eval]))
+                .collect();
+            // println!("{:?}", poly);
+            println!("Dense Poly: {:?}", poly);
+            println!("mle_dense: {:?}", mle_dense);
+
+
+
+
+
+            // For each variable i, fold pairs of polynomials using
+            // p_left + r_i * (p_right - p_left).
+            for (i, (&r1_i, &r2_sub_r1_i)) in r1.iter().zip(r2_sub_r1.iter()).enumerate() {
+                let half_len = 1 << (n_vars - i - 1);
+                // println!("half_len {}", half_len);
+                // println!("i {}", i);
+
+                // The polynomial representing r(x) = r1_i + (r2_i - r1_i)*x
+                // In the multilinear folding, we treat x as {0,1} for the i-th variable,
+                // but effectively we just need these two coefficients:
+                //   coeffs: [r1_i, r2_sub_r1_i]
+                let r_poly = DensePolynomial::from_coefficients_slice(&[r1_i, r2_sub_r1_i]);
+
+                for b in 0..half_len {
+                    let left = &poly[2 * b];
+                    let right = &poly[2 * b + 1];
+
+                    // right - left
+                    let diff = right - left;
+
+                    // r_poly * diff
+                    let scaled_diff = &r_poly * &diff;
+
+                    // new[b] = left + scaled_diff
+                    // store in poly[b]
+                    poly[b] = left + &scaled_diff;
+                }
+
+                // Truncate to half the length, since we've folded pairs into single polynomials.
+                poly.truncate(half_len);
+            }
+
+            // By now, poly.len() == 1
+            // Return that single polynomial as DenseOrSparsePolynomial
+            // println!("{:?}", poly);
+            println!("Dense Poly: {:?}", poly);
+            Ok(SparseOrDensePolynomial::from_dense(poly.remove(0)))
+        }
+
+        //------------------------------------------------------------------
+        // Sparse MLE case
+        //------------------------------------------------------------------
+        MultilinearExtension::SparseMLE(mle_sparse) => {
+            // println!("eval {}", mle_sparse.evaluations.len());
+            let num_evals = mle_sparse.evaluations.len();
+
+            let mut poly: Vec<SparsePolynomial<F>> = mle_sparse
+                .evaluations
+                .iter()
+                .map(|(&i, &v)| SparsePolynomial::from_coefficients_slice(&[(0, v)]))
+                .collect();
+            println!("Sparse Poly: {:?}", poly);
+            println!("mle_sparse: {:?}", mle_sparse);
+
+
+            if num_evals == 0 {
+                return Ok(SparseOrDensePolynomial::from_sparse(SparsePolynomial::zero()));
+            }
+
+
+            // **Use log2(num_evals) instead of n_vars**
+            let log_num_evals = num_evals.ilog2() as usize;
+
+            // **Keep track of sparse indices explicitly**
+            let mut indices: Vec<usize> = mle_sparse.evaluations.keys().copied().collect();
+            indices.sort_unstable();
+
+            for i in 0..(log_num_evals+1) {
+                println!("Len at start: {:?}", poly.len());
+
+                if poly.len() == 1 {
+                    break; // Stop early if we reach the final polynomial
+                }
+
+                // Compute half length based on `i`
+                let half_len = 1 << (log_num_evals - i - 1);
+
+                println!("half_len {}", half_len);
+                println!("i {}", i);
+
+                let r_poly = SparsePolynomial::from_coefficients_slice(&[(0, r1[i]), (1, r2_sub_r1[i])]);
+
+                let mut new_poly = Vec::with_capacity(half_len);
+                let mut new_indices = Vec::with_capacity(half_len);
+
+                let mut b = 0;
+                while b < poly.len() {
+                    let left_index = indices[b];
+                    let right_index = if b + 1 < poly.len() { indices[b + 1] } else { left_index };
+
+                    let left = &poly[b];
+                    let right = if b + 1 < poly.len() { &poly[b + 1] } else { left };
+
+                    // Print for debugging
+                    println!("Folding indices {} and {}", left_index, right_index);
+
+                    let mut diff = right.clone();
+                    diff.sub_assign(left);
+
+                    let mut scaled_diff = r_poly.clone();
+                    scaled_diff = scaled_diff.mul(&diff);
+
+                    let mut new_b = left.clone();
+                    new_b.add_assign(&scaled_diff);
+
+                    new_poly.push(new_b);
+                    new_indices.push(left_index / 2); // Reduce the index properly
+
+                    b += 2; // Process in pairs
+                }
+
+                poly = new_poly;
+                indices = new_indices;
+                println!("Len at end: {:?}", poly.len());
+
+            }
+            println!("Sparse Poly: {:?}", poly);
+            println!("Len: {:?}", poly.len());
+
+
+// Ensure final output is **exactly one polynomial**
+            if poly.len() != 1 {
+                panic!("Final polynomial count is {}, expected 1!", poly.len());
+            }
+            Ok(SparseOrDensePolynomial::from_sparse(poly.remove(0)))
+        }
+    }
 }
 
 fn compute_l<F: PrimeField>(r1: &[F], r2_sub_r1: &[F], x: F) -> Result<Vec<F>, Error> {

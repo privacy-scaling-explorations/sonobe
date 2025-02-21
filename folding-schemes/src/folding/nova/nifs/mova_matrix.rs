@@ -7,13 +7,11 @@ use crate::folding::nova::nifs::pointvsline::{
     PointVsLine, PointVsLineEvaluationClaimMatrix, PointVsLineMatrix, PointVsLineProofMatrix,
 };
 use crate::transcript::Transcript;
-use crate::utils::mle::{dense_vec_to_dense_mle, vec_to_mle};
-use crate::utils::vec::{is_zero_vec};
+use crate::utils::mle::MultilinearExtension;
+use crate::utils::vec::is_zero_vec;
 use crate::{Curve, Error};
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ff::PrimeField;
-use ark_poly::Polynomial;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{log2, marker::PhantomData, rand::RngCore, One, UniformRand, Zero};
 use matrex::Matrix;
 use num_integer::Roots;
@@ -23,7 +21,7 @@ use num_integer::Roots;
 /// A * B = u * C + E
 /// where u is a scalar, and E is the error matrix.
 /// When u=1 and E is the zero matrix, we have the simple committed relation in which A * B = C.
-#[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct RelaxedCommittedRelation<C: Curve> {
     pub cmA: C,                  // Commitment to matrix A. cmA = commitment(A).
     pub cmB: C,                  // Commitment to matrix B. cmB = commitment(B).
@@ -98,11 +96,14 @@ impl<C: Curve> Witness<C> {
         let mut mleE = C::ScalarField::zero();
         if !Matrix::is_zero_matrix(&self.E) {
             // let E = dense_vec_to_dense_mle(log2(self.E.len()) as usize, &self.E.get_dense_elems());
-            let E = vec_to_mle(
-                log2(self.E.len()) as usize,
-                &self.E.get_sparse_elems().unwrap(),
-            );
-            mleE = E.evaluate(&rE);
+            // let E = vec_to_mle(
+            //     log2(self.E.len()) as usize,
+            //     &self.E.get_sparse_elems().unwrap(),
+            // );
+            // mleE = E.evaluate(&rE);
+            // mleE = evaluate_multilinear_extension(&self.E, log2(self.E.len()) as usize, &rE)
+            let mle = MultilinearExtension::from_evaluations(&self.E, log2(self.E.len()) as usize);
+            mleE = mle.evaluate(&rE);
         }
 
         // Right now we are ignoring the hiding property and directly commit to the matrices
@@ -122,7 +123,7 @@ impl<C: Curve> Witness<C> {
 }
 
 /// Represents proof of the matrix folding
-#[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Proof<C: Curve> {
     /// Proof of the PointVsLine protocol that reduces the number of MLE evaluations.
     pub h_proof: PointVsLineProofMatrix<C>,
@@ -157,13 +158,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         c: Matrix<C::ScalarField>,
         e: Matrix<C::ScalarField>,
     ) -> Witness<C> {
-
-        Witness::new::<H>(
-            a,
-            b,
-            c,
-            e,
-        )
+        Witness::new::<H>(a, b, c, e)
     }
 
     fn new_instance(
@@ -265,7 +260,8 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         // let u2c1: Vec<C::ScalarField> = vec_scalar_mul(&simple_witness.C, &acc_instance.u);
         let u2c1 = simple_witness.C.clone() * acc_instance.u;
         // let T = vec_sub(&vec_sub(&A1B2B1A2, &acc_witness.C)?, &u2c1)?;
-        let mut T: Matrix<C::ScalarField> = ((A1B2B1A2 - acc_witness.C.clone()).unwrap() - u2c1).unwrap();
+        let T: Matrix<C::ScalarField> =
+            ((A1B2B1A2 - acc_witness.C.clone()).unwrap() - u2c1).unwrap();
 
         // Compute MLE_T
         let n_vars: usize = log2(simple_witness.E.len()) as usize;
@@ -273,9 +269,12 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
             return Err(Error::NotExpectedLength(T.len(), n_vars));
         }
 
-        T.to_dense();
-        let mleT = dense_vec_to_dense_mle(n_vars, &T.get_dense_elems_reference().unwrap());
-        let mleT_evaluated = mleT.evaluate(&rE_prime);
+        // T.to_dense();
+        // let mleT = dense_vec_to_dense_mle(n_vars, &T.get_dense_elems_reference().unwrap());
+        // let mleT_evaluated = mleT.evaluate(&rE_prime);
+        // let mleT_evaluated = evaluate_multilinear_extension(&T, n_vars, &rE_prime);
+        let mle = MultilinearExtension::from_evaluations(&T, n_vars);
+        let mleT_evaluated = mle.evaluate(&rE_prime);
 
         // Derive alpha
         transcript.absorb(&mleT_evaluated);
@@ -398,9 +397,8 @@ pub mod tests {
     use crate::transcript::poseidon::poseidon_canonical_config;
     use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, CryptographicSponge};
     use ark_pallas::{Fr, Projective};
-    use rand::Rng;
     use matrex::{Matrix, SparseMatrix};
-
+    use rand::Rng;
 
     fn random_sparse_matrix<C: Curve>(n: usize, rng: &mut impl RngCore) -> Matrix<C::ScalarField> {
         let elements = (0..n)
@@ -426,21 +424,18 @@ pub mod tests {
                 // A matrix
                 let a = random_sparse_matrix::<C>(n, rng);
                 // B matrix
-                let b =
-                    random_sparse_matrix::<C>(n, rng);
+                let b = random_sparse_matrix::<C>(n, rng);
                 // C = A * B matrix
                 let c = (a.clone() * b.clone()).unwrap();
                 // Error matrix initialized to 0s
                 let mut e = Matrix::zero(n, n);
-                e.to_dense();
+                // e.to_dense();
                 // Random challenge
                 let rE = (0..2 * log2(n))
                     .map(|_| C::ScalarField::rand(rng))
                     .collect();
                 // Witness
-                let witness = Witness::new::<false>(
-                    a,b,c,e
-                );
+                let witness = Witness::new::<false>(a, b, c, e);
                 let instance = witness.commit::<CS, false>(params, rE).unwrap();
                 (witness, instance)
             })
@@ -557,6 +552,13 @@ pub mod tests {
             // Update state for next iteration
             current_acc_wit = wit_acc;
             current_acc_inst = inst_acc;
+        }
+    }
+
+    #[test]
+    fn test (){
+        for i in 1..=5 {
+            test_nifs_mova_matrix_multiple_folds();
         }
     }
 }

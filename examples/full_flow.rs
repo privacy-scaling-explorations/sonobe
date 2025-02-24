@@ -132,7 +132,7 @@ fn main() -> Result<(), Error> {
         nova.z_i,
         &nova.U_i,
         &nova.u_i,
-        proof,
+        &proof,
     )?;
 
     // prepare the setup params for the solidity verifier

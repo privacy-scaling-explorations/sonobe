@@ -14,16 +14,6 @@ pub enum NovaVerificationMode {
     OpaqueWithInputs,
 }
 
-impl NovaVerificationMode {
-    fn function_name(&self) -> &'static str {
-        match self {
-            NovaVerificationMode::Explicit => "verifyNovaProof",
-            NovaVerificationMode::Opaque => "verifyOpaqueNovaProof",
-            NovaVerificationMode::OpaqueWithInputs => "verifyOpaqueNovaProofWithInputs",
-        }
-    }
-}
-
 /// Formats call data from a vec of bytes to a hashmap
 /// Useful for debugging directly on the EVM
 /// !! Should follow the contract's function signature, we assume the order of arguments is correct
@@ -42,10 +32,17 @@ pub fn get_function_selector_for_nova_cyclefold_verifier(
     mode: NovaVerificationMode,
     state_len: usize,
 ) -> [u8; 4] {
-    let fn_sig = format!(
-        "{}(uint256[{}],uint256[4],uint256[2],uint256[3],uint256[2],uint256[2][2],uint256[2],uint256[4],uint256[2][2])",
-        mode.function_name(),
-        state_len * 2 + 1);
+    let fn_sig = match mode {
+        NovaVerificationMode::Explicit =>
+            format!(
+                "verifyNovaProof(uint256[{}],uint256[4],uint256[2],uint256[3],uint256[2],uint256[2][2],uint256[2],uint256[4],uint256[2][2])",
+                state_len * 2 + 1
+            ),
+        NovaVerificationMode::Opaque =>
+            format!("verifyOpaqueNovaProof(uint256[{}])", 26 + 2 * state_len),
+        NovaVerificationMode::OpaqueWithInputs =>
+            format!("verifyOpaqueNovaProofWithInputs(uint256,uint256[{state_len}],uint256[{state_len}],uint256[25])"),
+    };
 
     let mut hasher = Sha3::keccak256();
     hasher.input_str(&fn_sig);

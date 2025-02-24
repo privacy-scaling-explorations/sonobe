@@ -139,7 +139,7 @@ impl NovaCycleFoldVerifierKey {
 
 #[cfg(test)]
 mod tests {
-    use ark_bn254::{Bn254, Fr, G1Projective as G1};
+    use ark_bn254::{Bn254, Fr, G1Projective as G1, G1Projective};
     use ark_ff::PrimeField;
     use ark_groth16::Groth16;
     use ark_grumpkin::Projective as G2;
@@ -150,6 +150,19 @@ mod tests {
     use std::marker::PhantomData;
     use std::time::Instant;
 
+    use super::{DeciderVerifierParam, NovaCycleFoldDecider};
+    use crate::calldata::NovaVerificationMode::{Explicit, Opaque, OpaqueWithInputs};
+    use crate::calldata::{
+        get_function_selector_for_nova_cyclefold_verifier, NovaVerificationMode,
+    };
+    use crate::verifiers::tests::{setup, DEFAULT_SETUP_LEN};
+    use crate::{
+        evm::{compile_solidity, save_solidity, Evm},
+        utils::HeaderInclusion,
+        verifiers::nova_cyclefold::get_decider_template_for_cyclefold_decider,
+        NovaCycleFoldVerifierKey, ProtocolVerifierKey,
+    };
+    use folding_schemes::folding::nova::decider_eth::Proof;
     use folding_schemes::{
         commitment::{kzg::KZG, pedersen::Pedersen},
         folding::{
@@ -162,18 +175,6 @@ mod tests {
         frontend::FCircuit,
         transcript::poseidon::poseidon_canonical_config,
         Decider, Error, FoldingScheme,
-    };
-
-    use super::{DeciderVerifierParam, NovaCycleFoldDecider};
-    use crate::calldata::{
-        get_function_selector_for_nova_cyclefold_verifier, NovaVerificationMode,
-    };
-    use crate::verifiers::tests::{setup, DEFAULT_SETUP_LEN};
-    use crate::{
-        evm::{compile_solidity, save_solidity, Evm},
-        utils::HeaderInclusion,
-        verifiers::nova_cyclefold::get_decider_template_for_cyclefold_decider,
-        NovaCycleFoldVerifierKey, ProtocolVerifierKey,
     };
 
     type NOVA<FC> = Nova<G1, G2, FC, KZG<'static, Bn254>, Pedersen<G2>, false>;
@@ -314,6 +315,51 @@ mod tests {
         (nova_params, decider_params)
     }
 
+    fn interact_with_contract<'a, FC: FCircuit<Fr>>(
+        nova_cyclefold_verifier_bytecode: &[u8],
+        nova: &NOVA<FC>,
+        proof: &Proof<G1Projective, KZG<Bn254>, Groth16<Bn254>>,
+        mode: NovaVerificationMode,
+    ) {
+        let mut evm = Evm::default();
+        let verifier_address = evm.create(nova_cyclefold_verifier_bytecode.to_vec());
+
+        let function_selector =
+            get_function_selector_for_nova_cyclefold_verifier(mode, nova.z_0.len());
+
+        let calldata: Vec<u8> = prepare_calldata(
+            function_selector,
+            nova.i,
+            nova.z_0.clone(),
+            nova.z_i.clone(),
+            &nova.U_i,
+            &nova.u_i,
+            proof,
+        )
+        .unwrap();
+
+        let (_, output) = evm.call(verifier_address, calldata.clone());
+        assert_eq!(*output.last().unwrap(), 1);
+
+        // change i to make calldata invalid, placed between bytes 4 - 35
+        let mut invalid_calldata = calldata.clone();
+        invalid_calldata[35] += 1;
+        let (_, output) = evm.call(verifier_address, invalid_calldata.clone());
+        assert_eq!(*output.last().unwrap(), 0);
+
+        // change z_0 to make the EVM check fail, placed between bytes 35 - 67
+        let mut invalid_calldata = calldata.clone();
+        invalid_calldata[67] += 1;
+        let (_, output) = evm.call(verifier_address, invalid_calldata.clone());
+        assert_eq!(*output.last().unwrap(), 0);
+
+        // change z_i to make the EVM check fail, placed between bytes 68 - 100
+        let mut invalid_calldata = calldata.clone();
+        invalid_calldata[99] += 1;
+        let (_, output) = evm.call(verifier_address, invalid_calldata.clone());
+        assert_eq!(*output.last().unwrap(), 0);
+    }
+
     /// This function allows to define which FCircuit to use for the test, and how many prove_step
     /// rounds to perform.
     /// Actions performed by this test:
@@ -359,50 +405,14 @@ mod tests {
         .unwrap();
         assert!(verified);
 
-        let function_selector = get_function_selector_for_nova_cyclefold_verifier(
-            NovaVerificationMode::Explicit,
-            nova.z_0.len(),
-        );
-
-        let calldata: Vec<u8> = prepare_calldata(
-            function_selector,
-            nova.i,
-            nova.z_0,
-            nova.z_i,
-            &nova.U_i,
-            &nova.u_i,
-            proof,
-        )
-        .unwrap();
-
         let decider_solidity_code = get_decider_template_for_cyclefold_decider(nova_cyclefold_vk);
 
         let nova_cyclefold_verifier_bytecode =
             compile_solidity(decider_solidity_code, "NovaDecider");
 
-        let mut evm = Evm::default();
-        let verifier_address = evm.create(nova_cyclefold_verifier_bytecode);
-
-        let (_, output) = evm.call(verifier_address, calldata.clone());
-        assert_eq!(*output.last().unwrap(), 1);
-
-        // change i to make calldata invalid, placed between bytes 4 - 35
-        let mut invalid_calldata = calldata.clone();
-        invalid_calldata[35] += 1;
-        let (_, output) = evm.call(verifier_address, invalid_calldata.clone());
-        assert_eq!(*output.last().unwrap(), 0);
-
-        // change z_0 to make the EVM check fail, placed between bytes 35 - 67
-        let mut invalid_calldata = calldata.clone();
-        invalid_calldata[67] += 1;
-        let (_, output) = evm.call(verifier_address, invalid_calldata.clone());
-        assert_eq!(*output.last().unwrap(), 0);
-
-        // change z_i to make the EVM check fail, placed between bytes 68 - 100
-        let mut invalid_calldata = calldata.clone();
-        invalid_calldata[99] += 1;
-        let (_, output) = evm.call(verifier_address, invalid_calldata.clone());
-        assert_eq!(*output.last().unwrap(), 0);
+        for mode in [Explicit, Opaque, OpaqueWithInputs] {
+            interact_with_contract(&nova_cyclefold_verifier_bytecode, &nova, &proof, mode);
+        }
     }
 
     /// Given an `FCircuit` type and initial IVC state `z_0`, this function tests the `NovaCycleFold`
@@ -414,7 +424,7 @@ mod tests {
                 nova_params.clone(),
                 decider_params.clone(),
                 z_0.clone(),
-                2,
+                num_steps,
             )
         }
     }

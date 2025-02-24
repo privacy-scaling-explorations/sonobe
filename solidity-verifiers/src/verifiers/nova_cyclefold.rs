@@ -405,42 +405,27 @@ mod tests {
         assert_eq!(*output.last().unwrap(), 0);
     }
 
-    #[test]
-    fn nova_cyclefold_solidity_verifier() {
-        let (nova_params, decider_params) = init_params::<CubicFCircuit<Fr>>();
-        let z_0 = vec![Fr::from(3_u32)];
-        nova_cyclefold_solidity_verifier_opt::<CubicFCircuit<Fr>>(
-            nova_params.clone(),
-            decider_params.clone(),
-            z_0.clone(),
-            2,
-        );
-        nova_cyclefold_solidity_verifier_opt::<CubicFCircuit<Fr>>(
-            nova_params,
-            decider_params,
-            z_0,
-            3,
-        );
+    /// Given an `FCircuit` type and initial IVC state `z_0`, this function tests the `NovaCycleFold`
+    /// verifier with a few different folding steps.
+    fn nova_cyclefold_solidity_verifier_test<FC: FCircuit<Fr, Params = ()>>(z_0: Vec<Fr>) {
+        let (nova_params, decider_params) = init_params::<FC>();
+        for num_steps in [2, 3] {
+            nova_cyclefold_solidity_verifier_opt::<FC>(
+                nova_params.clone(),
+                decider_params.clone(),
+                z_0.clone(),
+                2,
+            )
+        }
+    }
 
-        let (nova_params, decider_params) = init_params::<MultiInputsFCircuit<Fr>>();
-        let z_0 = vec![
-            Fr::from(1_u32),
-            Fr::from(1_u32),
-            Fr::from(1_u32),
-            Fr::from(1_u32),
-            Fr::from(1_u32),
-        ];
-        nova_cyclefold_solidity_verifier_opt::<MultiInputsFCircuit<Fr>>(
-            nova_params.clone(),
-            decider_params.clone(),
-            z_0.clone(),
-            2,
-        );
-        nova_cyclefold_solidity_verifier_opt::<MultiInputsFCircuit<Fr>>(
-            nova_params,
-            decider_params,
-            z_0.clone(),
-            3,
-        );
+    #[test]
+    fn nova_cyclefold_solidity_verifier_single_input() {
+        nova_cyclefold_solidity_verifier_test::<CubicFCircuit<Fr>>(vec![Fr::from(3_u32)]);
+    }
+
+    #[test]
+    fn nova_cyclefold_solidity_verifier_multi_input() {
+        nova_cyclefold_solidity_verifier_test::<MultiInputsFCircuit<Fr>>(vec![Fr::from(1_u32); 5]);
     }
 }

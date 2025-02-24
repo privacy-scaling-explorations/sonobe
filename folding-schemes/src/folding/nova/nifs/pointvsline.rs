@@ -45,7 +45,7 @@ impl<C: Curve, T: Transcript<C::ScalarField>> PointVsLine<C, T> {
         let mleE1 = dense_vec_to_dense_mle(n_vars, &w1.E);
         let mleE2 = dense_vec_to_dense_mle(n_vars, &w2.E);
 
-        // We have l(0) = r1, l(1) = r2 so we know that l(x) = r1 + x(r2-r1) thats why we need r2-r1
+        // We have l(0) = r1, l(1) = r2 so we know that l(x) = r1 + x(r2-r1) that's why we need r2-r1
         let r2_sub_r1: Vec<<C>::ScalarField> = ci1
             .rE
             .iter()

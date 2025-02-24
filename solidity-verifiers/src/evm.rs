@@ -72,25 +72,12 @@ pub fn compile_solidity(solidity: impl AsRef<[u8]>, contract_name: &str) -> Vec<
 /// hence, we need to find the correct binary.
 fn find_binary(stdout: &str, contract_name: &str) -> Option<Vec<u8>> {
     let intro_str = format!("======= <stdin>:{contract_name} =======\nBinary:\n");
-
-    println!("intro_str: {:?}", intro_str);
-    println!("stdout: {:?}", stdout);
-
     let start = stdout.find(&intro_str)?;
     let end = stdout[start + intro_str.len()..]
         .find('\n')
         .map(|pos| pos + start + intro_str.len())
         .unwrap_or(stdout.len());
     let binary_section = stdout[start + intro_str.len()..end].trim();
-
-    println!("binary_section: {:?}", binary_section);
-    println!("start: {:?}", start);
-    println!("end: {:?}", end);
-    println!("stdout: {:?}", stdout);
-    println!();
-    println!();
-    println!();
-
     Some(hex::decode(binary_section).unwrap())
 }
 

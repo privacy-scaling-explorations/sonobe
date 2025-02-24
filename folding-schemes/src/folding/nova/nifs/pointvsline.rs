@@ -396,12 +396,8 @@ pub fn compute_h2<F: PrimeField>(
                 .map(|&eval| DensePolynomial::from_coefficients_slice(&[eval]))
                 .collect();
             // println!("{:?}", poly);
-            println!("Dense Poly: {:?}", poly);
-            println!("mle_dense: {:?}", mle_dense);
-
-
-
-
+            // println!("Dense Poly: {:?}", poly);
+            // println!("mle_dense: {:?}", mle_dense);
 
             // For each variable i, fold pairs of polynomials using
             // p_left + r_i * (p_right - p_left).
@@ -438,7 +434,11 @@ pub fn compute_h2<F: PrimeField>(
             // By now, poly.len() == 1
             // Return that single polynomial as DenseOrSparsePolynomial
             // println!("{:?}", poly);
-            println!("Dense Poly: {:?}", poly);
+            let poly2 = DensePolynomial::from_coefficients_vec(mle_dense.evaluations.clone());
+
+            // println!("Dense Poly: {:?}", poly);
+            // println!("Dense Poly2: {:?}", poly2);
+
             Ok(SparseOrDensePolynomial::from_dense(poly.remove(0)))
         }
 
@@ -446,88 +446,43 @@ pub fn compute_h2<F: PrimeField>(
         // Sparse MLE case
         //------------------------------------------------------------------
         MultilinearExtension::SparseMLE(mle_sparse) => {
-            // println!("eval {}", mle_sparse.evaluations.len());
-            let num_evals = mle_sparse.evaluations.len();
-
-            let mut poly: Vec<SparsePolynomial<F>> = mle_sparse
-                .evaluations
-                .iter()
-                .map(|(&i, &v)| SparsePolynomial::from_coefficients_slice(&[(0, v)]))
-                .collect();
-            println!("Sparse Poly: {:?}", poly);
-            println!("mle_sparse: {:?}", mle_sparse);
-
-
-            if num_evals == 0 {
-                return Ok(SparseOrDensePolynomial::from_sparse(SparsePolynomial::zero()));
+            // If there are no evaluations, return the zero polynomial
+            if mle_sparse.evaluations.is_empty() {
+                return Ok(SparseOrDensePolynomial::from_dense(DensePolynomial::zero()));
             }
 
+            // Initialize the result polynomial as zero
+            let mut sum_poly = DensePolynomial::zero();
 
-            // **Use log2(num_evals) instead of n_vars**
-            let log_num_evals = num_evals.ilog2() as usize;
-
-            // **Keep track of sparse indices explicitly**
-            let mut indices: Vec<usize> = mle_sparse.evaluations.keys().copied().collect();
-            indices.sort_unstable();
-
-            for i in 0..(log_num_evals+1) {
-                println!("Len at start: {:?}", poly.len());
-
-                if poly.len() == 1 {
-                    break; // Stop early if we reach the final polynomial
+            // Iterate over each non-zero evaluation
+            for (&index, &value) in &mle_sparse.evaluations {
+                // Convert index to binary vector (little-endian, least significant bit is i=0)
+                let mut b = vec![false; n_vars];
+                for i in 0..n_vars {
+                    b[i] = (index >> i) & 1 == 1;
                 }
 
-                // Compute half length based on `i`
-                let half_len = 1 << (log_num_evals - i - 1);
+                // Start with the constant polynomial equal to the evaluation value
+                let mut contrib = DensePolynomial::from_coefficients_slice(&[value]);
 
-                println!("half_len {}", half_len);
-                println!("i {}", i);
-
-                let r_poly = SparsePolynomial::from_coefficients_slice(&[(0, r1[i]), (1, r2_sub_r1[i])]);
-
-                let mut new_poly = Vec::with_capacity(half_len);
-                let mut new_indices = Vec::with_capacity(half_len);
-
-                let mut b = 0;
-                while b < poly.len() {
-                    let left_index = indices[b];
-                    let right_index = if b + 1 < poly.len() { indices[b + 1] } else { left_index };
-
-                    let left = &poly[b];
-                    let right = if b + 1 < poly.len() { &poly[b + 1] } else { left };
-
-                    // Print for debugging
-                    println!("Folding indices {} and {}", left_index, right_index);
-
-                    let mut diff = right.clone();
-                    diff.sub_assign(left);
-
-                    let mut scaled_diff = r_poly.clone();
-                    scaled_diff = scaled_diff.mul(&diff);
-
-                    let mut new_b = left.clone();
-                    new_b.add_assign(&scaled_diff);
-
-                    new_poly.push(new_b);
-                    new_indices.push(left_index / 2); // Reduce the index properly
-
-                    b += 2; // Process in pairs
+                // Multiply by the linear factor for each variable
+                for i in 0..n_vars {
+                    let factor = if b[i] {
+                        // If b[i] == 1, use r1_i + r2_sub_r1_i * t
+                        DensePolynomial::from_coefficients_slice(&[r1[i], r2_sub_r1[i]])
+                    } else {
+                        // If b[i] == 0, use 1 - r1_i - r2_sub_r1_i * t
+                        DensePolynomial::from_coefficients_slice(&[F::one() - r1[i], -r2_sub_r1[i]])
+                    };
+                    contrib = &contrib * &factor;
                 }
 
-                poly = new_poly;
-                indices = new_indices;
-                println!("Len at end: {:?}", poly.len());
-
+                // Add the contribution to the sum
+                sum_poly += &contrib;
             }
-            println!("Sparse Poly: {:?}", poly);
-            println!("Len: {:?}", poly.len());
 
-
-// Ensure final output is **exactly one polynomial**
-            if poly.len() != 1 {
-                panic!("Final polynomial count is {}, expected 1!", poly.len());
-            }
-            Ok(SparseOrDensePolynomial::from_sparse(poly.remove(0)))
+            // Return the final polynomial
+            Ok(SparseOrDensePolynomial::from_dense(sum_poly))
         }
     }
 }

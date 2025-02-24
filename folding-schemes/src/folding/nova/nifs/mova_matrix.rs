@@ -184,11 +184,10 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         acc_wit: &Witness<C>,        // Accumulated witness
         aux: Matrix<C::ScalarField>, // T in Mova's notation
     ) -> Result<Witness<C>, Error> {
-        //todo!(Remove clones)
-        let a_acc = ((simple_wit.A.clone() * alpha) + acc_wit.A.clone()).unwrap();
-        let b_acc = ((simple_wit.B.clone() * alpha) + acc_wit.B.clone()).unwrap();
-        let c_acc = ((simple_wit.C.clone() * alpha) + acc_wit.C.clone()).unwrap();
-        let e_acc = ((aux * alpha) + acc_wit.E.clone()).unwrap();
+        let a_acc = ((simple_wit.A.clone() * alpha) + &acc_wit.A).unwrap();
+        let b_acc = ((simple_wit.B.clone() * alpha) + &acc_wit.B).unwrap();
+        let c_acc = ((simple_wit.C.clone() * alpha) + &acc_wit.C).unwrap();
+        let e_acc = ((aux * alpha) + &acc_wit.E).unwrap();
 
         // let a_acc = vec_add(&vec_scalar_mul(&simple_wit.A, &alpha), &acc_wit.A)?;
         // let b_acc = vec_add(&vec_scalar_mul(&simple_wit.B, &alpha), &acc_wit.B)?;
@@ -252,16 +251,16 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
 
         // Compute cross term T
         // let A1B2 = mat_mat_mul_dense(&simple_witness.A, &acc_witness.B)?;
-        let A1B2 = (simple_witness.A.clone() * acc_witness.B.clone()).unwrap();
+        let A1B2 = (&simple_witness.A * &acc_witness.B).unwrap();
         // let B1A2 = mat_mat_mul_dense(&acc_witness.A, &simple_witness.B)?;
-        let B1A2 = (acc_witness.A.clone() * simple_witness.B.clone()).unwrap();
+        let B1A2 = (&acc_witness.A * &simple_witness.B).unwrap();
         // let A1B2B1A2 = vec_add(&A1B2, &B1A2)?;
         let A1B2B1A2 = (A1B2 + B1A2).unwrap();
         // let u2c1: Vec<C::ScalarField> = vec_scalar_mul(&simple_witness.C, &acc_instance.u);
         let u2c1 = simple_witness.C.clone() * acc_instance.u;
         // let T = vec_sub(&vec_sub(&A1B2B1A2, &acc_witness.C)?, &u2c1)?;
         let T: Matrix<C::ScalarField> =
-            ((A1B2B1A2 - acc_witness.C.clone()).unwrap() - u2c1).unwrap();
+            ((A1B2B1A2 - &acc_witness.C).unwrap() - u2c1).unwrap();
 
         // Compute MLE_T
         let n_vars: usize = log2(simple_witness.E.len()) as usize;
@@ -426,7 +425,7 @@ pub mod tests {
                 // B matrix
                 let b = random_sparse_matrix::<C>(n, rng);
                 // C = A * B matrix
-                let c = (a.clone() * b.clone()).unwrap();
+                let c = (&a * &b).unwrap();
                 // Error matrix initialized to 0s
                 let mut e = Matrix::zero(n, n);
                 // e.to_dense();

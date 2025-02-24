@@ -91,7 +91,7 @@ fn bench_mova_matrix(c: &mut Criterion) {
                             let next = instances.pop().unwrap();
                             total_duration += {
                                 let timer = Instant::now();
-                                let (wit_acc, inst_acc, _, _) = NIFS::<
+                                let (wit_acc, inst_acc, _) = NIFS::<
                                     Projective,
                                     Pedersen<Projective>,
                                     PoseidonSponge<Fr>,

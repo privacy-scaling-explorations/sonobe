@@ -95,13 +95,6 @@ impl<C: Curve> Witness<C> {
     ) -> Result<RelaxedCommittedRelation<C>, Error> {
         let mut mleE = C::ScalarField::zero();
         if !Matrix::is_zero_matrix(&self.E) {
-            // let E = dense_vec_to_dense_mle(log2(self.E.len()) as usize, &self.E.get_dense_elems());
-            // let E = vec_to_mle(
-            //     log2(self.E.len()) as usize,
-            //     &self.E.get_sparse_elems().unwrap(),
-            // );
-            // mleE = E.evaluate(&rE);
-            // mleE = evaluate_multilinear_extension(&self.E, log2(self.E.len()) as usize, &rE)
             let mle = MultilinearExtension::from_evaluations(&self.E, log2(self.E.len()) as usize);
             mleE = mle.evaluate(&rE);
         }
@@ -184,15 +177,14 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         acc_wit: &Witness<C>,        // Accumulated witness
         aux: Matrix<C::ScalarField>, // T in Mova's notation
     ) -> Result<Witness<C>, Error> {
-        let a_acc = ((simple_wit.A.clone() * alpha) + &acc_wit.A).unwrap();
-        let b_acc = ((simple_wit.B.clone() * alpha) + &acc_wit.B).unwrap();
-        let c_acc = ((simple_wit.C.clone() * alpha) + &acc_wit.C).unwrap();
-        let e_acc = ((aux * alpha) + &acc_wit.E).unwrap();
-
-        // let a_acc = vec_add(&vec_scalar_mul(&simple_wit.A, &alpha), &acc_wit.A)?;
-        // let b_acc = vec_add(&vec_scalar_mul(&simple_wit.B, &alpha), &acc_wit.B)?;
-        // let c_acc = vec_add(&vec_scalar_mul(&simple_wit.C, &alpha), &acc_wit.C)?;
-        // let e_acc = vec_add(&vec_scalar_mul(aux, &alpha), &acc_wit.E)?;
+        // let a_acc = ((simple_wit.A.clone() * alpha) + &acc_wit.A).unwrap();
+        // let b_acc = ((simple_wit.B.clone() * alpha) + &acc_wit.B).unwrap();
+        // let c_acc = ((simple_wit.C.clone() * alpha) + &acc_wit.C).unwrap();
+        // let e_acc = ((aux * alpha) + &acc_wit.E).unwrap();
+        let a_acc = ((simple_wit.A.clone() * alpha) + acc_wit.A.clone()).unwrap();
+        let b_acc = ((simple_wit.B.clone() * alpha) + acc_wit.B.clone()).unwrap();
+        let c_acc = ((simple_wit.C.clone() * alpha) + acc_wit.C.clone()).unwrap();
+        let e_acc = ((aux * alpha) + acc_wit.E.clone()).unwrap();
 
         Ok(Witness::<C> {
             A: a_acc,
@@ -213,7 +205,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         simple_instance: &RelaxedCommittedRelation<C>,
         acc_witness: &Witness<C>,
         acc_instance: &RelaxedCommittedRelation<C>,
-    ) -> Result<(Witness<C>, RelaxedCommittedRelation<C>, Proof<C>, Vec<bool>), Error> {
+    ) -> Result<(Witness<C>, RelaxedCommittedRelation<C>, Proof<C>), Error> {
         // Verify instances have the correct form.
         // 2 simple instances can be folded, a simple and an accumulated instance can also be folded. 2 accumulated instances cannot be folded
         if simple_instance.is_accumulated() {
@@ -250,17 +242,14 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         transcript.absorb(&mleE2_prime);
 
         // Compute cross term T
-        // let A1B2 = mat_mat_mul_dense(&simple_witness.A, &acc_witness.B)?;
-        let A1B2 = (&simple_witness.A * &acc_witness.B).unwrap();
-        // let B1A2 = mat_mat_mul_dense(&acc_witness.A, &simple_witness.B)?;
+        // let A1B2 = (&simple_witness.A * &acc_witness.B).unwrap();
+        let A1B2 = (simple_witness.A.clone() * acc_witness.B.clone()).unwrap();
+
+        // let B1A2 = (&acc_witness.A * &simple_witness.B).unwrap();
         let B1A2 = (&acc_witness.A * &simple_witness.B).unwrap();
-        // let A1B2B1A2 = vec_add(&A1B2, &B1A2)?;
         let A1B2B1A2 = (A1B2 + B1A2).unwrap();
-        // let u2c1: Vec<C::ScalarField> = vec_scalar_mul(&simple_witness.C, &acc_instance.u);
         let u2c1 = simple_witness.C.clone() * acc_instance.u;
-        // let T = vec_sub(&vec_sub(&A1B2B1A2, &acc_witness.C)?, &u2c1)?;
-        let T: Matrix<C::ScalarField> =
-            ((A1B2B1A2 - &acc_witness.C).unwrap() - u2c1).unwrap();
+        let T: Matrix<C::ScalarField> = ((A1B2B1A2 - &acc_witness.C).unwrap() - u2c1).unwrap();
 
         // Compute MLE_T
         let n_vars: usize = log2(simple_witness.E.len()) as usize;
@@ -268,10 +257,6 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
             return Err(Error::NotExpectedLength(T.len(), n_vars));
         }
 
-        // T.to_dense();
-        // let mleT = dense_vec_to_dense_mle(n_vars, &T.get_dense_elems_reference().unwrap());
-        // let mleT_evaluated = mleT.evaluate(&rE_prime);
-        // let mleT_evaluated = evaluate_multilinear_extension(&T, n_vars, &rE_prime);
         let mle = MultilinearExtension::from_evaluations(&T, n_vars);
         let mleT_evaluated = mle.evaluate(&rE_prime);
 
@@ -295,13 +280,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
             mleT: mleT_evaluated,
             rE_prime,
         };
-        Ok((
-            w,
-            ci,
-            proof,
-            vec![], // r_bits, returned to be passed as inputs to the circuit, not used at the
-                    // current impl status
-        ))
+        Ok((w, ci, proof))
     }
 
     /// It verifies the results from the proof
@@ -396,7 +375,7 @@ pub mod tests {
     use crate::transcript::poseidon::poseidon_canonical_config;
     use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, CryptographicSponge};
     use ark_pallas::{Fr, Projective};
-    use matrex::{Matrix, SparseMatrix};
+    use matrex::Matrix;
     use rand::Rng;
 
     fn random_sparse_matrix<C: Curve>(n: usize, rng: &mut impl RngCore) -> Matrix<C::ScalarField> {
@@ -427,8 +406,8 @@ pub mod tests {
                 // C = A * B matrix
                 let c = (&a * &b).unwrap();
                 // Error matrix initialized to 0s
-                let mut e = Matrix::zero(n, n);
-                // e.to_dense();
+                let e = Matrix::zero(n, n);
+
                 // Random challenge
                 let rE = (0..2 * log2(n))
                     .map(|_| C::ScalarField::rand(rng))
@@ -465,7 +444,7 @@ pub mod tests {
 
         for i in 0..instances.len() - 1 {
             // Fold
-            let (_wit_acc, instance_acc, proof, _) =
+            let (_wit_acc, instance_acc, proof) =
                 NIFS::<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>::prove(
                     &mut transcript_p,
                     pp_hash,
@@ -523,7 +502,7 @@ pub mod tests {
         // Fold through all remaining instances
         for (next_w, next_i) in instances {
             // Fold
-            let (wit_acc, inst_acc, proof, _) =
+            let (wit_acc, inst_acc, proof) =
                 NIFS::<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>::prove(
                     &mut transcript_p,
                     pp_hash,
@@ -551,13 +530,6 @@ pub mod tests {
             // Update state for next iteration
             current_acc_wit = wit_acc;
             current_acc_inst = inst_acc;
-        }
-    }
-
-    #[test]
-    fn test (){
-        for i in 1..=5 {
-            test_nifs_mova_matrix_multiple_folds();
         }
     }
 }

@@ -165,11 +165,13 @@ mod tests {
     };
 
     use super::{DeciderVerifierParam, NovaCycleFoldDecider};
-    use crate::utils::calldata::NovaVerificationMode;
+    use crate::calldata::{
+        get_function_selector_for_nova_cyclefold_verifier, NovaVerificationMode,
+    };
     use crate::verifiers::tests::{setup, DEFAULT_SETUP_LEN};
     use crate::{
         evm::{compile_solidity, save_solidity, Evm},
-        utils::{calldata::get_function_selector_for_nova_cyclefold_verifier, HeaderInclusion},
+        utils::HeaderInclusion,
         verifiers::nova_cyclefold::get_decider_template_for_cyclefold_decider,
         NovaCycleFoldVerifierKey, ProtocolVerifierKey,
     };

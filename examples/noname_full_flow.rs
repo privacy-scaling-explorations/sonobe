@@ -31,7 +31,7 @@ use folding_schemes::{
 };
 use std::time::Instant;
 
-use solidity_verifiers::utils::calldata::{
+use solidity_verifiers::calldata::{
     get_function_selector_for_nova_cyclefold_verifier, NovaVerificationMode,
 };
 use solidity_verifiers::{
@@ -164,7 +164,7 @@ fn main() -> Result<(), Error> {
         decider_solidity_code.clone(),
     )?;
     fs::write("./examples/solidity-calldata.calldata", calldata.clone())?;
-    let s = solidity_verifiers::utils::calldata::get_formatted_calldata(calldata.clone());
+    let s = solidity_verifiers::calldata::get_formatted_calldata(calldata.clone());
     fs::write("./examples/solidity-calldata.inputs", s.join(",\n")).expect("");
     Ok(())
 }

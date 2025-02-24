@@ -356,8 +356,7 @@ mod tests {
         .unwrap();
         assert!(verified);
 
-        let function_selector =
-            get_function_selector_for_nova_cyclefold_verifier(nova.z_0.len() * 2 + 1);
+        let function_selector = get_function_selector_for_nova_cyclefold_verifier(nova.z_0.len());
 
         let calldata: Vec<u8> = prepare_calldata(
             function_selector,

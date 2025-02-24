@@ -2,8 +2,8 @@ use crate::{GPL3_SDPX_IDENTIFIER, PRAGMA_GROTH16_VERIFIER};
 use askama::Template;
 use crypto::{digest::Digest, sha3::Sha3};
 use num_bigint::BigUint;
-pub mod encoding;
 pub mod calldata;
+pub mod encoding;
 
 /// Formats call data from a vec of bytes to a hashmap
 /// Useful for debugging directly on the EVM
@@ -17,13 +17,11 @@ pub fn get_formatted_calldata(calldata: Vec<u8>) -> Vec<String> {
     formatted_calldata
 }
 
-/// Computes the function selector for the nova cyclefold verifier
-/// It is computed on the fly since it depends on the length of the first parameter array
-pub fn get_function_selector_for_nova_cyclefold_verifier(
-    first_param_array_length: usize,
-) -> [u8; 4] {
+/// Computes the function selector for the nova cyclefold verifier.
+/// It is computed on the fly since it depends on the IVC state length.
+pub fn get_function_selector_for_nova_cyclefold_verifier(state_len: usize) -> [u8; 4] {
     let mut hasher = Sha3::keccak256();
-    let fn_sig = format!("verifyNovaProof(uint256[{}],uint256[4],uint256[2],uint256[3],uint256[2],uint256[2][2],uint256[2],uint256[4],uint256[2][2])", first_param_array_length);
+    let fn_sig = format!("verifyNovaProof(uint256[{}],uint256[4],uint256[2],uint256[3],uint256[2],uint256[2][2],uint256[2],uint256[4],uint256[2][2])", state_len * 2 + 1);
     hasher.input_str(&fn_sig);
     let hash = &mut [0u8; 32];
     hasher.result(hash);

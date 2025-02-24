@@ -178,7 +178,7 @@ contract NovaDecider is Groth16Verifier, KZG10Verifier, OpaqueDecider {
         uint256[{{ z_len }}] calldata initial_state,
         uint256[{{ z_len }}] calldata final_state,
         uint256[25] calldata proof
-    ) public view returns (bool) {
+    ) public override view returns (bool) {
         uint256[1 + 2 * {{ z_len }}] memory i_z0_zi;
         i_z0_zi[0] = steps;
         for (uint256 i = 0; i < {{ z_len }}; i++) {
@@ -212,7 +212,7 @@ contract NovaDecider is Groth16Verifier, KZG10Verifier, OpaqueDecider {
      * @notice  Verifies a Nova+CycleFold proof given all proof inputs concatenated.
      * @dev     Simply reorganization of arguments and call to the `verifyNovaProof` function.
      */
-    function verifyOpaqueNovaProof(uint256[{{ 26 + z_len * 2 }}] calldata proof) public view returns (bool) {
+    function verifyOpaqueNovaProof(uint256[{{ 26 + z_len * 2 }}] calldata proof) public override view returns (bool) {
         uint256[{{ z_len }}] memory z0;
         uint256[{{ z_len }}] memory zi;
         for (uint256 i = 0; i < {{ z_len }}; i++) {

@@ -68,7 +68,7 @@ interface OpaqueDecider {
  * @title   NovaDecider contract, for verifying Nova IVC SNARK proofs.
  * @dev     This is an askama template which, when templated, features a Groth16 and KZG10 verifiers from which this contract inherits.
  */
-contract NovaDecider is Groth16Verifier, KZG10Verifier {
+contract NovaDecider is Groth16Verifier, KZG10Verifier, OpaqueDecider {
     /**
      * @notice  Computes the linear combination of a and b with r as the coefficient.
      * @dev     All ops are done mod the BN254 scalar field prime

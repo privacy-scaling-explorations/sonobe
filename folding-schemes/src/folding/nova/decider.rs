@@ -19,7 +19,7 @@ use crate::folding::traits::{
     CommittedInstanceOps, Dummy, Inputize, InputizeNonNative, WitnessOps,
 };
 use crate::frontend::FCircuit;
-use crate::transcript::poseidon::poseidon_canonical_config;
+use crate::transcript::poseidon::poseidon_custom_config;
 use crate::{Curve, Error};
 use crate::{Decider as DeciderTrait, FoldingScheme};
 
@@ -148,10 +148,24 @@ where
         >>::VerifierParam = vp.into();
         let pp_hash = nova_vp.pp_hash()?;
 
+        let poseidon_config1 = nova_vp.poseidon_config;
+        // Create a poseidon config on `C2`'s scalar field for `circuit2`, with
+        // the same parameters (`full_rounds` etc.) as `circuit1` to ensure the
+        // security level is the same.
+        // Note: `ark` and `mds` will be different because they depend on the
+        // field, but they will not affect the security level.
+        let poseidon_config2 = poseidon_custom_config(
+            poseidon_config1.full_rounds,
+            poseidon_config1.partial_rounds,
+            poseidon_config1.alpha,
+            poseidon_config1.rate,
+            poseidon_config1.capacity,
+        );
+
         let circuit1 = DeciderCircuit1::<C1, C2>::dummy((
             nova_vp.r1cs,
             &nova_vp.cf_r1cs,
-            nova_vp.poseidon_config,
+            poseidon_config1,
             (),
             (),
             state_len,
@@ -159,7 +173,7 @@ where
         ));
         let circuit2 = DeciderCircuit2::<C2>::dummy((
             nova_vp.cf_r1cs,
-            poseidon_canonical_config::<C2::ScalarField>(),
+            poseidon_config2,
             2, // Nova's running CommittedInstance contains 2 commitments
         ));
 

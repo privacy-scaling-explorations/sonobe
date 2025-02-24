@@ -40,11 +40,35 @@ library LimbsDecomposition {
 }
 
 /**
+ * @author PSE & 0xPARC
+ * @title  Interface for the NovaDecider contract hiding proof details.
+ * @dev    This interface enables calling the verifyNovaProof function without exposing the proof details.
+ */
+interface OpaqueDecider {
+    /**
+     * @notice  Verifies a Nova+CycleFold proof given initial and final IVC states, number of steps and the rest proof inputs concatenated.
+     * @dev     This function should simply reorganize arguments and pass them to the proper verification function.
+     */
+    function verifyOpaqueNovaProofWithInputs(
+        uint256 steps, // number of folded steps (i)
+        uint256[{{ z_len }}] calldata initial_state, // initial IVC state (z0)
+        uint256[{{ z_len }}] calldata final_state, // IVC state after i steps (zi)
+        uint256[25] calldata proof // the rest of the decider inputs
+    ) external view returns (bool);
+
+    /**
+     * @notice  Verifies a Nova+CycleFold proof given all the proof inputs collected in a single array.
+     * @dev     This function should simply reorganize arguments and pass them to the proper verification function.
+     */
+    function verifyOpaqueNovaProof(uint256[{{ 26 + z_len * 2 }}] calldata proof) external view returns (bool);
+}
+
+/**
  * @author  PSE & 0xPARC
  * @title   NovaDecider contract, for verifying Nova IVC SNARK proofs.
  * @dev     This is an askama template which, when templated, features a Groth16 and KZG10 verifiers from which this contract inherits.
  */
-contract NovaDecider is Groth16Verifier, KZG10Verifier {
+contract NovaDecider is Groth16Verifier, KZG10Verifier, OpaqueDecider {
     /**
      * @notice  Computes the linear combination of a and b with r as the coefficient.
      * @dev     All ops are done mod the BN254 scalar field prime
@@ -143,5 +167,64 @@ contract NovaDecider is Groth16Verifier, KZG10Verifier {
         }
 
         return(true);
+    }
+
+    /**
+     * @notice  Verifies a Nova+CycleFold proof given initial and final IVC states, number of steps and the rest proof inputs concatenated.
+     * @dev     Simply reorganization of arguments and call to the `verifyNovaProof` function.
+     */
+    function verifyOpaqueNovaProofWithInputs(
+        uint256 steps,
+        uint256[{{ z_len }}] calldata initial_state,
+        uint256[{{ z_len }}] calldata final_state,
+        uint256[25] calldata proof
+    ) public override view returns (bool) {
+        uint256[1 + 2 * {{ z_len }}] memory i_z0_zi;
+        i_z0_zi[0] = steps;
+        for (uint256 i = 0; i < {{ z_len }}; i++) {
+            i_z0_zi[i + 1] = initial_state[i];
+            i_z0_zi[i + 1 + {{ z_len }}] = final_state[i];
+        }
+
+        uint256[4] memory U_i_cmW_U_i_cmE = [proof[0], proof[1], proof[2], proof[3]];
+        uint256[2] memory u_i_cmW = [proof[4], proof[5]];
+        uint256[3] memory cmT_r = [proof[6], proof[7], proof[8]];
+        uint256[2] memory pA = [proof[9], proof[10]];
+        uint256[2][2] memory pB = [[proof[11], proof[12]], [proof[13], proof[14]]];
+        uint256[2] memory pC = [proof[15], proof[16]];
+        uint256[4] memory challenge_W_challenge_E_kzg_evals = [proof[17], proof[18], proof[19], proof[20]];
+        uint256[2][2] memory kzg_proof = [[proof[21], proof[22]], [proof[23], proof[24]]];
+
+        return this.verifyNovaProof(
+            i_z0_zi,
+            U_i_cmW_U_i_cmE,
+            u_i_cmW,
+            cmT_r,
+            pA,
+            pB,
+            pC,
+            challenge_W_challenge_E_kzg_evals,
+            kzg_proof
+        );
+    }
+
+    /**
+     * @notice  Verifies a Nova+CycleFold proof given all proof inputs concatenated.
+     * @dev     Simply reorganization of arguments and call to the `verifyNovaProof` function.
+     */
+    function verifyOpaqueNovaProof(uint256[{{ 26 + z_len * 2 }}] calldata proof) public override view returns (bool) {
+        uint256[{{ z_len }}] memory z0;
+        uint256[{{ z_len }}] memory zi;
+        for (uint256 i = 0; i < {{ z_len }}; i++) {
+            z0[i] = proof[i + 1];
+            zi[i] = proof[i + 1 + {{ z_len }}];
+        }
+
+        uint256[25] memory extracted_proof;
+        for (uint256 i = 0; i < 25; i++) {
+            extracted_proof[i] = proof[{{ 1 + 2 * z_len }} + i];
+        }
+
+        return this.verifyOpaqueNovaProofWithInputs(proof[0], z0, zi, extracted_proof);
     }
 }

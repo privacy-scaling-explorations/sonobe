@@ -31,9 +31,11 @@ use folding_schemes::{
 };
 use std::time::Instant;
 
+use solidity_verifiers::calldata::{
+    get_function_selector_for_nova_cyclefold_verifier, NovaVerificationMode,
+};
 use solidity_verifiers::{
     evm::{compile_solidity, Evm},
-    utils::get_function_selector_for_nova_cyclefold_verifier,
     verifiers::nova_cyclefold::get_decider_template_for_cyclefold_decider,
     NovaCycleFoldVerifierKey,
 };
@@ -126,8 +128,10 @@ fn main() -> Result<(), Error> {
     println!("Decider proof verification: {}", verified);
 
     // Now, let's generate the Solidity code that verifies this Decider final proof
-    let function_selector =
-        get_function_selector_for_nova_cyclefold_verifier(nova.z_0.len() * 2 + 1);
+    let function_selector = get_function_selector_for_nova_cyclefold_verifier(
+        NovaVerificationMode::Explicit,
+        nova.z_0.len(),
+    );
 
     let calldata: Vec<u8> = prepare_calldata(
         function_selector,
@@ -136,7 +140,7 @@ fn main() -> Result<(), Error> {
         nova.z_i,
         &nova.U_i,
         &nova.u_i,
-        proof,
+        &proof,
     )?;
 
     // prepare the setup params for the solidity verifier
@@ -160,7 +164,7 @@ fn main() -> Result<(), Error> {
         decider_solidity_code.clone(),
     )?;
     fs::write("./examples/solidity-calldata.calldata", calldata.clone())?;
-    let s = solidity_verifiers::utils::get_formatted_calldata(calldata.clone());
+    let s = solidity_verifiers::calldata::get_formatted_calldata(calldata.clone());
     fs::write("./examples/solidity-calldata.inputs", s.join(",\n")).expect("");
     Ok(())
 }

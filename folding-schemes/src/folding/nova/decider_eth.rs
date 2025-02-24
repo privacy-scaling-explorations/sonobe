@@ -44,7 +44,7 @@ where
     cmT: C,
     r: C::ScalarField,
     // the KZG challenges are provided by the prover, but in-circuit they are checked to match
-    // the in-circuit computed computed ones.
+    // the in-circuit computed ones.
     kzg_challenges: [C::ScalarField; 2],
 }
 
@@ -253,7 +253,7 @@ pub fn prepare_calldata(
     z_i: Vec<ark_bn254::Fr>,
     running_instance: &CommittedInstance<ark_bn254::G1Projective>,
     incoming_instance: &CommittedInstance<ark_bn254::G1Projective>,
-    proof: Proof<ark_bn254::G1Projective, KZG<'static, Bn254>, Groth16<Bn254>>,
+    proof: &Proof<ark_bn254::G1Projective, KZG<Bn254>, Groth16<Bn254>>,
 ) -> Result<Vec<u8>, Error> {
     Ok([
         function_signature_check.to_eth(),

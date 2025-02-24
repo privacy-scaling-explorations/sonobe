@@ -650,7 +650,7 @@ pub mod tests {
     }
 
     /// Test that generates mu>1 and nu>1 instances, and folds them in a single multifolding step
-    /// and repeats the process doing multiple steps.
+    /// and repeats the process by doing multiple steps.
     #[test]
     pub fn test_multifolding_mu_nu_instances_multiple_steps() -> Result<(), Error> {
         let mut rng = test_rng();

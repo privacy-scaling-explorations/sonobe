@@ -28,7 +28,7 @@ solidity-verifiers-cli [OPTIONS] -p <PROTOCOL> -k <PROTOCOL_VK> -o <OUTPUT_PATH>
 
 A real use case (which was used to test the tool itself):
 `solidity-verifiers-cli -p groth16 -k ./solidity-verifiers/assets/G16_test_vk`
-This would generate a Groth16 verifier contract for the given G16 verifier key (which consists on the G16_Vk only) and store this contract in `$pwd`.
+This would generate a Groth16 verifier contract for the given G16 verifier key (which consists of the G16_Vk only) and store this contract in `$pwd`.
 
 ### Options:
     -v, --verbose: Increase logging verbosity

@@ -168,7 +168,7 @@ mod tests {
     use crate::verifiers::tests::{setup, DEFAULT_SETUP_LEN};
     use crate::{
         evm::{compile_solidity, save_solidity, Evm},
-        utils::{get_function_selector_for_nova_cyclefold_verifier, HeaderInclusion},
+        utils::{calldata::get_function_selector_for_nova_cyclefold_verifier, HeaderInclusion},
         verifiers::nova_cyclefold::get_decider_template_for_cyclefold_decider,
         NovaCycleFoldVerifierKey, ProtocolVerifierKey,
     };

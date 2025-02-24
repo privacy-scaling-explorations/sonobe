@@ -3,6 +3,7 @@ use askama::Template;
 use crypto::{digest::Digest, sha3::Sha3};
 use num_bigint::BigUint;
 pub mod encoding;
+pub mod calldata;
 
 /// Formats call data from a vec of bytes to a hashmap
 /// Useful for debugging directly on the EVM

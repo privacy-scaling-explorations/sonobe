@@ -2,7 +2,7 @@
 /// DeciderEthCircuit.
 /// More details can be found at the documentation page:
 /// https://privacy-scaling-explorations.github.io/sonobe-docs/design/nova-decider-offchain.html
-use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, CryptographicSponge};
+use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::fields::fp::FpVar;
 use core::marker::PhantomData;
@@ -12,17 +12,23 @@ use super::{
     nifs::{nova::NIFS, NIFSTrait},
     CommittedInstance, Nova, Witness,
 };
-use crate::folding::{circuits::CF1, traits::WitnessOps};
-use crate::frontend::FCircuit;
 use crate::{
     arith::r1cs::{circuits::R1CSMatricesVar, R1CS},
-    folding::circuits::decider::{
-        off_chain::{GenericOffchainDeciderCircuit1, GenericOffchainDeciderCircuit2},
-        EvalGadget, KZGChallengesGadget,
+    commitment::CommitmentScheme,
+    folding::{
+        circuits::{
+            decider::{
+                off_chain::{GenericOffchainDeciderCircuit1, GenericOffchainDeciderCircuit2},
+                EvalGadget, KZGChallengesGadget,
+            },
+            CF1,
+        },
+        traits::WitnessOps,
     },
+    frontend::FCircuit,
+    transcript::{poseidon::poseidon_canonical_config, Transcript},
+    Curve, Error,
 };
-use crate::{commitment::CommitmentScheme, transcript::poseidon::poseidon_canonical_config};
-use crate::{Curve, Error};
 
 /// Circuit that implements part of the in-circuit checks needed for the offchain verification over
 /// the Curve2's BaseField (=Curve1's ScalarField).
@@ -50,7 +56,7 @@ impl<
     type Error = Error;
 
     fn try_from(nova: Nova<C1, C2, FC, CS1, CS2, H>) -> Result<Self, Error> {
-        let mut transcript = PoseidonSponge::<C1::ScalarField>::new(&nova.poseidon_config);
+        let mut transcript = PoseidonSponge::new_with_pp_hash(&nova.poseidon_config, nova.pp_hash);
         // pp_hash is absorbed to transcript at the NIFS::prove call
 
         // compute the U_{i+1}, W_{i+1}
@@ -58,7 +64,6 @@ impl<
             &nova.cs_pp,
             &nova.r1cs.clone(),
             &mut transcript,
-            nova.pp_hash,
             &nova.W_i,
             &nova.U_i,
             &nova.w_i,
@@ -120,10 +125,10 @@ impl<
         // compute the Commitment Scheme challenges of the CycleFold instance commitments, used as
         // inputs in the circuit
         let poseidon_config = poseidon_canonical_config::<C2::ScalarField>();
-        let mut transcript = PoseidonSponge::<C2::ScalarField>::new(&poseidon_config);
         let pp_hash_Fq =
             C2::ScalarField::from_le_bytes_mod_order(&nova.pp_hash.into_bigint().to_bytes_le());
-        transcript.absorb(&pp_hash_Fq);
+        let mut transcript =
+            PoseidonSponge::<C2::ScalarField>::new_with_pp_hash(&poseidon_config, pp_hash_Fq);
 
         // compute the KZG challenges used as inputs in the circuit
         let kzg_challenges =

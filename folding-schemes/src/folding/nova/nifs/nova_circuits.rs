@@ -121,7 +121,6 @@ where
 
     fn verify(
         transcript: &mut T,
-        pp_hash: FpVar<CF1<C>>,
         U_i: Self::CommittedInstanceVar,
         // U_i_vec is passed to reuse the already computed U_i_vec from previous methods
         U_i_vec: Vec<FpVar<CF1<C>>>,
@@ -130,7 +129,6 @@ where
     ) -> Result<(Self::CommittedInstanceVar, Vec<Boolean<CF1<C>>>), SynthesisError> {
         let r_bits = ChallengeGadget::<C, CommittedInstance<C>>::get_challenge_gadget(
             transcript,
-            pp_hash.clone(),
             U_i_vec,
             u_i.clone(),
             cmT.clone(),

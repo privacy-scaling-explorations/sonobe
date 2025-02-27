@@ -27,7 +27,9 @@ use folding_schemes::{
 };
 use std::{path::Path, time::Instant};
 
-use solidity_verifiers::calldata::{prepare_calldata, NovaVerificationMode};
+use solidity_verifiers::calldata::{
+    prepare_calldata_for_nova_cyclefold_verifier, NovaVerificationMode,
+};
 use solidity_verifiers::{
     evm::{compile_solidity, Evm},
     verifiers::nova_cyclefold::get_decider_template_for_cyclefold_decider,
@@ -102,7 +104,7 @@ fn main() -> Result<(), Error> {
     println!("Decider proof verification: {}", verified);
 
     // Now, let's generate the Solidity code that verifies this Decider final proof
-    let calldata: Vec<u8> = prepare_calldata(
+    let calldata: Vec<u8> = prepare_calldata_for_nova_cyclefold_verifier(
         NovaVerificationMode::Explicit,
         nova.i,
         nova.z_0,

@@ -33,33 +33,8 @@ pub fn get_formatted_calldata(calldata: Vec<u8>) -> Vec<String> {
     formatted_calldata
 }
 
-/// Computes the function selector for the nova cyclefold verifier.
-/// It is computed on the fly since it depends on the IVC state length.
-fn get_function_selector_for_nova_cyclefold_verifier(
-    mode: NovaVerificationMode,
-    state_len: usize,
-) -> [u8; 4] {
-    let fn_sig = match mode {
-        NovaVerificationMode::Explicit =>
-            format!(
-                "verifyNovaProof(uint256[{}],uint256[4],uint256[2],uint256[3],uint256[2],uint256[2][2],uint256[2],uint256[4],uint256[2][2])",
-                state_len * 2 + 1
-            ),
-        NovaVerificationMode::Opaque =>
-            format!("verifyOpaqueNovaProof(uint256[{}])", 26 + 2 * state_len),
-        NovaVerificationMode::OpaqueWithInputs =>
-            format!("verifyOpaqueNovaProofWithInputs(uint256,uint256[{state_len}],uint256[{state_len}],uint256[25])"),
-    };
-
-    let mut hasher = Sha3::keccak256();
-    hasher.input_str(&fn_sig);
-    let hash = &mut [0u8; 32];
-    hasher.result(hash);
-    [hash[0], hash[1], hash[2], hash[3]]
-}
-
 /// Prepares solidity calldata for calling the NovaDecider contract
-pub fn prepare_calldata(
+pub fn prepare_calldata_for_nova_cyclefold_verifier(
     verification_mode: NovaVerificationMode,
     i: ark_bn254::Fr,
     z_0: Vec<ark_bn254::Fr>,
@@ -68,7 +43,7 @@ pub fn prepare_calldata(
     incoming_instance: &CommittedInstance<ark_bn254::G1Projective>,
     proof: &Proof<ark_bn254::G1Projective, KZG<Bn254>, Groth16<Bn254>>,
 ) -> Result<Vec<u8>, Error> {
-    let selector = get_function_selector_for_nova_cyclefold_verifier(verification_mode, z_0.len());
+    let selector = get_function_selector(verification_mode, z_0.len());
 
     Ok([
         selector.to_eth(),
@@ -88,4 +63,26 @@ pub fn prepare_calldata(
         proof.kzg_proofs()[1].proof.to_eth(), // E kzg_proof
     ]
     .concat())
+}
+
+/// Computes the function selector for the nova cyclefold verifier.
+/// It is computed on the fly since it depends on the IVC state length.
+fn get_function_selector(mode: NovaVerificationMode, state_len: usize) -> [u8; 4] {
+    let fn_sig = match mode {
+        NovaVerificationMode::Explicit =>
+            format!(
+                "verifyNovaProof(uint256[{}],uint256[4],uint256[2],uint256[3],uint256[2],uint256[2][2],uint256[2],uint256[4],uint256[2][2])",
+                state_len * 2 + 1
+            ),
+        NovaVerificationMode::Opaque =>
+            format!("verifyOpaqueNovaProof(uint256[{}])", 26 + 2 * state_len),
+        NovaVerificationMode::OpaqueWithInputs =>
+            format!("verifyOpaqueNovaProofWithInputs(uint256,uint256[{state_len}],uint256[{state_len}],uint256[25])"),
+    };
+
+    let mut hasher = Sha3::keccak256();
+    hasher.input_str(&fn_sig);
+    let hash = &mut [0u8; 32];
+    hasher.result(hash);
+    [hash[0], hash[1], hash[2], hash[3]]
 }

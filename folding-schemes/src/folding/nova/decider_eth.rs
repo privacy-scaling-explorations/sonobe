@@ -41,6 +41,33 @@ where
     kzg_challenges: [C::ScalarField; 2],
 }
 
+impl<C, CS, S> Proof<C, CS, S>
+where
+    C: Curve,
+    CS: CommitmentScheme<C, ProverChallenge = C::ScalarField, Challenge = C::ScalarField>,
+    S: SNARK<C::ScalarField>,
+{
+    pub fn snark_proof(&self) -> &S::Proof {
+        &self.snark_proof
+    }
+
+    pub fn kzg_proofs(&self) -> &[CS::Proof; 2] {
+        &self.kzg_proofs
+    }
+
+    pub fn cmT(&self) -> &C {
+        &self.cmT
+    }
+
+    pub fn r(&self) -> C::ScalarField {
+        self.r
+    }
+
+    pub fn kzg_challenges(&self) -> [C::ScalarField; 2] {
+        self.kzg_challenges
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct VerifierParam<C1, CS_VerifyingKey, S_VerifyingKey>
 where
@@ -239,16 +266,17 @@ where
 
 #[cfg(test)]
 pub mod tests {
-    use ark_bn254::{Fr, G1Projective as Projective};
-    use ark_grumpkin::Projective as Projective2;
-    use std::time::Instant;
-
     use super::*;
+    use crate::commitment::kzg::KZG;
     use crate::commitment::pedersen::Pedersen;
     use crate::folding::nova::{PreprocessorParam, ProverParams as NovaProverParams};
     use crate::folding::traits::CommittedInstanceOps;
     use crate::frontend::utils::CubicFCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
+    use ark_bn254::{Bn254, Fr, G1Projective as Projective};
+    use ark_groth16::Groth16;
+    use ark_grumpkin::Projective as Projective2;
+    use std::time::Instant;
 
     #[test]
     fn test_decider() -> Result<(), Error> {

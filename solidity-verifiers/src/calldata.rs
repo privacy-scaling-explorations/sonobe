@@ -68,6 +68,8 @@ pub fn prepare_calldata(
     incoming_instance: &CommittedInstance<ark_bn254::G1Projective>,
     proof: &Proof<ark_bn254::G1Projective, KZG<Bn254>, Groth16<Bn254>>,
 ) -> Result<Vec<u8>, Error> {
+    let kzg_proofs = proof.kzg_proofs();
+
     Ok([
         function_signature_check.to_eth(),
         i.to_eth(),   // i
@@ -76,14 +78,14 @@ pub fn prepare_calldata(
         running_instance.cmW.to_eth(),
         running_instance.cmE.to_eth(),
         incoming_instance.cmW.to_eth(),
-        proof.cmT.to_eth(),                 // cmT
-        proof.r.to_eth(),                   // r
-        proof.snark_proof.to_eth(),         // pA, pB, pC
-        proof.kzg_challenges.to_eth(),      // challenge_W, challenge_E
-        proof.kzg_proofs[0].eval.to_eth(),  // eval W
-        proof.kzg_proofs[1].eval.to_eth(),  // eval E
-        proof.kzg_proofs[0].proof.to_eth(), // W kzg_proof
-        proof.kzg_proofs[1].proof.to_eth(), // E kzg_proof
+        proof.cmT().to_eth(),            // cmT
+        proof.r().to_eth(),              // r
+        proof.snark_proof().to_eth(),    // pA, pB, pC
+        proof.kzg_challenges().to_eth(), // challenge_W, challenge_E
+        kzg_proofs[0].eval.to_eth(),     // eval W
+        kzg_proofs[1].eval.to_eth(),     // eval E
+        kzg_proofs[0].proof.to_eth(),    // W kzg_proof
+        kzg_proofs[1].proof.to_eth(),    // E kzg_proof
     ]
     .concat())
 }

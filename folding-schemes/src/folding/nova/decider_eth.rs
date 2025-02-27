@@ -2,8 +2,6 @@
 /// the Decider from decider.rs file will be more efficient.
 /// More details can be found at the documentation page:
 /// https://privacy-scaling-explorations.github.io/sonobe-docs/design/nova-decider-onchain.html
-use ark_bn254::Bn254;
-use ark_groth16::Groth16;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_snark::SNARK;
 use ark_std::{
@@ -14,17 +12,12 @@ use core::marker::PhantomData;
 
 pub use super::decider_eth_circuit::DeciderEthCircuit;
 use super::decider_eth_circuit::DeciderNovaGadget;
-use super::{CommittedInstance, Nova};
+use super::Nova;
 use crate::folding::circuits::decider::DeciderEnabledNIFS;
 use crate::folding::traits::{InputizeNonNative, WitnessOps};
 use crate::frontend::FCircuit;
-use crate::utils::eth::ToEth;
 use crate::{
-    commitment::{
-        kzg::{Proof as KZGProof, KZG},
-        pedersen::Params as PedersenParams,
-        CommitmentScheme,
-    },
+    commitment::{kzg::Proof as KZGProof, pedersen::Params as PedersenParams, CommitmentScheme},
     folding::traits::Dummy,
 };
 use crate::{Curve, Error};
@@ -242,37 +235,6 @@ where
 
         Ok(true)
     }
-}
-
-/// Prepares solidity calldata for calling the NovaDecider contract
-#[allow(clippy::too_many_arguments)]
-pub fn prepare_calldata(
-    function_signature_check: [u8; 4],
-    i: ark_bn254::Fr,
-    z_0: Vec<ark_bn254::Fr>,
-    z_i: Vec<ark_bn254::Fr>,
-    running_instance: &CommittedInstance<ark_bn254::G1Projective>,
-    incoming_instance: &CommittedInstance<ark_bn254::G1Projective>,
-    proof: &Proof<ark_bn254::G1Projective, KZG<Bn254>, Groth16<Bn254>>,
-) -> Result<Vec<u8>, Error> {
-    Ok([
-        function_signature_check.to_eth(),
-        i.to_eth(),   // i
-        z_0.to_eth(), // z_0
-        z_i.to_eth(), // z_i
-        running_instance.cmW.to_eth(),
-        running_instance.cmE.to_eth(),
-        incoming_instance.cmW.to_eth(),
-        proof.cmT.to_eth(),                 // cmT
-        proof.r.to_eth(),                   // r
-        proof.snark_proof.to_eth(),         // pA, pB, pC
-        proof.kzg_challenges.to_eth(),      // challenge_W, challenge_E
-        proof.kzg_proofs[0].eval.to_eth(),  // eval W
-        proof.kzg_proofs[1].eval.to_eth(),  // eval E
-        proof.kzg_proofs[0].proof.to_eth(), // W kzg_proof
-        proof.kzg_proofs[1].proof.to_eth(), // E kzg_proof
-    ]
-    .concat())
 }
 
 #[cfg(test)]

@@ -153,7 +153,7 @@ mod tests {
     use super::{DeciderVerifierParam, NovaCycleFoldDecider};
     use crate::calldata::NovaVerificationMode::{Explicit, Opaque, OpaqueWithInputs};
     use crate::calldata::{
-        get_function_selector_for_nova_cyclefold_verifier, NovaVerificationMode,
+        get_function_selector_for_nova_cyclefold_verifier, prepare_calldata, NovaVerificationMode,
     };
     use crate::verifiers::tests::{setup, DEFAULT_SETUP_LEN};
     use crate::{
@@ -166,10 +166,7 @@ mod tests {
     use folding_schemes::{
         commitment::{kzg::KZG, pedersen::Pedersen},
         folding::{
-            nova::{
-                decider_eth::{prepare_calldata, Decider as DeciderEth},
-                Nova, PreprocessorParam,
-            },
+            nova::{decider_eth::Decider as DeciderEth, Nova, PreprocessorParam},
             traits::CommittedInstanceOps,
         },
         frontend::FCircuit,

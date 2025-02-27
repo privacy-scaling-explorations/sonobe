@@ -1,5 +1,12 @@
+use ark_bn254::Bn254;
+use ark_groth16::Groth16;
 use crypto::digest::Digest;
 use crypto::sha3::Sha3;
+use folding_schemes::commitment::kzg::KZG;
+use folding_schemes::folding::nova::decider_eth::Proof;
+use folding_schemes::folding::nova::CommittedInstance;
+use folding_schemes::utils::eth::ToEth;
+use folding_schemes::Error;
 use num_bigint::BigUint;
 
 /// Specifies which API to use for a proof verification in a contract.
@@ -49,4 +56,34 @@ pub fn get_function_selector_for_nova_cyclefold_verifier(
     let hash = &mut [0u8; 32];
     hasher.result(hash);
     [hash[0], hash[1], hash[2], hash[3]]
+}
+
+/// Prepares solidity calldata for calling the NovaDecider contract
+pub fn prepare_calldata(
+    function_signature_check: [u8; 4],
+    i: ark_bn254::Fr,
+    z_0: Vec<ark_bn254::Fr>,
+    z_i: Vec<ark_bn254::Fr>,
+    running_instance: &CommittedInstance<ark_bn254::G1Projective>,
+    incoming_instance: &CommittedInstance<ark_bn254::G1Projective>,
+    proof: &Proof<ark_bn254::G1Projective, KZG<Bn254>, Groth16<Bn254>>,
+) -> Result<Vec<u8>, Error> {
+    Ok([
+        function_signature_check.to_eth(),
+        i.to_eth(),   // i
+        z_0.to_eth(), // z_0
+        z_i.to_eth(), // z_i
+        running_instance.cmW.to_eth(),
+        running_instance.cmE.to_eth(),
+        incoming_instance.cmW.to_eth(),
+        proof.cmT.to_eth(),                 // cmT
+        proof.r.to_eth(),                   // r
+        proof.snark_proof.to_eth(),         // pA, pB, pC
+        proof.kzg_challenges.to_eth(),      // challenge_W, challenge_E
+        proof.kzg_proofs[0].eval.to_eth(),  // eval W
+        proof.kzg_proofs[1].eval.to_eth(),  // eval E
+        proof.kzg_proofs[0].proof.to_eth(), // W kzg_proof
+        proof.kzg_proofs[1].proof.to_eth(), // E kzg_proof
+    ]
+    .concat())
 }

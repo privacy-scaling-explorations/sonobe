@@ -18,10 +18,7 @@ use experimental_frontends::{noir::NoirFCircuit, utils::VecF};
 use folding_schemes::{
     commitment::{kzg::KZG, pedersen::Pedersen},
     folding::{
-        nova::{
-            decider_eth::{prepare_calldata, Decider as DeciderEth},
-            Nova, PreprocessorParam,
-        },
+        nova::{decider_eth::Decider as DeciderEth, Nova, PreprocessorParam},
         traits::CommittedInstanceOps,
     },
     frontend::FCircuit,
@@ -31,7 +28,7 @@ use folding_schemes::{
 use std::{path::Path, time::Instant};
 
 use solidity_verifiers::calldata::{
-    get_function_selector_for_nova_cyclefold_verifier, NovaVerificationMode,
+    get_function_selector_for_nova_cyclefold_verifier, prepare_calldata, NovaVerificationMode,
 };
 use solidity_verifiers::{
     evm::{compile_solidity, Evm},

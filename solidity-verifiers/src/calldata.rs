@@ -1,3 +1,4 @@
+use crate::utils::eth::ToEth;
 use ark_bn254::Bn254;
 use ark_groth16::Groth16;
 use crypto::digest::Digest;
@@ -5,7 +6,6 @@ use crypto::sha3::Sha3;
 use folding_schemes::commitment::kzg::KZG;
 use folding_schemes::folding::nova::decider_eth::Proof;
 use folding_schemes::folding::nova::CommittedInstance;
-use folding_schemes::utils::eth::ToEth;
 use folding_schemes::Error;
 use num_bigint::BigUint;
 

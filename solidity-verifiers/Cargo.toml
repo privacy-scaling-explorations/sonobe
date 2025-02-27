@@ -6,6 +6,8 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+ark-ec = { workspace = true }
+ark-ff = { workspace = true }
 ark-groth16 = { workspace = true }
 ark-bn254 = { workspace = true, features = ["r1cs"] }
 ark-poly-commit = { workspace = true }

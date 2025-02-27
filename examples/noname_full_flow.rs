@@ -19,10 +19,7 @@ use experimental_frontends::{noname::NonameFCircuit, utils::VecF};
 use folding_schemes::{
     commitment::{kzg::KZG, pedersen::Pedersen},
     folding::{
-        nova::{
-            decider_eth::{prepare_calldata, Decider as DeciderEth},
-            Nova, PreprocessorParam,
-        },
+        nova::{decider_eth::Decider as DeciderEth, Nova, PreprocessorParam},
         traits::CommittedInstanceOps,
     },
     frontend::FCircuit,
@@ -32,7 +29,7 @@ use folding_schemes::{
 use std::time::Instant;
 
 use solidity_verifiers::calldata::{
-    get_function_selector_for_nova_cyclefold_verifier, NovaVerificationMode,
+    prepare_calldata_for_nova_cyclefold_verifier, NovaVerificationMode,
 };
 use solidity_verifiers::{
     evm::{compile_solidity, Evm},
@@ -128,13 +125,8 @@ fn main() -> Result<(), Error> {
     println!("Decider proof verification: {}", verified);
 
     // Now, let's generate the Solidity code that verifies this Decider final proof
-    let function_selector = get_function_selector_for_nova_cyclefold_verifier(
+    let calldata: Vec<u8> = prepare_calldata_for_nova_cyclefold_verifier(
         NovaVerificationMode::Explicit,
-        nova.z_0.len(),
-    );
-
-    let calldata: Vec<u8> = prepare_calldata(
-        function_selector,
         nova.i,
         nova.z_0,
         nova.z_i,

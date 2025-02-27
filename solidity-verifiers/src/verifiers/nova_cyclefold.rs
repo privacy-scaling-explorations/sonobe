@@ -152,9 +152,7 @@ mod tests {
 
     use super::{DeciderVerifierParam, NovaCycleFoldDecider};
     use crate::calldata::NovaVerificationMode::{Explicit, Opaque, OpaqueWithInputs};
-    use crate::calldata::{
-        get_function_selector_for_nova_cyclefold_verifier, NovaVerificationMode,
-    };
+    use crate::calldata::{prepare_calldata_for_nova_cyclefold_verifier, NovaVerificationMode};
     use crate::verifiers::tests::{setup, DEFAULT_SETUP_LEN};
     use crate::{
         evm::{compile_solidity, save_solidity, Evm},
@@ -166,10 +164,7 @@ mod tests {
     use folding_schemes::{
         commitment::{kzg::KZG, pedersen::Pedersen},
         folding::{
-            nova::{
-                decider_eth::{prepare_calldata, Decider as DeciderEth},
-                Nova, PreprocessorParam,
-            },
+            nova::{decider_eth::Decider as DeciderEth, Nova, PreprocessorParam},
             traits::CommittedInstanceOps,
         },
         frontend::FCircuit,
@@ -324,11 +319,8 @@ mod tests {
         let mut evm = Evm::default();
         let verifier_address = evm.create(nova_cyclefold_verifier_bytecode.to_vec());
 
-        let function_selector =
-            get_function_selector_for_nova_cyclefold_verifier(mode, nova.z_0.len());
-
-        let calldata: Vec<u8> = prepare_calldata(
-            function_selector,
+        let calldata: Vec<u8> = prepare_calldata_for_nova_cyclefold_verifier(
+            mode,
             nova.i,
             nova.z_0.clone(),
             nova.z_i.clone(),

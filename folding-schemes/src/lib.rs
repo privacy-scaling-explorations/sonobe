@@ -4,7 +4,6 @@
 
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::{
-    pairing::Pairing,
     short_weierstrass::{Projective, SWCurveConfig},
     CurveGroup,
 };
@@ -285,26 +284,6 @@ pub trait Decider<
         // returns `Result<bool, Error>` to differentiate between an error occurred while performing
         // the verification steps, and the verification logic of the scheme not passing.
     ) -> Result<bool, Error>;
-}
-
-/// DeciderOnchain extends the Decider into preparing the calldata
-pub trait DeciderOnchain<
-    E: Pairing,
-    C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-    C2: Curve,
->
-{
-    type Proof;
-    type CommittedInstance: Clone + Debug;
-
-    fn prepare_calldata(
-        i: C1::ScalarField,
-        z_0: Vec<C1::ScalarField>,
-        z_i: Vec<C1::ScalarField>,
-        running_instance: &Self::CommittedInstance,
-        incoming_instance: &Self::CommittedInstance,
-        proof: Self::Proof,
-    ) -> Result<Vec<u8>, Error>;
 }
 
 /// `Field` trait is a wrapper around `PrimeField` that also includes the

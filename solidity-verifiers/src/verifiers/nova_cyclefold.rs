@@ -152,9 +152,7 @@ mod tests {
 
     use super::{DeciderVerifierParam, NovaCycleFoldDecider};
     use crate::calldata::NovaVerificationMode::{Explicit, Opaque, OpaqueWithInputs};
-    use crate::calldata::{
-        get_function_selector_for_nova_cyclefold_verifier, prepare_calldata, NovaVerificationMode,
-    };
+    use crate::calldata::{prepare_calldata, NovaVerificationMode};
     use crate::verifiers::tests::{setup, DEFAULT_SETUP_LEN};
     use crate::{
         evm::{compile_solidity, save_solidity, Evm},
@@ -321,11 +319,8 @@ mod tests {
         let mut evm = Evm::default();
         let verifier_address = evm.create(nova_cyclefold_verifier_bytecode.to_vec());
 
-        let function_selector =
-            get_function_selector_for_nova_cyclefold_verifier(mode, nova.z_0.len());
-
         let calldata: Vec<u8> = prepare_calldata(
-            function_selector,
+            mode,
             nova.i,
             nova.z_0.clone(),
             nova.z_i.clone(),

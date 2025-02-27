@@ -35,7 +35,7 @@ pub fn get_formatted_calldata(calldata: Vec<u8>) -> Vec<String> {
 
 /// Computes the function selector for the nova cyclefold verifier.
 /// It is computed on the fly since it depends on the IVC state length.
-pub fn get_function_selector_for_nova_cyclefold_verifier(
+fn get_function_selector_for_nova_cyclefold_verifier(
     mode: NovaVerificationMode,
     state_len: usize,
 ) -> [u8; 4] {
@@ -60,7 +60,7 @@ pub fn get_function_selector_for_nova_cyclefold_verifier(
 
 /// Prepares solidity calldata for calling the NovaDecider contract
 pub fn prepare_calldata(
-    function_signature_check: [u8; 4],
+    verification_mode: NovaVerificationMode,
     i: ark_bn254::Fr,
     z_0: Vec<ark_bn254::Fr>,
     z_i: Vec<ark_bn254::Fr>,
@@ -68,24 +68,24 @@ pub fn prepare_calldata(
     incoming_instance: &CommittedInstance<ark_bn254::G1Projective>,
     proof: &Proof<ark_bn254::G1Projective, KZG<Bn254>, Groth16<Bn254>>,
 ) -> Result<Vec<u8>, Error> {
-    let kzg_proofs = proof.kzg_proofs();
+    let selector = get_function_selector_for_nova_cyclefold_verifier(verification_mode, z_0.len());
 
     Ok([
-        function_signature_check.to_eth(),
+        selector.to_eth(),
         i.to_eth(),   // i
         z_0.to_eth(), // z_0
         z_i.to_eth(), // z_i
         running_instance.cmW.to_eth(),
         running_instance.cmE.to_eth(),
         incoming_instance.cmW.to_eth(),
-        proof.cmT().to_eth(),            // cmT
-        proof.r().to_eth(),              // r
-        proof.snark_proof().to_eth(),    // pA, pB, pC
-        proof.kzg_challenges().to_eth(), // challenge_W, challenge_E
-        kzg_proofs[0].eval.to_eth(),     // eval W
-        kzg_proofs[1].eval.to_eth(),     // eval E
-        kzg_proofs[0].proof.to_eth(),    // W kzg_proof
-        kzg_proofs[1].proof.to_eth(),    // E kzg_proof
+        proof.cmT().to_eth(),                 // cmT
+        proof.r().to_eth(),                   // r
+        proof.snark_proof().to_eth(),         // pA, pB, pC
+        proof.kzg_challenges().to_eth(),      // challenge_W, challenge_E
+        proof.kzg_proofs()[0].eval.to_eth(),  // eval W
+        proof.kzg_proofs()[1].eval.to_eth(),  // eval E
+        proof.kzg_proofs()[0].proof.to_eth(), // W kzg_proof
+        proof.kzg_proofs()[1].proof.to_eth(), // E kzg_proof
     ]
     .concat())
 }

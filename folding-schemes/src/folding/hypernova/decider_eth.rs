@@ -30,7 +30,7 @@ where
     // rho used at the last fold, U_{i+1}=NIMFS.V(rho, U_i, u_i), it is checked in-circuit
     rho: C1::ScalarField,
     // the KZG challenge is provided by the prover, but in-circuit it is checked to match
-    // the in-circuit computed computed one.
+    // the in-circuit computed one.
     kzg_challenge: C1::ScalarField,
 }
 

@@ -384,6 +384,45 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
             rE: rE_prime.to_vec(),
         })
     }
+
+    /// Checks the relationship of the accumulated instances and witness
+    /// AB == uC + E
+    /// commit(M) = storedCommitment of M (for A, B and C)
+    /// MLE[E](r) == v
+    /// A, B and C are nxn matrices - to be added when we have correct matrices
+    #[allow(dead_code)]
+    fn check_relation(
+        witness: &Witness<C>,
+        instance: &RelaxedCommittedRelation<C>,
+        params: &CS::ProverParams,
+    ) -> Result<(), Error> {
+        let AB = mat_mat_mul_dense(&witness.A, &witness.B)?;
+        let uc: Vec<C::ScalarField> = vec_scalar_mul(&witness.C, &instance.u);
+        let e = vec_sub(&AB, &uc)?;
+        if witness.E != e {
+            return Err(Error::NotSatisfied);
+        }
+
+        let E = dense_vec_to_dense_mle(log2(witness.E.len()) as usize, &witness.E);
+        let mleE = E.evaluate(&instance.rE);
+        if instance.mleE != mleE {
+            return Err(Error::NotSatisfied);
+        }
+        let com_a = CS::commit(params, &witness.A, &C::ScalarField::zero())?;
+        let com_b = CS::commit(params, &witness.B, &C::ScalarField::zero())?;
+        let com_c = CS::commit(params, &witness.C, &C::ScalarField::zero())?;
+
+        if instance.cmA != com_a {
+            return Err(Error::NotSatisfied);
+        }
+        if instance.cmB != com_b {
+            return Err(Error::NotSatisfied);
+        }
+        if instance.cmC != com_c {
+            return Err(Error::NotSatisfied);
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -486,6 +525,12 @@ pub mod tests {
 
             // Ensure they match
             assert_eq!(instance_acc, ci_verify);
+            NIFS::<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>::check_relation(
+                &wit_acc,
+                &instance_acc,
+                &pedersen_params,
+            )
+            .expect("Relationship check failed");
         }
     }
 
@@ -514,8 +559,9 @@ pub mod tests {
             );
 
         // Keep track of the accumulated state
-        let mut current_acc_wit = instances.remove(0).0;
-        let mut current_acc_inst = instances.remove(0).1;
+        let first_instance = instances.remove(0);
+        let mut current_acc_wit = first_instance.0;
+        let mut current_acc_inst = first_instance.1;
 
         // Fold through all remaining instances
         for (next_w, next_i) in instances {
@@ -546,6 +592,13 @@ pub mod tests {
             assert_eq!(inst_acc, ci_verify);
 
             // Update state for next iteration
+            NIFS::<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>::check_relation(
+                &wit_acc,
+                &inst_acc,
+                &pedersen_params,
+            )
+            .expect("Relationship check failed");
+
             current_acc_wit = wit_acc;
             current_acc_inst = inst_acc;
         }

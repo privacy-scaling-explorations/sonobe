@@ -8,8 +8,12 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="9ef6b83a-e071-4fd2-afdd-2853fcc507ce" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.github/workflows/ci.yml" beforeDir="false" afterPath="$PROJECT_DIR$/.github/workflows/ci.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/benches/mova_matrix.rs" beforeDir="false" afterPath="$PROJECT_DIR$/benches/mova_matrix.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/folding-schemes/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/folding-schemes/Cargo.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/folding-schemes/src/folding/nova/nifs/mova_matrix.rs" beforeDir="false" afterPath="$PROJECT_DIR$/folding-schemes/src/folding/nova/nifs/mova_matrix.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/folding-schemes/src/folding/nova/nifs/pointvsline.rs" beforeDir="false" afterPath="$PROJECT_DIR$/folding-schemes/src/folding/nova/nifs/pointvsline.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/folding-schemes/src/utils/mle.rs" beforeDir="false" afterPath="$PROJECT_DIR$/folding-schemes/src/utils/mle.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -48,7 +52,7 @@
     &quot;org.rust.first.attach.projects&quot;: &quot;true&quot;
   }
 }</component>
-  <component name="RunManager" selected="Cargo.Test folding::nova::nifs::mova_matrix::tests::test_nifs_mova_matrix_multiple_folds">
+  <component name="RunManager" selected="Cargo.Test pointvsline::tests">
     <configuration name="Run solidity-verifiers-cli" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
       <option name="command" value="run --package solidity-verifiers-cli --bin solidity-verifiers-cli" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -134,6 +138,23 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
+    <configuration name="Test pointvsline::tests" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package folding-schemes --lib folding::nova::nifs::pointvsline::tests" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <envs />
+      <option name="emulateTerminal" value="true" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
     <configuration name="Test sonobe" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
       <option name="command" value="test --workspace" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -153,6 +174,7 @@
     </configuration>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Test pointvsline::tests" />
         <item itemvalue="Cargo.Test folding::nova::nifs::mova_matrix::tests::test_nifs_mova_matrix_multiple_folds" />
         <item itemvalue="Cargo.Test folding::nova::nifs::mova_matrix::tests::test" />
         <item itemvalue="Cargo.Test folding::nova::nifs::mova_matrix::tests::test_nifs_mova_matrix_single_fold" />
@@ -187,7 +209,7 @@
       <breakpoints>
         <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
           <url>file://$PROJECT_DIR$/folding-schemes/src/folding/nova/nifs/pointvsline.rs</url>
-          <line>381</line>
+          <line>382</line>
           <option name="timeStamp" value="5" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">

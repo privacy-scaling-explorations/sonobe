@@ -94,15 +94,33 @@ impl<C: Curve> Witness<C> {
         rE: Vec<C::ScalarField>,
     ) -> Result<RelaxedCommittedRelation<C>, Error> {
         let mut mleE = C::ScalarField::zero();
-        if !Matrix::is_zero_matrix(&self.E) {
+        if !Matrix::is_empty(&self.E) {
             let mle = MultilinearExtension::from_evaluations(&self.E, log2(self.E.len()) as usize);
             mleE = mle.evaluate(&rE);
         }
 
+        let mut dense_a = self.A.clone();
+        let mut dense_b = self.B.clone();
+        let mut dense_c = self.C.clone();
+        dense_a.to_dense();
+        dense_b.to_dense();
+        dense_c.to_dense();
         // Right now we are ignoring the hiding property and directly commit to the matrices
-        let com_a = CS::commit(params, &self.A.clone().elems(), &C::ScalarField::zero())?;
-        let com_b = CS::commit(params, &self.B.clone().elems(), &C::ScalarField::zero())?;
-        let com_c = CS::commit(params, &self.C.clone().elems(), &C::ScalarField::zero())?;
+        let com_a = CS::commit(
+            params,
+            dense_a.as_dense_slice().unwrap(),
+            &C::ScalarField::zero(),
+        )?;
+        let com_b = CS::commit(
+            params,
+            dense_b.as_dense_slice().unwrap(),
+            &C::ScalarField::zero(),
+        )?;
+        let com_c = CS::commit(
+            params,
+            dense_c.as_dense_slice().unwrap(),
+            &C::ScalarField::zero(),
+        )?;
 
         Ok(RelaxedCommittedRelation {
             cmA: com_a,

@@ -150,14 +150,14 @@ impl<F: Field> MultilinearExtension<F> {
         match &matrix {
             Dense(matrix) => {
                 let mut v_padded = Vec::with_capacity(1 << n_vars);
-                v_padded.extend_from_slice(&matrix.elems);
+                v_padded.extend_from_slice(matrix.as_slice());
                 v_padded.resize(1 << n_vars, F::zero());
                 let mle = DenseMultilinearExtension::<F>::from_evaluations_vec(n_vars, v_padded);
                 DenseMLE(mle)
             }
             Sparse(matrix) => SparseMLE(SparseMultilinearExtension::<F>::from_evaluations(
                 n_vars,
-                &matrix.elems.to_owned(),
+                &matrix.as_slice().to_owned(),
             )),
         }
     }

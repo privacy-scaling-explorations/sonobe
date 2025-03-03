@@ -7,7 +7,6 @@ use folding_schemes::commitment::pedersen::Pedersen;
 use folding_schemes::commitment::CommitmentScheme;
 use folding_schemes::folding::nova::nifs::mova_matrix::{RelaxedCommittedRelation, Witness, NIFS};
 use folding_schemes::transcript::poseidon::poseidon_canonical_config;
-use folding_schemes::utils::vec::mat_mat_mul_dense;
 use folding_schemes::Curve;
 use matrex::Matrix;
 use rand::{Rng, RngCore};
@@ -43,8 +42,7 @@ fn get_instances<C: Curve, CS: CommitmentScheme<C>>(
             // C = A * B matrix
             let c = (a.clone() * b.clone()).unwrap();
             // Error matrix initialized to 0s
-            let mut e = Matrix::zero(n, n);
-            // e.to_dense();
+            let e = Matrix::zero(n, n);
             // Random challenge
             let rE = (0..2 * log2(n))
                 .map(|_| C::ScalarField::rand(rng))

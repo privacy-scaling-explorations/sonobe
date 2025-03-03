@@ -26,6 +26,9 @@ env:
   RUSTUP_MAX_RETRIES: 10
   # Don't emit giant backtraces in the CI logs.
   RUST_BACKTRACE: short
+  # Use the same ssh-agent socket value across all jobs
+  # Useful when a GH action is using SSH behind-the-scenes
+  SSH_AUTH_SOCK: /tmp/ssh_agent.sock
 
 # Jobs launched for a PR event cancel the ongoing one for the same workflow + PR,
 # Only retries (of the same run) for a Push event cancel the prior one.
@@ -197,6 +200,15 @@ jobs:
         with:
           command: clippy
           args: --no-default-features ${{ matrix.features }} -- -D warnings
+      - name: Setup SSH passphrase
+        env:
+          SSH_PASSPHRASE: ${{ secrets.CI_SSH_PASSPHRASE }}
+          SSH_PRIVATE_KEY: ${{ secrets.CI_KEY }}
+        run: |
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+          echo 'echo $SSH_PASSPHRASE' > ~/.ssh_askpass && chmod +x ~/.ssh_askpass
+          echo "$SSH_PRIVATE_KEY" | tr -d '\r' | DISPLAY=None SSH_ASKPASS=~/.ssh_askpass ssh-add - >/dev/null
+          eval `ssh-agent -s`
 
   typos:
     if: github.event.pull_request.draft == false

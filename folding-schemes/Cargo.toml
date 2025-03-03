@@ -23,7 +23,8 @@ num-bigint = "0.4"
 num-integer = "0.1"
 sha3 = "0.10"
 log = "0.4"
-matrex = {path = "../../matrex", features = ["parallel"]}
+matrex = {git = "ssh://git@github.com/NethermindEth/matrex.git", tag = "v0.1.2", features = ["parallel"]}
+
 
 [dev-dependencies]
 ark-pallas = {version="^0.5.0", features=["r1cs"]}

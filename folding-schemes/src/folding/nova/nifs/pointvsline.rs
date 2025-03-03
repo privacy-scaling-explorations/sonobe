@@ -308,11 +308,7 @@ fn compute_h2<F: PrimeField>(
     }
 
     match mle {
-        //------------------------------------------------------------------
-        // Dense MLE case
-        //------------------------------------------------------------------
         MultilinearExtension::DenseMLE(mle_dense) => {
-
             // Initialize poly as one constant polynomial per evaluation.
             let mut poly: Vec<DensePolynomial<F>> = mle_dense
                 .evaluations
@@ -326,9 +322,6 @@ fn compute_h2<F: PrimeField>(
                 let half_len = 1 << (n_vars - i - 1);
 
                 // The polynomial representing r(x) = r1_i + (r2_i - r1_i)*x
-                // In the multilinear folding, we treat x as {0,1} for the i-th variable,
-                // but effectively we just need these two coefficients:
-                //   coeffs: [r1_i, r2_sub_r1_i]
                 let r_poly = DensePolynomial::from_coefficients_slice(&[r1_i, r2_sub_r1_i]);
 
                 for b in 0..half_len {
@@ -355,13 +348,12 @@ fn compute_h2<F: PrimeField>(
             Ok(SparseOrDensePolynomial::from_dense(poly.remove(0)))
         }
 
-        //------------------------------------------------------------------
-        // Sparse MLE case
-        //------------------------------------------------------------------
         MultilinearExtension::SparseMLE(mle_sparse) => {
             // If there are no evaluations, return the zero polynomial
             if mle_sparse.evaluations.is_empty() {
-                return Ok(SparseOrDensePolynomial::from_sparse(SparsePolynomial::zero()));
+                return Ok(SparseOrDensePolynomial::from_sparse(
+                    SparsePolynomial::zero(),
+                ));
             }
 
             // Initialize the result polynomial as zero
@@ -371,8 +363,8 @@ fn compute_h2<F: PrimeField>(
             for (&index, &value) in &mle_sparse.evaluations {
                 // Convert index to binary vector (little-endian, least significant bit is i=0)
                 let mut b = vec![false; n_vars];
-                for i in 0..n_vars {
-                    b[i] = (index >> i) & 1 == 1;
+                for (i, bit) in b.iter_mut().enumerate().take(n_vars) {
+                    *bit = (index >> i) & 1 == 1;
                 }
 
                 // Start with the constant polynomial equal to the evaluation value
@@ -390,7 +382,6 @@ fn compute_h2<F: PrimeField>(
                     contrib = &contrib * &factor;
                 }
 
-                // Add the contribution to the sum
                 sum_poly += &contrib;
             }
 
@@ -415,7 +406,9 @@ fn compute_l<F: PrimeField>(r1: &[F], r2_sub_r1: &[F], x: F) -> Result<Vec<F>, E
 
 #[cfg(test)]
 mod tests {
-    use super::{compute_h, compute_h2, compute_l, PointVsLine, PointVsLineMatrix, PointVsLineR1CS};
+    use super::{
+        compute_h, compute_h2, compute_l, PointVsLine, PointVsLineMatrix, PointVsLineR1CS,
+    };
     use crate::commitment::pedersen::Pedersen;
     use crate::commitment::CommitmentScheme;
     use crate::transcript::poseidon::poseidon_canonical_config;
@@ -428,11 +421,10 @@ mod tests {
     use crate::folding::nova::nifs::mova::Witness;
     use crate::folding::nova::nifs::mova_matrix::Witness as MatrixWitness;
 
-
+    use crate::utils::mle::MultilinearExtension;
     use ark_crypto_primitives::sponge::CryptographicSponge;
     use ark_ff::{One, Zero};
-    use matrex::{ Matrix};
-    use crate::utils::mle::MultilinearExtension;
+    use matrex::Matrix;
 
     #[test]
     fn test_compute_h() -> Result<(), Error> {
@@ -601,7 +593,9 @@ mod tests {
 
     #[test]
     fn h2_test_mismatched_input_lengths() {
-        let mle = MultilinearExtension::DenseMLE(DenseMultilinearExtension::<Fr>::from_evaluations_vec(2, vec![Fr::zero(); 4]));
+        let mle = MultilinearExtension::DenseMLE(
+            DenseMultilinearExtension::<Fr>::from_evaluations_vec(2, vec![Fr::zero(); 4]),
+        );
         let r1 = vec![Fr::one(), Fr::one()];
         let r2_sub_r1 = vec![Fr::one(), Fr::one(), Fr::one()];
 

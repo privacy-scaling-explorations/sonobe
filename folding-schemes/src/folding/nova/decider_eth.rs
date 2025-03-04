@@ -2,8 +2,6 @@
 /// the Decider from decider.rs file will be more efficient.
 /// More details can be found at the documentation page:
 /// https://privacy-scaling-explorations.github.io/sonobe-docs/design/nova-decider-onchain.html
-use ark_bn254::Bn254;
-use ark_groth16::Groth16;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_snark::SNARK;
 use ark_std::{
@@ -14,17 +12,12 @@ use core::marker::PhantomData;
 
 pub use super::decider_eth_circuit::DeciderEthCircuit;
 use super::decider_eth_circuit::DeciderNovaGadget;
-use super::{CommittedInstance, Nova};
+use super::Nova;
 use crate::folding::circuits::decider::DeciderEnabledNIFS;
 use crate::folding::traits::{InputizeNonNative, WitnessOps};
 use crate::frontend::FCircuit;
-use crate::utils::eth::ToEth;
 use crate::{
-    commitment::{
-        kzg::{Proof as KZGProof, KZG},
-        pedersen::Params as PedersenParams,
-        CommitmentScheme,
-    },
+    commitment::{kzg::Proof as KZGProof, pedersen::Params as PedersenParams, CommitmentScheme},
     folding::traits::Dummy,
 };
 use crate::{Curve, Error};
@@ -46,6 +39,33 @@ where
     // the KZG challenges are provided by the prover, but in-circuit they are checked to match
     // the in-circuit computed ones.
     kzg_challenges: [C::ScalarField; 2],
+}
+
+impl<C, CS, S> Proof<C, CS, S>
+where
+    C: Curve,
+    CS: CommitmentScheme<C, ProverChallenge = C::ScalarField, Challenge = C::ScalarField>,
+    S: SNARK<C::ScalarField>,
+{
+    pub fn snark_proof(&self) -> &S::Proof {
+        &self.snark_proof
+    }
+
+    pub fn kzg_proofs(&self) -> &[CS::Proof; 2] {
+        &self.kzg_proofs
+    }
+
+    pub fn cmT(&self) -> &C {
+        &self.cmT
+    }
+
+    pub fn r(&self) -> C::ScalarField {
+        self.r
+    }
+
+    pub fn kzg_challenges(&self) -> [C::ScalarField; 2] {
+        self.kzg_challenges
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
@@ -244,49 +264,19 @@ where
     }
 }
 
-/// Prepares solidity calldata for calling the NovaDecider contract
-#[allow(clippy::too_many_arguments)]
-pub fn prepare_calldata(
-    function_signature_check: [u8; 4],
-    i: ark_bn254::Fr,
-    z_0: Vec<ark_bn254::Fr>,
-    z_i: Vec<ark_bn254::Fr>,
-    running_instance: &CommittedInstance<ark_bn254::G1Projective>,
-    incoming_instance: &CommittedInstance<ark_bn254::G1Projective>,
-    proof: &Proof<ark_bn254::G1Projective, KZG<Bn254>, Groth16<Bn254>>,
-) -> Result<Vec<u8>, Error> {
-    Ok([
-        function_signature_check.to_eth(),
-        i.to_eth(),   // i
-        z_0.to_eth(), // z_0
-        z_i.to_eth(), // z_i
-        running_instance.cmW.to_eth(),
-        running_instance.cmE.to_eth(),
-        incoming_instance.cmW.to_eth(),
-        proof.cmT.to_eth(),                 // cmT
-        proof.r.to_eth(),                   // r
-        proof.snark_proof.to_eth(),         // pA, pB, pC
-        proof.kzg_challenges.to_eth(),      // challenge_W, challenge_E
-        proof.kzg_proofs[0].eval.to_eth(),  // eval W
-        proof.kzg_proofs[1].eval.to_eth(),  // eval E
-        proof.kzg_proofs[0].proof.to_eth(), // W kzg_proof
-        proof.kzg_proofs[1].proof.to_eth(), // E kzg_proof
-    ]
-    .concat())
-}
-
 #[cfg(test)]
 pub mod tests {
-    use ark_bn254::{Fr, G1Projective as Projective};
-    use ark_grumpkin::Projective as Projective2;
-    use std::time::Instant;
-
     use super::*;
+    use crate::commitment::kzg::KZG;
     use crate::commitment::pedersen::Pedersen;
     use crate::folding::nova::{PreprocessorParam, ProverParams as NovaProverParams};
     use crate::folding::traits::CommittedInstanceOps;
     use crate::frontend::utils::CubicFCircuit;
     use crate::transcript::poseidon::poseidon_canonical_config;
+    use ark_bn254::{Bn254, Fr, G1Projective as Projective};
+    use ark_groth16::Groth16;
+    use ark_grumpkin::Projective as Projective2;
+    use std::time::Instant;
 
     #[test]
     fn test_decider() -> Result<(), Error> {

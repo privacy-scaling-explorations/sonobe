@@ -2,6 +2,7 @@ use crate::{GPL3_SDPX_IDENTIFIER, PRAGMA_GROTH16_VERIFIER};
 use askama::Template;
 
 pub mod encoding;
+pub mod eth;
 
 #[derive(Template)]
 #[template(path = "header_template.askama.sol", ext = "sol")]

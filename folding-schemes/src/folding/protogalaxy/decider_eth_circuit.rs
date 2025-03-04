@@ -1,15 +1,12 @@
 /// This file implements the onchain (Ethereum's EVM) decider circuit. For non-ethereum use cases,
 /// other more efficient approaches can be used.
-use ark_crypto_primitives::sponge::{
-    constraints::CryptographicSpongeVar,
-    poseidon::{constraints::PoseidonSpongeVar, PoseidonSponge},
-    CryptographicSponge,
-};
+use ark_crypto_primitives::sponge::poseidon::{constraints::PoseidonSpongeVar, PoseidonSponge};
 use ark_ff::PrimeField;
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     eq::EqGadget,
     fields::fp::FpVar,
+    R1CSVar,
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
 use ark_std::{borrow::Borrow, marker::PhantomData};
@@ -28,6 +25,7 @@ use crate::{
         traits::{WitnessOps, WitnessVarOps},
     },
     frontend::FCircuit,
+    transcript::Transcript,
     Curve, Error,
 };
 
@@ -92,7 +90,8 @@ impl<
     type Error = Error;
 
     fn try_from(protogalaxy: ProtoGalaxy<C1, C2, FC, CS1, CS2>) -> Result<Self, Error> {
-        let mut transcript = PoseidonSponge::<C1::ScalarField>::new(&protogalaxy.poseidon_config);
+        let mut transcript =
+            PoseidonSponge::new_with_pp_hash(&protogalaxy.poseidon_config, protogalaxy.pp_hash);
 
         let (U_i1, W_i1, proof, aux) = Folding::prove(
             &mut transcript,
@@ -159,14 +158,13 @@ impl<C: Curve>
     fn fold_field_elements_gadget(
         _arith: &R1CS<CF1<C>>,
         transcript: &mut PoseidonSpongeVar<CF1<C>>,
-        _pp_hash: FpVar<CF1<C>>,
         U: CommittedInstanceVar<C, RUNNING>,
         _U_vec: Vec<FpVar<CF1<C>>>,
         u: CommittedInstanceVar<C, INCOMING>,
         proof: Self::Proof,
         randomness: Self::Randomness,
     ) -> Result<CommittedInstanceVar<C, RUNNING>, SynthesisError> {
-        let cs = transcript.cs();
+        let cs = U.e.cs();
         let F_coeffs = Vec::new_witness(cs.clone(), || Ok(&proof.F_coeffs[..]))?;
         let K_coeffs = Vec::new_witness(cs.clone(), || Ok(&proof.K_coeffs[..]))?;
         let randomness = Vec::new_input(cs.clone(), || Ok(randomness))?;

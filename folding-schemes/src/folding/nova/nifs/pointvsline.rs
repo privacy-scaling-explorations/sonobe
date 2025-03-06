@@ -296,6 +296,9 @@ fn compute_h<F: PrimeField>(
     Ok(poly.swap_remove(0))
 }
 
+/// Implementation for computing h by not following Algorithm 1 "MLE-after-line composition" off the Mova paper
+/// This is due to the need to support sparse representation.
+/// Currently this is only used for the mova_matrix.rs implementation that is configured to use Matrex
 fn compute_h2<F: PrimeField>(
     mle: &MultilinearExtension<F>,
     r1: &[F],
@@ -309,6 +312,7 @@ fn compute_h2<F: PrimeField>(
 
     match mle {
         MultilinearExtension::DenseMLE(mle_dense) => {
+            // following the paper
             // Initialize poly as one constant polynomial per evaluation.
             let mut poly: Vec<DensePolynomial<F>> = mle_dense
                 .evaluations
@@ -349,6 +353,7 @@ fn compute_h2<F: PrimeField>(
         }
 
         MultilinearExtension::SparseMLE(mle_sparse) => {
+            // new algorithm
             // If there are no evaluations, return the zero polynomial
             if mle_sparse.evaluations.is_empty() {
                 return Ok(SparseOrDensePolynomial::from_sparse(
@@ -362,6 +367,7 @@ fn compute_h2<F: PrimeField>(
             // Iterate over each non-zero evaluation
             for (&index, &value) in &mle_sparse.evaluations {
                 // Convert index to binary vector (little-endian, least significant bit is i=0)
+                // This represents the variable assignments for the evaluation point, with b[i] indicating if variable i is 1 or 0.
                 let mut b = vec![false; n_vars];
                 for (i, bit) in b.iter_mut().enumerate().take(n_vars) {
                     *bit = (index >> i) & 1 == 1;
@@ -373,10 +379,10 @@ fn compute_h2<F: PrimeField>(
                 // Multiply by the linear factor for each variable
                 for i in 0..n_vars {
                     let factor = if b[i] {
-                        // If b[i] == 1, use r1_i + r2_sub_r1_i * t
+                        // If b[i] == 1, use r1_i + r2_sub_r1_i * x
                         DensePolynomial::from_coefficients_slice(&[r1[i], r2_sub_r1[i]])
                     } else {
-                        // If b[i] == 0, use 1 - r1_i - r2_sub_r1_i * t
+                        // If b[i] == 0, use 1 - r1_i - r2_sub_r1_i * x
                         DensePolynomial::from_coefficients_slice(&[F::one() - r1[i], -r2_sub_r1[i]])
                     };
                     contrib = &contrib * &factor;

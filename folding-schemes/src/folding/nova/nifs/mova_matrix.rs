@@ -87,7 +87,7 @@ impl<C: Curve> Witness<C> {
     /// # Parameters
     /// * `self` - Witness instance to be committed.
     /// * `params` - Commitment scheme parameters.
-    /// * `rE` - Random evaluation point forft the committed instance.
+    /// * `rE` - Random evaluation point for the committed instance.
     pub fn commit<CS: CommitmentScheme<C, H>, const H: bool>(
         &self,
         params: &CS::ProverParams,
@@ -199,9 +199,6 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         let b_acc = ((simple_wit.B.clone() * alpha) + acc_wit.B.clone()).unwrap();
         let c_acc = ((simple_wit.C.clone() * alpha) + acc_wit.C.clone()).unwrap();
         let e_acc = ((aux * alpha) + acc_wit.E.clone()).unwrap();
-        // println!("a_acc {:?}", a_acc);
-        // println!("simple_wit.A {:?}", simple_wit.A);
-        // println!("acc_wit.A {:?}", acc_wit.A);
 
         Ok(Witness::<C> {
             A: a_acc,

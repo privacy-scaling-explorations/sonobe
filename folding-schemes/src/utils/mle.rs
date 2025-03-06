@@ -107,6 +107,7 @@ pub fn dense_vec_to_mle<F: PrimeField>(n_vars: usize, v: &[F]) -> SparseMultilin
     SparseMultilinearExtension::<F>::from_evaluations(n_vars, &v_sparse)
 }
 
+/// Enum representing either a sparse or dense polynomial over a field.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum SparseOrDensePolynomial<F: Field> {
     SparsePoly(SparsePolynomial<F>),
@@ -114,14 +115,17 @@ pub enum SparseOrDensePolynomial<F: Field> {
 }
 
 impl<F: Field> SparseOrDensePolynomial<F> {
+    /// Creates a `SparseOrDensePolynomial` from a dense polynomial.
     pub fn from_dense(dense: DensePolynomial<F>) -> Self {
         DensePoly(dense)
     }
 
+    /// Creates a `SparseOrDensePolynomial` from a sparse polynomial.
     pub fn from_sparse(sparse: SparsePolynomial<F>) -> Self {
         SparsePoly(sparse)
     }
 
+    /// Returns the coefficients of the polynomial as a vector.
     pub fn coeffs(&self) -> Vec<F> {
         match &self {
             SparsePoly(poly) => {
@@ -132,6 +136,8 @@ impl<F: Field> SparseOrDensePolynomial<F> {
             DensePoly(poly) => poly.coeffs().to_vec(),
         }
     }
+
+    /// Evaluates the polynomial at a given field element `point`.
     pub fn evaluate(&self, point: &F) -> F {
         match &self {
             SparsePoly(poly) => poly.evaluate(point),
@@ -139,6 +145,8 @@ impl<F: Field> SparseOrDensePolynomial<F> {
         }
     }
 }
+
+/// Enum representing either a dense or sparse multilinear extension over a field.
 #[derive(Debug)]
 pub enum MultilinearExtension<F: Field> {
     DenseMLE(DenseMultilinearExtension<F>),
@@ -146,12 +154,16 @@ pub enum MultilinearExtension<F: Field> {
 }
 
 impl<F: Field> MultilinearExtension<F> {
+    /// Constructs a `MultilinearExtension` from a matrix of evaluations.
+    ///
+    /// - `matrix`: The input matrix containing evaluations.
+    /// - `n_vars`: The number of variables in the extension.
     pub fn from_evaluations(matrix: &Matrix<F>, n_vars: usize) -> MultilinearExtension<F> {
         match &matrix {
             Dense(matrix) => {
                 let mut v_padded = Vec::with_capacity(1 << n_vars);
                 v_padded.extend_from_slice(matrix.as_slice());
-                v_padded.resize(1 << n_vars, F::zero());
+                v_padded.resize(1 << n_vars, F::zero()); // Pad with zeros if necessary
                 let mle = DenseMultilinearExtension::<F>::from_evaluations_vec(n_vars, v_padded);
                 DenseMLE(mle)
             }
@@ -162,6 +174,7 @@ impl<F: Field> MultilinearExtension<F> {
         }
     }
 
+    /// Evaluates the multilinear extension at given points.
     pub fn evaluate(&self, points: &[F]) -> F {
         match &self {
             DenseMLE(mle) => mle.evaluate(&points.to_vec()),
@@ -169,6 +182,7 @@ impl<F: Field> MultilinearExtension<F> {
         }
     }
 
+    /// Returns the number of variables in the multilinear extension.
     pub fn num_vars(&self) -> usize {
         match &self {
             DenseMLE(mle) => mle.num_vars,

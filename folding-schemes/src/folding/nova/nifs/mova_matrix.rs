@@ -195,14 +195,13 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         acc_wit: &Witness<C>,        // Accumulated witness
         aux: Matrix<C::ScalarField>, // T in Mova's notation
     ) -> Result<Witness<C>, Error> {
-        // let a_acc = ((simple_wit.A.clone() * alpha) + &acc_wit.A).unwrap();
-        // let b_acc = ((simple_wit.B.clone() * alpha) + &acc_wit.B).unwrap();
-        // let c_acc = ((simple_wit.C.clone() * alpha) + &acc_wit.C).unwrap();
-        // let e_acc = ((aux * alpha) + &acc_wit.E).unwrap();
         let a_acc = ((simple_wit.A.clone() * alpha) + acc_wit.A.clone()).unwrap();
         let b_acc = ((simple_wit.B.clone() * alpha) + acc_wit.B.clone()).unwrap();
         let c_acc = ((simple_wit.C.clone() * alpha) + acc_wit.C.clone()).unwrap();
         let e_acc = ((aux * alpha) + acc_wit.E.clone()).unwrap();
+        // println!("a_acc {:?}", a_acc);
+        // println!("simple_wit.A {:?}", simple_wit.A);
+        // println!("acc_wit.A {:?}", acc_wit.A);
 
         Ok(Witness::<C> {
             A: a_acc,
@@ -260,10 +259,8 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         transcript.absorb(&mleE2_prime);
 
         // Compute cross term T
-        // let A1B2 = (&simple_witness.A * &acc_witness.B).unwrap();
         let A1B2 = (simple_witness.A.clone() * acc_witness.B.clone()).unwrap();
 
-        // let B1A2 = (&acc_witness.A * &simple_witness.B).unwrap();
         let B1A2 = (&acc_witness.A * &simple_witness.B).unwrap();
         let A1B2B1A2 = (A1B2 + B1A2).unwrap();
         let u2c1 = simple_witness.C.clone() * acc_instance.u;
@@ -390,27 +387,48 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
     /// commit(M) = storedCommitment of M (for A, B and C)
     /// MLE[E](r) == v
     /// A, B and C are nxn matrices - to be added when we have correct matrices
-    #[allow(dead_code)]
     fn check_relation(
         witness: &Witness<C>,
         instance: &RelaxedCommittedRelation<C>,
         params: &CS::ProverParams,
     ) -> Result<(), Error> {
-        let AB = mat_mat_mul_dense(&witness.A, &witness.B)?;
-        let uc: Vec<C::ScalarField> = vec_scalar_mul(&witness.C, &instance.u);
-        let e = vec_sub(&AB, &uc)?;
+        let mut dense_a = witness.A.clone();
+        let mut dense_b = witness.B.clone();
+        let mut dense_c = witness.C.clone();
+        dense_a.to_dense();
+        dense_b.to_dense();
+        dense_c.to_dense();
+        let com_a = CS::commit(
+            params,
+            dense_a.as_dense_slice().unwrap(),
+            &C::ScalarField::zero(),
+        )?;
+        let com_b = CS::commit(
+            params,
+            dense_b.as_dense_slice().unwrap(),
+            &C::ScalarField::zero(),
+        )?;
+        let com_c = CS::commit(
+            params,
+            dense_c.as_dense_slice().unwrap(),
+            &C::ScalarField::zero(),
+        )?;
+
+        let AB = (&witness.A * &witness.B).unwrap();
+
+        let uc = witness.C.clone() * instance.u;
+
+        let e = (&AB - &uc).unwrap();
+
         if witness.E != e {
             return Err(Error::NotSatisfied);
         }
 
-        let E = dense_vec_to_dense_mle(log2(witness.E.len()) as usize, &witness.E);
+        let E = MultilinearExtension::from_evaluations(&witness.E, log2(witness.E.len()) as usize);
         let mleE = E.evaluate(&instance.rE);
         if instance.mleE != mleE {
             return Err(Error::NotSatisfied);
         }
-        let com_a = CS::commit(params, &witness.A, &C::ScalarField::zero())?;
-        let com_b = CS::commit(params, &witness.B, &C::ScalarField::zero())?;
-        let com_c = CS::commit(params, &witness.C, &C::ScalarField::zero())?;
 
         if instance.cmA != com_a {
             return Err(Error::NotSatisfied);
@@ -501,7 +519,7 @@ pub mod tests {
 
         for i in 0..instances.len() - 1 {
             // Fold
-            let (_wit_acc, instance_acc, proof) =
+            let (wit_acc, instance_acc, proof) =
                 NIFS::<Projective, Pedersen<Projective>, PoseidonSponge<Fr>>::prove(
                     &mut transcript_p,
                     pp_hash,

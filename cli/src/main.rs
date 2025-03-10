@@ -1,4 +1,4 @@
-use ark_serialize::Write;
+use std::io::Write;
 use clap::Parser;
 use settings::Cli;
 use std::path::Path;
@@ -12,7 +12,8 @@ fn create_or_open_then_write<T: AsRef<[u8]>>(path: &Path, content: &T) -> Result
         .truncate(true)
         .write(true)
         .open(path)?;
-    file.write_all(content.as_ref())
+    file.write_all(content.as_ref())?;
+    Ok(())
 }
 
 fn main() {

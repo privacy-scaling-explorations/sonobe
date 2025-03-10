@@ -19,7 +19,7 @@ use common::bench_ivc_opt;
 fn bench_nova_ivc(c: &mut Criterion) {
     let poseidon_config = poseidon_canonical_config::<pallas_Fr>();
 
-    // iterate over the powers of n
+    // Iterate over predefined values of n
     for n in [0_usize, 14, 16, 18, 19, 20, 21, 22].iter() {
         let fcircuit_size = 1 << n; // 2^n
         let fcircuit = CustomFCircuit::<pallas_Fr>::new(fcircuit_size).unwrap();

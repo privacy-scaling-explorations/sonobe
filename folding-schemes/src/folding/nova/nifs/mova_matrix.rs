@@ -59,7 +59,6 @@ impl<C: Curve> RelaxedCommittedRelation<C> {
 }
 /// Represents the private inputs for the protocol (witness)
 /// A, B, C, E are matrices such that A * B = u* C + E
-/// Matrices are, for Sonobe compatibility, represented as flattened vectors.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Witness<C: Curve> {
     pub A: Matrix<C::ScalarField>,
@@ -195,9 +194,9 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         acc_wit: &Witness<C>,        // Accumulated witness
         aux: Matrix<C::ScalarField>, // T in Mova's notation
     ) -> Result<Witness<C>, Error> {
-        let a_acc = ((simple_wit.A.clone() * alpha) + acc_wit.A.clone()).unwrap();
-        let b_acc = ((simple_wit.B.clone() * alpha) + acc_wit.B.clone()).unwrap();
-        let c_acc = ((simple_wit.C.clone() * alpha) + acc_wit.C.clone()).unwrap();
+        let a_acc = ((simple_wit.A.clone() * alpha) + &acc_wit.A).unwrap();
+        let b_acc = ((simple_wit.B.clone() * alpha) + &acc_wit.B).unwrap();
+        let c_acc = ((simple_wit.C.clone() * alpha) + &acc_wit.C).unwrap();
         let e_acc = ((aux * alpha) + acc_wit.E.clone()).unwrap();
 
         Ok(Witness::<C> {
@@ -256,7 +255,7 @@ impl<C: Curve, CS: CommitmentScheme<C, H>, T: Transcript<C::ScalarField>, const 
         transcript.absorb(&mleE2_prime);
 
         // Compute cross term T
-        let A1B2 = (simple_witness.A.clone() * acc_witness.B.clone()).unwrap();
+        let A1B2 = (simple_witness.A.clone() * &acc_witness.B).unwrap();
 
         let B1A2 = (&acc_witness.A * &simple_witness.B).unwrap();
         let A1B2B1A2 = (A1B2 + B1A2).unwrap();

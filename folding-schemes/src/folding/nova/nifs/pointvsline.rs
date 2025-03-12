@@ -329,18 +329,9 @@ fn compute_h2<F: PrimeField>(
                 let r_poly = DensePolynomial::from_coefficients_slice(&[r1_i, r2_sub_r1_i]);
 
                 for b in 0..half_len {
-                    let left = &poly[2 * b];
-                    let right = &poly[2 * b + 1];
-
-                    // right - left
-                    let diff = right - left;
-
-                    // r_poly * diff
-                    let scaled_diff = &r_poly * &diff;
-
-                    // new[b] = left + scaled_diff
-                    // store in poly[b]
-                    poly[b] = left + &scaled_diff;
+                    let left = &poly[b << 1];
+                    let right = &poly[(b << 1) + 1];
+                    poly[b] = left + &(&r_poly * &(right - left));
                 }
 
                 // Truncate to half the length, since we've folded pairs into single polynomials.
@@ -420,8 +411,8 @@ mod tests {
     use crate::transcript::poseidon::poseidon_canonical_config;
     use crate::Error;
     use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
-    use ark_pallas::{Fq, Fr, Projective};
-    use ark_poly::{DenseMultilinearExtension, DenseUVPolynomial};
+    use ark_pallas::{Fr, Projective};
+    use ark_poly::{DenseMultilinearExtension, DenseUVPolynomial, SparseMultilinearExtension};
     use ark_std::{log2, UniformRand};
 
     use crate::folding::nova::nifs::mova::Witness;
@@ -434,81 +425,81 @@ mod tests {
 
     #[test]
     fn test_compute_h() -> Result<(), Error> {
-        let mle = DenseMultilinearExtension::from_evaluations_slice(1, &[Fq::from(1), Fq::from(2)]);
-        let r0 = [Fq::from(5)];
-        let r1 = [Fq::from(6)];
-        let r1_sub_r0: Vec<Fq> = r1.iter().zip(&r0).map(|(&x, y)| x - y).collect();
+        let mle = DenseMultilinearExtension::from_evaluations_slice(1, &[Fr::from(1), Fr::from(2)]);
+        let r0 = [Fr::from(5)];
+        let r1 = [Fr::from(6)];
+        let r1_sub_r0: Vec<Fr> = r1.iter().zip(&r0).map(|(&x, y)| x - y).collect();
 
         let result = compute_h(&mle, &r0, &r1_sub_r0)?;
         assert_eq!(
             result,
-            DenseUVPolynomial::from_coefficients_slice(&[Fq::from(6), Fq::from(1)])
+            DenseUVPolynomial::from_coefficients_slice(&[Fr::from(6), Fr::from(1)])
         );
 
-        let mle = DenseMultilinearExtension::from_evaluations_slice(1, &[Fq::from(1), Fq::from(2)]);
-        let r0 = [Fq::from(4)];
-        let r1 = [Fq::from(7)];
-        let r1_sub_r0: Vec<Fq> = r1.iter().zip(&r0).map(|(&x, y)| x - y).collect();
+        let mle = DenseMultilinearExtension::from_evaluations_slice(1, &[Fr::from(1), Fr::from(2)]);
+        let r0 = [Fr::from(4)];
+        let r1 = [Fr::from(7)];
+        let r1_sub_r0: Vec<Fr> = r1.iter().zip(&r0).map(|(&x, y)| x - y).collect();
 
         let result = compute_h(&mle, &r0, &r1_sub_r0)?;
         assert_eq!(
             result,
-            DenseUVPolynomial::from_coefficients_slice(&[Fq::from(5), Fq::from(3)])
+            DenseUVPolynomial::from_coefficients_slice(&[Fr::from(5), Fr::from(3)])
         );
 
         let mle = DenseMultilinearExtension::from_evaluations_slice(
             2,
-            &[Fq::from(1), Fq::from(2), Fq::from(3), Fq::from(4)],
+            &[Fr::from(1), Fr::from(2), Fr::from(3), Fr::from(4)],
         );
-        let r0 = [Fq::from(5), Fq::from(4)];
-        let r1 = [Fq::from(2), Fq::from(7)];
-        let r1_sub_r0: Vec<Fq> = r1.iter().zip(&r0).map(|(&x, y)| x - y).collect();
+        let r0 = [Fr::from(5), Fr::from(4)];
+        let r1 = [Fr::from(2), Fr::from(7)];
+        let r1_sub_r0: Vec<Fr> = r1.iter().zip(&r0).map(|(&x, y)| x - y).collect();
 
         let result = compute_h(&mle, &r0, &r1_sub_r0)?;
         assert_eq!(
             result,
-            DenseUVPolynomial::from_coefficients_slice(&[Fq::from(14), Fq::from(3)])
+            DenseUVPolynomial::from_coefficients_slice(&[Fr::from(14), Fr::from(3)])
         );
         let mle = DenseMultilinearExtension::from_evaluations_slice(
             3,
             &[
-                Fq::from(1),
-                Fq::from(2),
-                Fq::from(3),
-                Fq::from(4),
-                Fq::from(5),
-                Fq::from(6),
-                Fq::from(7),
-                Fq::from(8),
+                Fr::from(1),
+                Fr::from(2),
+                Fr::from(3),
+                Fr::from(4),
+                Fr::from(5),
+                Fr::from(6),
+                Fr::from(7),
+                Fr::from(8),
             ],
         );
-        let r0 = [Fq::from(1), Fq::from(2), Fq::from(3)];
-        let r1 = [Fq::from(5), Fq::from(6), Fq::from(7)];
-        let r1_sub_r0: Vec<Fq> = r1.iter().zip(&r0).map(|(&x, y)| x - y).collect();
+        let r0 = [Fr::from(1), Fr::from(2), Fr::from(3)];
+        let r1 = [Fr::from(5), Fr::from(6), Fr::from(7)];
+        let r1_sub_r0: Vec<Fr> = r1.iter().zip(&r0).map(|(&x, y)| x - y).collect();
 
         let result = compute_h(&mle, &r0, &r1_sub_r0)?;
         assert_eq!(
             result,
-            DenseUVPolynomial::from_coefficients_slice(&[Fq::from(18), Fq::from(28)])
+            DenseUVPolynomial::from_coefficients_slice(&[Fr::from(18), Fr::from(28)])
         );
         Ok(())
     }
 
     #[test]
     fn test_compute_h_errors() {
-        let mle = DenseMultilinearExtension::from_evaluations_slice(1, &[Fq::from(1), Fq::from(2)]);
-        let r0 = [Fq::from(5)];
+        let mle = DenseMultilinearExtension::from_evaluations_slice(1, &[Fr::from(1), Fr::from(2)]);
+        let r0 = [Fr::from(5)];
         let r1_sub_r0 = [];
         let result = compute_h(&mle, &r0, &r1_sub_r0);
         assert!(result.is_err());
 
         let mle = DenseMultilinearExtension::from_evaluations_slice(
             2,
-            &[Fq::from(1), Fq::from(2), Fq::from(1), Fq::from(2)],
+            &[Fr::from(1), Fr::from(2), Fr::from(1), Fr::from(2)],
         );
-        let r0 = [Fq::from(4)];
-        let r1 = [Fq::from(7)];
-        let r1_sub_r0: Vec<Fq> = r1.iter().zip(&r0).map(|(&x, y)| x - y).collect();
+        let r0 = [Fr::from(4)];
+        let r1 = [Fr::from(7)];
+        let r1_sub_r0: Vec<Fr> = r1.iter().zip(&r0).map(|(&x, y)| x - y).collect();
 
         let result = compute_h(&mle, &r0, &r1_sub_r0);
         assert!(result.is_err())
@@ -517,14 +508,14 @@ mod tests {
     #[test]
     fn test_compute_l() -> Result<(), Error> {
         // Test with simple non-zero values
-        let r1 = vec![Fq::from(1), Fq::from(2), Fq::from(3)];
-        let r2_sub_r1 = vec![Fq::from(4), Fq::from(5), Fq::from(6)];
-        let x = Fq::from(2);
+        let r1 = vec![Fr::from(1), Fr::from(2), Fr::from(3)];
+        let r2_sub_r1 = vec![Fr::from(4), Fr::from(5), Fr::from(6)];
+        let x = Fr::from(2);
 
         let expected = vec![
-            Fq::from(1) + Fq::from(2) * Fq::from(4),
-            Fq::from(2) + Fq::from(2) * Fq::from(5),
-            Fq::from(3) + Fq::from(2) * Fq::from(6),
+            Fr::from(1) + Fr::from(2) * Fr::from(4),
+            Fr::from(2) + Fr::from(2) * Fr::from(5),
+            Fr::from(3) + Fr::from(2) * Fr::from(6),
         ];
 
         let result = compute_l(&r1, &r2_sub_r1, x)?;
@@ -741,5 +732,57 @@ mod tests {
         assert!(result.is_err(), "Verification was okay when it should fail");
 
         Ok(())
+    }
+
+    #[test]
+    fn test_compute_h2_compare() {
+        // Both MLEs represent the same information both in dense and sparse representation.
+        let vanilla_dense = DenseMultilinearExtension::from_evaluations_slice(
+            3,
+            &[
+                Fr::zero(),
+                Fr::zero(),
+                Fr::one(),
+                Fr::one(),
+                Fr::zero(),
+                Fr::zero(),
+                Fr::zero(),
+                Fr::one(),
+            ],
+        );
+        let mle_dense = MultilinearExtension::DenseMLE(vanilla_dense.clone());
+        let mle_sparse =
+            MultilinearExtension::SparseMLE(SparseMultilinearExtension::from_evaluations(
+                3,
+                &[(2, Fr::one()), (3, Fr::one()), (7, Fr::one())],
+            ));
+
+        let r0 = [Fr::from(1), Fr::from(2), Fr::from(3)];
+        let r1 = [Fr::from(5), Fr::from(6), Fr::from(7)];
+        let r1_sub_r0: Vec<Fr> = r1.iter().zip(&r0).map(|(&x, y)| x - y).collect();
+
+        // Use original compute_h method
+        let result_h = compute_h(&vanilla_dense, &r0, &r1_sub_r0).unwrap();
+
+        // Use dense for compute_h2
+        let result_h2_dense = compute_h2(&mle_dense, &r0, &r1_sub_r0).unwrap();
+
+        // Use sparse for compute_h2
+        let result_h2_sparse = compute_h2(&mle_sparse, &r0, &r1_sub_r0).unwrap();
+
+        assert_eq!(
+            result_h2_dense, result_h2_sparse,
+            "Sparse and dense computations for compute h2 must be equal"
+        );
+        assert_eq!(
+            result_h2_dense.coeffs(),
+            result_h.coeffs(),
+            "Dense polynomial coefficients must match original h computation"
+        );
+        assert_eq!(
+            result_h2_sparse.coeffs(),
+            result_h.coeffs(),
+            "Sparse polynomial coefficients must match original h computation"
+        );
     }
 }

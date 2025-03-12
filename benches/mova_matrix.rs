@@ -40,7 +40,7 @@ fn get_instances<C: Curve, CS: CommitmentScheme<C>>(
             // B matrix
             let b = random_sparse_matrix::<C>(n, rng);
             // C = A * B matrix
-            let c = (a.clone() * b.clone()).unwrap();
+            let c = (a.clone() * &b).unwrap();
             // Error matrix initialized to 0s
             let e = Matrix::zero(n, n);
             // Random challenge

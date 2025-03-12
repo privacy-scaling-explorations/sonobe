@@ -737,10 +737,25 @@ mod tests {
     #[test]
     fn test_compute_h2_compare() {
         // Both MLEs represent the same information both in dense and sparse representation.
-        let vanilla_dense = DenseMultilinearExtension::from_evaluations_slice(3,&[Fr::zero(), Fr::zero(), Fr::one(), Fr::one(),
-            Fr::zero(), Fr::zero(), Fr::zero(), Fr::one()]);
+        let vanilla_dense = DenseMultilinearExtension::from_evaluations_slice(
+            3,
+            &[
+                Fr::zero(),
+                Fr::zero(),
+                Fr::one(),
+                Fr::one(),
+                Fr::zero(),
+                Fr::zero(),
+                Fr::zero(),
+                Fr::one(),
+            ],
+        );
         let mle_dense = MultilinearExtension::DenseMLE(vanilla_dense.clone());
-        let mle_sparse = MultilinearExtension::SparseMLE(SparseMultilinearExtension::from_evaluations(3, &[(2, Fr::one()), (3, Fr::one()), (7, Fr::one())]));
+        let mle_sparse =
+            MultilinearExtension::SparseMLE(SparseMultilinearExtension::from_evaluations(
+                3,
+                &[(2, Fr::one()), (3, Fr::one()), (7, Fr::one())],
+            ));
 
         let r0 = [Fr::from(1), Fr::from(2), Fr::from(3)];
         let r1 = [Fr::from(5), Fr::from(6), Fr::from(7)];
@@ -753,10 +768,21 @@ mod tests {
         let result_h2_dense = compute_h2(&mle_dense, &r0, &r1_sub_r0).unwrap();
 
         // Use sparse for compute_h2
-        let result_h2_sparse     = compute_h2(&mle_sparse, &r0, &r1_sub_r0).unwrap();
+        let result_h2_sparse = compute_h2(&mle_sparse, &r0, &r1_sub_r0).unwrap();
 
-        assert_eq!(result_h2_dense, result_h2_sparse, "Sparse and dense computations for compute h2 must be equal");
-        assert_eq!(result_h2_dense.coeffs(), result_h.coeffs(), "Dense polynomial coefficients must match original h computation");
-        assert_eq!(result_h2_sparse.coeffs(), result_h.coeffs(), "Sparse polynomial coefficients must match original h computation");
+        assert_eq!(
+            result_h2_dense, result_h2_sparse,
+            "Sparse and dense computations for compute h2 must be equal"
+        );
+        assert_eq!(
+            result_h2_dense.coeffs(),
+            result_h.coeffs(),
+            "Dense polynomial coefficients must match original h computation"
+        );
+        assert_eq!(
+            result_h2_sparse.coeffs(),
+            result_h.coeffs(),
+            "Sparse polynomial coefficients must match original h computation"
+        );
     }
 }

@@ -52,8 +52,8 @@ impl<F: PrimeField, BF: BackendField, const SL: usize, const EIL: usize> FCircui
         external_inputs: Self::ExternalInputsVar,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
         let wtns_external_inputs =
-            NonameInputs::from_fpvars((&external_inputs.0, "external_inputs".to_string()))?;
-        let wtns_ivc_inputs = NonameInputs::from_fpvars((&z_i, "ivc_inputs".to_string()))?;
+            NonameInputs::from_fpvars((&external_inputs.0, "external_inputs".to_string()));
+        let wtns_ivc_inputs = NonameInputs::from_fpvars((&z_i, "ivc_inputs".to_string()));
         let noname_witness = self
             .circuit
             .generate_witness(wtns_ivc_inputs.0, wtns_external_inputs.0)

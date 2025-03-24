@@ -29,7 +29,7 @@ Folding schemes implemented:
 ## Frontends
 
 Frontends allow to define the circuit to be folded (ie. `FCircuit`).
-The recommended frontend is directly implementing the [`FCircuit` trait](https://github.com/privacy-scaling-explorations/sonobe/blob/main/folding-schemes/src/frontend/mod.rs#L16) with the Arkworks constraint system.
+The recommended frontend is directly implementing the [`FCircuit` trait](https://github.com/privacy-scaling-explorations/sonobe/blob/8912049ba100f66ac3849a35c47b8d80806d86f2/folding-schemes/src/frontend/mod.rs#L17) with the Arkworks constraint system.
 
 Alternatively, experimental frontends for [Circom](https://github.com/iden3/circom), [Noir](https://github.com/noir-lang/noir) and [Noname](https://github.com/zksecurity/noname) can be found at the [sonobe/experimental-frontends](https://github.com/privacy-scaling-explorations/sonobe/tree/main/experimental-frontends) directory, which have some computational (and time) overhead.
 

@@ -38,17 +38,13 @@ impl<F: PrimeField> From<(&Vec<F>, String)> for NonameInputs {
 }
 
 impl NonameInputs {
-    pub fn from_fpvars<F: PrimeField>(
-        value: (&Vec<FpVar<F>>, String),
-    ) -> Self {
+    pub fn from_fpvars<F: PrimeField>(value: (&Vec<FpVar<F>>, String)) -> Self {
         let (values, key) = value;
         let mut inputs = HashMap::new();
         if !values.is_empty() {
             let field_elements: Vec<String> = values
                 .iter()
-                .map(|var| {
-                    var.value().unwrap_or_default().to_string()
-                })
+                .map(|var| var.value().unwrap_or_default().to_string())
                 .collect::<Vec<String>>();
             inputs.insert(key, json!(field_elements));
         }

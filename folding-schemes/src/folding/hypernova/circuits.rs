@@ -15,7 +15,8 @@ use ark_r1cs_std::{
     R1CSVar,
 };
 use ark_relations::r1cs::{
-    ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, Namespace, SynthesisError, SynthesisMode,
+    ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, Namespace, SynthesisError,
+    SynthesisMode,
 };
 use ark_std::{fmt::Debug, iter::Sum, One, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
@@ -628,9 +629,7 @@ where
     /// is not needed, directly generate the ConstraintSystem without calling the `finalize` method
     /// will save computing time.
     #[allow(clippy::type_complexity)]
-    pub fn compute_ccs(
-        &self,
-    ) -> Result<CCS<C1::ScalarField>, Error> {
+    pub fn compute_ccs(&self) -> Result<CCS<C1::ScalarField>, Error> {
         let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
         cs.set_mode(SynthesisMode::Setup);
         self.clone().generate_constraints(cs.clone())?;

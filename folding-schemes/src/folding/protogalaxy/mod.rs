@@ -11,7 +11,8 @@ use ark_r1cs_std::{
     R1CSVar,
 };
 use ark_relations::r1cs::{
-    ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, Namespace, SynthesisError, SynthesisMode,
+    ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, Namespace, SynthesisError,
+    SynthesisMode,
 };
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Valid};
 use ark_std::{

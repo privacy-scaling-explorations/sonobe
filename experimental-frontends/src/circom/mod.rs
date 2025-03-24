@@ -77,14 +77,17 @@ impl<F: PrimeField, const SL: usize, const EIL: usize> FCircuit<F> for CircomFCi
 
         let num_existing_witnesses = cs.num_witness_variables();
 
-        let mut z_i1 = vec![];
-        for i in 1..1 + SL {
-            z_i1.push(FpVar::new_witness(cs.clone(), || Ok(witness[i]))?);
-        }
+        // Allocate the next state (1..1 + SL) as witness.
+        let z_i1 = witness
+            .iter()
+            .skip(1)
+            .take(SL)
+            .map(|w| FpVar::new_witness(cs.clone(), || Ok(w)))
+            .collect::<Result<Vec<_>, _>>()?;
 
-        // Allocate the aux variables as witness.
-        for i in 1 + SL * 2 + EIL..witness.len() {
-            cs.new_witness_variable(|| Ok(witness[i]))?;
+        // Allocate the aux variables (1 + SL * 2 + EIL..) as witness.
+        for &w in witness.iter().skip(1 + SL * 2 + EIL) {
+            cs.new_witness_variable(|| Ok(w))?;
         }
 
         let var = |index| {

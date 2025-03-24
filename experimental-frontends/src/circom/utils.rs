@@ -76,7 +76,10 @@ impl CircomWrapper {
     }
 
     // Extracts the witness vector as a vector of PrimeField elements.
-    pub fn extract_witness<F: PrimeField>(&self, inputs: Vec<(String, Vec<BigInt>)>) -> Result<Vec<F>, Error> {
+    pub fn extract_witness<F: PrimeField>(
+        &self,
+        inputs: Vec<(String, Vec<BigInt>)>,
+    ) -> Result<Vec<F>, Error> {
         let witness_bigint = self.calculate_witness(inputs)?;
 
         witness_bigint

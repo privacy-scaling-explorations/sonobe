@@ -37,10 +37,12 @@ rayon = { version = "1" }
 revm = { version = "19.5.0", default-features = false }
 rust-crypto = { version = "0.2" }
 thiserror = { version = "1.0" }
+tokio = "1.44.1"
+wasmer = { version = "4.4.0", default-features = false }
 
 # Arkworks family
 ark-bn254 = { version = "^0.5.0", default-features = false }
-ark-circom = { git = "https://github.com/winderica/circom-compat", rev = "9f8d7c", default-features = false } # "arkworks-next" branch
+ark-circom = { version = "^0.5.0", default-features = false }
 ark-crypto-primitives = { version = "^0.5.0", default-features = false }
 ark-ec = { version = "^0.5.0", default-features = false }
 ark-ff = { version = "^0.5.0", default-features = false }

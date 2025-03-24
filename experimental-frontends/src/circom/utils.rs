@@ -1,24 +1,26 @@
+use std::{fs::File, io::Cursor, path::PathBuf};
+
 use ark_circom::{
     circom::{r1cs_reader, R1CS},
     WitnessCalculator,
 };
-use ark_ff::{BigInteger, PrimeField};
+use ark_ff::PrimeField;
 use ark_serialize::Read;
-use num_bigint::{BigInt, Sign};
-use std::{fs::File, io::Cursor, marker::PhantomData, path::PathBuf};
+use num_bigint::BigInt;
+use tokio::runtime::Builder;
+use wasmer::{Module, Store};
 
 use folding_schemes::{utils::PathOrBin, Error};
 
 // A struct that wraps Circom functionalities, allowing for extraction of R1CS and witnesses
 // based on file paths to Circom's .r1cs and .wasm.
 #[derive(Clone, Debug)]
-pub struct CircomWrapper<F: PrimeField> {
+pub struct CircomWrapper {
     r1csfile_bytes: Vec<u8>,
     wasmfile_bytes: Vec<u8>,
-    _marker: PhantomData<F>,
 }
 
-impl<F: PrimeField> CircomWrapper<F> {
+impl CircomWrapper {
     // Creates a new instance of the CircomWrapper with the file paths.
     pub fn new(r1cs: PathOrBin, wasm: PathOrBin) -> Result<Self, Error> {
         match (r1cs, wasm) {
@@ -28,7 +30,6 @@ impl<F: PrimeField> CircomWrapper<F> {
             (PathOrBin::Bin(r1cs_bin), PathOrBin::Bin(wasm_bin)) => Ok(Self {
                 r1csfile_bytes: r1cs_bin,
                 wasmfile_bytes: wasm_bin,
-                _marker: PhantomData,
             }),
             _ => unreachable!("You should pass the same enum branch for both inputs"),
         }
@@ -49,18 +50,17 @@ impl<F: PrimeField> CircomWrapper<F> {
         Ok(CircomWrapper {
             r1csfile_bytes,
             wasmfile_bytes,
-            _marker: PhantomData,
         })
     }
 
     // Aggregated function to obtain R1CS and witness from Circom.
-    pub fn extract_r1cs_and_witness(
+    pub fn extract_r1cs_and_witness<F: PrimeField>(
         &self,
-        inputs: &[(String, Vec<BigInt>)],
+        inputs: Vec<(String, Vec<BigInt>)>,
     ) -> Result<(R1CS<F>, Option<Vec<F>>), Error> {
         // Extracts the R1CS
-        let r1cs_file = r1cs_reader::R1CSFile::<F>::new(Cursor::new(&self.r1csfile_bytes))?;
-        let r1cs = r1cs_reader::R1CS::<F>::from(r1cs_file);
+        let r1cs_file = r1cs_reader::R1CSFile::new(Cursor::new(&self.r1csfile_bytes))?;
+        let r1cs = r1cs_reader::R1CS::from(r1cs_file);
 
         // Extracts the witness vector
         let witness_vec = self.extract_witness(inputs)?;
@@ -68,25 +68,30 @@ impl<F: PrimeField> CircomWrapper<F> {
         Ok((r1cs, Some(witness_vec)))
     }
 
-    pub fn extract_r1cs(&self) -> Result<R1CS<F>, Error> {
-        let r1cs_file = r1cs_reader::R1CSFile::<F>::new(Cursor::new(&self.r1csfile_bytes))?;
-        let mut r1cs = r1cs_reader::R1CS::<F>::from(r1cs_file);
+    pub fn extract_r1cs<F: PrimeField>(&self) -> Result<R1CS<F>, Error> {
+        let r1cs_file = r1cs_reader::R1CSFile::new(Cursor::new(&self.r1csfile_bytes))?;
+        let mut r1cs = r1cs_reader::R1CS::from(r1cs_file);
         r1cs.wire_mapping = None;
         Ok(r1cs)
     }
 
     // Extracts the witness vector as a vector of PrimeField elements.
-    pub fn extract_witness(&self, inputs: &[(String, Vec<BigInt>)]) -> Result<Vec<F>, Error> {
+    pub fn extract_witness<F: PrimeField>(
+        &self,
+        inputs: Vec<(String, Vec<BigInt>)>,
+    ) -> Result<Vec<F>, Error> {
         let witness_bigint = self.calculate_witness(inputs)?;
 
         witness_bigint
-            .iter()
+            .into_iter()
             .map(|big_int| {
-                self.num_bigint_to_ark_bigint(big_int)
-                    .and_then(|ark_big_int| {
-                        F::from_bigint(ark_big_int)
-                            .ok_or_else(|| Error::Other("could not get F from bigint".to_string()))
-                    })
+                big_int.to_biguint().map(F::from).ok_or_else(|| {
+                    Error::ConversionError(
+                        "BigInt".into(),
+                        "BigUint".into(),
+                        "BigInt is negative".into(),
+                    )
+                })
             })
             .collect()
     }
@@ -94,41 +99,32 @@ impl<F: PrimeField> CircomWrapper<F> {
     // Calculates the witness given the Wasm filepath and inputs.
     pub fn calculate_witness(
         &self,
-        inputs: &[(String, Vec<BigInt>)],
+        inputs: Vec<(String, Vec<BigInt>)>,
     ) -> Result<Vec<BigInt>, Error> {
-        let mut calculator = WitnessCalculator::from_binary(&self.wasmfile_bytes).map_err(|e| {
-            Error::WitnessCalculationError(format!("Failed to create WitnessCalculator: {}", e))
-        })?;
-        calculator
-            .calculate_witness(inputs.iter().cloned(), true)
-            .map_err(|e| {
-                Error::WitnessCalculationError(format!("Failed to calculate witness: {}", e))
+        Builder::new_current_thread()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let mut store = Store::default();
+                let module = Module::new(&store, &self.wasmfile_bytes).map_err(|e| {
+                    Error::WitnessCalculationError(format!("Failed to create Wasm module: {}", e))
+                })?;
+                let mut calculator =
+                    WitnessCalculator::from_module(&mut store, module).map_err(|e| {
+                        Error::WitnessCalculationError(format!(
+                            "Failed to create WitnessCalculator: {}",
+                            e
+                        ))
+                    })?;
+                calculator
+                    .calculate_witness(&mut store, inputs, true)
+                    .map_err(|e| {
+                        Error::WitnessCalculationError(format!(
+                            "Failed to calculate witness: {}",
+                            e
+                        ))
+                    })
             })
-    }
-
-    // Converts a num_bigint::BigInt to a PrimeField::BigInt.
-    pub fn num_bigint_to_ark_bigint(&self, value: &BigInt) -> Result<F::BigInt, Error> {
-        let big_uint = value.to_biguint().ok_or_else(|| {
-            Error::ConversionError(
-                "BigInt".into(),
-                "BigUint".into(),
-                "BigInt is negative".into(),
-            )
-        })?;
-        F::BigInt::try_from(big_uint).map_err(|_| {
-            Error::ConversionError(
-                "BigUint".into(),
-                "PrimeField::BigInt".into(),
-                "BigUint is too large to fit into PrimeField::BigInt".into(),
-            )
-        })
-    }
-
-    // Converts a PrimeField element to a num_bigint::BigInt representation.
-    pub fn ark_primefield_to_num_bigint(&self, value: F) -> BigInt {
-        let primefield_bigint: F::BigInt = value.into_bigint();
-        let bytes = primefield_bigint.to_bytes_be();
-        BigInt::from_bytes_be(Sign::Plus, &bytes)
     }
 }
 
@@ -144,8 +140,8 @@ mod tests {
     //bash ./frontends/src/circom/test_folder/compile.sh
 
     // Test the satisfication by using the CircomBuilder of circom-compat
-    #[test]
-    fn test_circombuilder_satisfied() -> Result<(), Error> {
+    #[tokio::test]
+    async fn test_circombuilder_satisfied() -> Result<(), Error> {
         let cfg = CircomConfig::<Fr>::new(
             "./src/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm",
             "./src/circom/test_folder/cubic_circuit.r1cs",
@@ -169,18 +165,13 @@ mod tests {
             PathBuf::from("./src/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm");
 
         let inputs = vec![("ivc_input".to_string(), vec![BigInt::from(3)])];
-        let wrapper = CircomWrapper::<Fr>::new(r1cs_path.into(), wasm_path.into())?;
+        let wrapper = CircomWrapper::new(r1cs_path.into(), wasm_path.into())?;
 
-        let (r1cs, witness) = wrapper.extract_r1cs_and_witness(&inputs)?;
+        let (r1cs, witness) = wrapper.extract_r1cs_and_witness(inputs)?;
 
         let cs = ConstraintSystem::<Fr>::new_ref();
 
-        let circom_circuit = CircomCircuit {
-            r1cs,
-            witness,
-            public_inputs_indexes: vec![],
-            allocate_inputs_as_witnesses: false,
-        };
+        let circom_circuit = CircomCircuit { r1cs, witness };
 
         circom_circuit.generate_constraints(cs.clone())?;
         assert!(cs.is_satisfied()?);

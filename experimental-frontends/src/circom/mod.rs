@@ -1,13 +1,16 @@
-use ark_circom::circom::{CircomCircuit, R1CS as CircomR1CS};
+use ark_circom::circom::R1CS as CircomR1CS;
 use ark_ff::PrimeField;
-use ark_r1cs_std::alloc::AllocVar;
-use ark_r1cs_std::fields::fp::FpVar;
-use ark_r1cs_std::fields::fp::FpVar::Var;
-use ark_r1cs_std::R1CSVar;
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+use ark_r1cs_std::{
+    fields::fp::{AllocatedFp, FpVar},
+    R1CSVar,
+};
+use ark_relations::{
+    lc,
+    r1cs::{ConstraintSystemRef, SynthesisError, Variable},
+};
 use ark_std::fmt::Debug;
 use folding_schemes::{frontend::FCircuit, utils::PathOrBin, Error};
-use num_bigint::BigInt;
+use num_bigint::{BigInt, BigUint};
 
 pub mod utils;
 use crate::utils::{VecF, VecFpVar};
@@ -17,7 +20,7 @@ use utils::CircomWrapper;
 /// The parameter `EIL` indicates the length of the ExternalInputs vector of field elements.
 #[derive(Clone, Debug)]
 pub struct CircomFCircuit<F: PrimeField, const SL: usize, const EIL: usize> {
-    circom_wrapper: CircomWrapper<F>,
+    circom_wrapper: CircomWrapper,
     r1cs: CircomR1CS<F>,
 }
 
@@ -54,68 +57,98 @@ impl<F: PrimeField, const SL: usize, const EIL: usize> FCircuit<F> for CircomFCi
         #[cfg(test)]
         assert_eq!(external_inputs.0.len(), EIL);
 
-        let input_values = self.fpvars_to_bigints(&z_i)?;
+        let input_values = Self::fpvars_to_bigints(&z_i);
         let mut inputs_map = vec![("ivc_input".to_string(), input_values)];
 
         if EIL > 0 {
-            let external_inputs_bi = self.fpvars_to_bigints(&external_inputs.0)?;
+            let external_inputs_bi = Self::fpvars_to_bigints(&external_inputs.0);
             inputs_map.push(("external_inputs".to_string(), external_inputs_bi));
         }
 
+        // The layout of `witness` is as follows:
+        // [
+        //   1,                  // The constant 1 is implicitly allocated by Arkworks
+        //   ...z_{i + 1},       // The next state marked as `signal output` in the circom circuit
+        //   ...z_i,             // The current state marked as `signal input` in the circom circuit
+        //   ...external_inputs, // The optional external inputs marked as `external input` in the circom circuit
+        //   ...aux,             // The intermediate witnesses
+        // ]
+        // Here, 1, z_i, and external_inputs have already been allocated in the
+        // constraint system, while z_{i + 1} and aux are yet to be allocated.
         let witness = self
             .circom_wrapper
-            .extract_witness(&inputs_map)
+            .extract_witness(inputs_map)
             .map_err(|_| SynthesisError::AssignmentMissing)?;
 
-        // Since public inputs are already allocated variables, we will tell `circom-compat` to not re-allocate those
-        let mut already_allocated_public_inputs = vec![];
-        for var in z_i.iter() {
-            match var {
-                Var(var) => already_allocated_public_inputs.push(var.variable),
-                _ => return Err(SynthesisError::Unsatisfiable), // allocated z_i should be Var
-            }
+        // In order to convert the indexes of variables in the circom circuit to
+        // those in the arkworks circuit, we adopt the tricks from
+        // https://github.com/arnaucube/circom-compat/pull/1
+
+        // Since our cs might already have allocated constraints,
+        // We store a mapping between circom's defined indexes and the newly obtained cs indexes
+        let mut circom_index_to_cs_index = vec![];
+
+        // Constant 1 at idx 0 is already allocated by arkworks
+        circom_index_to_cs_index.push(Variable::One);
+
+        // Allocate the next state (1..1 + SL) as witness, and at the same time,
+        // record the allocated variable's index in `circom_index_to_cs_index`.
+        // Cf. https://github.com/arnaucube/circom-compat/blob/22c8f5/src/circom/circuit.rs#L56-L86
+        let mut z_i1 = vec![];
+        for &w in witness.iter().skip(1).take(SL) {
+            let v = cs.new_witness_variable(|| Ok(w))?;
+            circom_index_to_cs_index.push(v);
+            z_i1.push(FpVar::Var(AllocatedFp::new(Some(w), v, cs.clone())));
         }
 
-        // Initializes the CircomCircuit.
-        let circom_circuit = CircomCircuit {
-            r1cs: self.r1cs.clone(),
-            witness: Some(witness.clone()),
-            public_inputs_indexes: already_allocated_public_inputs,
-            allocate_inputs_as_witnesses: true,
-        };
+        // `z_i` and `external_inputs` have already been allocated as witness,
+        // so we just record their indexes in `circom_index_to_cs_index`.
+        // Cf. https://github.com/arnaucube/circom-compat/blob/22c8f5/src/circom/circuit.rs#L89-L95
+        for v in z_i.iter().chain(&external_inputs.0) {
+            match v {
+                FpVar::Var(v) => circom_index_to_cs_index.push(v.variable),
+                // safe because `z_i` and `external_inputs` are allocated as
+                // witness (not constant)
+                _ => unreachable!(),
+            };
+        }
+
+        // Allocate the remaining aux variables as witness.
+        // Also, record their indexes in `circom_index_to_cs_index`.
+        // Cf. https://github.com/arnaucube/circom-compat/blob/22c8f5/src/circom/circuit.rs#L106-L121
+        for w in witness.into_iter().skip(circom_index_to_cs_index.len()) {
+            circom_index_to_cs_index.push(cs.new_witness_variable(|| Ok(w))?);
+        }
+
+        let fold_lc = |lc, &(i, coeff)| lc + (coeff, circom_index_to_cs_index[i]);
 
         // Generates the constraints for the circom_circuit.
-        circom_circuit.generate_constraints(cs.clone())?;
+        for (a, b, c) in &self.r1cs.constraints {
+            cs.enforce_constraint(
+                a.iter().fold(lc!(), fold_lc),
+                b.iter().fold(lc!(), fold_lc),
+                c.iter().fold(lc!(), fold_lc),
+            )?;
+        }
 
-        // TODO: https://github.com/privacy-scaling-explorations/sonobe/issues/104
-        // We disable checking constraints for now
-        // Checks for constraint satisfaction.
-        // if !cs.is_satisfied().unwrap() {
-        //     return Err(SynthesisError::Unsatisfiable);
-        // }
-
-        // Extracts the z_i1(next state) from the witness vector.
-        let z_i1: Vec<FpVar<F>> =
-            Vec::<FpVar<F>>::new_witness(cs.clone(), || Ok(witness[1..1 + SL].to_vec()))?;
+        #[cfg(test)]
+        if !cs.is_in_setup_mode() && !cs.is_satisfied()? {
+            return Err(SynthesisError::Unsatisfiable);
+        }
 
         Ok(z_i1)
     }
 }
 
 impl<F: PrimeField, const SL: usize, const EIL: usize> CircomFCircuit<F, SL, EIL> {
-    fn fpvars_to_bigints(&self, fpvars: &[FpVar<F>]) -> Result<Vec<BigInt>, SynthesisError> {
-        let mut input_values = Vec::new();
-        // converts each FpVar to PrimeField value, then to num_bigint::BigInt.
-        for fp_var in fpvars.iter() {
-            // extracts the PrimeField value from FpVar.
-            let primefield_value = fp_var.value()?;
-            // converts the PrimeField value to num_bigint::BigInt.
-            let num_bigint_value = self
-                .circom_wrapper
-                .ark_primefield_to_num_bigint(primefield_value);
-            input_values.push(num_bigint_value);
-        }
-        Ok(input_values)
+    fn fpvars_to_bigints(fpvars: &[FpVar<F>]) -> Vec<BigInt> {
+        fpvars
+            .value()
+            .unwrap_or(vec![F::zero(); fpvars.len()])
+            .into_iter()
+            .map(Into::<BigUint>::into)
+            .map(BigInt::from)
+            .collect()
     }
 }
 
@@ -123,7 +156,8 @@ impl<F: PrimeField, const SL: usize, const EIL: usize> CircomFCircuit<F, SL, EIL
 pub mod tests {
     use super::*;
     use ark_bn254::Fr;
-    use ark_relations::r1cs::ConstraintSystem;
+    use ark_r1cs_std::alloc::AllocVar;
+    use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
     use std::path::PathBuf;
 
     /// Native implementation of `src/circom/test_folder/cubic_circuit.r1cs`

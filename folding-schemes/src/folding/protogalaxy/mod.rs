@@ -12,6 +12,7 @@ use ark_r1cs_std::{
 };
 use ark_relations::r1cs::{
     ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, Namespace, SynthesisError,
+    SynthesisMode,
 };
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Valid};
 use ark_std::{
@@ -563,6 +564,7 @@ where
         // Later, we only need to re-run the rest of `F'` with updated `t` to
         // get the size of `F'`.
         let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
+        cs.set_mode(SynthesisMode::Setup);
         F.generate_step_constraints(
             cs.clone(),
             0,
@@ -577,6 +579,7 @@ where
 
         // Compute `augmentation_constraints`, the size of `F'` without `F`.
         let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
+        cs.set_mode(SynthesisMode::Setup);
         AugmentedFCircuit::<C1, C2, DummyCircuit>::empty(
             poseidon_config,
             dummy_circuit.clone(),
@@ -600,6 +603,7 @@ where
 
         for t in t_lower_bound..=t_upper_bound {
             let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
+            cs.set_mode(SynthesisMode::Setup);
             AugmentedFCircuit::<C1, C2, DummyCircuit>::empty(
                 poseidon_config,
                 dummy_circuit.clone(),
@@ -664,6 +668,7 @@ where
 
         // main circuit R1CS:
         let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
+        cs.set_mode(SynthesisMode::Setup);
         let augmented_F_circuit =
             AugmentedFCircuit::<C1, C2, FC>::empty(&poseidon_config, f_circuit.clone(), t, d, k);
         augmented_F_circuit.generate_constraints(cs.clone())?;
@@ -673,6 +678,7 @@ where
 
         // CycleFold circuit R1CS
         let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
+        cs2.set_mode(SynthesisMode::Setup);
         let cf_circuit = ProtoGalaxyCycleFoldCircuit::<C1>::empty();
         cf_circuit.generate_constraints(cs2.clone())?;
         cs2.finalize();
@@ -706,7 +712,9 @@ where
 
         // prepare the circuit to obtain its R1CS
         let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
+        cs.set_mode(SynthesisMode::Setup);
         let cs2 = ConstraintSystem::<C1::BaseField>::new_ref();
+        cs2.set_mode(SynthesisMode::Setup);
 
         let augmented_F_circuit =
             AugmentedFCircuit::<C1, C2, FC>::empty(poseidon_config, F.clone(), t, d, k);

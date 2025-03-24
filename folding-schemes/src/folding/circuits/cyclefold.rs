@@ -440,7 +440,8 @@ impl<CFG: CycleFoldConfig> ConstraintSynthesizer<CF2<CFG::C>> for CycleFoldCircu
         //   computing them outside the circuit.
         // - `.enforce_equal()` prevents a malicious prover from claiming wrong
         //   public inputs that are not the honest `x` computed in-circuit.
-        Vec::new_input(cs.clone(), || x.value())?.enforce_equal(&x)?;
+        Vec::new_input(cs, || Ok(x.value().unwrap_or(vec![Zero::zero(); x.len()])))?
+            .enforce_equal(&x)?;
 
         Ok(())
     }

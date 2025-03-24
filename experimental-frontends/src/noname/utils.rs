@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use ark_ff::PrimeField;
 use ark_r1cs_std::{fields::fp::FpVar, R1CSVar};
-use ark_relations::r1cs::SynthesisError;
 use noname::{
     backends::{r1cs::R1CS, BackendField},
     circuit_writer::CircuitWriter,
@@ -39,28 +38,17 @@ impl<F: PrimeField> From<(&Vec<F>, String)> for NonameInputs {
 }
 
 impl NonameInputs {
-    pub fn from_fpvars<F: PrimeField>(
-        value: (&Vec<FpVar<F>>, String),
-    ) -> Result<Self, SynthesisError> {
+    pub fn from_fpvars<F: PrimeField>(value: (&Vec<FpVar<F>>, String)) -> Self {
         let (values, key) = value;
         let mut inputs = HashMap::new();
-        if values.is_empty() {
-            Ok(NonameInputs(JsonInputs(inputs)))
-        } else {
+        if !values.is_empty() {
             let field_elements: Vec<String> = values
                 .iter()
-                .map(|var| {
-                    let value = var.value()?;
-                    if value.is_zero() {
-                        Ok("0".to_string())
-                    } else {
-                        Ok(value.to_string())
-                    }
-                })
-                .collect::<Result<Vec<String>, SynthesisError>>()?;
+                .map(|var| var.value().unwrap_or_default().to_string())
+                .collect::<Vec<String>>();
             inputs.insert(key, json!(field_elements));
-            Ok(NonameInputs(JsonInputs(inputs)))
         }
+        NonameInputs(JsonInputs(inputs))
     }
 }
 

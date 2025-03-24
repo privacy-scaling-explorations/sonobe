@@ -15,7 +15,7 @@ use ark_r1cs_std::{
     R1CSVar,
 };
 use ark_relations::r1cs::{
-    ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, Namespace, SynthesisError,
+    ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, Namespace, SynthesisError, SynthesisMode,
 };
 use ark_std::{fmt::Debug, iter::Sum, One, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
@@ -612,42 +612,34 @@ where
                 cf_cmT: None,
             };
 
-            let cs: ConstraintSystem<C1::ScalarField>;
-            (cs, ccs) = augmented_f_circuit.compute_cs_ccs()?;
+            ccs = augmented_f_circuit.compute_ccs()?;
             // prepare instances for next loop iteration
-            use crate::arith::r1cs::extract_w_x;
-            let (r1cs_w_i1, r1cs_x_i1) = extract_w_x::<C1::ScalarField>(&cs);
-            u_i = CCCS::<C1> {
-                C: u_i.C,
-                x: r1cs_x_i1,
-            };
-            w_i = Witness::<C1::ScalarField> {
-                w: r1cs_w_i1.clone(),
-                r_w: C1::ScalarField::one(),
-            };
+            u_i = CCCS::<C1>::dummy(&ccs);
+            w_i = Witness::<C1::ScalarField>::dummy(&ccs);
             W_i = Witness::<C1::ScalarField>::dummy(&ccs);
             U_i = LCCCS::<C1>::dummy(&ccs);
         }
         Ok(ccs)
     }
 
-    /// Returns the cs (ConstraintSystem) and the CCS out of the AugmentedFCircuit.
+    /// Returns the CCS out of the AugmentedFCircuit.
     /// Notice that in order to be able to internally call the `extract_r1cs` function, this method
     /// calls the `cs.finalize` method which consumes a noticeable portion of the time. If the CCS
     /// is not needed, directly generate the ConstraintSystem without calling the `finalize` method
     /// will save computing time.
     #[allow(clippy::type_complexity)]
-    pub fn compute_cs_ccs(
+    pub fn compute_ccs(
         &self,
-    ) -> Result<(ConstraintSystem<C1::ScalarField>, CCS<C1::ScalarField>), Error> {
+    ) -> Result<CCS<C1::ScalarField>, Error> {
         let cs = ConstraintSystem::<C1::ScalarField>::new_ref();
+        cs.set_mode(SynthesisMode::Setup);
         self.clone().generate_constraints(cs.clone())?;
         cs.finalize();
         let cs = cs.into_inner().ok_or(Error::NoInnerConstraintSystem)?;
         let r1cs = extract_r1cs::<C1::ScalarField>(&cs)?;
         let ccs = CCS::from(r1cs);
 
-        Ok((cs, ccs))
+        Ok(ccs)
     }
 }
 

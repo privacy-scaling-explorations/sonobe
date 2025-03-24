@@ -18,6 +18,8 @@ acvm = { workspace = true }
 folding-schemes = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+tokio = { workspace = true }
+wasmer = { workspace = true }
 
 [dev-dependencies]
 ark-bn254 = { workspace = true, features = ["r1cs"] }

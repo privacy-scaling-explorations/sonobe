@@ -7,7 +7,7 @@ use ark_circom::{
 use ark_ff::PrimeField;
 use ark_serialize::Read;
 use num_bigint::BigInt;
-use tokio::runtime::Runtime;
+use tokio::runtime::Builder;
 use wasmer::{Module, Store};
 
 use folding_schemes::{utils::PathOrBin, Error};
@@ -101,24 +101,30 @@ impl CircomWrapper {
         &self,
         inputs: Vec<(String, Vec<BigInt>)>,
     ) -> Result<Vec<BigInt>, Error> {
-        Runtime::new().unwrap().block_on(async {
-            let mut store = Store::default();
-            let module = Module::new(&store, &self.wasmfile_bytes).map_err(|e| {
-                Error::WitnessCalculationError(format!("Failed to create Wasm module: {}", e))
-            })?;
-            let mut calculator =
-                WitnessCalculator::from_module(&mut store, module).map_err(|e| {
-                    Error::WitnessCalculationError(format!(
-                        "Failed to create WitnessCalculator: {}",
-                        e
-                    ))
+        Builder::new_current_thread()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let mut store = Store::default();
+                let module = Module::new(&store, &self.wasmfile_bytes).map_err(|e| {
+                    Error::WitnessCalculationError(format!("Failed to create Wasm module: {}", e))
                 })?;
-            calculator
-                .calculate_witness(&mut store, inputs, true)
-                .map_err(|e| {
-                    Error::WitnessCalculationError(format!("Failed to calculate witness: {}", e))
-                })
-        })
+                let mut calculator =
+                    WitnessCalculator::from_module(&mut store, module).map_err(|e| {
+                        Error::WitnessCalculationError(format!(
+                            "Failed to create WitnessCalculator: {}",
+                            e
+                        ))
+                    })?;
+                calculator
+                    .calculate_witness(&mut store, inputs, true)
+                    .map_err(|e| {
+                        Error::WitnessCalculationError(format!(
+                            "Failed to calculate witness: {}",
+                            e
+                        ))
+                    })
+            })
     }
 }
 

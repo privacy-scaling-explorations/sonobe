@@ -95,14 +95,10 @@ impl<F: PrimeField, const SL: usize, const EIL: usize> FCircuit<F> for CircomFCi
         // record the allocated variable's index in `circom_index_to_cs_index`.
         // Cf. https://github.com/arnaucube/circom-compat/blob/22c8f5/src/circom/circuit.rs#L56-L86
         let mut z_i1 = vec![];
-        for i in 1..1 + SL {
-            let v = cs.new_witness_variable(|| Ok(witness[i]))?;
+        for &w in witness.iter().skip(1).take(SL) {
+            let v = cs.new_witness_variable(|| Ok(w))?;
             circom_index_to_cs_index.push(v);
-            z_i1.push(FpVar::Var(AllocatedFp::new(
-                Some(witness[i]),
-                v,
-                cs.clone(),
-            )));
+            z_i1.push(FpVar::Var(AllocatedFp::new(Some(w), v, cs.clone())));
         }
 
         // `z_i` and `external_inputs` have already been allocated as witness,

@@ -1,6 +1,9 @@
 use ark_circom::circom::R1CS as CircomR1CS;
 use ark_ff::PrimeField;
-use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, R1CSVar};
+use ark_r1cs_std::{
+    fields::fp::{AllocatedFp, FpVar},
+    R1CSVar,
+};
 use ark_relations::{
     lc,
     r1cs::{ConstraintSystemRef, SynthesisError, Variable},
@@ -70,60 +73,65 @@ impl<F: PrimeField, const SL: usize, const EIL: usize> FCircuit<F> for CircomFCi
         //   ...external_inputs, // The optional external inputs marked as `external input` in the circom circuit
         //   ...aux,             // The intermediate witnesses
         // ]
+        // Here, 1, z_i, and external_inputs have already been allocated in the
+        // constraint system, while z_{i + 1} and aux are yet to be allocated.
         let witness = self
             .circom_wrapper
             .extract_witness(inputs_map)
             .map_err(|_| SynthesisError::AssignmentMissing)?;
 
-        let num_existing_witnesses = cs.num_witness_variables();
+        // In order to convert the indexes of variables in the circom circuit to
+        // those in the arkworks circuit, we adopt the tricks from
+        // https://github.com/arnaucube/circom-compat/pull/1
 
-        // Allocate the next state (1..1 + SL) as witness.
-        let z_i1 = witness
-            .iter()
-            .skip(1)
-            .take(SL)
-            .map(|w| FpVar::new_witness(cs.clone(), || Ok(w)))
-            .collect::<Result<Vec<_>, _>>()?;
+        // Since our cs might already have allocated constraints,
+        // We store a mapping between circom's defined indexes and the newly obtained cs indexes
+        let mut circom_index_to_cs_index = vec![];
 
-        // Allocate the aux variables (1 + SL * 2 + EIL..) as witness.
-        for &w in witness.iter().skip(1 + SL * 2 + EIL) {
-            cs.new_witness_variable(|| Ok(w))?;
+        // Constant 1 at idx 0 is already allocated by arkworks
+        circom_index_to_cs_index.push(Variable::One);
+
+        // Allocate the next state (1..1 + SL) as witness, and at the same time,
+        // record the allocated variable's index in `circom_index_to_cs_index`.
+        // Cf. https://github.com/arnaucube/circom-compat/blob/22c8f5/src/circom/circuit.rs#L56-L86
+        let mut z_i1 = vec![];
+        for i in 1..1 + SL {
+            let v = cs.new_witness_variable(|| Ok(witness[i]))?;
+            circom_index_to_cs_index.push(v);
+            z_i1.push(FpVar::Var(AllocatedFp::new(
+                Some(witness[i]),
+                v,
+                cs.clone(),
+            )));
         }
 
-        let var = |index| {
-            if index == 0 {
-                Variable::One
-            } else if index < 1 + SL {
-                // Corresponds to `z_i1[index - 1]`
-                Variable::Witness(index - 1 + num_existing_witnesses)
-            } else if index < 1 + SL * 2 {
-                // Corresponds to `z_i[index - (1 + SL)]`
-                match &z_i[index - 1 - SL] {
-                    FpVar::Var(v) => v.variable,
-                    // safe because `z_i` is allocated as witness
-                    _ => unreachable!(),
-                }
-            } else if index < 1 + SL * 2 + EIL {
-                // Corresponds to `external_inputs[index - (1 + SL * 2)]`
-                match &external_inputs.0[index - 1 - SL * 2] {
-                    FpVar::Var(v) => v.variable,
-                    // safe because `external_inputs` is allocated as witness
-                    _ => unreachable!(),
-                }
-            } else {
-                // Corresponds to `aux[index - (1 + SL * 2 + EIL)]`.
-                // Need to add `SL` to the index to account for `z_i1` variables
-                // which are allocated before `aux`.
-                Variable::Witness(index - (1 + SL * 2 + EIL) + SL + num_existing_witnesses)
-            }
-        };
+        // `z_i` and `external_inputs` have already been allocated as witness,
+        // so we just record their indexes in `circom_index_to_cs_index`.
+        // Cf. https://github.com/arnaucube/circom-compat/blob/22c8f5/src/circom/circuit.rs#L89-L95
+        for v in z_i.iter().chain(&external_inputs.0) {
+            match v {
+                FpVar::Var(v) => circom_index_to_cs_index.push(v.variable),
+                // safe because `z_i` and `external_inputs` are allocated as
+                // witness (not constant)
+                _ => unreachable!(),
+            };
+        }
+
+        // Allocate the remaining aux variables as witness.
+        // Also, record their indexes in `circom_index_to_cs_index`.
+        // Cf. https://github.com/arnaucube/circom-compat/blob/22c8f5/src/circom/circuit.rs#L106-L121
+        for w in witness.into_iter().skip(circom_index_to_cs_index.len()) {
+            circom_index_to_cs_index.push(cs.new_witness_variable(|| Ok(w))?);
+        }
+
+        let fold_lc = |lc, &(i, coeff)| lc + (coeff, circom_index_to_cs_index[i]);
 
         // Generates the constraints for the circom_circuit.
         for (a, b, c) in &self.r1cs.constraints {
             cs.enforce_constraint(
-                a.iter().fold(lc!(), |lc, &(i, coeff)| lc + (coeff, var(i))),
-                b.iter().fold(lc!(), |lc, &(i, coeff)| lc + (coeff, var(i))),
-                c.iter().fold(lc!(), |lc, &(i, coeff)| lc + (coeff, var(i))),
+                a.iter().fold(lc!(), fold_lc),
+                b.iter().fold(lc!(), fold_lc),
+                c.iter().fold(lc!(), fold_lc),
             )?;
         }
 
@@ -152,6 +160,7 @@ impl<F: PrimeField, const SL: usize, const EIL: usize> CircomFCircuit<F, SL, EIL
 pub mod tests {
     use super::*;
     use ark_bn254::Fr;
+    use ark_r1cs_std::alloc::AllocVar;
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
     use std::path::PathBuf;
 

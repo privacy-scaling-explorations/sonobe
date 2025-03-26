@@ -10,7 +10,7 @@ pub struct EqEvalGadget<F: PrimeField> {
 }
 
 impl<F: PrimeField> EqEvalGadget<F> {
-    /// Gadget to evaluate eq polynomial.
+    /// Gadget to evaluate the eq polynomial.
     /// Follows the implementation of `eq_eval` found in this crate.
     pub fn eq_eval(x: &[FpVar<F>], y: &[FpVar<F>]) -> Result<FpVar<F>, SynthesisError> {
         if x.len() != y.len() {

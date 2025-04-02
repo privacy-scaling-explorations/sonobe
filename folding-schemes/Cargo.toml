@@ -86,3 +86,9 @@ path = "../examples/multi_inputs.rs"
 [[example]]
 name = "external_inputs"
 path = "../examples/external_inputs.rs"
+
+
+[[example]]
+name = "mova_matrix"
+path = "../examples/mova_matrix_memory.rs"
+

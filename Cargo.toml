@@ -7,10 +7,6 @@ members = [
 ]
 resolver = "2"
 
-
-[patch.crates-io]
-ark-r1cs-std = { git = "https://github.com/yelhousni/r1cs-std", rev = "440ca3" } # "perf/sw" branch
-
 [workspace.package]
 edition = "2021"
 license = "MIT"

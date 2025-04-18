@@ -519,22 +519,8 @@ impl<C: Curve, const H: bool> IPAGadget<C, H> {
 
         // msm: G=<G, s>
         let mut G = C::Var::zero();
-        let n = s.len();
-        if n % 2 == 1 {
-            G += g[n - 1].scalar_mul_le(s[n - 1].to_bits_le()?.iter())?;
-        } else {
-            G += g[n - 1].joint_scalar_mul_be(
-                &g[n - 2],
-                s[n - 1].to_bits_le()?.iter(),
-                s[n - 2].to_bits_le()?.iter(),
-            )?;
-        }
-        for i in (1..n - 2).step_by(2) {
-            G += g[i - 1].joint_scalar_mul_be(
-                &g[i],
-                s[i - 1].to_bits_le()?.iter(),
-                s[i].to_bits_le()?.iter(),
-            )?;
+        for (i, s_i) in s.iter().enumerate() {
+            G += g[i].scalar_mul_le(s_i.to_bits_le()?.iter())?;
         }
 
         for (j, u_j) in u.iter().enumerate() {
@@ -551,17 +537,11 @@ impl<C: Curve, const H: bool> IPAGadget<C, H> {
 
         let q_1 = if H {
             G.scalar_mul_le(p.a.to_bits_le()?.iter())?
-                + h.joint_scalar_mul_be(
-                    U,
-                    r.to_bits_le()?.iter(),
-                    (p.a.clone() * b).to_bits_le()?.iter(),
-                )?
+                + h.scalar_mul_le(r.to_bits_le()?.iter())?
+                + U.scalar_mul_le((p.a.clone() * b).to_bits_le()?.iter())?
         } else {
-            G.joint_scalar_mul_be(
-                U,
-                p.a.to_bits_le()?.iter(),
-                (p.a.clone() * b).to_bits_le()?.iter(),
-            )?
+            G.scalar_mul_le(p.a.to_bits_le()?.iter())?
+                + U.scalar_mul_le((p.a.clone() * b).to_bits_le()?.iter())?
         };
         // q_0 == q_1
         q_0.is_eq(&q_1)

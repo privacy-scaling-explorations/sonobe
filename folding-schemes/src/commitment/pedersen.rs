@@ -189,22 +189,8 @@ impl<C: Curve, const H: bool> PedersenGadget<C, H> {
         if H {
             res += h.scalar_mul_le(r.iter())?;
         }
-        let n = v.len();
-        if n % 2 == 1 {
-            res += g[n - 1].scalar_mul_le(v[n - 1].to_bits_le()?.iter())?;
-        } else {
-            res += g[n - 1].joint_scalar_mul_be(
-                &g[n - 2],
-                v[n - 1].to_bits_le()?.iter(),
-                v[n - 2].to_bits_le()?.iter(),
-            )?;
-        }
-        for i in (1..n - 2).step_by(2) {
-            res += g[i - 1].joint_scalar_mul_be(
-                &g[i],
-                v[i - 1].to_bits_le()?.iter(),
-                v[i].to_bits_le()?.iter(),
-            )?;
+        for (i, v_i) in v.iter().enumerate() {
+            res += g[i].scalar_mul_le(v_i.to_bits_le()?.iter())?;
         }
         Ok(res)
     }

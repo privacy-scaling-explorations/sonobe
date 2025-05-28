@@ -110,6 +110,56 @@ impl<F: PrimeField> Add for &VirtualPolynomial<F> {
 }
 
 // TODO: convert this into a trait
+/// Trait defining operations for virtual polynomials over prime fields
+pub trait VirtualPolynomialOps<F: PrimeField> {
+    /// Creates an empty virtual polynomial with `num_variables`.
+    fn new(num_variables: usize) -> Self;
+
+    /// Creates a new virtual polynomial from a MLE and its coefficient.
+    fn new_from_mle(mle: &Arc<DenseMultilinearExtension<F>>, coefficient: F) -> Self;
+
+    /// Add a product of list of multilinear extensions to self
+    /// Returns an error if the list is empty, or the MLE has a different
+    /// `num_vars` from self.
+    ///
+    /// The MLEs will be multiplied together, and then multiplied by the scalar
+    /// `coefficient`.
+    fn add_mle_list(
+        &mut self,
+        mle_list: impl IntoIterator<Item = Arc<DenseMultilinearExtension<F>>>,
+        coefficient: F,
+    ) -> Result<(), ArithErrors>;
+
+    /// Multiple the current VirtualPolynomial by an MLE:
+    /// - add the MLE to the MLE list;
+    /// - multiple each product by MLE and its coefficient.
+    ///
+    /// Returns an error if the MLE has a different `num_vars` from self.
+    fn mul_by_mle(
+        &mut self,
+        mle: Arc<DenseMultilinearExtension<F>>,
+        coefficient: F,
+    ) -> Result<(), ArithErrors>;
+
+    /// Given virtual polynomial `p(x)` and scalar `s`, compute `s*p(x)`
+    fn scalar_mul(&mut self, s: &F);
+
+    /// Evaluate the virtual polynomial at point `point`.
+    /// Returns an error is point.len() does not match `num_variables`.
+    fn evaluate(&self, point: &[F]) -> Result<F, ArithErrors>;
+
+    /// Build f_hat polynomial for ZeroCheck protocol
+    /// Input poly f(x) and a random vector r, output
+    ///      \hat f(x) = \sum_{x_i \in eval_x} f(x_i) eq(x, r)
+    /// where
+    ///      eq(x,y) = \prod_i=1^num_var (x_i * y_i + (1-x_i)*(1-y_i))
+    ///
+    /// This function is used in ZeroCheck.
+    fn build_f_hat(&self, r: &[F]) -> Result<Self, ArithErrors>
+    where
+        Self: Sized;
+}
+
 impl<F: PrimeField> VirtualPolynomial<F> {
     /// Creates an empty virtual polynomial with `num_variables`.
     pub fn new(num_variables: usize) -> Self {
@@ -271,12 +321,13 @@ impl<F: PrimeField> VirtualPolynomial<F> {
         Ok(res)
     }
 
-    // Input poly f(x) and a random vector r, output
-    //      \hat f(x) = \sum_{x_i \in eval_x} f(x_i) eq(x, r)
-    // where
-    //      eq(x,y) = \prod_i=1^num_var (x_i * y_i + (1-x_i)*(1-y_i))
-    //
-    // This function is used in ZeroCheck.
+    /// Build f_hat polynomial for ZeroCheck protocol
+    /// Input poly f(x) and a random vector r, output
+    ///      \hat f(x) = \sum_{x_i \in eval_x} f(x_i) eq(x, r)
+    /// where
+    ///      eq(x,y) = \prod_i=1^num_var (x_i * y_i + (1-x_i)*(1-y_i))
+    ///
+    /// This function is used in ZeroCheck.
     pub fn build_f_hat(&self, r: &[F]) -> Result<Self, ArithErrors> {
         let start = start_timer!(|| "zero check build hat f");
 
@@ -294,6 +345,44 @@ impl<F: PrimeField> VirtualPolynomial<F> {
 
         end_timer!(start);
         Ok(res)
+    }
+}
+
+impl<F: PrimeField> VirtualPolynomialOps<F> for VirtualPolynomial<F> {
+    fn new(num_variables: usize) -> Self {
+        Self::new(num_variables)
+    }
+
+    fn new_from_mle(mle: &Arc<DenseMultilinearExtension<F>>, coefficient: F) -> Self {
+        Self::new_from_mle(mle, coefficient)
+    }
+
+    fn add_mle_list(
+        &mut self,
+        mle_list: impl IntoIterator<Item = Arc<DenseMultilinearExtension<F>>>,
+        coefficient: F,
+    ) -> Result<(), ArithErrors> {
+        self.add_mle_list(mle_list, coefficient)
+    }
+
+    fn mul_by_mle(
+        &mut self,
+        mle: Arc<DenseMultilinearExtension<F>>,
+        coefficient: F,
+    ) -> Result<(), ArithErrors> {
+        self.mul_by_mle(mle, coefficient)
+    }
+
+    fn scalar_mul(&mut self, s: &F) {
+        self.scalar_mul(s)
+    }
+
+    fn evaluate(&self, point: &[F]) -> Result<F, ArithErrors> {
+        self.evaluate(point)
+    }
+
+    fn build_f_hat(&self, r: &[F]) -> Result<Self, ArithErrors> {
+        self.build_f_hat(r)
     }
 }
 

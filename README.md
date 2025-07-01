@@ -51,6 +51,8 @@ Available packages:
 Available features:
 - `parallel` enables some parallelization optimizations available in the crate. It is enabled by default.
 - `light-test` disables part of the DeciderEthCircuit various circuits (which accounts for ~9M constraints) so that the tests involving those circuits can run faster. Do not use it outside tests. This feature is disabled by default.
+- `decider-eth-reduced` skips the expensive R1CS relation checks in the DeciderEthCircuit (~9M constraints) while keeping Pedersen commitment checks. This provides a middle ground between full security and performance. Use with caution in production.
+- `decider-eth-minimal` skips both R1CS relation checks and Pedersen commitment checks in the DeciderEthCircuit, similar to `light-test`. This maximizes performance but significantly reduces security guarantees. Use only when performance is critical and the security tradeoff is acceptable.
 
 Examples of usage can be found at the [examples](https://github.com/privacy-scaling-explorations/sonobe/tree/main/examples) directory.
 

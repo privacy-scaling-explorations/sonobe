@@ -23,6 +23,12 @@ wasmer = { workspace = true }
 
 [dev-dependencies]
 ark-bn254 = { workspace = true, features = ["r1cs"] }
+ark-ec = { workspace = true, features = ["parallel"] }
+ark-crypto-primitives = { workspace = true, features = ["sponge", "parallel"] }
+ark-snark = { workspace = true }
+ark-grumpkin = { workspace = true, features = ["r1cs"] }
+folding-schemes = { workspace = true, features = ["light-test", "decider-eth-reduced"] }
+experimental-frontends = { workspace = true }
 
 # This allows the crate to be built when targeting WASM.
 # See more at: https://docs.rs/getrandom/#webassembly-support 

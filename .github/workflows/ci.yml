@@ -43,7 +43,7 @@ jobs:
         feature_set: [basic]
         include:
           - feature_set: basic
-            features: --features default,light-test
+            features: --features default,light-test,decider-eth-reduced
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1

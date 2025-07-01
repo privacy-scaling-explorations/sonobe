@@ -27,7 +27,7 @@ ark-snark = { workspace = true }
 ark-relations = { workspace = true }
 ark-r1cs-std = { workspace = true, features = ["parallel"] }
 ark-grumpkin = { workspace = true, features = ["r1cs"] }
-folding-schemes = { workspace = true, features = ["light-test"] }
+folding-schemes = { workspace = true, features = ["decider-eth-reduced"] }
 experimental-frontends = { workspace = true }
 noname = { workspace = true }
 

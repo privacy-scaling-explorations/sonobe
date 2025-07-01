@@ -51,7 +51,9 @@ getrandom = { workspace = true, features = ["js"] }
 default = ["parallel"]
 parallel = []
 light-test = []
-
+# New graduated features for decider circuit optimization
+decider-eth-reduced = []  # Skip expensive CF R1CS checks but keep commitments
+decider-eth-minimal = []  # Skip both CF R1CS and commitment checks (equivalent to light-test)
 
 [[bench]]
 name = "nova"

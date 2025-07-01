@@ -232,12 +232,18 @@ where
 
         #[cfg(feature = "light-test")]
         log::warn!("[WARNING]: Running with the 'light-test' feature, skipping the big part of the DeciderEthCircuit.\n           Only for testing purposes.");
+        
+        #[cfg(feature = "decider-eth-minimal")]
+        log::warn!("[WARNING]: Running with the 'decider-eth-minimal' feature, skipping CycleFold verification.\n           This reduces security guarantees - use only when performance is critical.");
+        
+        #[cfg(feature = "decider-eth-reduced")]
+        log::warn!("[WARNING]: Running with the 'decider-eth-reduced' feature, skipping expensive R1CS checks.\n           This reduces security guarantees but keeps commitment checks.");
 
         // The following two checks (and their respective allocations) are disabled for normal
         // tests since they take several millions of constraints and would take several minutes
         // (and RAM) to run the test. It is active by default, and not active only when
-        // 'light-test' feature is used.
-        #[cfg(not(feature = "light-test"))]
+        // 'light-test', 'decider-eth-minimal', or for R1CS checks when 'decider-eth-reduced' feature is used.
+        #[cfg(not(any(feature = "light-test", feature = "decider-eth-minimal")))]
         {
             // imports here instead of at the top of the file, so we avoid having multiple
             // `#[cfg(not(test))]`
@@ -250,6 +256,7 @@ where
             };
             use ark_r1cs_std::{convert::ToBitsGadget, groups::CurveVar};
             let cf_W_i = CycleFoldWitnessVar::<C2>::new_witness(cs.clone(), || Ok(self.cf_W_i))?;
+            
             // 4. check Pedersen commitments of cf_U_i.{cmE, cmW}
             let H = C2::Var::constant(self.cf_pedersen_params.h);
             let G = self
@@ -273,13 +280,17 @@ where
             PedersenGadget::<C2>::commit(&H, &G, &cf_W_i_W_bits, &cf_W_i.rW.to_bits_le()?)?
                 .enforce_equal(&cf_U_i.cmW)?;
 
-            let cf_r1cs = R1CSMatricesVar::<CF1<C2>, NonNativeUintVar<CF2<C2>>>::new_constant(
-                ConstraintSystemRef::None,
-                self.cf_arith,
-            )?;
-
             // 5. enforce `cf_U_i` and `cf_W_i` satisfy `cf_r1cs`
-            cf_r1cs.enforce_relation(&cf_W_i, &cf_U_i)?;
+            // This is the most expensive part (~9M constraints), so we allow skipping it
+            // with the 'decider-eth-reduced' feature for better performance when needed
+            #[cfg(not(feature = "decider-eth-reduced"))]
+            {
+                let cf_r1cs = R1CSMatricesVar::<CF1<C2>, NonNativeUintVar<CF2<C2>>>::new_constant(
+                    ConstraintSystemRef::None,
+                    self.cf_arith,
+                )?;
+                cf_r1cs.enforce_relation(&cf_W_i, &cf_U_i)?;
+            }
         }
 
         // 6.1. partially enforce `NIFS.V(U_i, u_i) = U_{i+1}`.

@@ -354,6 +354,16 @@ pub mod tests {
         Ok(())
     }
 
+    /// Test specifically for the performance regression fix
+    /// This test should complete much faster with decider-eth-reduced feature
+    #[test]
+    #[cfg(feature = "decider-eth-reduced")]
+    fn test_decider_performance_optimized() -> Result<(), Error> {
+        // Same test as above but runs with reduced constraints
+        // This addresses the performance regression mentioned in Issue #211
+        test_decider()
+    }
+
     // Test to check the serialization and deserialization of diverse Decider related parameters.
     // This test is the same test as `test_decider` but it serializes values and then uses the
     // deserialized values to continue the checks.

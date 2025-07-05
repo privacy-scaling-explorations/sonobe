@@ -199,7 +199,7 @@ impl<C: Curve, const H: bool> PedersenGadget<C, H> {
                 v[n - 2].to_bits_le()?.iter(),
             )?;
         }
-        for i in (1..n - 2).step_by(2) {
+        for i in (1..n - 1).step_by(2) {
             res += g[i - 1].joint_scalar_mul_be(
                 &g[i],
                 v[i - 1].to_bits_le()?.iter(),
@@ -258,14 +258,15 @@ mod tests {
 
     #[test]
     fn test_pedersen_circuit() -> Result<(), Error> {
-        let _ = test_pedersen_circuit_opt::<false>()?;
-        let _ = test_pedersen_circuit_opt::<true>()?;
+        let _ = test_pedersen_circuit_opt::<false>(8)?;
+        let _ = test_pedersen_circuit_opt::<true>(8)?;
+        let _ = test_pedersen_circuit_opt::<false>(9)?;
+        let _ = test_pedersen_circuit_opt::<true>(9)?;
         Ok(())
     }
-    fn test_pedersen_circuit_opt<const hiding: bool>() -> Result<(), Error> {
+    fn test_pedersen_circuit_opt<const hiding: bool>(n: usize) -> Result<(), Error> {
         let mut rng = ark_std::test_rng();
 
-        let n: usize = 8;
         // setup params
         let (params, _) = Pedersen::<Projective, hiding>::setup(&mut rng, n)?;
 
@@ -299,6 +300,9 @@ mod tests {
         // use the gadget
         let cmVar = PedersenGadget::<Projective, hiding>::commit(&hVar, &gVar, &vVar, &rVar)?;
         cmVar.enforce_equal(&expected_cmVar)?;
+
+        assert!(cs.is_satisfied()?);
+
         Ok(())
     }
 }

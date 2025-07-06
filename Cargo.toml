@@ -9,7 +9,7 @@ resolver = "2"
 
 
 [patch.crates-io]
-ark-r1cs-std = { git = "https://github.com/yelhousni/r1cs-std", rev = "440ca3" } # "perf/sw" branch
+ark-r1cs-std = { git = "https://github.com/winderica/r1cs-std", rev = "454466" } # "sw-fix" branch
 
 [workspace.package]
 edition = "2021"

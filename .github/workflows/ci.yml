@@ -83,7 +83,7 @@ jobs:
       matrix:
         target:
           - wasm32-unknown-unknown
-          - wasm32-wasi
+          - wasm32-wasip1
           # Ignoring until clear usage is required
           # - wasm32-unknown-emscripten
 

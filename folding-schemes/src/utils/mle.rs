@@ -35,18 +35,8 @@ pub fn matrix_to_dense_mle<F: PrimeField>(matrix: SparseMatrix<F>) -> DenseMulti
 
 /// Takes the n_vars and a dense vector and returns its dense MLE.
 pub fn vec_to_dense_mle<F: PrimeField>(n_vars: usize, v: &[F]) -> DenseMultilinearExtension<F> {
-    let v_padded: Vec<F> = if v.len() != (1 << n_vars) {
-        // pad to 2^n_vars
-        [
-            v.to_owned(),
-            std::iter::repeat(F::zero())
-                .take((1 << n_vars) - v.len())
-                .collect(),
-        ]
-        .concat()
-    } else {
-        v.to_owned()
-    };
+    let mut v_padded = v.to_owned();
+    v_padded.resize(1 << n_vars, F::zero());
     DenseMultilinearExtension::<F>::from_evaluations_vec(n_vars, v_padded)
 }
 
@@ -80,13 +70,8 @@ pub fn dense_vec_to_dense_mle<F: PrimeField>(
     v: &[F],
 ) -> DenseMultilinearExtension<F> {
     // Pad to 2^n_vars
-    let v_padded: Vec<F> = [
-        v.to_owned(),
-        std::iter::repeat(F::zero())
-            .take((1 << n_vars) - v.len())
-            .collect(),
-    ]
-    .concat();
+    let mut v_padded = v.to_owned();
+    v_padded.resize(1 << n_vars, F::zero());
     DenseMultilinearExtension::<F>::from_evaluations_vec(n_vars, v_padded)
 }
 

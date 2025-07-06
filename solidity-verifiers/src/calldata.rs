@@ -28,7 +28,7 @@ pub fn get_formatted_calldata(calldata: Vec<u8>) -> Vec<String> {
     let mut formatted_calldata = vec![];
     for i in (4..calldata.len()).step_by(32) {
         let val = BigUint::from_bytes_be(&calldata[i..i + 32]);
-        formatted_calldata.push(format!("{}", val));
+        formatted_calldata.push(format!("{val}"));
     }
     formatted_calldata
 }

@@ -134,13 +134,8 @@ pub fn eval_mle<F: PrimeField>(
     point: Vec<FpVar<F>>,
 ) -> FpVar<F> {
     // pad to 2^n_vars
-    let mut poly: Vec<FpVar<F>> = [
-        v.to_owned(),
-        std::iter::repeat(FpVar::zero())
-            .take((1 << n_vars) - v.len())
-            .collect(),
-    ]
-    .concat();
+    let mut poly = v;
+    poly.resize(1 << n_vars, FpVar::zero());
 
     for i in 1..n_vars + 1 {
         let r = point[i - 1].clone();

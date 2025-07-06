@@ -23,7 +23,7 @@ clap = { version = "4.4" }
 clap-verbosity-flag = { version = "2.1" }
 criterion = { version = "0.5" }
 env_logger = { version = "0.10" }
-getrandom = { version = "0.3" }
+getrandom = { version = "0.2" }
 log = { version = "0.4" }
 noname = { git = "https://github.com/dmpierre/noname", rev = "c34f17" }
 num-bigint = { version = "0.4.3" }

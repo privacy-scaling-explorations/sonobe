@@ -27,7 +27,7 @@ ark-bn254 = { workspace = true, features = ["r1cs"] }
 # This allows the crate to be built when targeting WASM.
 # See more at: https://docs.rs/getrandom/#webassembly-support 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
-getrandom = { workspace = true, features = ["js"] }
+getrandom = { workspace = true, features = ["wasm_js"] }
 
 [features]
 default = ["ark-circom/default", "parallel"]

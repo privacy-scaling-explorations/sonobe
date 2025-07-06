@@ -1,35 +1,37 @@
-/// Implements Nova's zero-knowledge layer, as described in https://eprint.iacr.org/2023/573.pdf.
-///
-/// Remark: this zk layer implementation only covers a subset of the use cases:
-///
-/// We identify 3 interesting places to use the nova zk-layer: one before all the folding pipeline
-/// (Use-case-1), one at the end of the folding pipeline right before the final Decider SNARK
-/// proof (Use-case-2), and a third one for cases where compressed SNARK proofs are not needed, and
-/// just IVC proofs (bigger than SNARK proofs) suffice (Use-case-3):
-///
-/// * Use-case-1: at the beginning of the folding pipeline, right when the user has their original
-///   instance prior to be folded into the running instance, the user can fold it with the
-///   random-satisfying-instance to then have a blinded instance that can be sent to a server that
-///   will fold it with the running instance.
-///     --> In this one, the user could externalize all the IVC folding and also the Decider
-///     final proof generation to a server.
-/// * Use-case-2: at the end of all the IVC folding steps (after n iterations of nova.prove_step),
-///   to 'blind' the IVC proof so then it can be sent to a server that will generate the final
-///   decider SNARK proof.
-///     --> In this one, the user could externalize the Decider final proof generation to a
-///     server.
-/// * Use-case-3: the user does not care about the Decider (final compressed SNARK proof), and
-///   wants to generate a zk-proof of the IVC state to an IVC verifier (without any SNARK proof
-///   involved). In this use-case, the zk is only added at the last IVCProof. Note that this proof
-///   will be much bigger and expensive to verify than a Decider SNARK proof.
-///
-/// The current implementation covers the Use-case-3.
-/// Use-case-1 can be achieved directly by a simpler version of the zk IVC scheme skipping steps
-/// and implemented directly at the app level by folding the original instance with a randomized
-/// instance (steps 2,3,4 from section D.4 of the [HyperNova](https://eprint.iacr.org/2023/573.pdf)
-/// paper).
-/// And the Use-case-2 would require a modified version of the Decider circuits.
-///
+//! Implements Nova's zero-knowledge layer, as described in https://eprint.iacr.org/2023/573.pdf.
+//!
+//! Remark: this zk layer implementation only covers a subset of the use cases:
+//!
+//! We identify 3 interesting places to use the nova zk-layer: one before all the folding pipeline
+//! (Use-case-1), one at the end of the folding pipeline right before the final Decider SNARK
+//! proof (Use-case-2), and a third one for cases where compressed SNARK proofs are not needed, and
+//! just IVC proofs (bigger than SNARK proofs) suffice (Use-case-3):
+//!
+//! * Use-case-1: at the beginning of the folding pipeline, right when the user has their original
+//!   instance prior to be folded into the running instance, the user can fold it with the
+//!   random-satisfying-instance to then have a blinded instance that can be sent to a server that
+//!   will fold it with the running instance.
+//!     
+//!     --> In this one, the user could externalize all the IVC folding and also the Decider final
+//!   proof generation to a server.
+//!
+//! * Use-case-2: at the end of all the IVC folding steps (after n iterations of nova.prove_step),
+//!   to 'blind' the IVC proof so then it can be sent to a server that will generate the final
+//!   decider SNARK proof.
+//!     
+//!     --> In this one, the user could offload the Decider final proof generation to a server.
+//!   
+//! * Use-case-3: the user does not care about the Decider (final compressed SNARK proof), and
+//!   wants to generate a zk-proof of the IVC state to an IVC verifier (without any SNARK proof
+//!   involved). In this use-case, the zk is only added at the last IVCProof. Note that this proof
+//!   will be much bigger and expensive to verify than a Decider SNARK proof.
+//!
+//! The current implementation covers the Use-case-3.
+//! Use-case-1 can be achieved directly by a simpler version of the zk IVC scheme skipping steps
+//! and implemented directly at the app level by folding the original instance with a randomized
+//! instance (steps 2,3,4 from section D.4 of the [HyperNova](https://eprint.iacr.org/2023/573.pdf)
+//! paper).
+//! And the Use-case-2 would require a modified version of the Decider circuits.
 use ark_crypto_primitives::sponge::{
     poseidon::{PoseidonConfig, PoseidonSponge},
     CryptographicSponge,

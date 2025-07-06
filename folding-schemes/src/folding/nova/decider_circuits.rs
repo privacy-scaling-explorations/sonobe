@@ -26,7 +26,6 @@ use crate::{Curve, Error};
 
 /// Circuit that implements part of the in-circuit checks needed for the offchain verification over
 /// the Curve2's BaseField (=Curve1's ScalarField).
-
 pub type DeciderCircuit1<C1, C2> = GenericOffchainDeciderCircuit1<
     C1,
     C2,

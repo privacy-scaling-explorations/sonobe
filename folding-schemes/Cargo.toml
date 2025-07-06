@@ -45,7 +45,7 @@ pprof = { workspace = true, features = ["criterion", "flamegraph"] }
 # This allows the crate to be built when targeting WASM.
 # See more at: https://docs.rs/getrandom/#webassembly-support 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
-getrandom = { workspace = true, features = ["wasm_js"] }
+getrandom = { workspace = true, features = ["js"] }
 
 [features]
 default = ["parallel"]

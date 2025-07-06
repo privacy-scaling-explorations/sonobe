@@ -653,7 +653,7 @@ where
             if blinding_commitments.contains(&C1::ScalarField::zero()) {
                 return Err(Error::IncorrectBlinding(
                     H,
-                    format!("{:?}", blinding_commitments),
+                    format!("{blinding_commitments:?}"),
                 ));
             }
         }

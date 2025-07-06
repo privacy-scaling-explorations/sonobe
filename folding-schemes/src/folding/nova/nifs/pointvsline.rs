@@ -11,7 +11,6 @@ use crate::{Curve, Error};
 
 /// Implements the Points vs Line as described in
 /// [Mova](https://eprint.iacr.org/2024/1220.pdf) and Section 4.5.2 from Thaler’s book
-
 /// Claim from step 3 protocol 6
 pub struct PointvsLineEvaluationClaim<C: Curve> {
     pub mleE1_prime: C::ScalarField,

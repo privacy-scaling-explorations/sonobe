@@ -55,13 +55,9 @@ impl From<ark_serialize::SerializationError> for ArithErrors {
 ///  f = c0 * f0 * f1 * f2 + c1 * f3 * f4
 /// where f0 ... f4 are multilinear polynomials
 ///
-/// - flattened_ml_extensions stores the multilinear extension representation of
-///   f0, f1, f2, f3 and f4
-/// - products is
-///     \[
-///         (c0, \[0, 1, 2\]),
-///         (c1, \[3, 4\])
-///     \]
+/// - `flattened_ml_extensions` stores the multilinear extension representation
+///   of f0, f1, f2, f3 and f4
+/// - `products` is `[(c0, [0, 1, 2]), (c1, [3, 4])]`
 /// - raw_pointers_lookup_table maps fi to i
 ///
 #[derive(Clone, Debug, Default, PartialEq)]

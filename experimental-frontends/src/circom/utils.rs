@@ -102,15 +102,15 @@ impl CircomWrapper {
     ) -> Result<Vec<BigInt>, Error> {
         let mut store = Store::default();
         let module = Module::new(&store, &self.wasmfile_bytes).map_err(|e| {
-            Error::WitnessCalculationError(format!("Failed to create Wasm module: {}", e))
+            Error::WitnessCalculationError(format!("Failed to create Wasm module: {e}"))
         })?;
         let mut calculator = WitnessCalculator::from_module(&mut store, module).map_err(|e| {
-            Error::WitnessCalculationError(format!("Failed to create WitnessCalculator: {}", e))
+            Error::WitnessCalculationError(format!("Failed to create WitnessCalculator: {e}"))
         })?;
         calculator
             .calculate_witness(&mut store, inputs, true)
             .map_err(|e| {
-                Error::WitnessCalculationError(format!("Failed to calculate witness: {}", e))
+                Error::WitnessCalculationError(format!("Failed to calculate witness: {e}"))
             })
     }
 }

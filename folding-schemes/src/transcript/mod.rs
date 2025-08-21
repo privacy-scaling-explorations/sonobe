@@ -2,7 +2,7 @@ use ark_crypto_primitives::sponge::{constraints::CryptographicSpongeVar, Cryptog
 use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_r1cs_std::{boolean::Boolean, fields::fp::FpVar, groups::CurveVar};
-use ark_relations::r1cs::SynthesisError;
+use ark_relations::gr1cs::SynthesisError;
 
 pub mod poseidon;
 

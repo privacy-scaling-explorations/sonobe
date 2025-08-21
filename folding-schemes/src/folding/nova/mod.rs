@@ -9,8 +9,8 @@ use ark_crypto_primitives::sponge::{
     Absorb,
 };
 use ark_ff::{BigInteger, PrimeField};
-use ark_r1cs_std::{alloc::AllocVar, prelude::Boolean, R1CSVar};
-use ark_relations::r1cs::{
+use ark_r1cs_std::{alloc::AllocVar, prelude::Boolean, GR1CSVar};
+use ark_relations::gr1cs::{
     ConstraintSynthesizer, ConstraintSystem, SynthesisMode, ConstraintSystemRef, SynthesisError,
 };
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Valid};

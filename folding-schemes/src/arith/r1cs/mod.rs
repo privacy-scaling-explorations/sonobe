@@ -1,5 +1,5 @@
 use ark_ff::PrimeField;
-use ark_relations::r1cs::ConstraintSystem;
+use ark_relations::gr1cs::ConstraintSystem;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::rand::Rng;
 
@@ -137,7 +137,7 @@ impl<F: PrimeField> From<CCS<F>> for R1CS<F> {
 /// extracts arkworks ConstraintSystem matrices into crate::utils::vec::SparseMatrix format as R1CS
 /// struct.
 pub fn extract_r1cs<F: PrimeField>(cs: &ConstraintSystem<F>) -> Result<R1CS<F>, Error> {
-    let m = cs.to_matrices().ok_or_else(|| {
+    let matrices_map = cs.to_matrices().map_err(|_| {
         Error::ConversionError(
             "ConstraintSystem".into(),
             "ConstraintMatrices".into(),
@@ -145,23 +145,41 @@ pub fn extract_r1cs<F: PrimeField>(cs: &ConstraintSystem<F>) -> Result<R1CS<F>, 
         )
     })?;
 
-    let n_rows = cs.num_constraints;
+    // Get the R1CS predicate matrices
+    let r1cs_matrices = matrices_map.get("R1CS").ok_or_else(|| {
+        Error::ConversionError(
+            "ConstraintSystem".into(),
+            "R1CS matrices".into(),
+            "No R1CS predicate found in constraint system".into(),
+        )
+    })?;
+
+    // The R1CS predicate should have exactly 3 matrices (A, B, C)
+    if r1cs_matrices.len() != 3 {
+        return Err(Error::ConversionError(
+            "R1CS matrices".into(),
+            "3 matrices (A, B, C)".into(),
+            format!("Found {} matrices", r1cs_matrices.len()),
+        ));
+    }
+
+    let n_rows = cs.num_constraints();
     let n_cols = cs.num_instance_variables + cs.num_witness_variables; // cs.num_instance_variables already counts the 1
 
     let A = SparseMatrix::<F> {
         n_rows,
         n_cols,
-        coeffs: m.a,
+        coeffs: r1cs_matrices[0].clone(),
     };
     let B = SparseMatrix::<F> {
         n_rows,
         n_cols,
-        coeffs: m.b,
+        coeffs: r1cs_matrices[1].clone(),
     };
     let C = SparseMatrix::<F> {
         n_rows,
         n_cols,
-        coeffs: m.c,
+        coeffs: r1cs_matrices[2].clone(),
     };
 
     Ok(R1CS::<F> {
@@ -174,10 +192,15 @@ pub fn extract_r1cs<F: PrimeField>(cs: &ConstraintSystem<F>) -> Result<R1CS<F>, 
 
 /// extracts the witness and the public inputs from arkworks ConstraintSystem.
 pub fn extract_w_x<F: PrimeField>(cs: &ConstraintSystem<F>) -> (Vec<F>, Vec<F>) {
+    let witness = cs.witness_assignment()
+        .expect("witness_assignment failed")
+        .to_vec();
+    let instance = cs.instance_assignment()
+        .expect("instance_assignment failed");
     (
-        cs.witness_assignment.clone(),
+        witness,
         // skip the first element which is '1'
-        cs.instance_assignment[1..].to_vec(),
+        instance[1..].to_vec(),
     )
 }
 

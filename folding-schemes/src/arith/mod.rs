@@ -1,5 +1,5 @@
 use ark_ff::PrimeField;
-use ark_relations::r1cs::SynthesisError;
+use ark_relations::gr1cs::SynthesisError;
 use ark_std::rand::RngCore;
 
 use crate::{commitment::CommitmentScheme, folding::traits::Dummy, Curve, Error};

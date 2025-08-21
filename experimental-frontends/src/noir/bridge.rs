@@ -12,7 +12,7 @@ use ark_r1cs_std::alloc::AllocVar;
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_relations::{
     lc,
-    r1cs::{
+    gr1cs::{
         ConstraintSynthesizer, ConstraintSystemRef, LinearCombination, SynthesisError, Variable,
     },
 };
@@ -94,7 +94,7 @@ impl<'a, ConstraintF: Field + PrimeField> ConstraintSynthesizer<ConstraintF>
             // Process constant term
             arith_gate += (gate.q_c.into_repr(), Variable::One);
 
-            cs.enforce_constraint(lc!() + Variable::One, arith_gate, lc!())?;
+            cs.enforce_r1cs_constraint(|| lc!() + Variable::One, || arith_gate, || lc!())?;
         }
 
         Ok(())

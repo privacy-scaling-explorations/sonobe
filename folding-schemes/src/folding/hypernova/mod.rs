@@ -1,8 +1,8 @@
 /// Implements the scheme described in [HyperNova](https://eprint.iacr.org/2023/573.pdf)
 use ark_crypto_primitives::sponge::poseidon::{PoseidonConfig, PoseidonSponge};
 use ark_ff::{BigInteger, PrimeField};
-use ark_r1cs_std::{alloc::AllocVar, boolean::Boolean, R1CSVar};
-use ark_relations::r1cs::{
+use ark_r1cs_std::{alloc::AllocVar, boolean::Boolean, GR1CSVar};
+use ark_relations::gr1cs::{
     ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, SynthesisError,
 };
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress, SerializationError};

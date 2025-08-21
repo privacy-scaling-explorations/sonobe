@@ -6,9 +6,9 @@ use ark_r1cs_std::{
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
     prelude::Boolean,
-    R1CSVar,
+    GR1CSVar,
 };
-use ark_relations::r1cs::{
+use ark_relations::gr1cs::{
     ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, Namespace, SynthesisError,
     SynthesisMode,
 };
@@ -200,7 +200,7 @@ impl<C: Curve, const TYPE: bool> AllocVar<CommittedInstance<C, TYPE>, C::ScalarF
     }
 }
 
-impl<C: Curve, const TYPE: bool> R1CSVar<C::ScalarField> for CommittedInstanceVar<C, TYPE> {
+impl<C: Curve, const TYPE: bool> GR1CSVar<C::ScalarField> for CommittedInstanceVar<C, TYPE> {
     type Value = CommittedInstance<C, TYPE>;
 
     fn cs(&self) -> ConstraintSystemRef<C::ScalarField> {

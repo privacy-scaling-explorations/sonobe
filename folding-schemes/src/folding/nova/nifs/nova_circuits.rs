@@ -7,7 +7,7 @@ use ark_r1cs_std::{
     fields::{fp::FpVar, FieldVar},
     uint8::UInt8,
 };
-use ark_relations::r1cs::{ConstraintSystemRef, Namespace, SynthesisError};
+use ark_relations::gr1cs::{ConstraintSystemRef, Namespace, SynthesisError};
 use ark_std::{fmt::Debug, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
 
@@ -160,7 +160,7 @@ pub mod tests {
     use ark_crypto_primitives::sponge::poseidon::constraints::PoseidonSpongeVar;
     use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
     use ark_pallas::{Fr, Projective};
-    use ark_r1cs_std::R1CSVar;
+    use ark_r1cs_std::GR1CSVar;
     use ark_std::UniformRand;
 
     use crate::commitment::pedersen::Pedersen;

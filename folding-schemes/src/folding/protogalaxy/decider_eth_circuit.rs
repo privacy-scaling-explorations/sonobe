@@ -8,7 +8,7 @@ use ark_r1cs_std::{
     fields::fp::FpVar,
     R1CSVar,
 };
-use ark_relations::r1cs::{Namespace, SynthesisError};
+use ark_relations::gr1cs::{Namespace, SynthesisError};
 use ark_std::{borrow::Borrow, marker::PhantomData};
 
 use crate::{
@@ -192,7 +192,7 @@ impl<C: Curve>
 pub mod tests {
     use ark_bn254::{Fr, G1Projective as Projective};
     use ark_grumpkin::Projective as Projective2;
-    use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
+    use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystem};
 
     use super::*;
     use crate::commitment::pedersen::Pedersen;

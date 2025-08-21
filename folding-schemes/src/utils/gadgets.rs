@@ -3,9 +3,9 @@ use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
-    R1CSVar,
+    GR1CSVar,
 };
-use ark_relations::r1cs::{Namespace, SynthesisError};
+use ark_relations::gr1cs::{Namespace, SynthesisError};
 use core::borrow::Borrow;
 
 use crate::utils::vec::SparseMatrix;
@@ -67,7 +67,7 @@ impl<F: PrimeField> VectorGadget<FpVar<F>> for [FpVar<F>] {
 pub struct SparseMatrixVar<FV> {
     pub n_rows: usize,
     pub n_cols: usize,
-    // same format as the native SparseMatrix (which follows ark_relations::r1cs::Matrix format
+    // same format as the native SparseMatrix (which follows ark_relations::gr1cs::Matrix format
     pub coeffs: Vec<Vec<(FV, usize)>>,
 }
 

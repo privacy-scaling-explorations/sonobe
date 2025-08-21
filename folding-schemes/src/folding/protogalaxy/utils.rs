@@ -109,8 +109,8 @@ pub fn pow_i_var<F: PrimeField>(mut i: usize, betas: &[FpVar<F>]) -> FpVar<F> {
 mod tests {
 
     use ark_bn254::Fr;
-    use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
-    use ark_relations::r1cs::ConstraintSystem;
+    use ark_r1cs_std::{alloc::AllocVar, GR1CSVar};
+    use ark_relations::gr1cs::ConstraintSystem;
     use ark_std::{test_rng, UniformRand};
     use rand::Rng;
 

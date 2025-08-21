@@ -8,7 +8,7 @@
 /// - [Mova](https://eprint.iacr.org/2024/1220.pdf)
 use ark_crypto_primitives::sponge::{constraints::AbsorbGadget, Absorb, CryptographicSponge};
 use ark_r1cs_std::{alloc::AllocVar, boolean::Boolean, fields::fp::FpVar};
-use ark_relations::r1cs::SynthesisError;
+use ark_relations::gr1cs::SynthesisError;
 use ark_std::fmt::Debug;
 use ark_std::rand::RngCore;
 
@@ -130,8 +130,8 @@ pub mod tests {
         Absorb,
     };
     use ark_pallas::{Fr, Projective};
-    use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, R1CSVar};
-    use ark_relations::r1cs::ConstraintSystem;
+    use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, GR1CSVar};
+    use ark_relations::gr1cs::ConstraintSystem;
     use ark_std::{cmp::max, test_rng, UniformRand};
 
     use super::NIFSTrait;

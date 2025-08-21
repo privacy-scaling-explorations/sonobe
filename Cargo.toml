@@ -9,7 +9,29 @@ resolver = "2"
 
 
 [patch.crates-io]
-ark-r1cs-std = { git = "https://github.com/winderica/r1cs-std", rev = "454466" } # "sw-fix" branch
+# Update ark-groth16 to latest git version
+ark-groth16 = { git = "https://github.com/arkworks-rs/groth16", rev = "b3b4a15" }
+
+# Required dependencies for latest ark-groth16
+ark-ff = { git = "https://github.com/arkworks-rs/algebra" }
+ark-ec = { git = "https://github.com/arkworks-rs/algebra" }
+ark-serialize = { git = "https://github.com/arkworks-rs/algebra" }
+ark-poly = { git = "https://github.com/arkworks-rs/algebra" }
+ark-relations = { git = "https://github.com/arkworks-rs/snark" }
+ark-snark = { git = "https://github.com/arkworks-rs/snark" }
+ark-crypto-primitives = { git = "https://github.com/flyingnobita/crypto-primitives", rev = "f559264" }
+ark-r1cs-std = { git = "https://github.com/flyingnobita/r1cs-std_yelhousni", rev = "b4bab0c" }         # "perf/sw-updated" branch
+ark-std = { git = "https://github.com/arkworks-rs/std" }
+ark-poly-commit = { git = "https://github.com/arkworks-rs/poly-commit" }
+ark-circom = { git = "https://github.com/arkworks-rs/circom-compat" }
+
+# Curve crates also need git versions
+ark-bn254 = { git = "https://github.com/arkworks-rs/algebra" }
+ark-grumpkin = { git = "https://github.com/arkworks-rs/algebra" }
+ark-pallas = { git = "https://github.com/arkworks-rs/algebra" }
+ark-vesta = { git = "https://github.com/arkworks-rs/algebra" }
+ark-mnt4-298 = { git = "https://github.com/arkworks-rs/algebra" }
+ark-mnt6-298 = { git = "https://github.com/arkworks-rs/algebra" }
 
 [workspace.package]
 edition = "2021"
@@ -37,7 +59,10 @@ rayon = { version = "1" }
 revm = { version = "19.5.0", default-features = false }
 rust-crypto = { version = "0.2" }
 thiserror = { version = "1.0" }
-wasmer = { version = "6.0.1", default-features = false }
+tokio = "1.44.1"
+wasmer = { version = "6.1.0-rc.2", default-features = false, features = [
+    "sys",
+] }
 
 # Arkworks family
 ark-bn254 = { version = "^0.5.0", default-features = false }

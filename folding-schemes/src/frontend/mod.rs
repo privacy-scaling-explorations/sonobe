@@ -1,7 +1,7 @@
 use crate::Error;
 use ark_ff::PrimeField;
 use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar};
-use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
+use ark_relations::gr1cs::{ConstraintSystemRef, SynthesisError};
 use ark_std::fmt::Debug;
 
 pub mod utils;
@@ -42,7 +42,7 @@ pub trait FCircuit<F: PrimeField>: Clone + Debug {
 pub mod tests {
     use super::*;
     use ark_bn254::Fr;
-    use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
+    use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystem};
 
     use utils::{custom_step_native, CubicFCircuit, CustomFCircuit, WrapperCircuit};
 

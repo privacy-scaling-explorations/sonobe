@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use ark_ff::PrimeField;
-use ark_r1cs_std::{fields::fp::FpVar, R1CSVar};
+use ark_r1cs_std::{fields::fp::FpVar, GR1CSVar};
 use folding_schemes::Error;
 use noname::{
     backends::{r1cs::R1CS, BackendField},

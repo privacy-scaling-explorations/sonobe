@@ -12,7 +12,7 @@ use ark_r1cs_std::{
     convert::{ToBytesGadget, ToConstraintFieldGadget},
     fields::fp::FpVar,
 };
-use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
+use ark_relations::gr1cs::{ConstraintSystemRef, SynthesisError};
 use core::marker::PhantomData;
 use std::time::Instant;
 

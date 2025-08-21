@@ -2,11 +2,11 @@ use ark_circom::circom::R1CS as CircomR1CS;
 use ark_ff::PrimeField;
 use ark_r1cs_std::{
     fields::fp::{AllocatedFp, FpVar},
-    R1CSVar,
+    GR1CSVar,
 };
 use ark_relations::{
     lc,
-    r1cs::{ConstraintSystemRef, SynthesisError, Variable},
+    gr1cs::{ConstraintSystemRef, SynthesisError, Variable},
 };
 use ark_std::fmt::Debug;
 use folding_schemes::{frontend::FCircuit, utils::PathOrBin, Error};
@@ -124,10 +124,10 @@ impl<F: PrimeField, const SL: usize, const EIL: usize> FCircuit<F> for CircomFCi
 
         // Generates the constraints for the circom_circuit.
         for (a, b, c) in &self.r1cs.constraints {
-            cs.enforce_constraint(
-                a.iter().fold(lc!(), fold_lc),
-                b.iter().fold(lc!(), fold_lc),
-                c.iter().fold(lc!(), fold_lc),
+            cs.enforce_r1cs_constraint(
+                || a.iter().fold(lc!(), fold_lc),
+                || b.iter().fold(lc!(), fold_lc),
+                || c.iter().fold(lc!(), fold_lc),
             )?;
         }
 
@@ -157,7 +157,7 @@ pub mod tests {
     use super::*;
     use ark_bn254::Fr;
     use ark_r1cs_std::alloc::AllocVar;
-    use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
+    use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystem};
     use std::path::PathBuf;
 
     /// Native implementation of `src/circom/test_folder/cubic_circuit.r1cs`

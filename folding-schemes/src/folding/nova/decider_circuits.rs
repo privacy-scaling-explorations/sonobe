@@ -166,7 +166,7 @@ impl<
 #[cfg(test)]
 pub mod tests {
     use ark_pallas::{Fq, Fr, Projective};
-    use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
+    use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystem};
     use ark_vesta::Projective as Projective2;
 
     use super::*;

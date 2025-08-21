@@ -12,7 +12,7 @@ use ark_r1cs_std::{
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
 };
-use ark_relations::r1cs::{Namespace, SynthesisError};
+use ark_relations::gr1cs::{Namespace, SynthesisError};
 use std::{borrow::Borrow, marker::PhantomData};
 
 use crate::utils::espresso::sum_check::SumCheck;
@@ -179,8 +179,8 @@ mod tests {
     };
     use ark_pallas::Fr;
     use ark_poly::{DenseMultilinearExtension, MultilinearExtension, Polynomial};
-    use ark_r1cs_std::R1CSVar;
-    use ark_relations::r1cs::ConstraintSystem;
+    use ark_r1cs_std::GR1CSVar;
+    use ark_relations::gr1cs::ConstraintSystem;
     use std::sync::Arc;
 
     use super::*;

@@ -121,7 +121,7 @@ mod tests {
     use ark_bn254::Fr;
     use ark_circom::circom::{CircomBuilder, CircomConfig};
     use ark_circom::CircomCircuit;
-    use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
+    use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystem};
 
     //To generate .r1cs and .wasm files, run the below command in the terminal.
     //bash ./frontends/src/circom/test_folder/compile.sh

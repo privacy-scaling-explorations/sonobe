@@ -1,6 +1,6 @@
 use ark_ff::PrimeField;
 use ark_r1cs_std::fields::{fp::FpVar, FieldVar};
-use ark_relations::r1cs::SynthesisError;
+use ark_relations::gr1cs::SynthesisError;
 use std::marker::PhantomData;
 
 /// EqEval is a gadget for computing $\tilde{eq}(a, b) = \prod_{i=1}^{l}(a_i \cdot b_i + (1 - a_i)(1 - b_i))$
@@ -32,8 +32,8 @@ impl<F: PrimeField> EqEvalGadget<F> {
 mod tests {
     use ark_ff::Field;
     use ark_pallas::Fr;
-    use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, R1CSVar};
-    use ark_relations::r1cs::ConstraintSystem;
+    use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, GR1CSVar};
+    use ark_relations::gr1cs::ConstraintSystem;
     use ark_std::{test_rng, UniformRand};
 
     use super::EqEvalGadget;

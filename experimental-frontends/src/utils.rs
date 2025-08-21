@@ -3,7 +3,7 @@ use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     fields::fp::FpVar,
 };
-use ark_relations::r1cs::{Namespace, SynthesisError};
+use ark_relations::gr1cs::{Namespace, SynthesisError};
 use ark_std::fmt::Debug;
 use core::borrow::Borrow;
 

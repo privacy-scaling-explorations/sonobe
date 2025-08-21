@@ -7,7 +7,7 @@ use ark_r1cs_std::{
     fields::{fp::FpVar, FieldVar},
     poly::{domain::Radix2DomainVar, evaluations::univariate::EvaluationsVar},
 };
-use ark_relations::r1cs::SynthesisError;
+use ark_relations::gr1cs::SynthesisError;
 use ark_std::log2;
 
 use crate::folding::traits::{CommittedInstanceOps, CommittedInstanceVarOps, Dummy, WitnessOps};
@@ -138,8 +138,8 @@ pub mod tests {
         constraints::CryptographicSpongeVar, poseidon::PoseidonSponge,
     };
     use ark_pallas::{Fr, Projective};
-    use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
-    use ark_relations::r1cs::ConstraintSystem;
+    use ark_r1cs_std::{alloc::AllocVar, GR1CSVar};
+    use ark_relations::gr1cs::ConstraintSystem;
     use ark_std::UniformRand;
 
     use super::*;

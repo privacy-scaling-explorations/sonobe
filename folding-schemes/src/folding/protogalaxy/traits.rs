@@ -5,7 +5,7 @@ use ark_r1cs_std::{
     fields::{fp::FpVar, FieldVar},
     uint8::UInt8,
 };
-use ark_relations::r1cs::SynthesisError;
+use ark_relations::gr1cs::SynthesisError;
 use ark_std::{cfg_into_iter, log2, One};
 use rayon::prelude::*;
 
@@ -137,8 +137,8 @@ impl<C: Curve> ArithRelationGadget<WitnessVar<CF1<C>>, CommittedInstanceVar<C, R
 pub mod tests {
     use super::*;
     use ark_bn254::{Fr, G1Projective as Projective};
-    use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
-    use ark_relations::r1cs::ConstraintSystem;
+    use ark_r1cs_std::{alloc::AllocVar, GR1CSVar};
+    use ark_relations::gr1cs::ConstraintSystem;
     use ark_std::UniformRand;
     use rand::Rng;
 

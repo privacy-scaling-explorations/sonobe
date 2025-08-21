@@ -5,7 +5,7 @@ use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     fields::fp::FpVar,
 };
-use ark_relations::r1cs::{Namespace, SynthesisError};
+use ark_relations::gr1cs::{Namespace, SynthesisError};
 use ark_std::borrow::Borrow;
 
 /// CCSMatricesVar contains the matrices 'M' of the CCS without the rest of CCS parameters.

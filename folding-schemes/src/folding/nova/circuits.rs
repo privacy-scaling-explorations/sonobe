@@ -6,10 +6,11 @@ use ark_r1cs_std::{
     alloc::AllocVar,
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
-    R1CSVar,
+    prelude::CurveVar,
+    GR1CSVar,
 };
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-use ark_std::{fmt::Debug, Zero};
+use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+use ark_std::{fmt::Debug, One, Zero};
 
 use super::{
     nifs::{
@@ -302,7 +303,7 @@ pub mod tests {
     use ark_ff::{BigInteger, PrimeField};
 
     use ark_r1cs_std::prelude::Boolean;
-    use ark_relations::r1cs::ConstraintSystem;
+    use ark_relations::gr1cs::ConstraintSystem;
     use ark_std::UniformRand;
 
     use crate::folding::nova::nifs::nova::ChallengeGadget;

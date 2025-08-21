@@ -8,7 +8,7 @@ use ark_crypto_primitives::sponge::{
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{boolean::Boolean, fields::fp::FpVar, groups::CurveVar};
-use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
+use ark_relations::gr1cs::{ConstraintSystemRef, SynthesisError};
 
 use super::{AbsorbNonNative, AbsorbNonNativeGadget, Transcript, TranscriptVar};
 
@@ -135,9 +135,9 @@ pub mod tests {
     use ark_ec::PrimeGroup;
     use ark_ff::UniformRand;
     use ark_r1cs_std::{
-        alloc::AllocVar, groups::curves::short_weierstrass::ProjectiveVar, R1CSVar,
+        alloc::AllocVar, groups::curves::short_weierstrass::ProjectiveVar, GR1CSVar,
     };
-    use ark_relations::r1cs::ConstraintSystem;
+    use ark_relations::gr1cs::ConstraintSystem;
     use ark_std::test_rng;
 
     use super::*;

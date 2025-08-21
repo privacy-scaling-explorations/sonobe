@@ -1,5 +1,5 @@
-use ark_r1cs_std::{boolean::Boolean, convert::ToBitsGadget, prelude::CurveVar};
-use ark_relations::r1cs::SynthesisError;
+use ark_r1cs_std::{boolean::Boolean, convert::ToBitsGadget, groups::CurveVar};
+use ark_relations::gr1cs::SynthesisError;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{marker::PhantomData, rand::RngCore, UniformRand, Zero};
 
@@ -216,7 +216,7 @@ mod tests {
     use ark_ff::{BigInteger, PrimeField};
     use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
     use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget};
-    use ark_relations::r1cs::ConstraintSystem;
+    use ark_relations::gr1cs::ConstraintSystem;
 
     use super::*;
     use crate::transcript::poseidon::poseidon_canonical_config;

@@ -9,7 +9,7 @@ use ark_r1cs_std::{
     fields::fp::FpVar,
     R1CSVar,
 };
-use ark_relations::r1cs::{Namespace, SynthesisError};
+use ark_relations::gr1cs::{Namespace, SynthesisError};
 use ark_std::{borrow::Borrow, log2, marker::PhantomData};
 
 use super::{
@@ -220,7 +220,7 @@ impl<C: Curve> DeciderEnabledNIFS<C, LCCCS<C>, CCCS<C>, Witness<C::ScalarField>,
 pub mod tests {
     use ark_bn254::{Fr, G1Projective as Projective};
     use ark_grumpkin::Projective as Projective2;
-    use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
+    use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystem};
     use ark_std::{test_rng, UniformRand};
 
     use super::*;

@@ -7,7 +7,7 @@ use ark_r1cs_std::{
     boolean::Boolean,
     eq::EqGadget,
     fields::fp::FpVar,
-    R1CSVar,
+    GR1CSVar,
 };
 use ark_relations::gr1cs::{Namespace, SynthesisError};
 use ark_std::{borrow::Borrow, log2, marker::PhantomData};

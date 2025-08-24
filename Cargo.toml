@@ -60,13 +60,11 @@ revm = { version = "19.5.0", default-features = false }
 rust-crypto = { version = "0.2" }
 thiserror = { version = "1.0" }
 tokio = "1.44.1"
-wasmer = { version = "6.1.0-rc.2", default-features = false, features = [
-    "sys",
-] }
+wasmer = { version = "6.1.0-rc.2", default-features = false, features = ["sys", "singlepass"] }
 
 # Arkworks family
 ark-bn254 = { version = "^0.5.0", default-features = false }
-ark-circom = { git = "https://github.com/winderica/circom-compat", rev = "a5f302", default-features = false }
+ark-circom = { git = "https://github.com/arkworks-rs/circom-compat", default-features = false }
 ark-crypto-primitives = { version = "^0.5.0", default-features = false }
 ark-ec = { version = "^0.5.0", default-features = false }
 ark-ff = { version = "^0.5.0", default-features = false }

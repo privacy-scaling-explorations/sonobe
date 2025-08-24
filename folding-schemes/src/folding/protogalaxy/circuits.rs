@@ -12,7 +12,7 @@ use ark_r1cs_std::{
     GR1CSVar,
 };
 use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-use ark_std::{fmt::Debug, One, Zero};
+use ark_std::{fmt::Debug, Zero};
 
 use super::{
     folding::lagrange_polys,

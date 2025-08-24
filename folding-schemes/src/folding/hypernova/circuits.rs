@@ -17,7 +17,9 @@ use ark_relations::gr1cs::{
     ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, Namespace, SynthesisError,
     SynthesisMode,
 };
-use ark_std::{fmt::Debug, iter::Sum, One, Zero};
+use ark_std::{fmt::Debug, iter::Sum, Zero};
+#[cfg(test)]
+use ark_std::One;
 use core::{borrow::Borrow, marker::PhantomData};
 
 use super::{

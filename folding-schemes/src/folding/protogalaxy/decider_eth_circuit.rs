@@ -6,7 +6,7 @@ use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
     eq::EqGadget,
     fields::fp::FpVar,
-    R1CSVar,
+    GR1CSVar,
 };
 use ark_relations::gr1cs::{Namespace, SynthesisError};
 use ark_std::{borrow::Borrow, marker::PhantomData};

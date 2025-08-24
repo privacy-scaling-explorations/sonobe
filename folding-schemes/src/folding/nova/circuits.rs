@@ -6,11 +6,10 @@ use ark_r1cs_std::{
     alloc::AllocVar,
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
-    prelude::CurveVar,
     GR1CSVar,
 };
 use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-use ark_std::{fmt::Debug, One, Zero};
+use ark_std::{fmt::Debug, Zero};
 
 use super::{
     nifs::{

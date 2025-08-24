@@ -567,7 +567,7 @@ impl<C1: Curve, CFG: CycleFoldConfig<C1>> CycleFoldCircuit<C1, CFG> {
         assert_eq!(cf_x_i.len(), CFG::IO_LEN);
 
         // generate cyclefold instances
-        let cf_w_i = CycleFoldWitness::<C2>::new::<H>(cf_w_i, cs2.num_constraints, &mut rng);
+        let cf_w_i = CycleFoldWitness::<C2>::new::<H>(cf_w_i, cs2.num_constraints(), &mut rng);
         let cf_u_i = cf_w_i.commit::<CS2, H>(cf_cs_params, cf_x_i)?;
 
         Ok((cf_w_i, cf_u_i))
@@ -706,8 +706,7 @@ impl<C2: Curve, CS2: CommitmentScheme<C2, H>, const H: bool> CycleFoldNIFS<C2, C
 pub mod tests {
     use ark_bn254::{constraints::GVar, Fq, Fr, G1Projective as Projective};
     use ark_crypto_primitives::sponge::{
-        constraints::CryptographicSpongeVar,
-        poseidon::{constraints::PoseidonSpongeVar, PoseidonSponge},
+                poseidon::{constraints::PoseidonSpongeVar, PoseidonSponge},
     };
     use ark_r1cs_std::GR1CSVar;
     use ark_std::{One, UniformRand, Zero};

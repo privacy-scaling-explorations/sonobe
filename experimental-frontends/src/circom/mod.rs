@@ -5,8 +5,8 @@ use ark_r1cs_std::{
     GR1CSVar,
 };
 use ark_relations::{
-    lc,
     gr1cs::{ConstraintSystemRef, SynthesisError, Variable},
+    lc,
 };
 use ark_std::fmt::Debug;
 use folding_schemes::{frontend::FCircuit, utils::PathOrBin, Error};

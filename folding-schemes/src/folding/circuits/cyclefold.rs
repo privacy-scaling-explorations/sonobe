@@ -705,9 +705,7 @@ impl<C2: Curve, CS2: CommitmentScheme<C2, H>, const H: bool> CycleFoldNIFS<C2, C
 #[cfg(test)]
 pub mod tests {
     use ark_bn254::{constraints::GVar, Fq, Fr, G1Projective as Projective};
-    use ark_crypto_primitives::sponge::{
-                poseidon::{constraints::PoseidonSpongeVar, PoseidonSponge},
-    };
+    use ark_crypto_primitives::sponge::poseidon::{constraints::PoseidonSpongeVar, PoseidonSponge};
     use ark_r1cs_std::GR1CSVar;
     use ark_std::{One, UniformRand, Zero};
 

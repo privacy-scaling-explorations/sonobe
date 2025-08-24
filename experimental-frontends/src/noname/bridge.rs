@@ -115,11 +115,7 @@ impl<'a, 'b, 'c, F: PrimeField, BF: BackendField> ConstraintSynthesizer<F>
             let lc_a = make_lc(constraint.a)?;
             let lc_b = make_lc(constraint.b)?;
             let lc_c = make_lc(constraint.c)?;
-            cs.enforce_r1cs_constraint(
-                || lc_a,
-                || lc_b,
-                || lc_c,
-            )?;
+            cs.enforce_r1cs_constraint(|| lc_a, || lc_b, || lc_c)?;
         }
 
         Ok(())

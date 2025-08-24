@@ -192,10 +192,12 @@ pub fn extract_r1cs<F: PrimeField>(cs: &ConstraintSystem<F>) -> Result<R1CS<F>, 
 
 /// extracts the witness and the public inputs from arkworks ConstraintSystem.
 pub fn extract_w_x<F: PrimeField>(cs: &ConstraintSystem<F>) -> (Vec<F>, Vec<F>) {
-    let witness = cs.witness_assignment()
+    let witness = cs
+        .witness_assignment()
         .expect("witness_assignment failed")
         .to_vec();
-    let instance = cs.instance_assignment()
+    let instance = cs
+        .instance_assignment()
         .expect("instance_assignment failed");
     (
         witness,

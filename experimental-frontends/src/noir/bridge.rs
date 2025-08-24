@@ -11,10 +11,10 @@ use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::alloc::AllocVar;
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_relations::{
-    lc,
     gr1cs::{
         ConstraintSynthesizer, ConstraintSystemRef, LinearCombination, SynthesisError, Variable,
     },
+    lc,
 };
 
 // AcirCircuit and AcirArithGate are structs that arkworks can synthesise.

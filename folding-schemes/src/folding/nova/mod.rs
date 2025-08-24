@@ -11,7 +11,7 @@ use ark_crypto_primitives::sponge::{
 use ark_ff::{BigInteger, PrimeField};
 use ark_r1cs_std::{alloc::AllocVar, prelude::Boolean, GR1CSVar};
 use ark_relations::gr1cs::{
-    ConstraintSynthesizer, ConstraintSystem, SynthesisMode, ConstraintSystemRef, SynthesisError,
+    ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, SynthesisError, SynthesisMode,
 };
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Valid};
 use ark_std::{cmp::max, fmt::Debug, rand::RngCore, One, UniformRand, Zero};

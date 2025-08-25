@@ -108,8 +108,8 @@ where
 pub mod tests {
     use super::*;
     use ark_crypto_primitives::crh::{poseidon::CRH, CRHScheme};
-    use ark_r1cs_std::R1CSVar;
-    use ark_relations::r1cs::ConstraintSystem;
+    use ark_r1cs_std::GR1CSVar;
+    use ark_relations::gr1cs::ConstraintSystem;
 
     fn external_inputs_step_native<F: PrimeField + Absorb>(
         z_i: Vec<F>,

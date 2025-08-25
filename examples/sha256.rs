@@ -66,8 +66,8 @@ pub mod tests {
     use super::*;
     use ark_crypto_primitives::crh::{sha256::Sha256, CRHScheme};
     use ark_ff::{BigInteger, ToConstraintField};
-    use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
-    use ark_relations::r1cs::ConstraintSystem;
+    use ark_r1cs_std::{alloc::AllocVar, GR1CSVar};
+    use ark_relations::gr1cs::ConstraintSystem;
 
     fn sha256_step_native<F: PrimeField>(z_i: Vec<F>) -> Vec<F> {
         let out_bytes = Sha256::evaluate(&(), z_i[0].into_bigint().to_bytes_le()).unwrap();

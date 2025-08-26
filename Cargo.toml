@@ -3,7 +3,7 @@ members = [
     "folding-schemes",
     "solidity-verifiers",
     "cli",
-    "experimental-frontends"
+    "experimental-frontends",
 ]
 resolver = "2"
 
@@ -23,7 +23,7 @@ ark-crypto-primitives = { git = "https://github.com/flyingnobita/crypto-primitiv
 ark-r1cs-std = { git = "https://github.com/flyingnobita/r1cs-std_yelhousni", rev = "b4bab0c" }         # "perf/sw-updated" branch
 ark-std = { git = "https://github.com/arkworks-rs/std" }
 ark-poly-commit = { git = "https://github.com/arkworks-rs/poly-commit" }
-ark-circom = { git = "https://github.com/arkworks-rs/circom-compat" }
+
 
 # Curve crates also need git versions
 ark-bn254 = { git = "https://github.com/arkworks-rs/algebra" }
@@ -32,6 +32,9 @@ ark-pallas = { git = "https://github.com/arkworks-rs/algebra" }
 ark-vesta = { git = "https://github.com/arkworks-rs/algebra" }
 ark-mnt4-298 = { git = "https://github.com/arkworks-rs/algebra" }
 ark-mnt6-298 = { git = "https://github.com/arkworks-rs/algebra" }
+
+[patch."https://github.com/arkworks-rs/circom-compat"]
+ark-circom = { git = "https://github.com/dmpierre/circom-compat", rev = "0dfd773c" }
 
 [workspace.package]
 edition = "2021"

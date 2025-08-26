@@ -1,22 +1,18 @@
 use ark_crypto_primitives::sponge::{
-    constraints::CryptographicSpongeVar,
-    poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig, PoseidonSponge},
+    poseidon::{constraints::PoseidonSpongeVar, PoseidonConfig},
     CryptographicSponge,
 };
-use ark_ff::PrimeField;
 use ark_poly::{univariate::DensePolynomial, EvaluationDomain, GeneralEvaluationDomain};
 use ark_r1cs_std::{
     alloc::AllocVar,
-    boolean::Boolean,
     convert::ToBitsGadget,
     eq::EqGadget,
     fields::{fp::FpVar, FieldVar},
-    groups::CurveVar,
     poly::polynomial::univariate::dense::DensePolynomialVar,
-    R1CSVar,
+    GR1CSVar,
 };
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-use ark_std::{fmt::Debug, One, Zero};
+use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+use ark_std::{fmt::Debug, Zero};
 
 use super::{
     folding::lagrange_polys,
@@ -27,16 +23,16 @@ use crate::{
     folding::{
         circuits::{
             cyclefold::{
-                CycleFoldChallengeGadget, CycleFoldCommittedInstance,
-                CycleFoldCommittedInstanceVar, CycleFoldConfig, NIFSFullGadget,
+                CycleFoldAugmentationGadget, CycleFoldCommittedInstance,
+                CycleFoldCommittedInstanceVar, CycleFoldConfig,
             },
-            nonnative::{affine::NonNativeAffineVar, uint::NonNativeUintVar},
+            nonnative::affine::NonNativeAffineVar,
             CF1,
         },
         traits::{CommittedInstanceVarOps, Dummy},
     },
     frontend::FCircuit,
-    transcript::{AbsorbNonNativeGadget, TranscriptVar},
+    transcript::TranscriptVar,
     utils::gadgets::VectorGadget,
     Curve,
 };
@@ -169,51 +165,6 @@ impl AugmentationGadget {
 
         Ok((U, L_X_evals))
     }
-
-    pub fn prepare_and_fold_cyclefold<
-        C1: Curve<BaseField = C2::ScalarField, ScalarField = C2::BaseField>,
-        C2: Curve,
-        S: CryptographicSponge,
-    >(
-        transcript: &mut PoseidonSpongeVar<CF1<C1>>,
-        pp_hash: FpVar<CF1<C1>>,
-        mut cf_U: CycleFoldCommittedInstanceVar<C2>,
-        cf_u_cmWs: Vec<C2::Var>,
-        cf_u_xs: Vec<Vec<NonNativeUintVar<CF1<C1>>>>,
-        cf_cmTs: Vec<C2::Var>,
-    ) -> Result<CycleFoldCommittedInstanceVar<C2>, SynthesisError> {
-        assert_eq!(cf_u_cmWs.len(), cf_u_xs.len());
-        assert_eq!(cf_u_xs.len(), cf_cmTs.len());
-
-        // Fold the incoming CycleFold instances into the running CycleFold
-        // instance in a iterative way, since `NIFSFullGadget` only supports
-        // folding one incoming instance at a time.
-        for ((cmW, x), cmT) in cf_u_cmWs.into_iter().zip(cf_u_xs).zip(cf_cmTs) {
-            // Prepare the incoming CycleFold instance `cf_u` for the current
-            // iteration.
-            // For each CycleFold instance `cf_u`, we have `cf_u.cmE = 0`, and
-            // `cf_u.u = 1`.
-            let cf_u = CycleFoldCommittedInstanceVar {
-                cmE: C2::Var::zero(),
-                u: NonNativeUintVar::new_constant(ConstraintSystemRef::None, C1::BaseField::one())?,
-                cmW,
-                x,
-            };
-
-            let cf_r_bits = CycleFoldChallengeGadget::get_challenge_gadget(
-                transcript,
-                pp_hash.clone(),
-                cf_U.to_native_sponge_field_elements()?,
-                cf_u.clone(),
-                cmT.clone(),
-            )?;
-            // Fold the current incoming CycleFold instance `cf_u` into the
-            // running CycleFold instance `cf_U`.
-            cf_U = NIFSFullGadget::fold_committed_instance(cf_r_bits, cmT, cf_U, cf_u)?;
-        }
-
-        Ok(cf_U)
-    }
 }
 
 /// `AugmentedFCircuit` enhances the original step function `F`, so that it can
@@ -246,13 +197,9 @@ pub struct AugmentedFCircuit<C1: Curve, C2: Curve, FC: FCircuit<CF1<C1>>> {
     pub(super) F_coeffs: Vec<CF1<C1>>,
     pub(super) K_coeffs: Vec<CF1<C1>>,
 
-    pub(super) phi_stars: Vec<C1>,
-
-    pub(super) cf1_u_i_cmW: C2,                        // input
-    pub(super) cf2_u_i_cmW: C2,                        // input
+    pub(super) cf_u_i_cmW: C2,                         // input
     pub(super) cf_U_i: CycleFoldCommittedInstance<C2>, // input
-    pub(super) cf1_cmT: C2,
-    pub(super) cf2_cmT: C2,
+    pub(super) cf_cmT: C2,
 }
 
 impl<C1: Curve, C2: Curve, FC: FCircuit<CF1<C1>>> AugmentedFCircuit<C1, C2, FC> {
@@ -280,14 +227,11 @@ impl<C1: Curve, C2: Curve, FC: FCircuit<CF1<C1>>> AugmentedFCircuit<C1, C2, FC> 
             U_i1_phi: C1::zero(),
             F_coeffs: vec![CF1::<C1>::zero(); t],
             K_coeffs: vec![CF1::<C1>::zero(); d * k + 1],
-            phi_stars: vec![C1::zero(); k],
             F: F_circuit,
             // cyclefold values
-            cf1_u_i_cmW: C2::zero(),
-            cf2_u_i_cmW: C2::zero(),
+            cf_u_i_cmW: C2::zero(),
             cf_U_i: cf_u_dummy,
-            cf1_cmT: C2::zero(),
-            cf2_cmT: C2::zero(),
+            cf_cmT: C2::zero(),
         }
     }
 }
@@ -313,21 +257,18 @@ where
         let U_i = CommittedInstanceVar::<C1, true>::new_witness(cs.clone(), || Ok(self.U_i))?;
         let u_i_phi = NonNativeAffineVar::new_witness(cs.clone(), || Ok(self.u_i_phi))?;
         let U_i1_phi = NonNativeAffineVar::new_witness(cs.clone(), || Ok(self.U_i1_phi))?;
-        let phi_stars =
-            Vec::<NonNativeAffineVar<C1>>::new_witness(cs.clone(), || Ok(self.phi_stars))?;
 
         let cf_u_dummy =
             CycleFoldCommittedInstance::dummy(ProtoGalaxyCycleFoldConfig::<C1>::IO_LEN);
         let cf_U_i =
             CycleFoldCommittedInstanceVar::<C2>::new_witness(cs.clone(), || Ok(self.cf_U_i))?;
-        let cf1_cmT = C2::Var::new_witness(cs.clone(), || Ok(self.cf1_cmT))?;
-        let cf2_cmT = C2::Var::new_witness(cs.clone(), || Ok(self.cf2_cmT))?;
+        let cf_cmT = C2::Var::new_witness(cs.clone(), || Ok(self.cf_cmT))?;
 
         let F_coeffs = Vec::new_witness(cs.clone(), || Ok(self.F_coeffs))?;
         let K_coeffs = Vec::new_witness(cs.clone(), || Ok(self.K_coeffs))?;
 
         // `sponge` is for digest computation.
-        let sponge = PoseidonSpongeVar::<C1::ScalarField>::new(cs.clone(), &self.poseidon_config);
+        let sponge = PoseidonSpongeVar::new_with_pp_hash(&self.poseidon_config, &pp_hash)?;
         // `transcript` is for challenge generation.
         let mut transcript = sponge.clone();
 
@@ -336,9 +277,9 @@ where
         // Primary Part
         // P.1. Compute u_i.x
         // u_i.x[0] = H(i, z_0, z_i, U_i)
-        let (u_i_x, _) = U_i.clone().hash(&sponge, &pp_hash, &i, &z_0, &z_i)?;
+        let (u_i_x, _) = U_i.clone().hash(&sponge, &i, &z_0, &z_i)?;
         // u_i.x[1] = H(cf_U_i)
-        let (cf_u_i_x, _) = cf_U_i.clone().hash(&sponge, pp_hash.clone())?;
+        let (cf_u_i_x, _) = cf_U_i.clone().hash(&sponge)?;
 
         // P.2. Prepare incoming primary instances
         // P.3. Fold incoming primary instances into the running instance
@@ -361,16 +302,11 @@ where
 
         // Base case: u_{i+1}.x[0] == H((i+1, z_0, z_{i+1}, U_{\bot})
         // Non-base case: u_{i+1}.x[0] == H((i+1, z_0, z_{i+1}, U_{i+1})
-        let (u_i1_x, _) = U_i1.clone().hash(
-            &sponge,
-            &pp_hash,
-            &(i + FpVar::<CF1<C1>>::one()),
-            &z_0,
-            &z_i1,
-        )?;
+        let (u_i1_x, _) =
+            U_i1.clone()
+                .hash(&sponge, &(i + FpVar::<CF1<C1>>::one()), &z_0, &z_i1)?;
         let (u_i1_x_base, _) = CommittedInstanceVar::new_constant(cs.clone(), u_dummy)?.hash(
             &sponge,
-            &pp_hash,
             &FpVar::<CF1<C1>>::one(),
             &z_0,
             &z_i1,
@@ -388,73 +324,42 @@ where
         FpVar::new_input(cs.clone(), || x.value())?.enforce_equal(&x)?;
 
         // CycleFold part
-        // C.1. Compute cf1_u_i.x and cf2_u_i.x
-        let mut r0_bits = r[0].to_bits_le()?;
-        let mut r1_bits = r[1].to_bits_le()?;
-        r0_bits.resize(C1::ScalarField::MODULUS_BIT_SIZE as usize, Boolean::FALSE);
-        r1_bits.resize(C1::ScalarField::MODULUS_BIT_SIZE as usize, Boolean::FALSE);
-        let cf1_x = [
-            r0_bits
-                .chunks(C1::BaseField::MODULUS_BIT_SIZE as usize - 1)
-                .map(|bits| {
-                    let mut bits = bits.to_vec();
-                    bits.resize(C1::BaseField::MODULUS_BIT_SIZE as usize, Boolean::FALSE);
-                    NonNativeUintVar::from(&bits)
-                })
-                .collect::<Vec<_>>(),
-            vec![
-                NonNativeUintVar::new_constant(cs.clone(), C1::BaseField::zero())?,
-                NonNativeUintVar::new_constant(cs.clone(), C1::BaseField::zero())?,
-                U_i.phi.x.clone(),
-                U_i.phi.y.clone(),
-                phi_stars[0].x.clone(),
-                phi_stars[0].y.clone(),
-            ],
-        ]
-        .concat();
-        let cf2_x = [
-            r1_bits
-                .chunks(C1::BaseField::MODULUS_BIT_SIZE as usize - 1)
-                .map(|bits| {
-                    let mut bits = bits.to_vec();
-                    bits.resize(C1::BaseField::MODULUS_BIT_SIZE as usize, Boolean::FALSE);
-                    NonNativeUintVar::from(&bits)
-                })
-                .collect::<Vec<_>>(),
-            vec![
-                phi_stars[0].x.clone(),
-                phi_stars[0].y.clone(),
-                u_i_phi.x.clone(),
-                u_i_phi.y.clone(),
-                U_i1.phi.x.clone(),
-                U_i1.phi.y.clone(),
-            ],
-        ]
-        .concat();
+        // C.1. Compute `cf_u_i.x`
+        // C.2. Construct `cf_u_i`
+        let cf_u_i = CycleFoldCommittedInstanceVar::new_incoming_from_components(
+            // `cf_u_i.cmW` is provided by the prover as witness.
+            C2::Var::new_witness(cs.clone(), || Ok(self.cf_u_i_cmW))?,
+            // To construct `cf_u_i.x`, we need to provide the randomness `r` as
+            // well as the `phi` component in committed instances `U_i`, `u_i`,
+            // and `U_{i+1}`.
+            // Note that the randomness `r` is converted to `r_0, r_1 / r_0` due
+            // to how `ProtoGalaxyCycleFoldConfig::alloc_randomnesses` creates
+            // randomness in the CycleFold circuit.
+            &[
+                r[0].to_bits_le()?,
+                r[1].mul_by_inverse(&r[0])?.to_bits_le()?,
+            ]
+            .concat(),
+            vec![U_i.phi, u_i_phi, U_i1.phi],
+        )?;
 
         // C.2. Prepare incoming CycleFold instances
         // C.3. Fold incoming CycleFold instances into the running instance
-        let cf_U_i1 =
-            AugmentationGadget::prepare_and_fold_cyclefold::<C1, C2, PoseidonSponge<CF1<C1>>>(
-                &mut transcript,
-                pp_hash.clone(),
-                cf_U_i,
-                vec![
-                    C2::Var::new_witness(cs.clone(), || Ok(self.cf1_u_i_cmW))?,
-                    C2::Var::new_witness(cs.clone(), || Ok(self.cf2_u_i_cmW))?,
-                ],
-                vec![cf1_x, cf2_x],
-                vec![cf1_cmT, cf2_cmT],
-            )?;
+        let cf_U_i1 = CycleFoldAugmentationGadget::fold_gadget(
+            &mut transcript,
+            cf_U_i,
+            vec![cf_u_i],
+            vec![cf_cmT],
+        )?;
 
         // Back to Primary Part
         // P.4.b compute and check the second output of F'
         // Base case: u_{i+1}.x[1] == H(cf_U_{\bot})
         // Non-base case: u_{i+1}.x[1] == H(cf_U_{i+1})
-        let (cf_u_i1_x, _) = cf_U_i1.clone().hash(&sponge, pp_hash.clone())?;
+        let (cf_u_i1_x, _) = cf_U_i1.clone().hash(&sponge)?;
         let (cf_u_i1_x_base, _) =
             CycleFoldCommittedInstanceVar::<C2>::new_constant(cs.clone(), cf_u_dummy)?
-                .hash(&sponge, pp_hash.clone())?;
+                .hash(&sponge)?;
         let cf_x = is_basecase.select(&cf_u_i1_x_base, &cf_u_i1_x)?;
         // This line "converts" `cf_x` from a witness to a public input.
         // Instead of directly modifying the constraint system, we explicitly
@@ -489,12 +394,13 @@ mod tests {
     use crate::{
         arith::r1cs::tests::get_test_r1cs,
         folding::protogalaxy::folding::{tests::prepare_inputs, Folding},
-        transcript::poseidon::poseidon_canonical_config,
+        transcript::{poseidon::poseidon_canonical_config, Transcript},
         Error,
     };
 
     use ark_bn254::{Fr, G1Projective as Projective};
-    use ark_relations::r1cs::ConstraintSystem;
+    use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
+    use ark_relations::gr1cs::ConstraintSystem;
 
     #[test]
     fn test_folding_gadget() -> Result<(), Error> {
@@ -504,8 +410,9 @@ mod tests {
 
         // init Prover & Verifier's transcript
         let poseidon_config = poseidon_canonical_config::<Fr>();
-        let mut transcript_p = PoseidonSponge::new(&poseidon_config);
-        let mut transcript_v = PoseidonSponge::new(&poseidon_config);
+        let pp_hash = Fr::from(42u32); // only for testing
+        let mut transcript_p = PoseidonSponge::new_with_pp_hash(&poseidon_config, pp_hash);
+        let mut transcript_v = transcript_p.clone();
 
         let (_, _, proof, _) = Folding::<Projective>::prove(
             &mut transcript_p,
@@ -520,7 +427,9 @@ mod tests {
             Folding::<Projective>::verify(&mut transcript_v, &instance, &instances, proof.clone())?;
 
         let cs = ConstraintSystem::new_ref();
-        let mut transcript_var = PoseidonSpongeVar::new(cs.clone(), &poseidon_config);
+        let pp_hash_var = FpVar::new_witness(cs.clone(), || Ok(pp_hash))?;
+        let mut transcript_var =
+            PoseidonSpongeVar::new_with_pp_hash(&poseidon_config, &pp_hash_var)?;
         let instance_var = CommittedInstanceVar::new_witness(cs.clone(), || Ok(instance))?;
         let instances_var = Vec::new_witness(cs.clone(), || Ok(instances))?;
         let F_coeffs_var = Vec::new_witness(cs.clone(), || Ok(proof.F_coeffs))?;

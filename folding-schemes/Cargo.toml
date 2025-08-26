@@ -10,7 +10,7 @@ ark-ec = { workspace = true, features = ["parallel"] }
 ark-ff = { workspace = true, features = ["parallel", "asm"] }
 ark-poly = { workspace = true, features = ["parallel"] }
 ark-std = { workspace = true, features = ["parallel"] }
-ark-crypto-primitives = { workspace = true, features = ["r1cs", "sponge", "crh", "parallel"] }
+ark-crypto-primitives = { workspace = true, features = ["constraints", "sponge", "crh", "parallel"] }
 ark-poly-commit = { workspace = true, features = ["parallel"] }
 ark-relations = { workspace = true }
 ark-r1cs-std = { workspace = true, features = ["parallel"] }

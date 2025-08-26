@@ -8,8 +8,8 @@ use acvm::{
     pwg::ACVM,
 };
 use ark_ff::PrimeField;
-use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, R1CSVar};
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, GR1CSVar};
+use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use serde::{self, Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -140,9 +140,9 @@ impl<F: PrimeField, const SL: usize, const EIL: usize> FCircuit<F> for NoirFCirc
 mod tests {
     use ark_bn254::Fr;
     use ark_ff::PrimeField;
-    use ark_r1cs_std::R1CSVar;
+    use ark_r1cs_std::GR1CSVar;
     use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar};
-    use ark_relations::r1cs::ConstraintSystem;
+    use ark_relations::gr1cs::ConstraintSystem;
     use folding_schemes::{frontend::FCircuit, Error};
     use std::env;
 

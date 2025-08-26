@@ -8,9 +8,9 @@ use ark_r1cs_std::{
     eq::EqGadget,
     fields::fp::FpVar,
     prelude::Boolean,
-    R1CSVar,
+    GR1CSVar,
 };
-use ark_relations::r1cs::{ConstraintSystemRef, Namespace, SynthesisError};
+use ark_relations::gr1cs::{ConstraintSystemRef, Namespace, SynthesisError};
 use ark_serialize::{CanonicalSerialize, CanonicalSerializeWithFlags};
 use ark_std::{borrow::Borrow, One, Zero};
 
@@ -51,7 +51,7 @@ impl<C: Curve> AllocVar<C, C::ScalarField> for NonNativeAffineVar<C> {
     }
 }
 
-impl<C: Curve> R1CSVar<C::ScalarField> for NonNativeAffineVar<C> {
+impl<C: Curve> GR1CSVar<C::ScalarField> for NonNativeAffineVar<C> {
     type Value = C;
 
     fn cs(&self) -> ConstraintSystemRef<C::ScalarField> {
@@ -187,7 +187,7 @@ impl<P: SWCurveConfig<BaseField: Field>> InputizeNonNative<P::ScalarField> for P
 mod tests {
     use ark_pallas::{Fq, Fr, PallasConfig, Projective};
     use ark_r1cs_std::groups::curves::short_weierstrass::ProjectiveVar;
-    use ark_relations::r1cs::ConstraintSystem;
+    use ark_relations::gr1cs::ConstraintSystem;
     use ark_std::UniformRand;
 
     use super::*;

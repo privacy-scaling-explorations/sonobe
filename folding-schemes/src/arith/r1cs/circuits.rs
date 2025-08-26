@@ -4,7 +4,7 @@ use crate::{
 };
 use ark_ff::PrimeField;
 use ark_r1cs_std::alloc::{AllocVar, AllocationMode};
-use ark_relations::r1cs::{Namespace, SynthesisError};
+use ark_relations::gr1cs::{Namespace, SynthesisError};
 use ark_std::{borrow::Borrow, marker::PhantomData, One};
 
 use super::R1CS;
@@ -97,7 +97,7 @@ pub mod tests {
     use ark_ff::BigInteger;
     use ark_pallas::{Fq, Fr, Projective};
     use ark_r1cs_std::{eq::EqGadget, fields::fp::FpVar, uint8::UInt8};
-    use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef};
+    use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef};
     use ark_std::{
         cmp::max,
         rand::{thread_rng, Rng},

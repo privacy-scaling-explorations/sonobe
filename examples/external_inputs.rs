@@ -15,7 +15,7 @@ use ark_ff::PrimeField;
 use ark_grumpkin::Projective as Projective2;
 use ark_r1cs_std::alloc::AllocVar;
 use ark_r1cs_std::fields::fp::FpVar;
-use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
+use ark_relations::gr1cs::{ConstraintSystemRef, SynthesisError};
 use core::marker::PhantomData;
 use std::time::Instant;
 
@@ -108,8 +108,8 @@ where
 pub mod tests {
     use super::*;
     use ark_crypto_primitives::crh::{poseidon::CRH, CRHScheme};
-    use ark_r1cs_std::R1CSVar;
-    use ark_relations::r1cs::ConstraintSystem;
+    use ark_r1cs_std::GR1CSVar;
+    use ark_relations::gr1cs::ConstraintSystem;
 
     fn external_inputs_step_native<F: PrimeField + Absorb>(
         z_i: Vec<F>,

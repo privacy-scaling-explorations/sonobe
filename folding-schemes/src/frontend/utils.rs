@@ -3,7 +3,7 @@ use ark_r1cs_std::{
     alloc::AllocVar,
     fields::{fp::FpVar, FieldVar},
 };
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use ark_std::marker::PhantomData;
 use ark_std::{fmt::Debug, Zero};
 

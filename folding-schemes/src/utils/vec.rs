@@ -2,7 +2,7 @@ use ark_ff::PrimeField;
 use ark_poly::{
     univariate::DensePolynomial, EvaluationDomain, Evaluations, GeneralEvaluationDomain,
 };
-pub use ark_relations::r1cs::Matrix as R1CSMatrix;
+pub use ark_relations::gr1cs::Matrix as R1CSMatrix;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::cfg_iter;
 use ark_std::rand::Rng;

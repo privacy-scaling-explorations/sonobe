@@ -1,5 +1,5 @@
 use ark_r1cs_std::fields::fp::FpVar;
-use ark_relations::r1cs::SynthesisError;
+use ark_relations::gr1cs::SynthesisError;
 use ark_std::{rand::RngCore, UniformRand};
 
 use super::decider_eth_circuit::WitnessVar;

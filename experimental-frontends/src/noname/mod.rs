@@ -1,7 +1,7 @@
 use ark_ff::PrimeField;
 use ark_r1cs_std::alloc::AllocVar;
 use ark_r1cs_std::fields::fp::FpVar;
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use noname::backends::{r1cs::R1CS as R1CSNoname, BackendField};
 use noname::witness::CompiledCircuit;
 use num_bigint::BigUint;
@@ -88,8 +88,8 @@ impl<F: PrimeField, BF: BackendField, const SL: usize, const EIL: usize> FCircui
 mod tests {
     use ark_bn254::Fr;
     use ark_ff::PrimeField;
-    use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, R1CSVar};
-    use ark_relations::r1cs::ConstraintSystem;
+    use ark_r1cs_std::{alloc::AllocVar, fields::fp::FpVar, GR1CSVar};
+    use ark_relations::gr1cs::ConstraintSystem;
     use noname::backends::r1cs::R1csBn254Field;
 
     use folding_schemes::{frontend::FCircuit, Error};

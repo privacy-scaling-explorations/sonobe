@@ -7,7 +7,6 @@ use ark_circom::{
 use ark_ff::PrimeField;
 use ark_serialize::Read;
 use num_bigint::BigInt;
-use tokio::runtime::Builder;
 use wasmer::{Module, Store};
 
 use folding_schemes::{utils::PathOrBin, Error};
@@ -101,29 +100,17 @@ impl CircomWrapper {
         &self,
         inputs: Vec<(String, Vec<BigInt>)>,
     ) -> Result<Vec<BigInt>, Error> {
-        Builder::new_current_thread()
-            .build()
-            .unwrap()
-            .block_on(async {
-                let mut store = Store::default();
-                let module = Module::new(&store, &self.wasmfile_bytes).map_err(|e| {
-                    Error::WitnessCalculationError(format!("Failed to create Wasm module: {}", e))
-                })?;
-                let mut calculator =
-                    WitnessCalculator::from_module(&mut store, module).map_err(|e| {
-                        Error::WitnessCalculationError(format!(
-                            "Failed to create WitnessCalculator: {}",
-                            e
-                        ))
-                    })?;
-                calculator
-                    .calculate_witness(&mut store, inputs, true)
-                    .map_err(|e| {
-                        Error::WitnessCalculationError(format!(
-                            "Failed to calculate witness: {}",
-                            e
-                        ))
-                    })
+        let mut store = Store::default();
+        let module = Module::new(&store, &self.wasmfile_bytes).map_err(|e| {
+            Error::WitnessCalculationError(format!("Failed to create Wasm module: {e}"))
+        })?;
+        let mut calculator = WitnessCalculator::from_module(&mut store, module).map_err(|e| {
+            Error::WitnessCalculationError(format!("Failed to create WitnessCalculator: {e}"))
+        })?;
+        calculator
+            .calculate_witness(&mut store, inputs, true)
+            .map_err(|e| {
+                Error::WitnessCalculationError(format!("Failed to calculate witness: {e}"))
             })
     }
 }
@@ -134,14 +121,14 @@ mod tests {
     use ark_bn254::Fr;
     use ark_circom::circom::{CircomBuilder, CircomConfig};
     use ark_circom::CircomCircuit;
-    use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
+    use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystem};
 
     //To generate .r1cs and .wasm files, run the below command in the terminal.
     //bash ./frontends/src/circom/test_folder/compile.sh
 
     // Test the satisfication by using the CircomBuilder of circom-compat
-    #[tokio::test]
-    async fn test_circombuilder_satisfied() -> Result<(), Error> {
+    #[test]
+    fn test_circombuilder_satisfied() -> Result<(), Error> {
         let cfg = CircomConfig::<Fr>::new(
             "./src/circom/test_folder/cubic_circuit_js/cubic_circuit.wasm",
             "./src/circom/test_folder/cubic_circuit.r1cs",

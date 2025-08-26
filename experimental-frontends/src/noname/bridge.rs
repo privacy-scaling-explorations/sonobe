@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use ark_ff::PrimeField;
 use ark_r1cs_std::fields::fp::FpVar;
-use ark_relations::r1cs::{
+use ark_relations::gr1cs::{
     ConstraintSynthesizer, ConstraintSystemRef, LinearCombination, SynthesisError, Variable,
 };
 use noname::backends::{
@@ -112,11 +112,10 @@ impl<'a, 'b, 'c, F: PrimeField, BF: BackendField> ConstraintSynthesizer<F>
         };
 
         for constraint in self.compiled_circuit.circuit.backend.constraints {
-            cs.enforce_constraint(
-                make_lc(constraint.a)?,
-                make_lc(constraint.b)?,
-                make_lc(constraint.c)?,
-            )?;
+            let lc_a = make_lc(constraint.a)?;
+            let lc_b = make_lc(constraint.b)?;
+            let lc_c = make_lc(constraint.c)?;
+            cs.enforce_r1cs_constraint(|| lc_a, || lc_b, || lc_c)?;
         }
 
         Ok(())

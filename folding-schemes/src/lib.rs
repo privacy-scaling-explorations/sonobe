@@ -34,8 +34,8 @@ pub mod utils;
 #[derive(Debug, Error)]
 pub enum Error {
     // Wrappers on top of other errors
-    #[error("ark_relations::r1cs::SynthesisError")]
-    SynthesisError(#[from] ark_relations::r1cs::SynthesisError),
+    #[error("ark_relations::gr1cs::SynthesisError")]
+    SynthesisError(#[from] ark_relations::gr1cs::SynthesisError),
     #[error("ark_serialize::SerializationError")]
     SerializationError(#[from] ark_serialize::SerializationError),
     #[error("ark_poly_commit::Error")]

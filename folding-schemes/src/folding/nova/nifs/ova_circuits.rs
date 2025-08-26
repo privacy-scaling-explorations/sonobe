@@ -7,7 +7,7 @@ use ark_r1cs_std::{
     fields::{fp::FpVar, FieldVar},
     uint8::UInt8,
 };
-use ark_relations::r1cs::{ConstraintSystemRef, Namespace, SynthesisError};
+use ark_relations::gr1cs::{ConstraintSystemRef, Namespace, SynthesisError};
 use ark_std::fmt::Debug;
 use core::{borrow::Borrow, marker::PhantomData};
 
@@ -108,7 +108,6 @@ where
 
     fn verify(
         transcript: &mut T,
-        pp_hash: FpVar<CF1<C>>,
         U_i: Self::CommittedInstanceVar,
         // U_i_vec is passed to reuse the already computed U_i_vec from previous methods
         U_i_vec: Vec<FpVar<CF1<C>>>,
@@ -117,7 +116,6 @@ where
     ) -> Result<(Self::CommittedInstanceVar, Vec<Boolean<CF1<C>>>), SynthesisError> {
         let r_bits = ChallengeGadget::<C, CommittedInstance<C>>::get_challenge_gadget(
             transcript,
-            pp_hash.clone(),
             U_i_vec,
             u_i.clone(),
             None,
@@ -148,7 +146,7 @@ pub mod tests {
     use ark_crypto_primitives::sponge::poseidon::constraints::PoseidonSpongeVar;
     use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
     use ark_pallas::{Fr, Projective};
-    use ark_r1cs_std::R1CSVar;
+    use ark_r1cs_std::GR1CSVar;
     use ark_std::UniformRand;
     use ark_std::Zero;
 

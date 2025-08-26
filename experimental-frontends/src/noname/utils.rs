@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use ark_ff::PrimeField;
-use ark_r1cs_std::{fields::fp::FpVar, R1CSVar};
+use ark_r1cs_std::{fields::fp::FpVar, GR1CSVar};
+use folding_schemes::Error;
 use noname::{
     backends::{r1cs::R1CS, BackendField},
     circuit_writer::CircuitWriter,
@@ -56,7 +57,7 @@ impl NonameInputs {
 // TODO: this will not work in the case where we are using libraries
 pub fn compile_source_code<BF: BackendField>(
     code: &str,
-) -> Result<CompiledCircuit<R1CS<BF>>, noname::error::Error> {
+) -> Result<CompiledCircuit<R1CS<BF>>, Error> {
     let mut sources = Sources::new();
 
     // parse the transitive dependency
@@ -72,5 +73,7 @@ pub fn compile_source_code<BF: BackendField>(
     .unwrap();
     let r1cs = R1CS::<BF>::new();
     // compile
-    CircuitWriter::generate_circuit(checker, r1cs)
+    CircuitWriter::generate_circuit(checker, r1cs).map_err(|_| {
+        Error::Other("Encountered an error while compiling a noname circuit".to_owned())
+    })
 }

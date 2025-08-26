@@ -1,13 +1,12 @@
 /// Implements the scheme described in [HyperNova](https://eprint.iacr.org/2023/573.pdf)
-use ark_crypto_primitives::sponge::{
-    poseidon::{PoseidonConfig, PoseidonSponge},
-    CryptographicSponge,
-};
+use ark_crypto_primitives::sponge::poseidon::{PoseidonConfig, PoseidonSponge};
 use ark_ff::{BigInteger, PrimeField};
-use ark_r1cs_std::R1CSVar;
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
+use ark_r1cs_std::{alloc::AllocVar, boolean::Boolean, GR1CSVar};
+use ark_relations::gr1cs::{
+    ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, SynthesisError,
+};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress, SerializationError};
-use ark_std::{cmp::max, fmt::Debug, marker::PhantomData, rand::RngCore, One, Zero};
+use ark_std::{cmp::max, fmt::Debug, rand::RngCore, One, Zero};
 
 pub mod cccs;
 pub mod circuits;
@@ -31,35 +30,63 @@ use crate::arith::{
 use crate::commitment::CommitmentScheme;
 use crate::constants::NOVA_N_BITS_RO;
 use crate::folding::{
-    circuits::cyclefold::{
-        fold_cyclefold_circuit, CycleFoldCircuit, CycleFoldCommittedInstance, CycleFoldConfig,
-        CycleFoldWitness,
+    circuits::{
+        cyclefold::{
+            CycleFoldAugmentationGadget, CycleFoldCircuit, CycleFoldCommittedInstance,
+            CycleFoldConfig, CycleFoldWitness,
+        },
+        CF1, CF2,
     },
     nova::{get_r1cs_from_cs, PreprocessorParam},
     traits::{CommittedInstanceOps, Dummy, WitnessOps},
 };
 use crate::frontend::FCircuit;
-use crate::transcript::poseidon::poseidon_canonical_config;
+use crate::transcript::{poseidon::poseidon_canonical_config, Transcript};
 use crate::utils::pp_hash;
 use crate::{Curve, Error, FoldingScheme, MultiFolding};
 
 /// Configuration for HyperNova's CycleFold circuit
 pub struct HyperNovaCycleFoldConfig<C: Curve, const MU: usize, const NU: usize> {
-    _c: PhantomData<C>,
+    r: CF1<C>,
+    points: Vec<C>,
 }
 
-impl<C: Curve, const MU: usize, const NU: usize> CycleFoldConfig
+impl<C: Curve, const MU: usize, const NU: usize> Default for HyperNovaCycleFoldConfig<C, MU, NU> {
+    fn default() -> Self {
+        Self {
+            r: CF1::<C>::zero(),
+            points: vec![C::zero(); MU + NU],
+        }
+    }
+}
+
+impl<C: Curve, const MU: usize, const NU: usize> CycleFoldConfig<C>
     for HyperNovaCycleFoldConfig<C, MU, NU>
 {
     const RANDOMNESS_BIT_LENGTH: usize = NOVA_N_BITS_RO;
     const N_INPUT_POINTS: usize = MU + NU;
-    type C = C;
-}
+    const N_UNIQUE_RANDOMNESSES: usize = 1;
 
-/// CycleFold circuit for computing random linear combinations of group elements
-/// in HyperNova instances.
-pub type HyperNovaCycleFoldCircuit<C, const MU: usize, const NU: usize> =
-    CycleFoldCircuit<HyperNovaCycleFoldConfig<C, MU, NU>>;
+    fn alloc_points(&self, cs: ConstraintSystemRef<CF2<C>>) -> Result<Vec<C::Var>, SynthesisError> {
+        let points = Vec::new_witness(cs.clone(), || Ok(self.points.clone()))?;
+        for point in &points {
+            Self::mark_point_as_public(point)?;
+        }
+        Ok(points)
+    }
+
+    fn alloc_randomnesses(
+        &self,
+        cs: ConstraintSystemRef<CF2<C>>,
+    ) -> Result<Vec<Vec<Boolean<CF2<C>>>>, SynthesisError> {
+        let one = &CF1::<C>::one().into_bigint().to_bits_le()[..NOVA_N_BITS_RO];
+        let r = &self.r.into_bigint().to_bits_le()[..NOVA_N_BITS_RO];
+        let one_var = Vec::new_constant(cs.clone(), one)?;
+        let r_var = Vec::new_witness(cs.clone(), || Ok(r))?;
+        Self::mark_randomness_as_public(&r_var)?;
+        Ok([vec![one_var], vec![r_var; MU + NU - 1]].concat())
+    }
+}
 
 /// Witness for the LCCCS & CCCS, containing the w vector, and the r_w used as randomness in the Pedersen commitment.
 #[derive(Debug, Clone, Eq, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
@@ -337,17 +364,19 @@ where
         let (_, cf_U_i): (CycleFoldWitness<C2>, CycleFoldCommittedInstance<C2>) =
             self.cf_r1cs.dummy_witness_instance();
 
-        let sponge = PoseidonSponge::<C1::ScalarField>::new(&self.poseidon_config);
+        let sponge = PoseidonSponge::<C1::ScalarField>::new_with_pp_hash(
+            &self.poseidon_config,
+            self.pp_hash,
+        );
 
         u_i.x = vec![
             U_i.hash(
                 &sponge,
-                self.pp_hash,
                 C1::ScalarField::zero(), // i
                 &self.z_0,
                 &state,
             ),
-            cf_U_i.hash_cyclefold(&sponge, self.pp_hash),
+            cf_U_i.hash_cyclefold(&sponge),
         ];
         let us = vec![u_i.clone(); NU - 1];
 
@@ -469,7 +498,7 @@ where
         let ccs = augmented_F_circuit.ccs;
 
         // CycleFold circuit R1CS
-        let cf_circuit = HyperNovaCycleFoldCircuit::<C1, MU, NU>::empty();
+        let cf_circuit = CycleFoldCircuit::<_, HyperNovaCycleFoldConfig<C1, MU, NU>>::default();
         let cf_r1cs = get_r1cs_from_cs::<C2::ScalarField>(cf_circuit)?;
 
         let cs_vp = CS1::VerifierParams::deserialize_with_mode(&mut reader, compress, validate)?;
@@ -499,7 +528,7 @@ where
         )?;
         let ccs = augmented_f_circuit.ccs.clone();
 
-        let cf_circuit = HyperNovaCycleFoldCircuit::<C1, MU, NU>::empty();
+        let cf_circuit = CycleFoldCircuit::<_, HyperNovaCycleFoldConfig<C1, MU, NU>>::default();
         let cf_r1cs = get_r1cs_from_cs::<C2::ScalarField>(cf_circuit)?;
 
         // if cs params exist, use them, if not, generate new ones
@@ -548,8 +577,12 @@ where
             return Err(Error::CantBeZero("mu,nu".to_string()));
         }
 
+        // compute the public params hash
+        let pp_hash = vp.pp_hash()?;
+
         // `sponge` is for digest computation.
-        let sponge = PoseidonSponge::<C1::ScalarField>::new(&pp.poseidon_config);
+        let sponge =
+            PoseidonSponge::<C1::ScalarField>::new_with_pp_hash(&pp.poseidon_config, pp_hash);
 
         // prepare the HyperNova's AugmentedFCircuit and CycleFold's circuits and obtain its CCS
         // and R1CS respectively
@@ -560,11 +593,8 @@ where
         )?;
         let ccs = augmented_f_circuit.ccs.clone();
 
-        let cf_circuit = HyperNovaCycleFoldCircuit::<C1, MU, NU>::empty();
+        let cf_circuit = CycleFoldCircuit::<_, HyperNovaCycleFoldConfig<C1, MU, NU>>::default();
         let cf_r1cs = get_r1cs_from_cs::<C2::ScalarField>(cf_circuit)?;
-
-        // compute the public params hash
-        let pp_hash = vp.pp_hash()?;
 
         // setup the dummy instances
         let W_dummy = Witness::<C1::ScalarField>::dummy(&ccs);
@@ -574,8 +604,8 @@ where
         let (cf_W_dummy, cf_U_dummy): (CycleFoldWitness<C2>, CycleFoldCommittedInstance<C2>) =
             cf_r1cs.dummy_witness_instance();
         u_dummy.x = vec![
-            U_dummy.hash(&sponge, pp_hash, C1::ScalarField::zero(), &z_0, &z_0),
-            cf_U_dummy.hash_cyclefold(&sponge, pp_hash),
+            U_dummy.hash(&sponge, C1::ScalarField::zero(), &z_0, &z_0),
+            cf_U_dummy.hash_cyclefold(&sponge),
         ];
 
         // W_dummy=W_0 is a 'dummy witness', all zeroes, but with the size corresponding to the
@@ -619,7 +649,7 @@ where
             if blinding_commitments.contains(&C1::ScalarField::zero()) {
                 return Err(Error::IncorrectBlinding(
                     H,
-                    format!("{:?}", blinding_commitments),
+                    format!("{blinding_commitments:?}"),
                 ));
             }
         }
@@ -723,8 +753,10 @@ where
             };
         } else {
             let mut transcript_p: PoseidonSponge<C1::ScalarField> =
-                PoseidonSponge::<C1::ScalarField>::new(&self.poseidon_config);
-            transcript_p.absorb(&self.pp_hash);
+                PoseidonSponge::<C1::ScalarField>::new_with_pp_hash(
+                    &self.poseidon_config,
+                    self.pp_hash,
+                );
 
             let (all_Us, all_us, all_Ws, all_ws) = (
                 [&[self.U_i.clone()][..], &Us].concat(),
@@ -747,31 +779,27 @@ where
             #[cfg(test)]
             self.ccs.check_relation(&W_i1, &U_i1)?;
 
-            let rho_bits = rho.into_bigint().to_bits_le()[..NOVA_N_BITS_RO].to_vec();
-
             // CycleFold part:
-            let cf_circuit = HyperNovaCycleFoldCircuit::<C1, MU, NU> {
-                r_bits: Some(rho_bits),
-                points: Some(
-                    [
-                        all_Us.iter().map(|Us_i| Us_i.C).collect::<Vec<_>>(),
-                        all_us.iter().map(|us_i| us_i.C).collect::<Vec<_>>(),
-                    ]
-                    .concat(),
-                ),
-            };
+            let (cf_w_i, cf_u_i) = HyperNovaCycleFoldConfig::<C1, MU, NU> {
+                r: rho,
+                points: [
+                    all_Us.iter().map(|Us_i| Us_i.C).collect::<Vec<_>>(),
+                    all_us.iter().map(|us_i| us_i.C).collect::<Vec<_>>(),
+                ]
+                .concat(),
+            }
+            .build_circuit()
+            .generate_incoming_instance_witness::<_, CS2, H>(&self.cf_cs_pp, &mut rng)?;
 
-            let (cf_u_i, cf_W_i1, cf_U_i1, cf_cmT) =
-                fold_cyclefold_circuit::<HyperNovaCycleFoldConfig<C1, MU, NU>, C2, CS2, H>(
-                    &mut transcript_p,
-                    self.cf_r1cs.clone(),
-                    self.cf_cs_pp.clone(),
-                    self.pp_hash,
-                    self.cf_W_i.clone(), // CycleFold running instance witness
-                    self.cf_U_i.clone(), // CycleFold running instance
-                    cf_circuit,
-                    &mut rng,
-                )?;
+            let (cf_W_i1, cf_U_i1, cf_cmTs) = CycleFoldAugmentationGadget::fold_native::<_, CS2, H>(
+                &mut transcript_p,
+                &self.cf_r1cs,
+                &self.cf_cs_pp,
+                self.cf_W_i.clone(),
+                self.cf_U_i.clone(),
+                vec![cf_w_i],
+                vec![cf_u_i.clone()],
+            )?;
 
             augmented_f_circuit = AugmentedFCircuit::<C1, C2, FC, MU, NU> {
                 poseidon_config: self.poseidon_config.clone(),
@@ -793,7 +821,7 @@ where
                 // cyclefold values
                 cf_u_i_cmW: Some(cf_u_i.cmW),
                 cf_U_i: Some(self.cf_U_i.clone()),
-                cf_cmT: Some(cf_cmT),
+                cf_cmT: Some(cf_cmTs[0]),
             };
 
             // assign the next round instances
@@ -886,7 +914,7 @@ where
             f_circuit.clone(),
             None,
         )?;
-        let cf_circuit = HyperNovaCycleFoldCircuit::<C1, MU, NU>::empty();
+        let cf_circuit = CycleFoldCircuit::<_, HyperNovaCycleFoldConfig<C1, MU, NU>>::default();
 
         let ccs = augmented_f_circuit.ccs.clone();
         let cf_r1cs = get_r1cs_from_cs::<C2::ScalarField>(cf_circuit)?;
@@ -933,22 +961,21 @@ where
             return Ok(());
         }
         // `sponge` is for digest computation.
-        let sponge = PoseidonSponge::<C1::ScalarField>::new(&vp.poseidon_config);
+        let sponge =
+            PoseidonSponge::<C1::ScalarField>::new_with_pp_hash(&vp.poseidon_config, vp.pp_hash()?);
 
         if u_i.x.len() != 2 || U_i.x.len() != 2 {
             return Err(Error::IVCVerificationFail);
         }
 
-        let pp_hash = vp.pp_hash()?;
-
         // check that u_i's output points to the running instance
         // u_i.X[0] == H(i, z_0, z_i, U_i)
-        let expected_u_i_x = U_i.hash(&sponge, pp_hash, num_steps, &z_0, &z_i);
+        let expected_u_i_x = U_i.hash(&sponge, num_steps, &z_0, &z_i);
         if expected_u_i_x != u_i.x[0] {
             return Err(Error::IVCVerificationFail);
         }
         // u_i.X[1] == H(cf_U_i)
-        let expected_cf_u_i_x = cf_U_i.hash_cyclefold(&sponge, pp_hash);
+        let expected_cf_u_i_x = cf_U_i.hash_cyclefold(&sponge);
         if expected_cf_u_i_x != u_i.x[1] {
             return Err(Error::IVCVerificationFail);
         }

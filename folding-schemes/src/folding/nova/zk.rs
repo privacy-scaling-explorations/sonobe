@@ -1,39 +1,38 @@
-/// Implements Nova's zero-knowledge layer, as described in https://eprint.iacr.org/2023/573.pdf.
-///
-/// Remark: this zk layer implementation only covers a subset of the use cases:
-///
-/// We identify 3 interesting places to use the nova zk-layer: one before all the folding pipeline
-/// (Use-case-1), one at the end of the folding pipeline right before the final Decider SNARK
-/// proof (Use-case-2), and a third one for cases where compressed SNARK proofs are not needed, and
-/// just IVC proofs (bigger than SNARK proofs) suffice (Use-case-3):
-///
-/// * Use-case-1: at the beginning of the folding pipeline, right when the user has their original
-///   instance prior to be folded into the running instance, the user can fold it with the
-///   random-satisfying-instance to then have a blinded instance that can be sent to a server that
-///   will fold it with the running instance.
-///     --> In this one, the user could externalize all the IVC folding and also the Decider
-///     final proof generation to a server.
-/// * Use-case-2: at the end of all the IVC folding steps (after n iterations of nova.prove_step),
-///   to 'blind' the IVC proof so then it can be sent to a server that will generate the final
-///   decider SNARK proof.
-///     --> In this one, the user could externalize the Decider final proof generation to a
-///     server.
-/// * Use-case-3: the user does not care about the Decider (final compressed SNARK proof), and
-///   wants to generate a zk-proof of the IVC state to an IVC verifier (without any SNARK proof
-///   involved). In this use-case, the zk is only added at the last IVCProof. Note that this proof
-///   will be much bigger and expensive to verify than a Decider SNARK proof.
-///
-/// The current implementation covers the Use-case-3.
-/// Use-case-1 can be achieved directly by a simpler version of the zk IVC scheme skipping steps
-/// and implemented directly at the app level by folding the original instance with a randomized
-/// instance (steps 2,3,4 from section D.4 of the [HyperNova](https://eprint.iacr.org/2023/573.pdf)
-/// paper).
-/// And the Use-case-2 would require a modified version of the Decider circuits.
-///
-use ark_crypto_primitives::sponge::{
-    poseidon::{PoseidonConfig, PoseidonSponge},
-    CryptographicSponge,
-};
+//! Implements Nova's zero-knowledge layer, as described in https://eprint.iacr.org/2023/573.pdf.
+//!
+//! Remark: this zk layer implementation only covers a subset of the use cases:
+//!
+//! We identify 3 interesting places to use the nova zk-layer: one before all the folding pipeline
+//! (Use-case-1), one at the end of the folding pipeline right before the final Decider SNARK
+//! proof (Use-case-2), and a third one for cases where compressed SNARK proofs are not needed, and
+//! just IVC proofs (bigger than SNARK proofs) suffice (Use-case-3):
+//!
+//! * Use-case-1: at the beginning of the folding pipeline, right when the user has their original
+//!   instance prior to be folded into the running instance, the user can fold it with the
+//!   random-satisfying-instance to then have a blinded instance that can be sent to a server that
+//!   will fold it with the running instance.
+//!     
+//!     --> In this one, the user could externalize all the IVC folding and also the Decider final
+//!   proof generation to a server.
+//!
+//! * Use-case-2: at the end of all the IVC folding steps (after n iterations of nova.prove_step),
+//!   to 'blind' the IVC proof so then it can be sent to a server that will generate the final
+//!   decider SNARK proof.
+//!     
+//!     --> In this one, the user could offload the Decider final proof generation to a server.
+//!   
+//! * Use-case-3: the user does not care about the Decider (final compressed SNARK proof), and
+//!   wants to generate a zk-proof of the IVC state to an IVC verifier (without any SNARK proof
+//!   involved). In this use-case, the zk is only added at the last IVCProof. Note that this proof
+//!   will be much bigger and expensive to verify than a Decider SNARK proof.
+//!
+//! The current implementation covers the Use-case-3.
+//! Use-case-1 can be achieved directly by a simpler version of the zk IVC scheme skipping steps
+//! and implemented directly at the app level by folding the original instance with a randomized
+//! instance (steps 2,3,4 from section D.4 of the [HyperNova](https://eprint.iacr.org/2023/573.pdf)
+//! paper).
+//! And the Use-case-2 would require a modified version of the Decider circuits.
+use ark_crypto_primitives::sponge::poseidon::{PoseidonConfig, PoseidonSponge};
 use ark_std::{rand::RngCore, One, Zero};
 
 use super::{
@@ -45,6 +44,7 @@ use crate::{
     commitment::CommitmentScheme,
     folding::traits::CommittedInstanceOps,
     frontend::FCircuit,
+    transcript::Transcript,
     Curve, Error,
 };
 
@@ -71,7 +71,10 @@ impl<C1: Curve, C2: Curve> RandomizedIVCProof<C1, C2> {
         nova: &Nova<C1, C2, FC, CS1, CS2, true>,
         mut rng: impl RngCore,
     ) -> Result<RandomizedIVCProof<C1, C2>, Error> {
-        let mut transcript = PoseidonSponge::<C1::ScalarField>::new(&nova.poseidon_config);
+        let mut transcript = PoseidonSponge::<C1::ScalarField>::new_with_pp_hash(
+            &nova.poseidon_config,
+            nova.pp_hash,
+        );
 
         // I. Compute proof for 'regular' instances
         // 1. Fold the instance-witness pairs (U_i, W_i) with (u_i, w_i)
@@ -79,7 +82,6 @@ impl<C1: Curve, C2: Curve> RandomizedIVCProof<C1, C2> {
             &nova.cs_pp,
             &nova.r1cs,
             &mut transcript,
-            nova.pp_hash,
             &nova.w_i,
             &nova.u_i,
             &nova.W_i,
@@ -97,7 +99,6 @@ impl<C1: Curve, C2: Curve> RandomizedIVCProof<C1, C2> {
                 &nova.cs_pp,
                 &nova.r1cs,
                 &mut transcript,
-                nova.pp_hash,
                 &W_f,
                 &U_f,
                 &W_r,
@@ -148,13 +149,14 @@ impl<C1: Curve, C2: Curve> RandomizedIVCProof<C1, C2> {
         }
 
         // b. Check computed hashes are correct
-        let sponge = PoseidonSponge::<C1::ScalarField>::new(poseidon_config);
-        let expected_u_i_x = proof.U_i.hash(&sponge, pp_hash, i, &z_0, &z_i);
+        let sponge = PoseidonSponge::<C1::ScalarField>::new_with_pp_hash(poseidon_config, pp_hash);
+        let mut transcript = sponge.clone();
+        let expected_u_i_x = proof.U_i.hash(&sponge, i, &z_0, &z_i);
         if expected_u_i_x != proof.u_i.x[0] {
             return Err(Error::zkIVCVerificationFail);
         }
 
-        let expected_cf_u_i_x = proof.cf_U_i.hash_cyclefold(&sponge, pp_hash);
+        let expected_cf_u_i_x = proof.cf_U_i.hash_cyclefold(&sponge);
         if expected_cf_u_i_x != proof.u_i.x[1] {
             return Err(Error::IVCVerificationFail);
         }
@@ -164,11 +166,9 @@ impl<C1: Curve, C2: Curve> RandomizedIVCProof<C1, C2> {
             return Err(Error::zkIVCVerificationFail);
         }
 
-        let mut transcript = PoseidonSponge::<C1::ScalarField>::new(poseidon_config);
         // 3. Obtain the U_f folded instance
         let (U_f, _) = NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>, true>::verify(
             &mut transcript,
-            pp_hash,
             &proof.u_i,
             &proof.U_i,
             &proof.pi,
@@ -177,7 +177,6 @@ impl<C1: Curve, C2: Curve> RandomizedIVCProof<C1, C2> {
         // 4. Obtain the U^{\prime}_i folded instance
         let (U_i_prime, _) = NIFS::<C1, CS1, PoseidonSponge<C1::ScalarField>, true>::verify(
             &mut transcript,
-            pp_hash,
             &U_f,
             &proof.U_r,
             &proof.pi_prime,

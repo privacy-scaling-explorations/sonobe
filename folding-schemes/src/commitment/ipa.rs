@@ -15,9 +15,9 @@ use ark_r1cs_std::{
     convert::ToBitsGadget,
     eq::EqGadget,
     fields::{emulated_fp::EmulatedFpVar, FieldVar},
-    prelude::CurveVar,
+    groups::CurveVar,
 };
-use ark_relations::r1cs::{Namespace, SynthesisError};
+use ark_relations::gr1cs::{Namespace, SynthesisError};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{cfg_iter, rand::RngCore, UniformRand, Zero};
 use core::{borrow::Borrow, marker::PhantomData};
@@ -574,7 +574,7 @@ mod tests {
     use ark_ec::PrimeGroup;
     use ark_pallas::{constraints::GVar, Fq, Fr, Projective};
     use ark_r1cs_std::eq::EqGadget;
-    use ark_relations::r1cs::ConstraintSystem;
+    use ark_relations::gr1cs::ConstraintSystem;
 
     use super::*;
     use crate::transcript::poseidon::poseidon_canonical_config;

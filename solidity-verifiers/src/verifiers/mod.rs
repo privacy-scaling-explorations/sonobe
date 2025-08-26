@@ -59,7 +59,7 @@ pub mod tests {
     use ark_r1cs_std::alloc::AllocVar;
     use ark_r1cs_std::eq::EqGadget;
     use ark_r1cs_std::fields::fp::FpVar;
-    use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+    use ark_relations::gr1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
     use ark_snark::CircuitSpecificSetupSNARK;
     use ark_std::rand::{RngCore, SeedableRng};
     use ark_std::test_rng;

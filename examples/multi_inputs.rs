@@ -6,7 +6,7 @@
 use ark_ff::PrimeField;
 use ark_r1cs_std::alloc::AllocVar;
 use ark_r1cs_std::fields::fp::FpVar;
-use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
+use ark_relations::gr1cs::{ConstraintSystemRef, SynthesisError};
 use core::marker::PhantomData;
 use std::time::Instant;
 
@@ -64,8 +64,8 @@ impl<F: PrimeField> FCircuit<F> for MultiInputsFCircuit<F> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
-    use ark_relations::r1cs::ConstraintSystem;
+    use ark_r1cs_std::{alloc::AllocVar, GR1CSVar};
+    use ark_relations::gr1cs::ConstraintSystem;
 
     fn multi_inputs_step_native<F: PrimeField>(z_i: Vec<F>) -> Vec<F> {
         let a = z_i[0] + F::from(4_u32);

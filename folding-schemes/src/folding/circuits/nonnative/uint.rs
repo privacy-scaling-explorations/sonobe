@@ -11,9 +11,9 @@ use ark_r1cs_std::{
     fields::{fp::FpVar, FieldVar},
     prelude::EqGadget,
     select::CondSelectGadget,
-    R1CSVar,
+    GR1CSVar,
 };
-use ark_relations::r1cs::{ConstraintSystemRef, Namespace, SynthesisError};
+use ark_relations::gr1cs::{ConstraintSystemRef, Namespace, SynthesisError};
 use num_bigint::BigUint;
 use num_integer::Integer;
 
@@ -59,7 +59,7 @@ impl<F: PrimeField> Default for LimbVar<F> {
     }
 }
 
-impl<F: PrimeField> R1CSVar<F> for LimbVar<F> {
+impl<F: PrimeField> GR1CSVar<F> for LimbVar<F> {
     type Value = F;
 
     fn cs(&self) -> ConstraintSystemRef<F> {
@@ -270,7 +270,7 @@ impl<F: PrimeField, G: Field> AllocVar<G, F> for NonNativeUintVar<F> {
     }
 }
 
-impl<F: PrimeField> R1CSVar<F> for NonNativeUintVar<F> {
+impl<F: PrimeField> GR1CSVar<F> for NonNativeUintVar<F> {
     type Value = BigUint;
 
     fn cs(&self) -> ConstraintSystemRef<F> {
@@ -914,7 +914,7 @@ impl<CF: PrimeField> MatrixGadget<NonNativeUintVar<CF>> for SparseMatrixVar<NonN
 mod tests {
     use ark_ff::Field;
     use ark_pallas::{Fq, Fr};
-    use ark_relations::r1cs::ConstraintSystem;
+    use ark_relations::gr1cs::ConstraintSystem;
     use ark_std::{test_rng, UniformRand};
     use num_bigint::RandBigInt;
 
